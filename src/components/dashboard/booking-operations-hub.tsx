@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import {
-  Armchair,
-  CalendarCheck,
-  CalendarDays,
+  Boxes,
   CalendarOff,
-  Inbox,
   Loader2,
-  PartyPopper,
+  Mail,
+  MessageSquare,
+  Mic2,
+  Phone,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -33,9 +33,11 @@ import {
   upsertTableBookingQuestion,
 } from "@/app/dashboard/bookings/inventory-actions";
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
-import { BookingInbox, type BookingRequestRow } from "@/components/dashboard/booking-inbox";
+import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
+import { EventSeriesCalendarSheet, type SheetBusinessEventRow } from "@/components/dashboard/event-series-calendar-sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
+import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 export type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 import { cn } from "@/lib/utils";
@@ -93,11 +95,154 @@ export type VenueCalendarBookingRow = {
 
 const WEEKDAY_LABEL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function formatStoredRecurrence(rec: unknown): string {
+  if (rec == null) return "";
+  if (typeof rec !== "object" || Array.isArray(rec)) return "";
+  const o = rec as Record<string, unknown>;
+  const type = typeof o.type === "string" ? o.type : "once";
+  const { skipped } = parseRecurrenceExtras(rec);
+  const skipFrag = skipped.size ? ` (${skipped.size} skipped)` : "";
+  if (type === "once") return `One-off occurrence${skipFrag}`;
+  if (type === "daily") return `Repeats daily${skipFrag}`;
+  if (type === "weekly") {
+    const weekdays = Array.isArray(o.weekdays) ? (o.weekdays as unknown[]) : [];
+    const names = weekdays
+      .filter((x): x is number => typeof x === "number" && Number.isFinite(x))
+      .map((n) => WEEKDAY_LABEL[Math.round(n)] ?? `Day ${n}`)
+      .filter(Boolean);
+    if (!names.length) return `Weekly (no weekdays picked)${skipFrag}`;
+    return `Every ${names.join(", ")}${skipFrag}`;
+  }
+  const label = type.length ? type.charAt(0).toUpperCase() + type.slice(1) : "Custom";
+  return `${label}${skipFrag}`;
+}
+
+function smsVenueQuickText(phone: string, opener: string) {
+  const digits = phone.replace(/[^\d+]/g, "");
+  const body = encodeURIComponent(opener);
+  return `sms:${digits}?body=${body}`;
+}
+
+export const BOOKING_HUB_PRIMARIES = ["guests", "offerings"] as const;
+export type BookingHubPrimary = (typeof BOOKING_HUB_PRIMARIES)[number];
+
+export const BOOKING_GUESTS_SUBS = ["inbox", "confirmed"] as const;
+export type BookingGuestsSub = (typeof BOOKING_GUESTS_SUBS)[number];
+
+export const BOOKING_OFFERINGS_SUBS = ["appointments", "events", "tables"] as const;
+export type BookingOfferingsSub = (typeof BOOKING_OFFERINGS_SUBS)[number];
+
+function normQs(s?: string | null): string {
+  return typeof s === "string" ? s.trim().toLowerCase() : "";
+}
+
+function coerceGuestsSub(raw: string): BookingGuestsSub {
+  return raw === "confirmed" || raw === "scheduled" || raw === "calendar" ? "confirmed" : "inbox";
+}
+
+function coerceOfferingsSub(raw: string): BookingOfferingsSub {
+  if (raw === "events" || raw === "tables" || raw === "appointments") return raw;
+  return "appointments";
+}
+
+export type ParsedBookingsHub = {
+  primary: BookingHubPrimary;
+  guestsSub: BookingGuestsSub;
+  offeringsSub: BookingOfferingsSub;
+  bookingHighlight: string | null;
+};
+
+/** Supports `?tab=guests|offerings&view=…` plus legacy `?tab=requests|confirmed|appointments…`. */
+export function parseBookingsHubQuery(params: {
+  tab?: string | null;
+  view?: string | null;
+  booking?: string | null;
+}): ParsedBookingsHub {
+  const ht = normQs(params.tab);
+  const hv = normQs(params.view);
+  const bookingRaw = typeof params.booking === "string" ? params.booking.trim() : "";
+
+  /** UUID-ish highlight for threading */
+  const bookingHighlight = /^[0-9a-f-]{36}$/i.test(bookingRaw) ? bookingRaw.toLowerCase() : null;
+
+  const base: ParsedBookingsHub = {
+    primary: "guests",
+    guestsSub: "inbox",
+    offeringsSub: "appointments",
+    bookingHighlight,
+  };
+
+  if (!ht.length) {
+    if (!hv.length) return base;
+    if (hv === "appointments" || hv === "events" || hv === "tables") {
+      return {
+        primary: "offerings",
+        guestsSub: "inbox",
+        offeringsSub: coerceOfferingsSub(hv),
+        bookingHighlight,
+      };
+    }
+    return {
+      primary: "guests",
+      guestsSub: coerceGuestsSub(hv),
+      offeringsSub: "appointments",
+      bookingHighlight,
+    };
+  }
+
+  /** Legacy shortcuts */
+  if (ht === "requests" || ht === "pending" || ht === "inbox") {
+    return {
+      primary: "guests",
+      guestsSub: coerceGuestsSub(hv || "inbox"),
+      offeringsSub: coerceOfferingsSub("appointments"),
+      bookingHighlight,
+    };
+  }
+
+  if (ht === "confirmed" || ht === "scheduled") {
+    return {
+      primary: "guests",
+      guestsSub: "confirmed",
+      offeringsSub: coerceOfferingsSub("appointments"),
+      bookingHighlight,
+    };
+  }
+
+  if (ht === "appointments" || ht === "events" || ht === "tables") {
+    return {
+      primary: "offerings",
+      guestsSub: "inbox",
+      offeringsSub: coerceOfferingsSub(ht),
+      bookingHighlight,
+    };
+  }
+
+  if (ht === "guests") {
+    return {
+      primary: "guests",
+      guestsSub: coerceGuestsSub(hv || "inbox"),
+      offeringsSub: coerceOfferingsSub("appointments"),
+      bookingHighlight,
+    };
+  }
+
+  if (ht === "offerings" || ht === "create" || ht === "inventory") {
+    return {
+      primary: "offerings",
+      guestsSub: "inbox",
+      offeringsSub: coerceOfferingsSub(hv || "appointments"),
+      bookingHighlight,
+    };
+  }
+
+  /** Unknown tab keyword — safe default */
+  return base;
+}
+
 function clipTime(t: string) {
   return t.length >= 5 ? t.slice(0, 5) : t;
 }
-
-type TabKey = "requests" | "confirmed" | "appointments" | "events" | "tables";
 
 type BookingOperationsHubProps = {
   businessId: string | null;
@@ -112,6 +257,10 @@ type BookingOperationsHubProps = {
   bizNameById: Record<string, string>;
   confirmedBookings: VenueCalendarBookingRow[];
   bookingFlowComplete: boolean;
+  initialPrimary?: BookingHubPrimary;
+  initialGuestsSub?: BookingGuestsSub;
+  initialOfferingsSub?: BookingOfferingsSub;
+  bookingRequestHighlight?: string | null;
 };
 
 export function BookingOperationsHub({
@@ -127,8 +276,30 @@ export function BookingOperationsHub({
   bizNameById,
   confirmedBookings,
   bookingFlowComplete,
+  initialPrimary,
+  initialGuestsSub,
+  initialOfferingsSub,
+  bookingRequestHighlight,
 }: BookingOperationsHubProps) {
-  const [tab, setTab] = useState<TabKey>("requests");
+  const router = useRouter();
+  const pathname = usePathname();
+  const [primary, setPrimary] = useState<BookingHubPrimary>(initialPrimary ?? "guests");
+  const [guestsSub, setGuestsSub] = useState<BookingGuestsSub>(initialGuestsSub ?? "inbox");
+  const [offeringsSub, setOfferingsSub] = useState<BookingOfferingsSub>(initialOfferingsSub ?? "appointments");
+
+  useEffect(() => {
+    setPrimary(initialPrimary ?? "guests");
+    setGuestsSub(initialGuestsSub ?? "inbox");
+    setOfferingsSub(initialOfferingsSub ?? "appointments");
+  }, [initialPrimary, initialGuestsSub, initialOfferingsSub]);
+
+  function pushBookingHubUrl(nextPrimary: BookingHubPrimary, gv: BookingGuestsSub, ov: BookingOfferingsSub) {
+    const sp = new URLSearchParams();
+    sp.set("tab", nextPrimary);
+    sp.set("view", nextPrimary === "guests" ? gv : ov);
+    const qs = sp.toString();
+    router.replace(qs.length ? `${pathname}?${qs}` : pathname);
+  }
 
   const activeEventsCount = useMemo(
     () => events.filter((ev) => !ev.cancelled_at && !ev.deleted_at).length,
@@ -146,12 +317,19 @@ export function BookingOperationsHub({
     );
   }
 
-  const tabs: { key: TabKey; label: string; icon: typeof Inbox }[] = [
-    { key: "requests", label: "Requests", icon: Inbox },
-    { key: "confirmed", label: "Confirmed", icon: CalendarCheck },
-    { key: "appointments", label: "Appointments", icon: CalendarDays },
-    { key: "events", label: "Events", icon: PartyPopper },
-    { key: "tables", label: "Tables", icon: Armchair },
+  const primaryTabs: { key: BookingHubPrimary; label: string; description: string; icon: typeof MessageSquare }[] = [
+    {
+      key: "guests",
+      label: "Guests & replies",
+      description: "Phone numbers, confirmations, drafts, SMS/email queues, AI call trails tied to Solvio inbound requests.",
+      icon: MessageSquare,
+    },
+    {
+      key: "offerings",
+      label: "Create openings",
+      description: "Appointment grids, hosted events, and table inventory—the things guests pick on your booking link.",
+      icon: Boxes,
+    },
   ];
 
   return (
@@ -185,76 +363,231 @@ export function BookingOperationsHub({
             <div className="max-w-[46rem] space-y-1">
               <p className="text-sm font-semibold text-[#0369a1]">Publish bookable openings</p>
               <p className="text-sm leading-relaxed text-[#0c4a6e]">
-                Your flow is configured, but there is nothing for guests to latch onto yet. Add weekly appointment hours, hosted
-                events, or tables so the booking link can offer concrete slots or tickets.
+                Use <span className="font-semibold text-[#0f172a]">Create openings</span> to add calendars, repeating shows, or
+                tables—the live booking link pulls from whatever you mint here first.
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("appointments")}>
-                Appointments tab
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-[#bae6fd] font-semibold"
+                onClick={() => {
+                  setPrimary("offerings");
+                  setOfferingsSub("appointments");
+                  pushBookingHubUrl("offerings", guestsSub, "appointments");
+                }}
+              >
+                Appointment hours
               </Button>
-              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("events")}>
-                Events tab
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-[#bae6fd] font-semibold"
+                onClick={() => {
+                  setPrimary("offerings");
+                  setOfferingsSub("events");
+                  pushBookingHubUrl("offerings", guestsSub, "events");
+                }}
+              >
+                Hosted events
               </Button>
-              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("tables")}>
-                Tables tab
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full border-[#bae6fd] font-semibold"
+                onClick={() => {
+                  setPrimary("offerings");
+                  setOfferingsSub("tables");
+                  pushBookingHubUrl("offerings", guestsSub, "tables");
+                }}
+              >
+                Tables
               </Button>
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="flex gap-2 overflow-x-auto border-b border-[#f1eefc] px-4 pt-3 pb-0 md:px-6" role="tablist">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const on = tab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={on}
-              className={cn(
-                "flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-sm font-semibold transition-colors",
-                on ? "bg-[#fafbff] text-[#5b21b6] shadow-[inset_0_-2px_0_0_#7c3aed]" : "text-[#64748b] hover:text-[#0f172a]",
-              )}
-              onClick={() => setTab(t.key)}
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              {t.label}
-            </button>
-          );
-        })}
+      <div className="border-b border-[#f1eefc] px-4 pt-4 md:px-6 md:pt-6" role="tablist">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Pick a workspace</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {primaryTabs.map((item) => {
+            const Icon = item.icon;
+            const on = primary === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => {
+                  setPrimary(item.key);
+                  pushBookingHubUrl(item.key, guestsSub, offeringsSub);
+                }}
+                className={cn(
+                  "rounded-[22px] border px-4 py-4 text-left transition-colors md:min-h-[132px]",
+                  on
+                    ? "border-[#c4b5fd] bg-[#f5f3ff] text-[#0f172a] shadow-inner shadow-[#ede9fe]/60"
+                    : "border-transparent bg-[#fafbff]/80 hover:border-[#ebe7f7]",
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="h-6 w-6 shrink-0 text-[#7c3aed]" aria-hidden />
+                  <span className="text-base font-semibold">{item.label}</span>
+                </div>
+                <p className="mt-3 text-[13px] leading-relaxed text-[#64748b]">{item.description}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="p-6 md:p-8">
-        {tab === "requests" ? (
-          <BookingInbox
+      <div className="px-4 py-7 md:px-6 md:py-10">
+        {primary === "guests" ? (
+          <GuestsHubPanel
+            guestsSub={guestsSub}
+            onGuestsSub={(next) => {
+              setGuestsSub(next);
+              pushBookingHubUrl("guests", next, offeringsSub);
+            }}
             requests={requests}
             bizNameById={bizNameById}
+            confirmedBookings={confirmedBookings}
+            businessName={businessName}
             inventoryLinks={{
               tables: tables.map((t) => ({ id: t.id, label: t.label })),
               events: events
                 .filter((ev) => !ev.cancelled_at && !ev.deleted_at)
                 .map((ev) => ({ id: ev.id, title: ev.title })),
             }}
+            bookingRequestHighlight={bookingRequestHighlight}
           />
-        ) : null}
-        {tab === "confirmed" ? (
-          <ConfirmedBookingsPanel businessName={businessName} bookings={confirmedBookings} />
-        ) : null}
-        {tab === "appointments" ? (
-          <AppointmentsPanel
+        ) : (
+          <OfferingsHubPanel
+            offeringsSub={offeringsSub}
+            onOfferingsSub={(next) => {
+              setOfferingsSub(next);
+              pushBookingHubUrl("offerings", guestsSub, next);
+            }}
             businessId={businessId}
             schedules={schedules}
             exceptions={exceptions}
             venueTimeZone={venueTimeZone}
+            events={events}
+            tables={tables}
+            questions={questions}
           />
-        ) : null}
-        {tab === "events" ? <EventsPanel businessId={businessId} events={events} /> : null}
-        {tab === "tables" ? <TablesPanel businessId={businessId} tables={tables} questions={questions} /> : null}
+        )}
       </div>
     </section>
+  );
+}
+
+function GuestsHubPanel(props: {
+  guestsSub: BookingGuestsSub;
+  onGuestsSub: (next: BookingGuestsSub) => void;
+  requests: BookingRequestRow[];
+  bizNameById: Record<string, string>;
+  inventoryLinks?: {
+    tables: { id: string; label: string }[];
+    events: { id: string; title: string }[];
+  };
+  bookingRequestHighlight?: string | null;
+  confirmedBookings: VenueCalendarBookingRow[];
+  businessName: string;
+}) {
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
+        <button
+          type="button"
+          onClick={() => props.onGuestsSub("inbox")}
+          className={cn(
+            "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
+            props.guestsSub === "inbox" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+          )}
+        >
+          Inbox requests
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onGuestsSub("confirmed")}
+          className={cn(
+            "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
+            props.guestsSub === "confirmed" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+          )}
+        >
+          Scheduled & confirmed
+        </button>
+      </div>
+
+      {props.guestsSub === "inbox" ? (
+        <BookingInbox
+          requests={props.requests}
+          bizNameById={props.bizNameById}
+          inventoryLinks={props.inventoryLinks}
+          highlightBookingRequestId={props.bookingRequestHighlight ?? undefined}
+        />
+      ) : (
+        <ConfirmedBookingsPanelWithContacts businessName={props.businessName} bookings={props.confirmedBookings} />
+      )}
+    </div>
+  );
+}
+
+function OfferingsHubPanel(props: {
+  offeringsSub: BookingOfferingsSub;
+  onOfferingsSub: (next: BookingOfferingsSub) => void;
+  businessId: string;
+  schedules: AppointmentWeekRow[];
+  exceptions: SlotExceptionRow[];
+  venueTimeZone: string;
+  events: BusinessEventRow[];
+  tables: FloorPlanTableRow[];
+  questions: TableQuestionRow[];
+}) {
+  const subTabs: { key: BookingOfferingsSub; label: string }[] = [
+    { key: "appointments", label: "Appointment hours" },
+    { key: "events", label: "Hosted events" },
+    { key: "tables", label: "Tables & layouts" },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
+        {subTabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => props.onOfferingsSub(t.key)}
+            className={cn(
+              "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
+              props.offeringsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {props.offeringsSub === "appointments" ? (
+        <AppointmentsPanel
+          businessId={props.businessId}
+          schedules={props.schedules}
+          exceptions={props.exceptions}
+          venueTimeZone={props.venueTimeZone}
+        />
+      ) : null}
+
+      {props.offeringsSub === "events" ? (
+        <EventsPanel businessId={props.businessId} events={props.events} venueTimeZone={props.venueTimeZone} />
+      ) : null}
+
+      {props.offeringsSub === "tables" ? (
+        <TablesPanel businessId={props.businessId} tables={props.tables} questions={props.questions} />
+      ) : null}
+    </div>
   );
 }
 
@@ -263,7 +596,7 @@ function confirmedKindLabel(kind: string | null | undefined) {
   return isBookingGuestMode(kind) ? BOOKING_GUEST_MODE_LABELS[kind] : kind;
 }
 
-function ConfirmedBookingsPanel({
+function ConfirmedBookingsPanelWithContacts({
   businessName,
   bookings,
 }: {
@@ -296,10 +629,11 @@ function ConfirmedBookingsPanel({
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-[#0f172a]">Confirmed calendar</h2>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Scheduled guests</h2>
           <p className="mt-1 text-sm text-[#64748b]">
-            Lock in commitments for <span className="font-semibold text-[#0f172a]">{businessName}</span> after you&apos;ve spoken with the guest.
-            Upcoming rows surface here for staffing — cancellations stay visible when enabled below.
+            Everyone with a locked slot under <span className="font-semibold text-[#0f172a]">{businessName}</span>. Call, text, or
+            email from here, open the Solvio message thread when it started as a request, and prep AI-assisted dial-outs inside{" "}
+            <span className="font-semibold text-[#0f172a]">Calls</span>.
           </p>
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]">
@@ -314,11 +648,12 @@ function ConfirmedBookingsPanel({
       </header>
 
       <div className="overflow-x-auto rounded-2xl border border-[#f1eefc]">
-        <table className="w-full min-w-[760px] text-left text-sm">
+        <table className="w-full min-w-[1040px] text-left text-sm">
           <thead className="border-b border-[#ebe7f7] bg-[#fafbff] text-[11px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
             <tr>
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Guest</th>
+              <th className="px-4 py-3">Quick reach</th>
               <th className="px-4 py-3">Title</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Status</th>
@@ -328,9 +663,9 @@ function ConfirmedBookingsPanel({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-[#64748b]">
-                  Nothing confirmed yet — open <span className="font-semibold text-[#0f172a]">Requests</span>, expand a guest, and use{" "}
-                  <span className="font-semibold text-[#5b21b6]">Confirm slot</span>.
+                <td colSpan={7} className="px-4 py-10 text-center text-[#64748b]">
+                  Nothing locked yet — under <span className="font-semibold text-[#0f172a]">Inbox requests</span>, expand a guest and
+                  use <span className="font-semibold text-[#5b21b6]">Confirm slot</span>.
                 </td>
               </tr>
             ) : (
@@ -354,12 +689,73 @@ function ConfirmedBookingsPanel({
                       })}
                     </p>
                   </td>
-                  <td className="px-4 py-3 align-top">
+                  <td className="max-w-[200px] px-4 py-3 align-top">
                     <p className="font-semibold text-[#0f172a]">{row.guest_name}</p>
-                    <p className="text-xs text-[#94a3b8]">{row.guest_email}</p>
+                    <p className="break-all text-xs text-[#94a3b8]">{row.guest_email}</p>
+                    {row.guest_phone ? (
+                      <p className="mt-1 font-mono text-[12px] text-[#475569]">{row.guest_phone}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[#cbd5e1]">No phone captured</p>
+                    )}
                     {typeof row.guest_count === "number" && row.guest_count > 0 ? (
                       <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[#64748b]">{row.guest_count} guests</p>
                     ) : null}
+                  </td>
+                  <td className="max-w-[260px] px-4 py-3 align-top">
+                    <div className="flex flex-col gap-1.5">
+                      {row.guest_phone ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <Link
+                            href={telBookingHref(row.guest_phone)}
+                            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[11px]")}
+                          >
+                            <Phone className="mr-1 h-3.5 w-3.5" aria-hidden /> Call
+                          </Link>
+                          <Link
+                            href={smsVenueQuickText(
+                              row.guest_phone,
+                              `Hi — it's ${businessName}. Quick note about your reservation through Solvio.`,
+                            )}
+                            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 rounded-full px-3 text-[11px]")}
+                          >
+                            <MessageSquare className="mr-1 h-3.5 w-3.5" aria-hidden /> SMS
+                          </Link>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[#94a3b8]">SMS/call needs a captured phone.</span>
+                      )}
+                      <Link
+                        href={`mailto:${encodeURIComponent(row.guest_email)}`}
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "h-8 justify-start px-2 text-[11px] text-[#475569]",
+                        )}
+                      >
+                        <Mail className="mr-1 h-3.5 w-3.5" aria-hidden /> Email
+                      </Link>
+                      <Link
+                        href="/dashboard/calls"
+                        className={cn(
+                          buttonVariants({ variant: "ghost", size: "sm" }),
+                          "h-8 justify-start px-2 text-[11px] text-[#5b21b6]",
+                        )}
+                      >
+                        <Mic2 className="mr-1 h-3.5 w-3.5" aria-hidden /> AI Calls workspace
+                      </Link>
+                      {row.booking_request_id ? (
+                        <Link
+                          href={`/dashboard/bookings?tab=guests&view=inbox&booking=${row.booking_request_id}`}
+                          className={cn(
+                            buttonVariants({ variant: "outline", size: "sm" }),
+                            "mt-1 h-8 rounded-full border-[#ede9fe] px-3 text-[11px]",
+                          )}
+                        >
+                          Open Solvio chat log
+                        </Link>
+                      ) : (
+                        <p className="text-[11px] text-[#94a3b8]">Inbound chat log only exists when bookings came from Requests.</p>
+                      )}
+                    </div>
                   </td>
                   <td className="max-w-[200px] px-4 py-3 align-top text-[#475569]">
                     <span className="line-clamp-2">{row.title || "—"}</span>
@@ -588,8 +984,17 @@ function AppointmentsPanel({
   );
 }
 
-function EventsPanel({ businessId, events }: { businessId: string; events: BusinessEventRow[] }) {
+function EventsPanel({
+  businessId,
+  events,
+  venueTimeZone,
+}: {
+  businessId: string;
+  events: BusinessEventRow[];
+  venueTimeZone: string;
+}) {
   const [pending, startTransition] = useTransition();
+  const [manageCalendarFor, setManageCalendarFor] = useState<BusinessEventRow | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [starts, setStarts] = useState("");
@@ -623,6 +1028,12 @@ function EventsPanel({ businessId, events }: { businessId: string; events: Busin
 
   return (
     <div className="space-y-8">
+      <EventSeriesCalendarSheet
+        event={manageCalendarFor as SheetBusinessEventRow | null}
+        businessId={businessId}
+        venueTimeZone={venueTimeZone}
+        onClose={() => setManageCalendarFor(null)}
+      />
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Events & series</h2>
         <p className="mt-1 text-sm text-[#64748b]">
@@ -633,7 +1044,7 @@ function EventsPanel({ businessId, events }: { businessId: string; events: Busin
       <div className="grid gap-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" placeholder="Sunset boat party" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" placeholder='e.g. "Billy Porter Live Comedy"' />
         </div>
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Description</label>
@@ -654,6 +1065,10 @@ function EventsPanel({ businessId, events }: { businessId: string; events: Busin
             <option value="daily">Daily</option>
             <option value="weekly">Weekly (pick weekdays)</option>
           </select>
+          <p className="mt-2 text-[12px] leading-relaxed text-[#64748b]">
+            <strong className="text-[#475569]">Starts / Ends</strong> set your <strong>first</strong> occurrence. For &ldquo;2 June then every Wednesday&rdquo;, choose Weekly, tick Wednesday,
+            start on that Wednesday, and reuse the usual show duration for Ends — repeats follow the weekdays you ticked.
+          </p>
           {recPreset === "weekly" ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {WEEKDAY_LABEL.map((lbl, i) => (
@@ -703,27 +1118,47 @@ function EventsPanel({ businessId, events }: { businessId: string; events: Busin
         {visible.map((ev) => (
           <li key={ev.id} className="rounded-2xl border border-[#f1eefc] bg-white px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold text-[#0f172a]">
-                  {ev.title}{" "}
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setManageCalendarFor(ev)}
+                    className={cn(
+                      "text-left text-[inherit] underline decoration-[#ddd6fe] decoration-2 underline-offset-2 hover:decoration-[#a78bfa]",
+                      pending && "opacity-60",
+                    )}
+                  >
+                    {ev.title}
+                  </button>
                   {ev.cancelled_at ? (
-                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
+                    <span className="ml-2 inline-flex shrink-0 flex-wrap align-middle rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
                       Cancelled
                     </span>
                   ) : null}
                 </p>
                 <p className="mt-1 text-xs text-[#64748b]">
                   {new Date(ev.starts_at).toLocaleString()} → {new Date(ev.ends_at).toLocaleString()}
+                  <span className="mt-1 block text-[13px] font-semibold uppercase tracking-[0.08em] text-[#5b21b6]/90">
+                    {formatStoredRecurrence(ev.recurrence)}
+                  </span>
                 </p>
                 {ev.description ? <p className="mt-2 text-sm text-[#475569]">{ev.description}</p> : null}
                 {ev.cancelled_at && ev.cancellation_reason ? (
                   <p className="mt-2 text-sm text-rose-800">Reason: {ev.cancellation_reason}</p>
                 ) : null}
-                <pre className="mt-2 max-h-24 overflow-auto rounded-lg bg-[#f8fafc] p-2 text-[11px] text-[#475569]">
-                  {JSON.stringify(ev.recurrence, null, 2)}
-                </pre>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  className="rounded-full text-xs font-semibold text-[#5b21b6] border-[#ddd6fe]"
+                  onClick={() => setManageCalendarFor(ev)}
+                >
+                  Manage calendar
+                </Button>
                 {!ev.cancelled_at ? (
                   <Button
                     type="button"

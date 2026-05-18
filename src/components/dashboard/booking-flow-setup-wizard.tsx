@@ -18,6 +18,21 @@ export type BookingFlowKind = "restaurant_tables" | "salon_appointments" | "walk
 
 const MODE_ORDER: BookingGuestMode[] = ["appointment", "event", "table", "walk_in"];
 
+function bookingsHubPostSetupPath(kind: BookingFlowKind): string {
+  switch (kind) {
+    case "restaurant_tables":
+      return "/dashboard/bookings?tab=offerings&view=tables";
+    case "salon_appointments":
+      return "/dashboard/bookings?tab=offerings&view=appointments";
+    case "walk_in_waitlist":
+      return "/dashboard/bookings?tab=guests&view=inbox";
+    case "mixed":
+      return "/dashboard/bookings?tab=offerings&view=appointments";
+    default:
+      return "/dashboard/bookings?tab=offerings&view=appointments";
+  }
+}
+
 function sortModesAsc(a: BookingGuestMode, b: BookingGuestMode) {
   return MODE_ORDER.indexOf(a) - MODE_ORDER.indexOf(b);
 }
@@ -159,7 +174,7 @@ export function BookingFlowSetupWizard({
       void (async () => {
         try {
           await saveBookingFlowSetup(businessId, kind, buildDetails());
-          router.push("/dashboard");
+          router.push(bookingsHubPostSetupPath(kind));
           router.refresh();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not save.");

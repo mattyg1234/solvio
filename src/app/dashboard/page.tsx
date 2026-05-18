@@ -128,13 +128,13 @@ export default async function DashboardOverviewPage() {
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
             <Link
-              href="/dashboard/setup/bookings"
+              href={bookingFlowComplete ? "/dashboard/bookings" : "/dashboard/setup/bookings"}
               className={cn(
                 buttonVariants({ variant: "secondary" }),
                 "inline-flex h-11 items-center rounded-full px-6 text-base font-semibold text-[#5b21b6] hover:bg-[#ede9fe]",
               )}
             >
-              Guest booking setup
+              {bookingFlowComplete ? "Edit or create bookings" : "Guest booking setup"}
             </Link>
             <Link
               href="/dashboard/payments"

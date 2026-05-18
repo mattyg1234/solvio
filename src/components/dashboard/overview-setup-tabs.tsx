@@ -190,19 +190,22 @@ export function OverviewSetupTabs({
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Link
+                    href="/dashboard/bookings"
+                    className={cn(
+                      buttonVariants({ variant: "default" }),
+                      "inline-flex h-11 rounded-full px-6 font-semibold shadow-lg shadow-[#7c3aed]/25",
+                    )}
+                  >
+                    Edit or create bookings
+                  </Link>
+                  <Link
                     href="/dashboard/setup/bookings"
                     className={cn(
                       buttonVariants({ variant: "outline" }),
                       "h-11 rounded-full border-[#ebe7f7] px-6 font-semibold",
                     )}
                   >
-                    Edit booking flow
-                  </Link>
-                  <Link
-                    href="/dashboard/bookings"
-                    className={cn(buttonVariants({ variant: "ghost" }), "h-11 rounded-full px-6 font-semibold text-[#7c3aed]")}
-                  >
-                    Open Bookings workspace
+                    Adjust booking setup
                   </Link>
                 </div>
               </>

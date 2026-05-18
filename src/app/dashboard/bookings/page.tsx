@@ -6,6 +6,7 @@ import { ArrowLeft, CalendarClock } from "lucide-react";
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
 import {
   BookingOperationsHub,
+  parseBookingsHubQuery,
   type AppointmentWeekRow,
   type BusinessEventRow,
   type FloorPlanTableRow,
@@ -14,6 +15,7 @@ import {
   type VenueCalendarBookingRow,
 } from "@/components/dashboard/booking-operations-hub";
 import type { BookingRequestRow } from "@/components/dashboard/booking-inbox";
+import { BookingsInventoryRail } from "@/components/dashboard/bookings-inventory-rail";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +28,11 @@ export const metadata: Metadata = {
   title: "Bookings · Dashboard · Solvio",
 };
 
-export default async function DashboardBookingsPage() {
+export default async function DashboardBookingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string; view?: string; booking?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -37,6 +43,12 @@ export default async function DashboardBookingsPage() {
   }
 
   const siteUrl = await getSiteUrl();
+  const qp = searchParams ? await searchParams : {};
+  const hub = parseBookingsHubQuery({
+    tab: typeof qp.tab === "string" ? qp.tab : undefined,
+    view: typeof qp.view === "string" ? qp.view : undefined,
+    booking: typeof qp.booking === "string" ? qp.booking : undefined,
+  });
 
   const { data: businessesRaw } = await supabase
     .from("businesses")
@@ -179,6 +191,8 @@ export default async function DashboardBookingsPage() {
 
       <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
 
+      {primaryBookingFlowComplete ? <BookingsInventoryRail /> : null}
+
       {bookingTips?.length ? (
         <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/90 shadow-none">
           <CardHeader className="pb-2">
@@ -213,6 +227,10 @@ export default async function DashboardBookingsPage() {
         bizNameById={bizNameById}
         confirmedBookings={confirmedBookings}
         bookingFlowComplete={primaryBookingFlowComplete}
+        initialPrimary={hub.primary}
+        initialGuestsSub={hub.guestsSub}
+        initialOfferingsSub={hub.offeringsSub}
+        bookingRequestHighlight={hub.bookingHighlight}
       />
 
       <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/80 shadow-none">

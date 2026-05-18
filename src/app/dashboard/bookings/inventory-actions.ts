@@ -3,6 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  addSkippedDate,
+  clearInstanceOverride,
+  removeSkippedDate,
+  setInstanceOverride,
+} from "@/lib/business-event-occurrences";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function getOwnedSupabase(businessId: string) {
@@ -239,6 +245,116 @@ export async function restoreBusinessEvent(businessId: string, eventId: string) 
     .update({ deleted_at: null, updated_at: new Date().toISOString() })
     .eq("id", eventId)
     .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+function asRecurrenceRecord(v: unknown): Record<string, unknown> {
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+    return { ...(v as Record<string, unknown>) };
+  }
+  return { type: "once" };
+}
+
+/** Skip or restore a single calendar night while keeping recurrence metadata. */
+export async function toggleBusinessEventOccurrenceSkipped(params: {
+  businessId: string;
+  eventId: string;
+  dateYmd: string;
+  skip: boolean;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { data, error: selErr } = await supabase
+    .from("business_events")
+    .select("recurrence")
+    .eq("business_id", params.businessId)
+    .eq("id", params.eventId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (!data) throw new Error("Event not found.");
+  const base = asRecurrenceRecord(data.recurrence);
+  const ymd = params.dateYmd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new Error("Invalid date.");
+
+  const nextRec = params.skip ? addSkippedDate(base, ymd) : removeSkippedDate(base, ymd);
+
+  const { error } = await supabase
+    .from("business_events")
+    .update({
+      recurrence: nextRec,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.eventId)
+    .eq("business_id", params.businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function upsertBusinessEventInstanceOverrideTimes(params: {
+  businessId: string;
+  eventId: string;
+  dateYmd: string;
+  startsAtIso: string;
+  endsAtIso: string;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { data, error: selErr } = await supabase
+    .from("business_events")
+    .select("recurrence")
+    .eq("business_id", params.businessId)
+    .eq("id", params.eventId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (!data) throw new Error("Event not found.");
+  const ymd = params.dateYmd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new Error("Invalid date.");
+  const s = Date.parse(params.startsAtIso);
+  const e = Date.parse(params.endsAtIso);
+  if (Number.isNaN(s) || Number.isNaN(e) || e <= s) {
+    throw new Error("Pick a valid end time after start.");
+  }
+  const base = asRecurrenceRecord(data.recurrence);
+  const nextRec = setInstanceOverride(base, ymd, new Date(s).toISOString(), new Date(e).toISOString());
+
+  const { error } = await supabase
+    .from("business_events")
+    .update({
+      recurrence: nextRec,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.eventId)
+    .eq("business_id", params.businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function clearBusinessEventInstanceOverride(params: {
+  businessId: string;
+  eventId: string;
+  dateYmd: string;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { data, error: selErr } = await supabase
+    .from("business_events")
+    .select("recurrence")
+    .eq("business_id", params.businessId)
+    .eq("id", params.eventId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (!data) throw new Error("Event not found.");
+  const ymd = params.dateYmd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new Error("Invalid date.");
+  const base = asRecurrenceRecord(data.recurrence);
+  const nextRec = clearInstanceOverride(base, ymd);
+
+  const { error } = await supabase
+    .from("business_events")
+    .update({
+      recurrence: nextRec,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.eventId)
+    .eq("business_id", params.businessId);
   if (error) throw new Error(error.message);
   revBookings();
 }

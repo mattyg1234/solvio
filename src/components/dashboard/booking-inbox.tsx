@@ -43,13 +43,13 @@ export type BookingRequestRow = {
   created_at: string;
 };
 
-function smsHref(phone: string, businessName: string) {
+export function smsBookingHref(phone: string, businessName: string) {
   const digits = phone.replace(/[^\d+]/g, "");
   const body = encodeURIComponent(`Hi — it's ${businessName} following up on your Solvio booking request.`);
   return `sms:${digits}?body=${body}`;
 }
 
-function telHref(phone: string) {
+export function telBookingHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }
 
@@ -300,9 +300,11 @@ type BookingInboxProps = {
     tables: { id: string; label: string }[];
     events: { id: string; title: string }[];
   };
+  /** Opens the matching inbound card when navigating from elsewhere (e.g. confirmed bookings). */
+  highlightBookingRequestId?: string | null;
 };
 
-export function BookingInbox({ requests, bizNameById, inventoryLinks }: BookingInboxProps) {
+export function BookingInbox({ requests, bizNameById, inventoryLinks, highlightBookingRequestId }: BookingInboxProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -322,6 +324,12 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks }: BookingI
     setInboundBody("");
     setError(null);
   }, [expandedId]);
+
+  useEffect(() => {
+    const id = highlightBookingRequestId?.trim();
+    if (!id?.length || !requests.some((r) => r.id === id)) return;
+    setExpandedId(id);
+  }, [highlightBookingRequestId, requests]);
 
   useEffect(() => {
     if (!expandedId) return;
@@ -617,7 +625,7 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks }: BookingI
                               {r.phone ? (
                                 <>
                                   <Link
-                                    href={telHref(r.phone)}
+                                    href={telBookingHref(r.phone)}
                                     className={cn(
                                       buttonVariants({ variant: "outline", size: "sm" }),
                                       "h-9 rounded-full border-[#ebe7f7] px-3 text-xs font-semibold",
@@ -627,7 +635,7 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks }: BookingI
                                     Call
                                   </Link>
                                   <Link
-                                    href={smsHref(r.phone, venue)}
+                                    href={smsBookingHref(r.phone, venue)}
                                     className={cn(
                                       buttonVariants({ variant: "default", size: "sm" }),
                                       "h-9 rounded-full px-3 text-xs font-semibold shadow-sm shadow-[#7c3aed]/15",
