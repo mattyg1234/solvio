@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSolvioElevenLabsApiKey } from "@/lib/voice-platform-env";
+import { getVapiMarketingBootstrap } from "@/lib/vapi-marketing-bootstrap";
 
 const MAX_CHARS = 800;
 
@@ -10,13 +11,19 @@ const MAX_CHARS = 800;
  */
 export async function POST(req: NextRequest) {
   const apiKey = getSolvioElevenLabsApiKey();
-  const voiceId = process.env.SOLVIO_VOICE_DEMO_VOICE_ID?.trim() ?? "";
+  const explicitVoice = process.env.SOLVIO_VOICE_DEMO_VOICE_ID?.trim() ?? "";
+  let voiceId = explicitVoice;
+  if (!voiceId) {
+    const boot = await getVapiMarketingBootstrap();
+    if (boot?.elevenlabsVoiceId) voiceId = boot.elevenlabsVoiceId;
+  }
 
   if (!apiKey || !voiceId) {
     return NextResponse.json(
       {
         error: "not_configured",
-        hint: "Set SOLVIO_ELEVENLABS_API_KEY and SOLVIO_VOICE_DEMO_VOICE_ID on the server (see .env.example).",
+        hint:
+          "Set SOLVIO_ELEVENLABS_API_KEY plus either SOLVIO_VOICE_DEMO_VOICE_ID or NEXT_PUBLIC_VAPI_ASSISTANT_ID + SOLVIO_VAPI_API_KEY so the demo can mirror your Vapi ElevenLabs voice (see .env.example).",
       },
       { status: 503 },
     );

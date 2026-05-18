@@ -36,6 +36,88 @@ export type ElevenLabsVoiceOption = {
   name: string;
 };
 
+export type VapiAssistantOption = {
+  id: string;
+  name: string;
+};
+
+async function fetchVapiAssistantList(trimmedKey: string): Promise<{ assistants: VapiAssistantOption[]; error?: string }> {
+  if (!trimmedKey) {
+    return {
+      assistants: [],
+      error:
+        "Solvio calls are not configured on this deployment yet (missing SOLVIO_VAPI_API_KEY). Ask your Solvio admin.",
+    };
+  }
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.vapi.ai/assistant?limit=500", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${trimmedKey}`,
+      },
+      cache: "no-store",
+    });
+  } catch {
+    return { assistants: [], error: "Could not reach Vapi — check your connection." };
+  }
+
+  if (!res.ok) {
+    const msg =
+      res.status === 401 || res.status === 403
+        ? "Solvio Vapi token rejected — check SOLVIO_VAPI_API_KEY."
+        : `Vapi returned ${res.status}.`;
+    return { assistants: [], error: msg };
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return { assistants: [], error: "Unexpected response listing Vapi assistants." };
+  }
+
+  let rawRows: unknown[] = [];
+  if (Array.isArray(body)) {
+    rawRows = body;
+  } else if (typeof body === "object" && body !== null) {
+    const o = body as Record<string, unknown>;
+    const candidates = ["assistants", "data", "results", "items"] as const;
+    for (const k of candidates) {
+      const v = o[k];
+      if (Array.isArray(v)) {
+        rawRows = v as unknown[];
+        break;
+      }
+    }
+  }
+
+  const assistants: VapiAssistantOption[] = [];
+  for (const row of rawRows) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const id = typeof r.id === "string" ? r.id : "";
+    let name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!id) continue;
+    if (!name.length) name = "Unnamed assistant";
+    assistants.push({ id, name });
+  }
+
+  assistants.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { assistants };
+}
+
+/** Lists assistants on Solvio’s Vapi workspace (private key — merchants only pick names/ids here). */
+export async function listVapiAssistantsForBusiness(
+  businessId: string,
+): Promise<{ assistants: VapiAssistantOption[]; error?: string }> {
+  await assertAuthenticatedUser();
+  await assertBusinessOwnedByUser(businessId);
+  return fetchVapiAssistantList(getSolvioVapiApiKey());
+}
+
 async function fetchElevenLabsVoiceList(
   trimmedKey: string,
 ): Promise<{ voices: ElevenLabsVoiceOption[]; error?: string }> {

@@ -8,12 +8,14 @@ import { ArrowLeft, ArrowRight, Loader2, Mic, Sparkles, Waves } from "lucide-rea
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import type { VoiceReceptionistClientDetails, VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import {
-  listElevenLabsVoicesForBusiness,
-  verifySolvioElevenLabsConnection,
+  listVapiAssistantsForBusiness,
   verifySolvioVapiConnection,
-  type ElevenLabsVoiceOption,
+  type VapiAssistantOption,
 } from "@/app/dashboard/setup/voice-integration-actions";
-import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
+import {
+  composeVoiceAgentPromptAction,
+  generateVoiceAgentPromptOpenAIAction,
+} from "@/app/dashboard/setup/voice-prompt-actions";
 import { VoiceBrowserTrial } from "@/components/dashboard/voice-browser-trial";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -53,63 +55,71 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
   const [tone, setTone] = useState<VoiceReceptionistClientDetails["greeting_style"]>(initialDetails.greeting_style);
   const [languagesNote, setLanguagesNote] = useState(initialDetails.languages_note ?? "");
   const [escalationPhone, setEscalationPhone] = useState(initialDetails.escalation_phone ?? "");
+  const [agentFirstMessage, setAgentFirstMessage] = useState(initialDetails.agent_first_message ?? "");
+  const [vapiAssistantId, setVapiAssistantId] = useState(initialDetails.vapi_assistant_id ?? "");
+  const [vapiAssistantName, setVapiAssistantName] = useState(initialDetails.vapi_assistant_name ?? "");
+  const [aiPromptPending, setAiPromptPending] = useState(false);
+  const [aiPromptErr, setAiPromptErr] = useState<string | null>(null);
 
-  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoiceOption[]>([]);
-  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState(initialDetails.elevenlabs_voice_id ?? "");
-  const [elevenLabsVoiceName, setElevenLabsVoiceName] = useState(initialDetails.elevenlabs_voice_name ?? "");
-  const [voiceLoadPending, setVoiceLoadPending] = useState(false);
-  const [voiceLoadErr, setVoiceLoadErr] = useState<string | null>(null);
+  const [vapiAssistants, setVapiAssistants] = useState<VapiAssistantOption[]>([]);
+  const [vapiAssistantsPending, setVapiAssistantsPending] = useState(false);
+  const [vapiAssistantsErr, setVapiAssistantsErr] = useState<string | null>(null);
 
-  const [speechVerifyMsg, setSpeechVerifyMsg] = useState<string | null>(null);
   const [callsVerifyMsg, setCallsVerifyMsg] = useState<string | null>(null);
-  const [stackVerifyPending, setStackVerifyPending] = useState(false);
+  const [vapiCheckPending, setVapiCheckPending] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  async function handleLoadElevenLabsVoices() {
-    setVoiceLoadErr(null);
-    setVoiceLoadPending(true);
+  async function handleLoadVapiAssistants() {
+    setVapiAssistantsErr(null);
+    setVapiAssistantsPending(true);
     try {
-      const result = await listElevenLabsVoicesForBusiness(businessId);
-
+      const result = await listVapiAssistantsForBusiness(businessId);
       if (result.error) {
-        setVoiceLoadErr(result.error);
-        setElevenLabsVoices([]);
+        setVapiAssistants([]);
+        setVapiAssistantsErr(result.error);
         return;
       }
-      setElevenLabsVoices(result.voices);
-      if (elevenLabsVoiceId && !result.voices.some((v) => v.voice_id === elevenLabsVoiceId)) {
-        setVoiceLoadErr(
-          "Your saved voice ID is not in this list anymore — pick another voice or ask Solvio to publish new clones.",
-        );
+      const list = [...result.assistants];
+      const sid = vapiAssistantId.trim();
+      if (sid.length && !list.some((a) => a.id === sid)) {
+        list.unshift({
+          id: sid,
+          name: vapiAssistantName.trim() ? `${vapiAssistantName.trim()} (saved)` : `${sid.slice(0, 8)}… (saved id)`,
+        });
       }
+      setVapiAssistants(list);
     } finally {
-      setVoiceLoadPending(false);
+      setVapiAssistantsPending(false);
     }
   }
 
-  async function handleVerifySolvioStack() {
-    setSpeechVerifyMsg(null);
+  async function handleVerifyVapi() {
     setCallsVerifyMsg(null);
-    setStackVerifyPending(true);
+    setVapiCheckPending(true);
     try {
-      const speech = await verifySolvioElevenLabsConnection();
       const calls = await verifySolvioVapiConnection();
-      setSpeechVerifyMsg(`${speech.ok ? "✓" : "✗"} ${speech.message}`);
       setCallsVerifyMsg(`${calls.ok ? "✓" : "✗"} ${calls.message}`);
     } finally {
-      setStackVerifyPending(false);
+      setVapiCheckPending(false);
     }
   }
 
-  function applyVoicePick(id: string) {
-    setElevenLabsVoiceId(id);
-    const hit = elevenLabsVoices.find((v) => v.voice_id === id);
-    setElevenLabsVoiceName(hit?.name ?? "");
+  function applyAssistantPick(id: string) {
+    const trimmed = id.trim();
+    setVapiAssistantId(trimmed);
+    if (!trimmed.length) {
+      setVapiAssistantName("");
+      return;
+    }
+    const hit = vapiAssistants.find((a) => a.id === trimmed);
+    const nm = hit?.name ?? "";
+    setVapiAssistantName(nm.replace(/\s*\((?:saved(?: id)?)\)\s*$/i, "").trim());
   }
 
   async function handleGeneratePrompt() {
+    setAiPromptErr(null);
     setGenPromptPending(true);
     try {
       const text = await composeVoiceAgentPromptAction({
@@ -121,10 +131,38 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
         conversationFeel,
         outboundNumberNote,
         greetingStyle: tone,
+        languagesNote,
+        agentFirstMessage,
       });
       setAgentPromptCustom(text);
     } finally {
       setGenPromptPending(false);
+    }
+  }
+
+  async function handleGeneratePromptWithAi() {
+    setAiPromptErr(null);
+    setAiPromptPending(true);
+    try {
+      const res = await generateVoiceAgentPromptOpenAIAction({
+        businessName,
+        receptionIdentity,
+        receptionScope,
+        callerIntakePriorities: intakePriorities,
+        agentGoal,
+        conversationFeel,
+        outboundNumberNote,
+        greetingStyle: tone,
+        languagesNote,
+        agentFirstMessage,
+      });
+      if (res.ok) {
+        setAgentPromptCustom(res.text);
+      } else {
+        setAiPromptErr(res.message);
+      }
+    } finally {
+      setAiPromptPending(false);
     }
   }
 
@@ -143,9 +181,12 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
             agent_goal: agentGoal.trim() || undefined,
             conversation_feel: conversationFeel.trim() || undefined,
             outbound_number_note: outboundNumberNote.trim() || undefined,
+            agent_first_message: agentFirstMessage.trim() || undefined,
             agent_prompt_custom: agentPromptCustom.trim() || undefined,
-            elevenlabs_voice_id: elevenLabsVoiceId.trim() || undefined,
-            elevenlabs_voice_name: elevenLabsVoiceName.trim() || undefined,
+            elevenlabs_voice_id: "",
+            elevenlabs_voice_name: "",
+            vapi_assistant_id: vapiAssistantId.trim(),
+            vapi_assistant_name: vapiAssistantName.trim(),
           };
 
           await saveVoiceReceptionistSetup(businessId, payload);
@@ -184,18 +225,16 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
             </span>
             <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">AI voice receptionist</h1>
             <p className="text-[15px] leading-relaxed text-[#64748b]">
-              Configure how AI answers for{" "}
-              <span className="font-semibold text-[#0f172a]">{businessName}</span>: what it represents, how it sounds,
-              and how it collects caller details—similar to onboarding in{" "}
-              <span className="font-medium text-[#0f172a]">Vapi</span> +{" "}
-              <span className="font-medium text-[#0f172a]">ElevenLabs</span>. Speech and telephony APIs are operated by{" "}
-              <span className="font-medium text-[#0f172a]">Solvio</span> so merchants never manage keys themselves.
+              Capture how callers should be greeted, what intake you need, and which{" "}
+              <span className="font-medium text-[#0f172a]">Vapi</span> assistant we route them to — all stored in Solvio.
+              Hosting keys stay on infra (<span className="font-mono text-[13px]">SOLVIO_VAPI_API_KEY</span>
+              · optional <span className="font-mono text-[13px]">SOLVIO_OPENAI_API_KEY</span> for AI prompt drafts).
             </p>
             <ul className="list-inside list-disc space-y-2 text-sm text-[#475569] marker:text-[#a78bfa]">
-              <li>Describe the receptionist role and intake checklist.</li>
-              <li>Tone, languages, and escalation stay merchant-controlled.</li>
-              <li>Pick a speaking voice from Solvio&apos;s ElevenLabs workspace.</li>
-              <li>Generate or paste the live prompt, then trial it in-browser before checkout.</li>
+              <li>Set the greeting line callers hear first (“what should your agent say?”).</li>
+              <li>Define duties + intake checklist — then paste or generate the briefing prompt.</li>
+              <li>Select one of Solvio&apos;s live Vapi assistants for this venue.</li>
+              <li>Save; telephony goes live once numbers are wired to that assistant.</li>
             </ul>
           </div>
         ) : null}
@@ -213,6 +252,23 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                   then what Solvio must capture before handing off.
                 </p>
               </div>
+            </div>
+
+            <div className="space-y-2 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
+              <label htmlFor="agent-opens" className="text-sm font-semibold text-[#0f172a]">
+                What should your agent say first?
+              </label>
+              <p className="text-xs leading-relaxed text-[#64748b]">
+                Becomes Vapi&apos;s <span className="font-semibold text-[#475569]">first spoken line</span> when the call connects.
+              </p>
+              <textarea
+                id="agent-opens"
+                value={agentFirstMessage}
+                onChange={(e) => setAgentFirstMessage(e.target.value)}
+                rows={2}
+                placeholder={`e.g. "Hi — thanks for calling ${businessName}. Are you booking a table or checking on something else?"`}
+                className="w-full rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              />
             </div>
 
             <div className="space-y-2">
@@ -299,39 +355,60 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
             </div>
 
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <label htmlFor="agent-prompt" className="text-sm font-semibold text-[#0f172a]">
-                  Live agent prompt (editable)
+                  Full system prompt{" "}
+                  <span className="font-normal text-[#94a3b8]">(what the model follows on every turn)</span>
                 </label>
-                <button
-                  type="button"
-                  disabled={genPromptPending}
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "rounded-full px-4 text-xs font-semibold",
-                  )}
-                  onClick={() => void handleGeneratePrompt()}
-                >
-                  {genPromptPending ? (
-                    <>
-                      <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" aria-hidden />
-                      Building…
-                    </>
-                  ) : (
-                    "Generate from brief"
-                  )}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={genPromptPending}
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                      "rounded-full px-4 text-xs font-semibold",
+                    )}
+                    onClick={() => void handleGeneratePrompt()}
+                  >
+                    {genPromptPending ? (
+                      <>
+                        <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" aria-hidden />
+                        Stitching brief…
+                      </>
+                    ) : (
+                      "Build from brief (template)"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={aiPromptPending}
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full px-4 text-xs font-semibold")}
+                    onClick={() => void handleGeneratePromptWithAi()}
+                  >
+                    {aiPromptPending ? (
+                      <>
+                        <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" aria-hidden />
+                        ChatGPT…
+                      </>
+                    ) : (
+                      "Generate full prompt (ChatGPT)"
+                    )}
+                  </button>
+                </div>
               </div>
+              {aiPromptErr ? (
+                <p className="rounded-lg border border-amber-100 bg-[#fffbeb] px-3 py-2 text-xs text-[#92400e]">{aiPromptErr}</p>
+              ) : null}
               <textarea
                 id="agent-prompt"
                 value={agentPromptCustom}
                 onChange={(e) => setAgentPromptCustom(e.target.value)}
                 rows={10}
-                placeholder='Paste your full prompt — e.g. "You are an assistant for PJ Plumbing…"'
+                placeholder={`Paste your full prompt — or use the generators above.`}
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 font-mono text-[13px] leading-relaxed text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               />
               <p className="text-[11px] text-[#64748b]">
-                Generator stitches identity + goals today — swap for LLM-assisted drafts anytime.
+                Tip: Generate with ChatGPT after adding languages under step&nbsp;3 so the draft includes bilingual policies.
               </p>
             </div>
           </div>
@@ -341,7 +418,7 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-[#0f172a]">Voice personality</h2>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              Pick the vibe callers hear—Solvio pairs this with your ElevenLabs voice selection below.
+              Pick conversation vibe — the actual voice follows whichever Vapi assistant you attach.
             </p>
             <div className="grid gap-3">
               {tones.map((t) => (
@@ -403,71 +480,60 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                 <Waves className="h-5 w-5" aria-hidden />
               </span>
               <div>
-                <h2 className="text-xl font-semibold text-[#0f172a]">Voice selection</h2>
+                <h2 className="text-xl font-semibold text-[#0f172a]">Vapi assistant</h2>
                 <p className="mt-1 text-sm leading-relaxed text-[#64748b]">
-                  ElevenLabs and Vapi credentials live in Solvio&apos;s deployment configuration—not in your account.
-                  You choose which speaking voice applies to{" "}
-                  <span className="font-semibold text-[#0f172a]">{businessName}</span>; Solvio engineers rotate keys and
-                  provision custom clones when you need them.
+                  Pick which agent on Solvio&apos;s{" "}
+                  <span className="font-semibold text-[#0f172a]">Vapi</span> workspace answers for{" "}
+                  <span className="font-semibold text-[#0f172a]">{businessName}</span>. Voice, model, and tools are
+                  already configured inside that assistant — you only choose the roster entry here.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-sm leading-relaxed text-[#1e3a8a]">
-              Need a branded clone or assistant tuning? Email your Solvio contact — voices are created on our ElevenLabs
-              workspace so callers stay on-platform.
-            </div>
-
             <section className="space-y-4 rounded-2xl border border-[#f1eefc] bg-[#fafbff]/80 p-5">
               <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-                Speaking voice (ElevenLabs via Solvio)
+                Solvio-managed assistants
               </h3>
               <p className="text-xs leading-relaxed text-[#64748b]">
-                Refresh pulls every voice Solvio exposes from its workspace (defaults + clones).
+                Refresh pulls existing assistants tied to{" "}
+                <span className="font-mono text-[11px]">SOLVIO_VAPI_API_KEY</span>. Ask Solvio ops if you don&apos;t see
+                the agent you expected.
               </p>
 
               <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  disabled={voiceLoadPending}
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "rounded-full px-4 font-semibold",
-                  )}
-                  onClick={() => void handleLoadElevenLabsVoices()}
+                  disabled={vapiAssistantsPending}
+                  className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "rounded-full px-4 font-semibold")}
+                  onClick={() => void handleLoadVapiAssistants()}
                 >
-                  {voiceLoadPending ? (
+                  {vapiAssistantsPending ? (
                     <>
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                      Loading voices…
+                      Loading assistants…
                     </>
                   ) : (
-                    "Refresh voice list"
+                    "Refresh assistant list"
                   )}
                 </button>
                 <button
                   type="button"
-                  disabled={stackVerifyPending}
+                  disabled={vapiCheckPending}
                   className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full px-4 font-semibold")}
-                  onClick={() => void handleVerifySolvioStack()}
+                  onClick={() => void handleVerifyVapi()}
                 >
-                  {stackVerifyPending ? (
+                  {vapiCheckPending ? (
                     <>
                       <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                      Checking stack…
+                      Checking Vapi…
                     </>
                   ) : (
-                    "Check Solvio speech & calls"
+                    "Check Vapi token"
                   )}
                 </button>
               </div>
-              {voiceLoadErr ? (
-                <p className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-900">{voiceLoadErr}</p>
-              ) : null}
-              {speechVerifyMsg ? (
-                <p className="text-xs font-medium text-[#475569]" role="status">
-                  {speechVerifyMsg}
-                </p>
+              {vapiAssistantsErr ? (
+                <p className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-900">{vapiAssistantsErr}</p>
               ) : null}
               {callsVerifyMsg ? (
                 <p className="text-xs font-medium text-[#475569]" role="status">
@@ -476,30 +542,39 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
               ) : null}
 
               <div className="space-y-2">
-                <label htmlFor="voice-pick" className="text-sm font-semibold text-[#0f172a]">
-                  Speaking voice
+                <label htmlFor="assistant-pick" className="text-sm font-semibold text-[#0f172a]">
+                  Assistant handling this venue
                 </label>
                 <select
-                  id="voice-pick"
-                  value={elevenLabsVoiceId}
-                  onChange={(e) => applyVoicePick(e.target.value)}
+                  id="assistant-pick"
+                  value={vapiAssistantId.trim()}
+                  onChange={(e) => applyAssistantPick(e.target.value)}
                   className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 >
-                  <option value="">Choose after loading voices…</option>
-                  {elevenLabsVoices.map((v) => (
-                    <option key={v.voice_id} value={v.voice_id}>
-                      {v.name}
+                  <option value="">Choose an assistant…</option>
+                  {vapiAssistantId.trim() &&
+                  !vapiAssistants.some((a) => a.id === vapiAssistantId.trim()) ? (
+                    <option value={vapiAssistantId.trim()}>Previously saved assistant (refresh for label)</option>
+                  ) : null}
+                  {vapiAssistants.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
                     </option>
                   ))}
                 </select>
-                {initialDetails.elevenlabs_voice_id && !elevenLabsVoices.length ? (
+                {initialDetails.vapi_assistant_id && !vapiAssistants.length ? (
                   <p className="text-xs text-[#64748b]">
-                    Saved voice:{" "}
-                    <span className="font-mono font-medium text-[#0f172a]">{initialDetails.elevenlabs_voice_id}</span>
-                    {initialDetails.elevenlabs_voice_name ? ` (${initialDetails.elevenlabs_voice_name})` : ""}. Refresh the
-                    list after Solvio publishes new clones.
+                    Saved assistant:{" "}
+                    <span className="font-mono font-medium text-[#0f172a]">{initialDetails.vapi_assistant_id}</span>
+                    {initialDetails.vapi_assistant_name ? ` (${initialDetails.vapi_assistant_name})` : ""}. Refresh once
+                    the platform key can list assistants.
                   </p>
                 ) : null}
+                <p className="text-[11px] leading-relaxed text-[#64748b]">
+                  The briefing you drafted above is stored with your Solvio profile for your team — it doesn&apos;t
+                  overwrite Vapi automatically yet. Updating the assistant in Vapi is done from Solvio ops or directly
+                  in the Vapi console.
+                </p>
               </div>
             </section>
           </div>
@@ -523,6 +598,10 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
           <div className="space-y-5">
             <h2 className="text-xl font-semibold text-[#0f172a]">Review & save</h2>
             <dl className="space-y-4 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-5 py-5 text-sm">
+              <div>
+                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">First thing they say</dt>
+                <dd className="mt-1 text-[#475569]">{agentFirstMessage.trim() || "—"}</dd>
+              </div>
               <div>
                 <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Who they are</dt>
                 <dd className="mt-1 text-[#475569]">{receptionIdentity.trim() || "—"}</dd>
@@ -569,13 +648,21 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                 <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Voice stack</dt>
                 <dd className="mt-1 space-y-1 text-[#475569]">
                   <p>
-                    Speech via Solvio ElevenLabs —{" "}
-                    {elevenLabsVoiceName || elevenLabsVoiceId
-                      ? `${elevenLabsVoiceName || "Selected"} (${elevenLabsVoiceId || "—"})`
-                      : "No voice chosen yet"}
+                    {vapiAssistantName.trim() ? (
+                      <>
+                        Vapi assistant: <span className="font-semibold text-[#0f172a]">{vapiAssistantName.trim()}</span>
+                      </>
+                    ) : vapiAssistantId.trim() ? (
+                      <>Assistant label missing — refresh the list on step&nbsp;5 to sync the name.</>
+                    ) : (
+                      <>No assistant selected — choose one on step&nbsp;5.</>
+                    )}
+                  </p>
+                  <p className="font-mono text-xs text-[#64748b]">
+                    <span className="select-all text-[#0f172a]">{vapiAssistantId.trim() || "—"}</span>
                   </p>
                   <p className="text-xs text-[#64748b]">
-                    Calls route through Solvio&apos;s Vapi workspace when telephony is enabled for your deployment.
+                    What callers hear follows the assistant you selected (voice + model configured in Vapi).
                   </p>
                 </dd>
               </div>

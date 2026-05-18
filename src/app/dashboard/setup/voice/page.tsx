@@ -31,9 +31,12 @@ function parseStoredVoiceDetails(raw: unknown): VoiceReceptionistDetails {
     agent_goal: str("agent_goal"),
     conversation_feel: str("conversation_feel"),
     outbound_number_note: str("outbound_number_note"),
+    agent_first_message: str("agent_first_message"),
     agent_prompt_custom: str("agent_prompt_custom"),
     elevenlabs_voice_id: str("elevenlabs_voice_id"),
     elevenlabs_voice_name: str("elevenlabs_voice_name"),
+    vapi_assistant_id: str("vapi_assistant_id"),
+    vapi_assistant_name: str("vapi_assistant_name"),
   };
 }
 

@@ -31,6 +31,8 @@ type ScenarioMeta = {
   lines: Omit<Bubble, "id">[];
 };
 
+type ScriptedLine = Omit<Bubble, "id">;
+
 const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
   default: {
     productLine: "Solvio Voice",
@@ -184,9 +186,67 @@ export function VoiceDemoPanel({
   const running = useRef(false);
   const scenarioRef = useRef(scenario);
   const demoAudioRef = useRef<HTMLAudioElement | null>(null);
+  const linesRef = useRef<ScriptedLine[]>([...SCENARIOS[scenario].lines]);
 
   scenarioRef.current = scenario;
-  const meta = SCENARIOS[scenario];
+  const baseMeta = SCENARIOS[scenario];
+  const [scriptLines, setScriptLines] = useState<ScriptedLine[]>(() => [...SCENARIOS[scenario].lines]);
+  const [openingFromVapi, setOpeningFromVapi] = useState(false);
+
+  const meta: ScenarioMeta = {
+    ...baseMeta,
+    lines: scriptLines,
+    footer:
+      openingFromVapi && scenario === "personal_voice"
+        ? `${baseMeta.footer} The opening line mirrors the Vapi “first message” for this deployment; replay audio uses the same ElevenLabs voice Id when SOLVIO_VAPI_API_KEY can fetch your assistant profile.`
+        : baseMeta.footer,
+  };
+
+  /** Bumps whenever `/api/voice-demo/scenario` resolves (personal_voice only) — lets hero autoplay wait for Vapi-aligned lines. */
+
+  const [scenarioRevision, setScenarioRevision] = useState(0);
+
+  useEffect(() => {
+    linesRef.current = [...scriptLines];
+  }, [scriptLines]);
+
+  useEffect(() => {
+    setOpeningFromVapi(false);
+    setScriptLines([...SCENARIOS[scenario].lines]);
+    if (scenario !== "personal_voice") return;
+
+    setScenarioRevision(0);
+    let cancelled = false;
+
+    fetch("/api/voice-demo/scenario")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload: unknown) => {
+        if (cancelled || !payload || typeof payload !== "object") return;
+        const j = payload as { lines?: unknown; source?: unknown };
+        if (!Array.isArray(j.lines) || j.lines.length === 0) return;
+        const parsed: ScriptedLine[] = [];
+        for (const row of j.lines) {
+          if (!row || typeof row !== "object") continue;
+          const ro = row as { role?: unknown; text?: unknown };
+          const role = ro.role === "user" ? "user" : ro.role === "assistant" ? "assistant" : null;
+          const text = typeof ro.text === "string" ? ro.text.trim() : "";
+          if (!role || !text) continue;
+          parsed.push({ role, text });
+        }
+        if (parsed.length === 0) return;
+        setScriptLines(parsed);
+        const src = typeof j.source === "string" ? j.source : "";
+        setOpeningFromVapi(src.startsWith("vapi"));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setScenarioRevision((n) => n + 1);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [scenario]);
 
   const clearAndPlay = useCallback(async () => {
     if (running.current) return;
@@ -198,8 +258,7 @@ export function VoiceDemoPanel({
     }
     cancelBrowserSpeech();
 
-    const activeScenario = scenarioRef.current;
-    const lines = SCENARIOS[activeScenario].lines;
+    const lines = linesRef.current;
     setBubbles([]);
     const idBase = Date.now().toString();
 
@@ -265,11 +324,14 @@ export function VoiceDemoPanel({
     cancelBrowserSpeech();
   }, [scenario]);
 
+  /** Hero autoplay: on `personal_voice`, wait for `/api/voice-demo/scenario` so the opener can match Vapi `firstMessage`. */
   useEffect(() => {
     if (!autoPlay || ranAuto.current) return;
+    const waitForScenario = scenario === "personal_voice" && scenarioRevision < 1;
+    if (waitForScenario) return;
     ranAuto.current = true;
     void clearAndPlay();
-  }, [autoPlay, clearAndPlay, scenario]);
+  }, [autoPlay, clearAndPlay, scenario, scenarioRevision]);
 
   const listening = phase === "listening";
   const micGlow =

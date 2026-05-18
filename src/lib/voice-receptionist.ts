@@ -2,6 +2,8 @@ export type VoiceReceptionistDetails = {
   greeting_style: "warm" | "casual" | "luxury";
   languages_note?: string;
   escalation_phone?: string;
+  /** First utterance when the call connects (Vapi `firstMessage`). */
+  agent_first_message?: string;
   reception_identity?: string;
   reception_scope?: string;
   caller_intake_priorities?: string;
@@ -15,6 +17,10 @@ export type VoiceReceptionistDetails = {
   agent_prompt_custom?: string;
   elevenlabs_voice_id?: string;
   elevenlabs_voice_name?: string;
+  /** Existing assistant on Solvio’s Vapi workspace (merchant selects from list). */
+  vapi_assistant_id?: string;
+  /** Human-readable assistant name from list (informational only). */
+  vapi_assistant_name?: string;
 };
 
 /** Same shape as stored/review payload — API keys are platform-level env vars only */
@@ -37,6 +43,7 @@ export function mergeVoiceReceptionistDetails(
   const optionalScalars = [
     "languages_note",
     "escalation_phone",
+    "agent_first_message",
     "reception_identity",
     "reception_scope",
     "caller_intake_priorities",
@@ -46,6 +53,8 @@ export function mergeVoiceReceptionistDetails(
     "agent_prompt_custom",
     "elevenlabs_voice_id",
     "elevenlabs_voice_name",
+    "vapi_assistant_id",
+    "vapi_assistant_name",
   ] as const satisfies readonly (keyof VoiceReceptionistSaveInput)[];
 
   for (const key of optionalScalars) {
