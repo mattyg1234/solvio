@@ -45,6 +45,8 @@ export default async function BookingFlowSetupPage() {
       ? (guestBookingModesRaw as string[])
       : undefined;
 
+  const bpth = rawDetails?.block_public_table_when_hosted_event_date;
+
   const initialDetails =
     rawDetails && typeof rawDetails === "object"
       ? {
@@ -55,6 +57,8 @@ export default async function BookingFlowSetupPage() {
           guest_message: typeof rawDetails.guest_message === "string" ? rawDetails.guest_message : undefined,
           mixed_notes: typeof rawDetails.mixed_notes === "string" ? rawDetails.mixed_notes : undefined,
           guest_booking_modes: guestBookingModes,
+          block_public_table_when_hosted_event_date:
+            typeof bpth === "boolean" ? bpth : typeof bpth === "string" ? ["true", "1", "yes"].includes(bpth.trim().toLowerCase()) : undefined,
         }
       : null;
 

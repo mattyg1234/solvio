@@ -30,6 +30,12 @@ export type PublicBusinessEvent = {
   cancellation_reason: string;
 };
 
+export type PublicTableWeekdayBar = {
+  weekday: number;
+  open_time: string;
+  close_time: string;
+};
+
 export type PublicFloorTable = {
   id?: string;
   label: string;
@@ -40,6 +46,12 @@ export type PublicFloorTable = {
   position_y: number;
   width: number;
   height: number;
+  /** When non-empty on the hub, replaces venue appointment hours entirely for weekday checks on this table. */
+  weekday_hours?: PublicTableWeekdayBar[];
+};
+
+export type BookingPublicPolicies = {
+  block_public_table_when_hosted_event_date: boolean;
 };
 
 export type PublicTableQuestion = {
@@ -59,6 +71,7 @@ export type BookingPublicContextPayload = {
   events: PublicBusinessEvent[];
   tables: PublicFloorTable[];
   table_questions: PublicTableQuestion[];
+  booking_policies: BookingPublicPolicies;
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -153,6 +166,22 @@ function parseEvents(raw: unknown): PublicBusinessEvent[] {
   return out;
 }
 
+function parseTableWeekdayBars(raw: unknown): PublicTableWeekdayBar[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: PublicTableWeekdayBar[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const weekday = typeof o.weekday === "number" ? o.weekday : Number(o.weekday);
+    const openTime = typeof o.open_time === "string" ? o.open_time.trim() : "";
+    const closeTime = typeof o.close_time === "string" ? o.close_time.trim() : "";
+    if (!Number.isFinite(weekday) || weekday < 0 || weekday > 6) continue;
+    if (!openTime || !closeTime) continue;
+    out.push({ weekday, open_time: openTime, close_time: closeTime });
+  }
+  return out.length ? out : undefined;
+}
+
 function parseTables(raw: unknown): PublicFloorTable[] {
   if (!Array.isArray(raw)) return [];
   const out: PublicFloorTable[] = [];
@@ -170,6 +199,7 @@ function parseTables(raw: unknown): PublicFloorTable[] {
     if (!label || !Number.isFinite(capacity)) continue;
     const id =
       typeof o.id === "string" && /^[0-9a-f-]{36}$/i.test(o.id.trim()) ? o.id.trim() : undefined;
+    const weekdayHours = parseTableWeekdayBars(o.weekday_hours);
     const ft: PublicFloorTable = {
       ...(id ? { id } : {}),
       label,
@@ -180,10 +210,23 @@ function parseTables(raw: unknown): PublicFloorTable[] {
       position_y: Number.isFinite(positionY) ? positionY : 0,
       width: Number.isFinite(width) ? Math.max(1, width) : 120,
       height: Number.isFinite(height) ? Math.max(1, height) : 80,
+      ...(weekdayHours?.length ? { weekday_hours: weekdayHours } : {}),
     };
     out.push(ft);
   }
   return out;
+}
+
+function parseBookingPolicies(raw: unknown): BookingPublicPolicies {
+  const root = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  if (!root) {
+    return { block_public_table_when_hosted_event_date: false };
+  }
+  let block = false;
+  const v = root.block_public_table_when_hosted_event_date;
+  if (typeof v === "boolean") block = v;
+  else if (typeof v === "string") block = ["true", "1", "yes"].includes(v.trim().toLowerCase());
+  return { block_public_table_when_hosted_event_date: block };
 }
 
 function parseQuestions(raw: unknown): PublicTableQuestion[] {
@@ -244,6 +287,7 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     events: parseEvents(root.events),
     tables: parseTables(root.tables),
     table_questions: parseQuestions(root.table_questions),
+    booking_policies: parseBookingPolicies(root.booking_policies),
   };
 }
 

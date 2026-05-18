@@ -20,6 +20,11 @@ import {
 } from "@/lib/booking-public-context";
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
 import { expandHostedEventForSubmit, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
+import {
+  datesWithUpcomingHostedOccurrences,
+  effectiveBarsForFloorTable,
+  isWeekdayInsideTableBookingWindows,
+} from "@/lib/booking-table-rules";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import {
   type AppointmentSlotChoice,
@@ -113,6 +118,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
   const [requestedDate, setRequestedDate] = useState("");
   const [pickedHostedEventKey, setPickedHostedEventKey] = useState("");
   const [hostedOccurrenceSel, setHostedOccurrenceSel] = useState<ExpandedOccurrence | null>(null);
+  const [preferredTable, setPreferredTable] = useState("");
 
   const guestModesKey = guestModes.join(",");
 
@@ -196,6 +202,45 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
       setHostedOccurrenceSel(null);
     }
   }, [effectiveKind]);
+
+  useEffect(() => {
+    if (effectiveKind !== "table") setPreferredTable("");
+  }, [effectiveKind]);
+
+  const blockedHostedTableNights = useMemo(() => {
+    if (!context.booking_policies?.block_public_table_when_hosted_event_date) return new Set<string>();
+    return datesWithUpcomingHostedOccurrences(context.events, venueTz);
+  }, [context.booking_policies?.block_public_table_when_hosted_event_date, context.events, venueTz]);
+
+  const bookingPreferredDateHardRequired =
+    structuredAppointmentBooking || (effectiveKind === "table" && guestModes.includes("table"));
+
+  const tableSelectionHintMessage = useMemo(() => {
+    if (!(effectiveKind === "table" && guestModes.includes("table"))) return null;
+    const d = requestedDate.trim();
+    if (!d) return null;
+
+    if (blockedHostedTableNights.has(d)) {
+      return "This venue isn’t accepting table enquires here on hosted-show nights — try another calendar day or browse their Events booking path.";
+    }
+
+    const bars = effectiveBarsForFloorTable(preferredTable, context);
+    const inside = isWeekdayInsideTableBookingWindows(d, venueTz, bars);
+    if (inside === false) {
+      const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(d, venueTz)];
+      const labelTail = preferredTable.trim() ? ` for ${preferredTable.trim()}` : "";
+      return `${dow}${labelTail} isn’t accepting table enquiries — pick another evening or widen custom hours inside Solvio bookings.`;
+    }
+    return null;
+  }, [
+    blockedHostedTableNights,
+    context,
+    effectiveKind,
+    guestModes,
+    preferredTable,
+    requestedDate,
+    venueTz,
+  ]);
 
   const flowHint =
     (bookingFlowKind && FLOW_KIND_HINT[bookingFlowKind]) ||
@@ -451,7 +496,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
             <div className="space-y-2">
               <label htmlFor="requested_date" className="text-sm font-semibold text-[#0f172a]">
                 Preferred date
-                {structuredAppointmentBooking ? (
+                {bookingPreferredDateHardRequired ? (
                   <span className="font-normal text-rose-600"> *</span>
                 ) : (
                   <span className="font-normal text-[#94a3b8]"> (optional)</span>
@@ -462,7 +507,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
                 name="requested_date"
                 type="date"
                 value={requestedDate}
-                required={Boolean(structuredAppointmentBooking)}
+                required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
                 onChange={(e) => setRequestedDate(e.target.value)}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               />
@@ -492,20 +537,39 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               Table preferences
             </div>
             <p className="text-xs leading-relaxed text-[#64748b]">
-              Choose a favourite table if you have one — the team will confirm availability.
+              Choose a favourite table if you have one — pick a preferred date above so Solvio matches your enquiry with the weekday rules for that table or the venue grid.
             </p>
+            {tableSelectionHintMessage ? (
+              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[12px] leading-relaxed text-[#92400e]">
+                {tableSelectionHintMessage}
+              </p>
+            ) : null}
             <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[#ebe7f7] bg-white px-3 py-2 text-[13px] text-[#475569] has-[:checked]:border-[#a78bfa] has-[:checked]:bg-[#f5f3ff]">
-              <input type="radio" name="preferred_table" value="" defaultChecked className="h-4 w-4 text-[#7c3aed]" />
+              <input
+                type="radio"
+                name="preferred_table"
+                value=""
+                checked={preferredTable === ""}
+                onChange={() => setPreferredTable("")}
+                className="h-4 w-4 text-[#7c3aed]"
+              />
               No preference — surprise me
             </label>
             <div className="grid gap-2 sm:grid-cols-2">
               {context.tables.map((t) => (
                 <label
-                  key={`${t.label}-${t.capacity}`}
+                  key={t.id ?? `${t.label}-${t.capacity}`}
                   className="flex cursor-pointer flex-col gap-1 rounded-xl border border-[#ebe7f7] bg-white px-3 py-3 text-sm has-[:checked]:border-[#a78bfa] has-[:checked]:bg-[#f5f3ff]"
                 >
                   <div className="flex items-start gap-2">
-                    <input type="radio" name="preferred_table" value={t.label} className="mt-1 h-4 w-4 text-[#7c3aed]" />
+                    <input
+                      type="radio"
+                      name="preferred_table"
+                      value={t.label}
+                      checked={preferredTable === t.label}
+                      onChange={() => setPreferredTable(t.label)}
+                      className="mt-1 h-4 w-4 text-[#7c3aed]"
+                    />
                     <div>
                       <p className="font-semibold text-[#0f172a]">{t.label}</p>
                       <p className="text-[13px] text-[#64748b]">

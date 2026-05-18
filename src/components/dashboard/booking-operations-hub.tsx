@@ -35,6 +35,7 @@ import {
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
 import { EventSeriesCalendarSheet, type SheetBusinessEventRow } from "@/components/dashboard/event-series-calendar-sheet";
+import { FloorTableWeekHoursStrip } from "@/components/dashboard/floor-table-week-hours-strip";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
@@ -56,6 +57,14 @@ export type BusinessEventRow = {
   deleted_at: string | null;
 };
 
+export type FloorPlanTableWeekHourRow = {
+  id: string;
+  floor_plan_table_id: string;
+  weekday: number;
+  open_time: string;
+  close_time: string;
+};
+
 export type FloorPlanTableRow = {
   id: string;
   label: string;
@@ -67,6 +76,7 @@ export type FloorPlanTableRow = {
   pricing_mode: string;
   price_cents: number;
   group_pricing: Record<string, unknown> | null;
+  table_week_hours?: FloorPlanTableWeekHourRow[];
 };
 
 export type TableQuestionRow = {
@@ -470,7 +480,7 @@ function OfferingsHubPanel(props: {
       ) : null}
 
       {props.offeringsSub === "tables" ? (
-        <TablesPanel businessId={props.businessId} tables={props.tables} questions={props.questions} />
+        <TablesPanel businessId={props.businessId} schedules={props.schedules} tables={props.tables} questions={props.questions} />
       ) : null}
     </div>
   );
@@ -1116,10 +1126,12 @@ function EventsPanel({
 
 function TablesPanel({
   businessId,
+  schedules,
   tables,
   questions,
 }: {
   businessId: string;
+  schedules: AppointmentWeekRow[];
   tables: FloorPlanTableRow[];
   questions: TableQuestionRow[];
 }) {
@@ -1173,7 +1185,7 @@ function TablesPanel({
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Tables & layout</h2>
         <p className="mt-1 text-sm text-[#64748b]">
-          Drag tables on the canvas to mirror your room. Pricing can be per table, per guest, or tiered by party size — mirrored on your hosted booking link soon.
+          Drag tables on the canvas to mirror your room. Add optional weekday windows under each listing to override venue appointment grids for guests on that specific table only.
         </p>
       </header>
 
@@ -1294,24 +1306,27 @@ function TablesPanel({
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#64748b]">Saved tables</h3>
-        <ul className="space-y-2 text-sm">
+        <ul className="space-y-4 text-sm">
           {tables.map((t) => (
-            <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] px-3 py-2">
-              <span className="text-[#0f172a]">
-                {t.label} · cap {t.capacity} · {t.pricing_mode} · {(t.price_cents / 100).toFixed(2)} €
-              </span>
-              <button
-                type="button"
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
-                disabled={pending}
-                onClick={() =>
-                  run(async () => {
-                    await deleteFloorPlanTable(businessId, t.id);
-                  })
-                }
-              >
-                Remove
-              </button>
+            <li key={t.id} className="rounded-xl border border-[#f1eefc] px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[#0f172a]">
+                  {t.label} · cap {t.capacity} · {t.pricing_mode} · {(t.price_cents / 100).toFixed(2)} €
+                </span>
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
+                  disabled={pending}
+                  onClick={() =>
+                    run(async () => {
+                      await deleteFloorPlanTable(businessId, t.id);
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </div>
+              <FloorTableWeekHoursStrip businessId={businessId} table={t} venueSchedules={schedules} />
             </li>
           ))}
           {tables.length === 0 ? <li className="text-[#94a3b8]">No tables saved.</li> : null}

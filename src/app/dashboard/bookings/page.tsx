@@ -9,6 +9,7 @@ import {
   type AppointmentWeekRow,
   type BusinessEventRow,
   type FloorPlanTableRow,
+  type FloorPlanTableWeekHourRow,
   type SlotExceptionRow,
   type TableQuestionRow,
   type VenueCalendarBookingRow,
@@ -133,7 +134,7 @@ export default async function DashboardBookingsPage({
   const calendarSinceIso = calendarSince.toISOString();
 
   if (primaryBizId) {
-    const [ah, se, ev, tb, qu, vc] = await Promise.all([
+    const [ah, se, ev, tb, qu, vc, tbwh] = await Promise.all([
       supabase.from("appointment_weekday_hours").select("*").eq("business_id", primaryBizId).order("weekday"),
       supabase.from("appointment_slot_exceptions").select("*").eq("business_id", primaryBizId).order("exception_date", { ascending: false }).limit(80),
       supabase.from("business_events").select("*").eq("business_id", primaryBizId).order("starts_at", { ascending: true }).limit(80),
@@ -146,18 +147,30 @@ export default async function DashboardBookingsPage({
         .gte("starts_at", calendarSinceIso)
         .order("starts_at", { ascending: true })
         .limit(200),
+      supabase.from("floor_plan_table_weekday_hours").select("*").eq("business_id", primaryBizId).order("weekday"),
     ]);
 
     schedules = (ah.data ?? []) as AppointmentWeekRow[];
     exceptions = (se.data ?? []) as SlotExceptionRow[];
     hostedEvents = (ev.data ?? []) as BusinessEventRow[];
+
+    const tableHoursByFloorId = new Map<string, FloorPlanTableWeekHourRow[]>();
+    for (const row of tbwh?.data ?? []) {
+      const r = row as FloorPlanTableWeekHourRow;
+      const prev = tableHoursByFloorId.get(r.floor_plan_table_id) ?? [];
+      prev.push(r);
+      tableHoursByFloorId.set(r.floor_plan_table_id, prev);
+    }
+
     floorTables = ((tb.data ?? []) as FloorPlanTableRow[]).map((row) => ({
       ...row,
       group_pricing:
         row.group_pricing && typeof row.group_pricing === "object" && !Array.isArray(row.group_pricing)
           ? (row.group_pricing as Record<string, unknown>)
           : null,
+      table_week_hours: tableHoursByFloorId.get(row.id),
     }));
+
     tableQuestions = (qu.data ?? []) as TableQuestionRow[];
     confirmedBookings = (vc.data ?? []) as VenueCalendarBookingRow[];
   }

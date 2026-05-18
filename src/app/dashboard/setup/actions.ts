@@ -14,6 +14,8 @@ export type BookingFlowDetails = {
   mixed_notes?: string;
   /** Allowed booking kinds on the public link: appointment | table | walk_in */
   guest_booking_modes?: string[];
+  /** When Tables + Hosted events are both enabled, hides free-form table enquires any night a show occurrence runs */
+  block_public_table_when_hosted_event_date?: boolean;
 };
 
 async function assertOwnBusiness(businessId: string) {

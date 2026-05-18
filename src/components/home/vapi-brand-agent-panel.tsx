@@ -25,20 +25,26 @@ type VapiBrandAgentPanelProps = {
 const copy = {
   marketing: {
     productLine: "Solvio Voice",
-    eyebrowAssistant: "Live AI receptionist",
-    idleBadge: "Tap purple mic · start talking",
-    emptyHint:
-      "Nothing plays until you tap the microphone — then you speak with Solvio live in real time using the persona and prompts already configured on your assistant in Vapi (no scripted auto-play when you land on this page).",
+    eyebrowAssistant: "Live agent",
+    idleBadge: "Purple mic · start live conversation",
+    /** Static on-screen opener only — never sent to Vapi / not spoken. */
+    starterBubbleLabel: "Solvio voice preview",
+    starterBubbleIntro:
+      "This is how a tailored Solvio voice layer sounds when guests ask for dinner slots, tastings or private rooms—matching the pacing and colouring you bake into the persona.",
+    starterBubbleMicCta:
+      "Click the purple mic icon and chat to me in real time about how we can help you boost your sales and business organisation.",
     footer:
-      "Your assistant’s replies follow the instructions you saved in Vapi. Allow the mic when your browser asks, then chat naturally—we’re here when you tap.",
+      "After you tap the mic, responses come from your assistant as configured in Vapi—nothing scripted plays from this page. Allow microphone access when your browser prompts you.",
     assistantLabel: "Solvio",
   },
   onboarding: {
     productLine: "Try Solvio Voice",
     eyebrowAssistant: "Live conversational AI",
     idleBadge: "Purple mic · start call",
-    emptyHint:
-      "Create agents with nuanced accent and pacing, then rehearse bookings, timelines and confirmations with me before you expose them to guests.",
+    starterBubbleLabel: "Solvio onboarding",
+    starterBubbleIntro:
+      "Nothing is auto-played from this step—tap the microphone to rehearse bookings, timelines, and confirmations with your configured assistant.",
+    starterBubbleMicCta: "Tap the purple mic whenever you’re ready to start.",
     footer: "Click the microphone to start a live session. Leave your microphone on while we talk—you can tap again to disconnect.",
     assistantLabel: "Solvio",
   },
@@ -310,14 +316,21 @@ export function VapiBrandAgentPanel({
             )}
             <AnimatePresence initial={false}>
               {bubbles.length === 0 && phase !== "error" && (
-                <motion.p
-                  key="hint"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="rounded-2xl bg-[#f8fafc] px-4 py-6 text-center text-sm leading-relaxed text-[#64748b]"
+                <motion.div
+                  key="starter-bubble"
+                  layout
+                  initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: reduce ? 0.18 : 0.38, ease: [0.22, 1, 0.36, 1] }}
+                  className="mr-auto max-w-[92%] rounded-3xl bg-gradient-to-br from-[#7c3aed] via-[#6d28d9] to-[#5b21b6] px-4 py-3 text-[15px] leading-relaxed text-white shadow-sm ring-1 ring-white/25"
                 >
-                  {meta.emptyHint}
-                </motion.p>
+                  <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.26em] text-white/80">
+                    {meta.starterBubbleLabel}
+                  </span>
+                  <p className="text-[14px] leading-relaxed">{meta.starterBubbleIntro}</p>
+                  <p className="mt-3 text-[14px] font-medium leading-relaxed">{meta.starterBubbleMicCta}</p>
+                </motion.div>
               )}
               {bubbles.map((b, idx) => (
                 <motion.div

@@ -421,6 +421,66 @@ export async function deleteFloorPlanTable(businessId: string, tableId: string) 
   revBookings();
 }
 
+function coerceTimeHmToPg(s: string): string {
+  const t = s.trim();
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  return t.slice(0, 8);
+}
+
+/** Replace weekday windows — omitting / clearing restores venue-wide appointment-hour inheritance. */
+export async function replaceFloorPlanTableWeekdayHours(params: {
+  businessId: string;
+  tableId: string;
+  rows: { weekday: number; openTime: string; closeTime: string }[];
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+
+  const { data: tbl, error: selErr } = await supabase
+    .from("floor_plan_tables")
+    .select("id")
+    .eq("business_id", params.businessId)
+    .eq("id", params.tableId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (!tbl) throw new Error("Table not found.");
+
+  const { error: delErr } = await supabase
+    .from("floor_plan_table_weekday_hours")
+    .delete()
+    .eq("floor_plan_table_id", params.tableId)
+    .eq("business_id", params.businessId);
+  if (delErr) throw new Error(delErr.message);
+
+  const now = new Date().toISOString();
+  const valid = [...params.rows].filter(
+    (r) =>
+      typeof r.weekday === "number" &&
+      Number.isFinite(r.weekday) &&
+      r.weekday >= 0 &&
+      r.weekday <= 6 &&
+      r.openTime.trim().length > 0 &&
+      r.closeTime.trim().length > 0,
+  );
+
+  if (valid.length === 0) {
+    revBookings();
+    return;
+  }
+
+  const insertRows = valid.map((r) => ({
+    floor_plan_table_id: params.tableId,
+    business_id: params.businessId,
+    weekday: r.weekday,
+    open_time: coerceTimeHmToPg(r.openTime),
+    close_time: coerceTimeHmToPg(r.closeTime),
+    updated_at: now,
+  }));
+
+  const { error } = await supabase.from("floor_plan_table_weekday_hours").insert(insertRows);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
 export async function upsertTableBookingQuestion(params: {
   businessId: string;
   id?: string | null;

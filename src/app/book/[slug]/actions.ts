@@ -3,6 +3,7 @@
 import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprint";
 import { parseBookingPublicContext } from "@/lib/booking-public-context";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
+import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
 import { sendBookingRequestReceivedEmail } from "@/lib/notifications/booking-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
@@ -101,6 +102,16 @@ export async function submitBookingRequestAction(
   }
 
   const preferredTime = hostedCheck.preferred_time ?? preferredTimeRaw;
+
+  const tableBookingCheck = validateTableBookingSubmission({
+    ctx: parsedCtx,
+    bookingKind,
+    preferredTableLabel: preferredTable,
+    requestedDateYmd: requestedDate,
+  });
+  if (!tableBookingCheck.ok) {
+    return { ok: false, message: tableBookingCheck.message };
+  }
 
   const { error } = await supabase.rpc("submit_booking_request", {
     p_slug: slug.trim(),

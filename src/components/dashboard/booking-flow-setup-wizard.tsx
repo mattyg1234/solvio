@@ -115,6 +115,9 @@ export function BookingFlowSetupWizard({
   const [peakHoursNote, setPeakHoursNote] = useState(initialDetails?.peak_hours_note ?? "");
   const [mixedNotes, setMixedNotes] = useState(initialDetails?.mixed_notes ?? "");
   const [guestMessage, setGuestMessage] = useState(initialDetails?.guest_message ?? "");
+  const [blockTableWhenHostedNight, setBlockTableWhenHostedNight] = useState(
+    Boolean(initialDetails?.block_public_table_when_hosted_event_date),
+  );
   const [guestModes, setGuestModes] = useState<BookingGuestMode[]>(() =>
     coerceModes(initialDetails?.guest_booking_modes, initialKind ?? "restaurant_tables"),
   );
@@ -148,6 +151,8 @@ export function BookingFlowSetupWizard({
     const base: BookingFlowDetails = {
       guest_message: guestMessage.trim() || undefined,
       guest_booking_modes: guestModes,
+      block_public_table_when_hosted_event_date:
+        guestModes.includes("table") && guestModes.includes("event") ? blockTableWhenHostedNight : false,
     };
     if (kind === "restaurant_tables") {
       base.typical_party_size = typicalPartySize.trim() || undefined;
@@ -273,6 +278,23 @@ export function BookingFlowSetupWizard({
               <p className="mt-2 text-[11px] font-medium text-[#94a3b8]">
                 At least one mode must stay on — Solvio hides disabled paths from guests on your booking link automatically.
               </p>
+
+              {guestModes.includes("table") && guestModes.includes("event") ? (
+                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9d5ff] bg-white px-4 py-3 text-sm text-[#475569]">
+                  <input
+                    type="checkbox"
+                    checked={blockTableWhenHostedNight}
+                    onChange={(e) => setBlockTableWhenHostedNight(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-[#d4d4d8]"
+                  />
+                  <span className="space-y-1">
+                    <span className="block font-semibold text-[#0f172a]">Block informal table enquires during hosted-show nights</span>
+                    <span className="text-[12px] leading-relaxed text-[#64748b]">
+                      Keeps diners from requesting free-style tables while a comedy night, supper club, or other ticketed hosted listing occupies the diary — still bookable via the Events tab.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
             </div>
 
             {(kind === "restaurant_tables" || kind === "mixed") && (
@@ -414,6 +436,16 @@ export function BookingFlowSetupWizard({
                   <dd className="mt-1 text-[#475569]">{peakHoursNote.trim() || "—"}</dd>
                 </div>
               )}
+              {guestModes.includes("table") && guestModes.includes("event") ? (
+                <div>
+                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Hosted vs table clashes</dt>
+                  <dd className="mt-1 text-[#475569]">
+                    {blockTableWhenHostedNight
+                      ? "Table path pauses anytime a hosted show lands on that calendar night."
+                      : "Table path stays open even when hosted happenings exist — revisit setup if you prefer to block clashes."}
+                  </dd>
+                </div>
+              ) : null}
               {kind === "mixed" && (
                 <div>
                   <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Hybrid notes</dt>
