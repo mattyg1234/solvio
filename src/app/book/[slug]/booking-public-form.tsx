@@ -15,8 +15,12 @@ import {
   formatPublicRange,
   formatPublicTablePriceEUR,
   type PublicAppointmentHour,
+  type PublicBusinessEvent,
   type PublicFloorTable,
 } from "@/lib/booking-public-context";
+import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
+import { expandBusinessEventOccurrences } from "@/lib/business-event-occurrences";
+import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import {
   type AppointmentSlotChoice,
   buildAppointmentSlotChoices,
@@ -26,6 +30,28 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const initialState: SubmitBookingState | null = null;
+
+const MS_PER_DAY = 86400000;
+const DAY_SLACK_BEFORE = 8 * MS_PER_DAY;
+const RANGE_AHEAD_MS = 370 * MS_PER_DAY;
+
+function hostedEventPickKey(evt: PublicBusinessEvent): string {
+  if (evt.id) return `id:${evt.id}`;
+  return `legacy:${evt.starts_at}:${evt.title}`;
+}
+
+function preferredTimeFromHostedOccurrence(o: ExpandedOccurrence, venueTz: string): string {
+  const dayFmt = new Date(`${o.dateYmd}T12:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: venueTz,
+  });
+  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", timeZone: venueTz };
+  const s = new Date(o.starts_at);
+  const e = new Date(o.ends_at);
+  return `${dayFmt} · ${s.toLocaleTimeString(undefined, opts)} → ${e.toLocaleTimeString(undefined, opts)} (${venueTz})`;
+}
 
 const FLOW_KIND_HINT: Record<string, string> = {
   restaurant_tables:
@@ -102,6 +128,8 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
   const [kind, setKind] = useState<BookingGuestMode | "">(() => primaryKind ?? (guestModes[0] ?? ""));
   const [eventTitle, setEventTitle] = useState("");
   const [requestedDate, setRequestedDate] = useState("");
+  const [pickedHostedEventKey, setPickedHostedEventKey] = useState("");
+  const [hostedOccurrenceSel, setHostedOccurrenceSel] = useState<ExpandedOccurrence | null>(null);
 
   const guestModesKey = guestModes.join(",");
 
@@ -148,6 +176,44 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     effectiveKind === "table" && sortedQuestions.length > 0;
   const upcomingActiveEvents = context.events.filter((e) => !e.cancelled);
   const cancelledEvents = context.events.filter((e) => e.cancelled);
+
+  const pickedHostedEvent = useMemo(() => {
+    const key = pickedHostedEventKey.trim();
+    if (!key.length) return null;
+    return upcomingActiveEvents.find((e) => hostedEventPickKey(e) === key) ?? null;
+  }, [pickedHostedEventKey, upcomingActiveEvents]);
+
+  const hostedExpandedOccurrences = useMemo(() => {
+    if (!pickedHostedEvent) return [];
+    const now = Date.now();
+    const rangeStart = new Date(now - DAY_SLACK_BEFORE);
+    const rangeEnd = new Date(now + RANGE_AHEAD_MS);
+    return expandBusinessEventOccurrences(
+      pickedHostedEvent.starts_at,
+      pickedHostedEvent.ends_at,
+      pickedHostedEvent.recurrence ?? {},
+      venueTz,
+      rangeStart,
+      rangeEnd,
+    ).filter((o) => !o.skipped && Date.parse(o.starts_at) >= now - 60_000);
+  }, [pickedHostedEvent, venueTz]);
+
+  const hostedCalendarMode =
+    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length > 0;
+
+  const hostedListingNoUpcomingShows =
+    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length === 0;
+
+  useEffect(() => {
+    setHostedOccurrenceSel(null);
+  }, [pickedHostedEventKey]);
+
+  useEffect(() => {
+    if (effectiveKind !== "event") {
+      setPickedHostedEventKey("");
+      setHostedOccurrenceSel(null);
+    }
+  }, [effectiveKind]);
 
   const flowHint =
     (bookingFlowKind && FLOW_KIND_HINT[bookingFlowKind]) ||
@@ -311,16 +377,19 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
             <div className="space-y-2">
               <select
                 aria-label="Match an existing hosted event"
-                defaultValue=""
+                value={pickedHostedEventKey}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 onChange={(e) => {
                   const next = e.target.value;
-                  if (next) setEventTitle(next);
+                  setPickedHostedEventKey(next);
+                  if (!next) return;
+                  const evt = upcomingActiveEvents.find((x) => hostedEventPickKey(x) === next);
+                  if (evt) setEventTitle(evt.title);
                 }}
               >
                 <option value="">Match an existing hosted event…</option>
                 {upcomingActiveEvents.map((evt) => (
-                  <option key={`opt-${evt.title}-${evt.starts_at}`} value={evt.title}>
+                  <option key={hostedEventPickKey(evt)} value={hostedEventPickKey(evt)}>
                     {evt.title} · {formatPublicRange(evt.starts_at, evt.ends_at)}
                   </option>
                 ))}
@@ -338,26 +407,46 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label htmlFor="requested_date" className="text-sm font-semibold text-[#0f172a]">
-              Preferred date
-              {structuredAppointmentBooking ? (
-                <span className="font-normal text-rose-600"> *</span>
-              ) : (
-                <span className="font-normal text-[#94a3b8]"> (optional)</span>
-              )}
-            </label>
+        {hostedCalendarMode ? (
+          <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4" aria-labelledby="hosted-show-night-label">
+            <div className="space-y-1">
+              <p id="hosted-show-night-label" className="text-sm font-semibold text-[#0f172a]">
+                When is this showing?
+              </p>
+              <p className="text-xs leading-relaxed text-[#64748b]">
+                Dates without this event are greyed out — tap a coloured day. If nothing fits, describe your ideal evening in Notes.
+              </p>
+            </div>
+            <input type="hidden" name="requested_date" value={hostedOccurrenceSel?.dateYmd ?? ""} required />
             <input
-              id="requested_date"
-              name="requested_date"
-              type="date"
-              value={requestedDate}
-              required={Boolean(structuredAppointmentBooking)}
-              onChange={(e) => setRequestedDate(e.target.value)}
-              className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              type="hidden"
+              name="preferred_time"
+              value={
+                hostedOccurrenceSel ? preferredTimeFromHostedOccurrence(hostedOccurrenceSel, venueTz) : ""
+              }
+              required
             />
-          </div>
+            <EventOccurrenceMonthCalendar
+              timeZone={venueTz}
+              occurrences={hostedExpandedOccurrences}
+              selected={hostedOccurrenceSel}
+              onSelect={(o) => setHostedOccurrenceSel(o)}
+            />
+            {!hostedOccurrenceSel ? (
+              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
+                Pick a coloured date on the calendar so we know exactly which showing you mean — unlit days aren’t running this listing.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        {hostedListingNoUpcomingShows ? (
+          <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
+            This hosted listing doesn’t have any upcoming show nights in the diary yet. Leave a preferred date and time window below instead, or jot it in the notes.
+          </p>
+        ) : null}
+
+        {hostedCalendarMode ? (
           <div className="space-y-2">
             <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
               Guests <span className="font-normal text-[#94a3b8]">(optional)</span>
@@ -370,10 +459,47 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               min={1}
               max={999}
               placeholder="e.g. 4"
-              className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              className="h-11 w-full max-w-sm rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
           </div>
-        </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor="requested_date" className="text-sm font-semibold text-[#0f172a]">
+                Preferred date
+                {structuredAppointmentBooking ? (
+                  <span className="font-normal text-rose-600"> *</span>
+                ) : (
+                  <span className="font-normal text-[#94a3b8]"> (optional)</span>
+                )}
+              </label>
+              <input
+                id="requested_date"
+                name="requested_date"
+                type="date"
+                value={requestedDate}
+                required={Boolean(structuredAppointmentBooking)}
+                onChange={(e) => setRequestedDate(e.target.value)}
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
+                Guests <span className="font-normal text-[#94a3b8]">(optional)</span>
+              </label>
+              <input
+                id="guest_count"
+                name="guest_count"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={999}
+                placeholder="e.g. 4"
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              />
+            </div>
+          </div>
+        )}
 
         {showTablesPanel ? (
           <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
@@ -518,6 +644,11 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
                 />
               ) : null}
             </>
+          ) : hostedCalendarMode ? (
+            <p className="text-[11px] leading-relaxed text-[#94a3b8]">
+              Your slot is set from the showing you chose on the calendar — times are in{' '}
+              <span className="font-semibold text-[#64748b]">{venueTz}</span>.
+            </p>
           ) : (
             <div className="space-y-2">
               <label htmlFor="preferred_time" className="text-sm font-semibold text-[#0f172a]">

@@ -24,6 +24,8 @@ export type PublicBusinessEvent = {
   description: string;
   starts_at: string;
   ends_at: string;
+  /** Recurrence blob from DB (same schema as merchant calendar helpers). */
+  recurrence?: unknown | null;
   cancelled: boolean;
   cancellation_reason: string;
 };
@@ -133,12 +135,15 @@ function parseEvents(raw: unknown): PublicBusinessEvent[] {
       typeof o.id === "string" && /^[0-9a-f-]{36}$/i.test(o.id.trim())
         ? o.id.trim()
         : undefined;
+    const recurrence = o.recurrence ?? null;
+
     const evt: PublicBusinessEvent = {
       ...(id ? { id } : {}),
       title,
       description: typeof o.description === "string" ? o.description : "",
       starts_at: startsAt,
       ends_at: endsAt,
+      ...(recurrence === null ? {} : { recurrence }),
       cancelled: Boolean(o.cancelled),
       cancellation_reason:
         typeof o.cancellation_reason === "string" ? o.cancellation_reason : "",
