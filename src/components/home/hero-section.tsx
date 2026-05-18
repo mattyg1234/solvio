@@ -5,7 +5,7 @@ import { Moon } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
-import { VoiceDemoPanel } from "@/components/home/voice-demo-panel";
+import { MarketingSiteVoice } from "@/components/home/marketing-site-voice";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -111,7 +111,7 @@ export function HeroSection() {
           transition={{ duration: 0.58, delay: reduce ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="relative scroll-mt-28 outline-none"
         >
-          <VoiceDemoPanel scenario="personal_voice" autoPlay />
+          <MarketingSiteVoice heroAutoPlay />
         </motion.div>
       </div>
     </section>

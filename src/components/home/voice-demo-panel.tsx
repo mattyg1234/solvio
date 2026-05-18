@@ -12,6 +12,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { VoiceSessionWaveform } from "@/components/home/voice-session-waveform";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "listening" | "thinking" | "speaking";
@@ -50,28 +51,28 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     ],
   },
   personal_voice: {
-    productLine: "Your AI receptionist",
-    eyebrowAssistant: "Answering as you",
-    idleBadge: "Hear your voice",
+    productLine: "Solvio Voice",
+    eyebrowAssistant: "Personalised cadence · live or preview",
+    idleBadge: "Purple mic · listen or replay",
     emptyHint:
-      "Guests hear replies in your ElevenLabs voice clone — paired with SOLVIO_VOICE_DEMO_VOICE_ID on deployment.",
+      "Build a convincing voice receptionist with personalised accent, rhythm and tonal finishing touches so callers still swear it is someone from your podium. Beneath that polish Solvio stitches together bookings, plated dinner rotations, tastings, salons, launches and confirmations that politely nag themselves closed. Explore the story on-screen — then audition the pacing below.",
     footer:
-      "Audio uses your ElevenLabs API key + voice ID in Vercel env. Browser speech only if synthesis fails.",
-    assistantLabel: "Your voice",
+      "Click the purple microphone to replay how it sounds live in motion. Deploy Vapi on your domain so callers can converse in real time about boosting sales and organising calendars more effortlessly.",
+    assistantLabel: "Solvio voice preview",
     lines: [
       {
         role: "assistant",
         text:
-          "Hi — callers hear Solvio speaking in my voice, cloned with ElevenLabs, so bookings still sound personal when I cannot pick up.",
+          "This is how a tailored Solvio voice layer sounds when guests ask for dinner slots, tastings or private rooms—matching the pacing and colouring you bake into the persona.",
       },
       {
         role: "user",
-        text: "Can you capture tables and confirmations without bothering my crew?",
+        text: "What will you automate while I coach the floor?",
       },
       {
         role: "assistant",
         text:
-          "Yes — guided slots from your dashboard, SMS or email receipts, Stripe-ready deposits, and transcripts land in Solvio instead of voicemail chaos.",
+          "Reminders chase themselves, itineraries stay tidy, confirmations flow by SMS or email, and transcripts land in Solvio instead of voicemail chaos—even when you are juggling multiple venues.",
       },
     ],
   },
@@ -165,41 +166,6 @@ async function speakAssistantLine(text: string, audioRef: MutableRefObject<HTMLA
       void speakFallbackBrowser(text).finally(done);
     });
   });
-}
-
-function Waveform({ active }: { active: boolean }) {
-  const reduce = useReducedMotion();
-  const bars = 40;
-
-  return (
-    <div className="flex h-16 items-end justify-center gap-[3px] px-6 pt-2">
-      {Array.from({ length: bars }).map((_, i) => (
-        <motion.span
-          key={i}
-          className="block h-11 w-[3px] origin-bottom rounded-full bg-gradient-to-t from-[#7c3aed] via-[#8b5cf6] to-[#a78bfa] opacity-90"
-          animate={
-            reduce
-              ? { scaleY: active ? 0.65 : 0.35 }
-              : active
-                ? {
-                    scaleY: [0.35, 1.05 + (i % 6) * 0.06, 0.45, 0.95],
-                  }
-                : { scaleY: 0.28 }
-          }
-          transition={
-            reduce
-              ? { duration: 0.25 }
-              : {
-                  duration: 1.05 + (i % 9) * 0.05,
-                  repeat: active ? Infinity : 0,
-                  repeatType: "mirror",
-                  ease: [0.22, 1, 0.36, 1],
-                }
-          }
-        />
-      ))}
-    </div>
-  );
 }
 
 export function VoiceDemoPanel({
@@ -371,7 +337,7 @@ export function VoiceDemoPanel({
           </AnimatePresence>
         </div>
 
-        <Waveform active={listening || phase === "thinking" || phase === "speaking"} />
+        <VoiceSessionWaveform active={listening || phase === "thinking" || phase === "speaking"} />
 
         <div className="min-h-[220px] rounded-[22px] border border-[#f1eefc] bg-[#fafbff]/90 p-4">
           <div className="flex max-h-[260px] flex-col gap-3 overflow-y-auto pr-1">
@@ -460,9 +426,16 @@ export function VoiceDemoPanel({
           </motion.div>
         </div>
 
-        <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-[#94a3b8]">
-          {meta.footer}
-        </p>
+        {scenario === "personal_voice" ? (
+          <>
+            <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
+            <p className="mt-2 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
+              Scripted audio via SOLVIO_ELEVENLABS_API_KEY + SOLVIO_VOICE_DEMO_VOICE_ID · browser fallback if synth fails
+            </p>
+          </>
+        ) : (
+          <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-[#94a3b8]">{meta.footer}</p>
+        )}
       </div>
     </Card>
   );

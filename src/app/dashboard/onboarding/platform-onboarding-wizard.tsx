@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 
-import { VoiceDemoPanel } from "@/components/home/voice-demo-panel";
+import { MarketingSiteVoice } from "@/components/home/marketing-site-voice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -393,7 +393,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             {caps.ai_receptionist ? (
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-[#0f172a]">Test your receptionist preview</p>
-                <VoiceDemoPanel scenario="personal_voice" autoPlay={false} />
+                <MarketingSiteVoice surface="onboarding" heroAutoPlay={false} />
               </div>
             ) : (
               <p className="text-sm text-[#64748b]">
