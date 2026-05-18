@@ -106,11 +106,17 @@ async function speakAssistantLine(text: string, audioRef: MutableRefObject<HTMLA
   }
   cancelBrowserSpeech();
 
-  const res = await fetch("/api/voice-demo/tts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/voice-demo/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch {
+    await speakFallbackBrowser(text);
+    return;
+  }
 
   if (!res.ok) {
     await speakFallbackBrowser(text);
@@ -118,6 +124,21 @@ async function speakAssistantLine(text: string, audioRef: MutableRefObject<HTMLA
   }
 
   const blob = await res.blob();
+
+  if (blob.size < 160) {
+    await speakFallbackBrowser(text);
+    return;
+  }
+
+  const head = await blob.slice(0, 3).arrayBuffer();
+  const bytes = new Uint8Array(head);
+  const mp3sync = bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] ?? 0) >= 0xe0;
+  const id3 = bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33;
+  if (!mp3sync && !id3) {
+    await speakFallbackBrowser(text);
+    return;
+  }
+
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
   audioRef.current = audio;
