@@ -178,9 +178,9 @@ export function EventOccurrenceMonthCalendar({
               aria-pressed={isSelected || isPendingPick || undefined}
               title={
                 !hasShow
-                  ? `${label} — this event is not running this day`
+                  ? `${label} — no show this day`
                   : (list ?? []).length > 1
-                    ? `${label} — ${(list ?? []).length} showings · tap to choose a time`
+                    ? `${label} — ${(list ?? []).length} performances · tap to pick a start time`
                     : `${label} · ${primaryOcc ? formatSlotTitle(primaryOcc) : ""} (${timeZone})`
               }
               onClick={() => {
@@ -195,10 +195,10 @@ export function EventOccurrenceMonthCalendar({
               className={cn(
                 "aspect-square rounded-lg border text-[13px] font-semibold transition",
                 !hasShow
-                  ? "cursor-not-allowed border-transparent bg-[#f8fafc] text-[#cbd5e1]"
+                  ? "cursor-not-allowed border-transparent bg-[#f1f5f9] text-[#cbd5e1]"
                   : isSelected || isPendingPick
-                    ? "border-[#a78bfa] bg-[#f5f3ff] text-[#5b21b6] shadow-inner shadow-[#ede9fe]/60"
-                    : "border-[#ebe7f7] bg-white text-[#475569] hover:border-[#c4b5fd] hover:bg-[#fafbff]",
+                    ? "border-[#7c3aed] bg-gradient-to-br from-[#ede9fe] via-[#f5f3ff] to-white text-[#4c1d95] shadow-inner shadow-[#a78bfa]/40 ring-2 ring-[#c4b5fd]/70"
+                    : "border-[#ddd6fe] bg-gradient-to-br from-[#f5f3ff]/90 to-white text-[#5b21b6] hover:border-[#a78bfa] hover:bg-[#ede9fe]/70 hover:shadow-sm",
               )}
             >
               {label}
@@ -252,7 +252,8 @@ export function EventOccurrenceMonthCalendar({
         </p>
       ) : null}
       <p className="text-[11px] leading-relaxed text-[#94a3b8]">
-        Grey squares are nights without this show — pick a coloured date.
+        Grey days do not run this listing —{' '}
+        <span className="font-semibold text-[#5b21b6]">violet-highlighted dates</span> are bookable performances.
       </p>
     </div>
   );

@@ -25,12 +25,12 @@ type VapiBrandAgentPanelProps = {
 const copy = {
   marketing: {
     productLine: "Solvio Voice",
-    eyebrowAssistant: "Your brand, your cadence",
-    idleBadge: "Purple mic · live assistant",
+    eyebrowAssistant: "Live AI receptionist",
+    idleBadge: "Tap purple mic · start talking",
     emptyHint:
-      "You can build a realistic receptionist-grade voice agent with personalised accent and toning—the warmth, pacing and vowels you prefer so every call still feels unmistakably you. Behind the velvet rope I quietly keep dinner tables moving, RSVP lists humming, salons filled, retreats scheduled and follow-ups chased while your crew stays focussed on hospitality. Speak freely: ask what Solvio Voice can offload this week.",
+      "Nothing plays until you tap the microphone — then you speak with Solvio live in real time using the persona and prompts already configured on your assistant in Vapi (no scripted auto-play when you land on this page).",
     footer:
-      "Click the purple microphone below to chat with me now—I will answer live about how Solvio boosts sales and helps you organise bookings, communications and calendars more effortlessly.",
+      "Your assistant’s replies follow the instructions you saved in Vapi. Allow the mic when your browser asks, then chat naturally—we’re here when you tap.",
     assistantLabel: "Solvio",
   },
   onboarding: {

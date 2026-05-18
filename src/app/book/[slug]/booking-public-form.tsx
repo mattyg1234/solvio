@@ -19,7 +19,7 @@ import {
   type PublicFloorTable,
 } from "@/lib/booking-public-context";
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
-import { expandBusinessEventOccurrences } from "@/lib/business-event-occurrences";
+import { expandHostedEventForSubmit, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import {
   type AppointmentSlotChoice,
@@ -31,26 +31,9 @@ import { cn } from "@/lib/utils";
 
 const initialState: SubmitBookingState | null = null;
 
-const MS_PER_DAY = 86400000;
-const DAY_SLACK_BEFORE = 8 * MS_PER_DAY;
-const RANGE_AHEAD_MS = 370 * MS_PER_DAY;
-
 function hostedEventPickKey(evt: PublicBusinessEvent): string {
   if (evt.id) return `id:${evt.id}`;
   return `legacy:${evt.starts_at}:${evt.title}`;
-}
-
-function preferredTimeFromHostedOccurrence(o: ExpandedOccurrence, venueTz: string): string {
-  const dayFmt = new Date(`${o.dateYmd}T12:00:00`).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: venueTz,
-  });
-  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", timeZone: venueTz };
-  const s = new Date(o.starts_at);
-  const e = new Date(o.ends_at);
-  return `${dayFmt} · ${s.toLocaleTimeString(undefined, opts)} → ${e.toLocaleTimeString(undefined, opts)} (${venueTz})`;
 }
 
 const FLOW_KIND_HINT: Record<string, string> = {
@@ -185,21 +168,20 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
 
   const hostedExpandedOccurrences = useMemo(() => {
     if (!pickedHostedEvent) return [];
-    const now = Date.now();
-    const rangeStart = new Date(now - DAY_SLACK_BEFORE);
-    const rangeEnd = new Date(now + RANGE_AHEAD_MS);
-    return expandBusinessEventOccurrences(
-      pickedHostedEvent.starts_at,
-      pickedHostedEvent.ends_at,
-      pickedHostedEvent.recurrence ?? {},
-      venueTz,
-      rangeStart,
-      rangeEnd,
-    ).filter((o) => !o.skipped && Date.parse(o.starts_at) >= now - 60_000);
+    return expandHostedEventForSubmit(pickedHostedEvent, venueTz);
   }, [pickedHostedEvent, venueTz]);
+
+  const hostedEventSubmissionBlocked =
+    effectiveKind === "event" &&
+    guestModes.includes("event") &&
+    upcomingActiveEvents.length > 0 &&
+    !pickedHostedEventKey.trim().length;
 
   const hostedCalendarMode =
     effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length > 0;
+
+  const hostedCalendarSelectionBlocked =
+    hostedCalendarMode && !(hostedOccurrenceSel?.starts_at && hostedOccurrenceSel.starts_at.trim().length > 0);
 
   const hostedListingNoUpcomingShows =
     effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length === 0;
@@ -252,6 +234,8 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
       </div>
 
       <form action={formAction} className="space-y-5">
+        <input type="hidden" name="hosted_event_id" value={pickedHostedEvent?.id ?? ""} />
+        <input type="hidden" name="hosted_occurrence_starts_at" value={hostedOccurrenceSel?.starts_at ?? ""} />
         {primaryKind ? <input type="hidden" name="booking_kind" value={primaryKind} /> : null}
 
         {state?.ok === false ? (
@@ -333,7 +317,8 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               Hosted nights & happenings
             </div>
             <p className="text-xs leading-relaxed text-[#64748b]">
-              Pick the exact night below — themed events use their own timings (not appointment slots).
+                Pick a hosted listing first —{' '}
+                <span className="font-semibold text-[#0f172a]">purple dates</span> on the calendar are the only nights this show runs.
             </p>
             <ul className="space-y-2">
               {upcomingActiveEvents.map((evt) => (
@@ -378,6 +363,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               <select
                 aria-label="Match an existing hosted event"
                 value={pickedHostedEventKey}
+                required={Boolean(effectiveKind === "event" && upcomingActiveEvents.length > 0)}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 onChange={(e) => {
                   const next = e.target.value;
@@ -421,9 +407,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
             <input
               type="hidden"
               name="preferred_time"
-              value={
-                hostedOccurrenceSel ? preferredTimeFromHostedOccurrence(hostedOccurrenceSel, venueTz) : ""
-              }
+              value={hostedOccurrenceSel ? formatHostedOccurrencePreferredSummary(hostedOccurrenceSel, venueTz) : ""}
               required
             />
             <EventOccurrenceMonthCalendar
@@ -722,7 +706,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || hostedEventSubmissionBlocked || hostedCalendarSelectionBlocked}
           className={cn(
             buttonVariants({ variant: "default" }),
             "h-12 w-full rounded-full text-base font-semibold shadow-lg shadow-[#7c3aed]/25 disabled:opacity-60",
