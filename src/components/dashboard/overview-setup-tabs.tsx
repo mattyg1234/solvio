@@ -8,9 +8,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const flowLabels: Record<string, string> = {
-  restaurant_tables: "Restaurant · table bookings",
-  salon_appointments: "Salon & appointments",
-  walk_in_waitlist: "Walk-ins & waitlist",
+  restaurant_tables: "Table bookings",
+  salon_appointments: "Appointments",
+  walk_in_waitlist: "Customer waitlists",
   mixed: "Mixed operations",
 };
 

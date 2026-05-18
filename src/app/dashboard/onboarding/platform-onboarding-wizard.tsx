@@ -52,9 +52,9 @@ const TIMEZONES = [
 ] as const;
 
 const CAP_DEFS: { key: PlatformCapabilityKey; label: string; hint: string }[] = [
-  { key: "appointments", label: "Appointments", hint: "Salons, consultations, hourly slots." },
-  { key: "events", label: "Events", hint: "Named nights, tickets, capacity." },
-  { key: "tables", label: "Table bookings", hint: "Restaurants — floor layouts & reservations." },
+  { key: "appointments", label: "Appointments", hint: "Timed visits, sessions, consultations." },
+  { key: "events", label: "Events", hint: "Ticketed nights, workshops, capped capacity." },
+  { key: "tables", label: "Table bookings", hint: "Seated reservations and floor layouts." },
   { key: "ai_receptionist", label: "AI receptionist", hint: "Voice persona + scripted coverage." },
   { key: "lead_generation", label: "Lead generation", hint: "Inbound requests & outbound prospect lists." },
 ];

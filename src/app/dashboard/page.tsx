@@ -39,10 +39,10 @@ export default async function DashboardOverviewPage() {
   const bookingFlowKind = (primaryBiz?.booking_flow_kind as string | null | undefined) ?? null;
 
   const flowLabels: Record<string, string> = {
-    restaurant_tables: "Restaurant tables",
-    salon_appointments: "Salon & appointments",
-    walk_in_waitlist: "Walk-ins",
-    mixed: "Mixed",
+    restaurant_tables: "Table bookings",
+    salon_appointments: "Appointments",
+    walk_in_waitlist: "Customer waitlists",
+    mixed: "Mixed operations",
   };
   const bookingFlowShortLabel =
     bookingFlowKind && flowLabels[bookingFlowKind] ? flowLabels[bookingFlowKind] : bookingFlowKind;

@@ -28,11 +28,12 @@ import { cn } from "@/lib/utils";
 const initialState: SubmitBookingState | null = null;
 
 const FLOW_KIND_HINT: Record<string, string> = {
-  restaurant_tables: "Tell us about your table — party size and occasion help us seat you.",
+  restaurant_tables:
+    "Share party size and any seating notes — we’ll match you to available tables or zones for your visit.",
   salon_appointments:
-    "Choose a calendar date and a discrete time slot generated from venue hours — or pick a hosted Event for special nights.",
-  walk_in_waitlist: "Walk-in requests — share when you’d like to arrive and party size.",
-  mixed: "Appointments offer fixed slots by day — Events cover ticketed nights; tables and walk-ins have their own path.",
+    "Pick a date and a time slot built from venue hours — or browse hosted events when they’re on offer.",
+  walk_in_waitlist: "Tell us when you’d like to arrive and your party size so we can add you to the waitlist.",
+  mixed: "You may see appointments with fixed slots, ticketed events, table reservations, or a waitlist — pick what fits.",
 };
 
 type BookingPublicFormProps = {

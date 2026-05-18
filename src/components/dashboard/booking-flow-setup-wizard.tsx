@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ArrowRight, Layers, Loader2, Scissors, Users, UtensilsCrossed } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Layers, LayoutGrid, Loader2, Users } from "lucide-react";
 
 import { saveBookingFlowSetup, type BookingFlowDetails } from "@/app/dashboard/setup/actions";
 import { buttonVariants } from "@/components/ui/button";
@@ -49,30 +49,32 @@ const kinds: {
   id: BookingFlowKind;
   title: string;
   description: string;
-  icon: typeof UtensilsCrossed;
+  icon: typeof LayoutGrid;
 }[] = [
   {
     id: "restaurant_tables",
-    title: "Restaurant tables",
-    description: "Covers, reservations, turning seats — typical restaurants & tasting rooms.",
-    icon: UtensilsCrossed,
+    title: "Table bookings",
+    description:
+      "Reserved seats or covers with party sizes — when guests choose a seating area or table group for a specific visit.",
+    icon: LayoutGrid,
   },
   {
     id: "salon_appointments",
-    title: "Salon & appointments",
-    description: "Timed chairs, buffers between clients, consultation slots.",
-    icon: Scissors,
+    title: "Appointments",
+    description: "Timed slots with start times and durations — consultations, sessions, visits, or any calendar-style booking.",
+    icon: CalendarClock,
   },
   {
     id: "walk_in_waitlist",
-    title: "Walk-ins & waitlist",
-    description: "Queues, quoted waits, peak-hour texting.",
+    title: "Customer waitlists",
+    description: "Queue arrivals, estimate waits, and keep walk-in traffic moving when you cannot pre-book everyone.",
     icon: Users,
   },
   {
     id: "mixed",
     title: "Mixed operations",
-    description: "Bars that seat & queue, clinics + retail — hybrid intake.",
+    description:
+      "Combine table bookings, appointments, hosted events, and waitlists — for teams that operate more than one guest flow.",
     icon: Layers,
   },
 ];
@@ -231,7 +233,7 @@ export function BookingFlowSetupWizard({
             <div className="rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 px-4 py-4">
               <p className="text-sm font-semibold text-[#0f172a]">What can guests book on your link?</p>
               <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
-                Toggle paths guests see on your link — appointments, events, tables, or walk-ins (pick any combo).
+                Toggle paths guests see on your link — appointments, events, tables, or a waitlist (pick any combo).
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {MODE_ORDER.map((m) => {
@@ -254,7 +256,7 @@ export function BookingFlowSetupWizard({
                 })}
               </div>
               <p className="mt-2 text-[11px] font-medium text-[#94a3b8]">
-                At least one mode must stay on — Solvio hides disabled paths from diners automatically.
+                At least one mode must stay on — Solvio hides disabled paths from guests on your booking link automatically.
               </p>
             </div>
 
@@ -307,10 +309,10 @@ export function BookingFlowSetupWizard({
                   <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
                     Bookings
                   </Link>{' '}
-                  (weekly grids + blocked days). Appointment guests then choose{' '}
-                  <span className="font-semibold">a date plus a timed slot</span> automatically generated from those hours.
-                  Themed evenings (boat party, ticket drops, etc.) are created as <span className="font-semibold">Events</span> so diners
-                  can pick those listings instead.
+                  (weekly grids + blocked days). Appointment bookings use{' '}
+                  <span className="font-semibold">a date plus a timed slot</span> generated from those hours. Ticketed or
+                  one-off happenings are configured as <span className="font-semibold">Events</span> so guests can choose those
+                  instead of a plain slot.
                 </p>
                 <div className="space-y-2">
                   <label htmlFor="peak" className="text-sm font-semibold text-[#0f172a]">
@@ -321,7 +323,7 @@ export function BookingFlowSetupWizard({
                     value={peakHoursNote}
                     onChange={(e) => setPeakHoursNote(e.target.value)}
                     rows={3}
-                    placeholder="Example: &quot;We release next month’s tastings every Friday.&quot; — operational blackouts belong in Dashboard → Bookings inventory."
+                    placeholder="Example: &quot;We open next month&apos;s bookings every Friday.&quot; — blackout days live in Dashboard → Bookings inventory."
                     className="w-full rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                   />
                   <p className="text-[11px] font-medium leading-relaxed text-[#94a3b8]">
@@ -341,7 +343,7 @@ export function BookingFlowSetupWizard({
                   value={mixedNotes}
                   onChange={(e) => setMixedNotes(e.target.value)}
                   rows={3}
-                  placeholder="Bar seating first-come except Fridays — reservations for lounge tables only…"
+                  placeholder="Example: weekdays are walk-ins only — weekends reserve tables ahead; mention anything staff should remember."
                   className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
               </div>
@@ -353,13 +355,13 @@ export function BookingFlowSetupWizard({
           <div className="space-y-5">
             <h2 className="text-xl font-semibold text-[#0f172a]">Guest-facing greeting</h2>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              Appears near the top of your Solvio booking page so diners know what to expect before they submit email / SMS info.
+              Appears near the top of your Solvio booking page so guests know what to expect before they share contact details.
             </p>
             <textarea
               value={guestMessage}
               onChange={(e) => setGuestMessage(e.target.value)}
               rows={5}
-              placeholder={`Example: Thanks for booking ${businessName}. We confirm via SMS within an hour — deposits apply on tables of six+.`}
+              placeholder={`Example: Thanks for choosing ${businessName}. We confirm by message within an hour — larger groups may need a deposit.`}
               className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
           </div>
