@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CreditCard, LayoutDashboard, PhoneCall, Settings2 } from "lucide-react";
+import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, PhoneCall, Settings2 } from "lucide-react";
 
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
@@ -17,9 +17,14 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; labe
     key: string;
   }[] = [{ href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true, key: "home" }];
 
-  if (cap.appointments || cap.events || cap.tables) {
-    items.push({ href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" });
-  }
+  items.push({ href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" });
+
+  items.push({
+    href: "/dashboard/setup/bookings",
+    label: "Setup",
+    icon: ClipboardList,
+    key: "booking-setup",
+  });
 
   items.push({ href: "/dashboard/payments", label: "Pay", icon: CreditCard, key: "pay" });
 

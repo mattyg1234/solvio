@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { motion } from "framer-motion";
@@ -110,6 +111,7 @@ type BookingOperationsHubProps = {
   requests: BookingRequestRow[];
   bizNameById: Record<string, string>;
   confirmedBookings: VenueCalendarBookingRow[];
+  bookingFlowComplete: boolean;
 };
 
 export function BookingOperationsHub({
@@ -124,8 +126,17 @@ export function BookingOperationsHub({
   requests,
   bizNameById,
   confirmedBookings,
+  bookingFlowComplete,
 }: BookingOperationsHubProps) {
   const [tab, setTab] = useState<TabKey>("requests");
+
+  const activeEventsCount = useMemo(
+    () => events.filter((ev) => !ev.cancelled_at && !ev.deleted_at).length,
+    [events],
+  );
+
+  const inventoryBare =
+    bookingFlowComplete && schedules.length === 0 && tables.length === 0 && activeEventsCount === 0;
 
   if (!businessId || !businessName) {
     return (
@@ -145,6 +156,54 @@ export function BookingOperationsHub({
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-[#ebe7f7]/90 bg-white shadow-sm">
+      {!bookingFlowComplete ? (
+        <div className="border-b border-amber-200/90 bg-gradient-to-r from-amber-50 via-[#fffbeb] to-white px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-[46rem] space-y-1">
+              <p className="text-sm font-semibold text-[#92400e]">Start here — choose what guests can book</p>
+              <p className="text-sm leading-relaxed text-[#78716c]">
+                Decide whether callers reserve tables, timed appointments, ticketed events, walk-ins—or a blend. Until this is
+                complete, Solvio hides the tailored guest questions on your public link.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/setup/bookings"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "inline-flex shrink-0 items-center justify-center rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+              )}
+            >
+              Open booking setup
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {bookingFlowComplete && inventoryBare ? (
+        <div className="border-b border-sky-200/80 bg-[#f0f9ff] px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-[46rem] space-y-1">
+              <p className="text-sm font-semibold text-[#0369a1]">Publish bookable openings</p>
+              <p className="text-sm leading-relaxed text-[#0c4a6e]">
+                Your flow is configured, but there is nothing for guests to latch onto yet. Add weekly appointment hours, hosted
+                events, or tables so the booking link can offer concrete slots or tickets.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("appointments")}>
+                Appointments tab
+              </Button>
+              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("events")}>
+                Events tab
+              </Button>
+              <Button type="button" variant="outline" className="rounded-full border-[#bae6fd] font-semibold" onClick={() => setTab("tables")}>
+                Tables tab
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex gap-2 overflow-x-auto border-b border-[#f1eefc] px-4 pt-3 pb-0 md:px-6" role="tablist">
         {tabs.map((t) => {
           const Icon = t.icon;

@@ -40,7 +40,7 @@ export default async function DashboardBookingsPage() {
 
   const { data: businessesRaw } = await supabase
     .from("businesses")
-    .select("id,name,booking_slug,time_zone")
+    .select("id,name,booking_slug,time_zone,booking_flow_completed_at")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
@@ -58,6 +58,7 @@ export default async function DashboardBookingsPage() {
   const rawFirstTz = typeof businessesRaw?.[0]?.time_zone === "string" ? businessesRaw[0].time_zone.trim() : "";
   const primaryVenueTz = rawFirstTz.length > 0 ? rawFirstTz : "UTC";
 
+  const primaryBookingFlowComplete = Boolean(businessesRaw?.[0]?.booking_flow_completed_at);
   type BookingRow = {
     id: string;
     business_id: string;
@@ -211,6 +212,7 @@ export default async function DashboardBookingsPage() {
         requests={inboxRequests}
         bizNameById={bizNameById}
         confirmedBookings={confirmedBookings}
+        bookingFlowComplete={primaryBookingFlowComplete}
       />
 
       <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/80 shadow-none">

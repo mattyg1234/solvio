@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  ClipboardList,
   CreditCard,
   Euro,
   Inbox,
@@ -33,14 +34,19 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
     key: "home",
   });
 
-  if (cap.appointments || cap.events || cap.tables) {
-    items.push({
-      href: "/dashboard/bookings",
-      label: "Bookings hub",
-      icon: Inbox,
-      key: "bookings",
-    });
-  }
+  items.push({
+    href: "/dashboard/bookings",
+    label: "Bookings hub",
+    icon: Inbox,
+    key: "bookings",
+  });
+
+  items.push({
+    href: "/dashboard/setup/bookings",
+    label: "Booking setup",
+    icon: ClipboardList,
+    key: "booking-setup",
+  });
 
   if (cap.ai_receptionist) {
     items.push({
