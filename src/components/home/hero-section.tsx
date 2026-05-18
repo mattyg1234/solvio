@@ -111,7 +111,7 @@ export function HeroSection() {
           transition={{ duration: 0.58, delay: reduce ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="relative scroll-mt-28 outline-none"
         >
-          <VoiceDemoPanel scenario="bella_restaurant" autoPlay />
+          <VoiceDemoPanel scenario="personal_voice" autoPlay />
         </motion.div>
       </div>
     </section>

@@ -18,7 +18,7 @@ type Phase = "idle" | "listening" | "thinking" | "speaking";
 
 type Bubble = { id: string; role: "user" | "assistant"; text: string };
 
-export type VoiceDemoScenario = "default" | "bella_restaurant";
+export type VoiceDemoScenario = "default" | "personal_voice";
 
 type ScenarioMeta = {
   productLine: string;
@@ -33,43 +33,45 @@ type ScenarioMeta = {
 const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
   default: {
     productLine: "Solvio Voice",
-    eyebrowAssistant: "Assistant preview",
-    idleBadge: "Tap mic — hear Solvio",
-    emptyHint: "Ask anything — Solvio answers like a calm teammate at your front desk.",
-    footer: "Assistant audio via ElevenLabs when server env is set — otherwise browser speech.",
-    assistantLabel: "Solvio",
+    eyebrowAssistant: "Quick peek",
+    idleBadge: "Tap mic — hear preview",
+    emptyHint: "Short preview — Solvio answering for your storefront.",
+    footer: "Powered by ElevenLabs with SOLVIO_VOICE_DEMO_VOICE_ID on the server.",
+    assistantLabel: "Your reception",
     lines: [
       {
         role: "user",
-        text: "How can you help my restaurant?",
+        text: "What does Solvio do for busy venues?",
+      },
+      {
+        role: "assistant",
+        text: "Solvio picks up bookings, sends confirmations guests actually receive, and keeps deposits flowing through Stripe — calmly, even after hours.",
+      },
+    ],
+  },
+  personal_voice: {
+    productLine: "Your AI receptionist",
+    eyebrowAssistant: "Answering as you",
+    idleBadge: "Hear your voice",
+    emptyHint:
+      "Guests hear replies in your ElevenLabs voice clone — paired with SOLVIO_VOICE_DEMO_VOICE_ID on deployment.",
+    footer:
+      "Audio uses your ElevenLabs API key + voice ID in Vercel env. Browser speech only if synthesis fails.",
+    assistantLabel: "Your voice",
+    lines: [
+      {
+        role: "assistant",
+        text:
+          "Hi — callers hear Solvio speaking in my voice, cloned with ElevenLabs, so bookings still sound personal when I cannot pick up.",
+      },
+      {
+        role: "user",
+        text: "Can you capture tables and confirmations without bothering my crew?",
       },
       {
         role: "assistant",
         text:
-          "I can answer calls, draft reservations and keep your books full while you welcome guests.",
-      },
-    ],
-  },
-  bella_restaurant: {
-    productLine: "Live receptionist demo",
-    eyebrowAssistant: "Bella Vista Restaurant",
-    idleBadge: "Talk to AI receptionist",
-    emptyHint: "Incoming call vibe — Bella Vista answers first.",
-    footer:
-      "Receptionist lines use ElevenLabs from your deployment env where configured — else browser fallback.",
-    assistantLabel: "AI receptionist",
-    lines: [
-      {
-        role: "assistant",
-        text: "Hi! Thanks for calling Bella Vista Restaurant, how can I help today?",
-      },
-      {
-        role: "user",
-        text: "I need a table for four tomorrow night.",
-      },
-      {
-        role: "assistant",
-        text: "I have waterfront seating at 8 pm — shall I reserve it and SMS a confirmation?",
+          "Yes — guided slots from your dashboard, SMS or email receipts, Stripe-ready deposits, and transcripts land in Solvio instead of voicemail chaos.",
       },
     ],
   },
@@ -203,7 +205,7 @@ function Waveform({ active }: { active: boolean }) {
 export function VoiceDemoPanel({
   className,
   autoPlay = false,
-  scenario = "default",
+  scenario = "personal_voice",
 }: {
   className?: string;
   autoPlay?: boolean;

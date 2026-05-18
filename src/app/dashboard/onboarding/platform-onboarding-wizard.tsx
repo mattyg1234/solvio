@@ -393,7 +393,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             {caps.ai_receptionist ? (
               <div className="space-y-3">
                 <p className="text-sm font-semibold text-[#0f172a]">Test your receptionist preview</p>
-                <VoiceDemoPanel scenario="bella_restaurant" autoPlay={false} />
+                <VoiceDemoPanel scenario="personal_voice" autoPlay={false} />
               </div>
             ) : (
               <p className="text-sm text-[#64748b]">

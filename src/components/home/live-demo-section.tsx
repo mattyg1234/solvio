@@ -31,11 +31,11 @@ export function LiveDemoSection() {
             Hands-on preview
           </p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            Watch Solvio preview a live reception — before you plug in telephony.
+            Hear your personal AI receptionist — in your ElevenLabs voice.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            This is scripted today and streams from your stack tomorrow — tap the waveform to feel the premium calm we bring to
-            every guest ping.
+            Assistant lines synthesize speech with SOLVIO_VOICE_DEMO_VOICE_ID on the server — tap the mic to hear it live; we fall
+            back to the browser if ElevenLabs is unavailable.
           </p>
         </motion.div>
 
@@ -46,7 +46,7 @@ export function LiveDemoSection() {
           transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto mt-14 max-w-xl"
         >
-          <VoiceDemoPanel scenario="default" autoPlay={false} />
+          <VoiceDemoPanel scenario="personal_voice" autoPlay={false} />
         </motion.div>
 
         <motion.div
