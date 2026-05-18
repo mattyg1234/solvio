@@ -39,7 +39,7 @@ const copy = {
     idleBadge: "Purple mic · start call",
     emptyHint:
       "Create agents with nuanced accent and pacing, then rehearse bookings, timelines and confirmations with me before you expose them to guests.",
-    footer: "Click the microphone for a live Vapi session. Microphone stays on while the connection is active.",
+    footer: "Click the microphone to start a live session. Leave your microphone on while we talk—you can tap again to disconnect.",
     assistantLabel: "Solvio",
   },
 } as const;
@@ -197,7 +197,7 @@ export function VapiBrandAgentPanel({
       if (!call) {
         ctl.cancelled = true;
         setPhase("error");
-        setErrorDetail("Call did not start. Check NEXT_PUBLIC_* keys and the assistant ID in Vapi.");
+        setErrorDetail("Could not connect. Confirm voice settings for this deployment, refresh, and try again.");
         await cleanupClient().catch(() => {});
         return;
       }
@@ -208,7 +208,7 @@ export function VapiBrandAgentPanel({
         console.error("[VapiBrandAgent] start", e);
         setPhase("error");
         const message =
-          typeof e === "object" && e !== null && "message" in e ? String((e as Error).message) : "Something went wrong starting Vapi.";
+          typeof e === "object" && e !== null && "message" in e ? String((e as Error).message) : "Something went wrong connecting the assistant.";
         setErrorDetail(message);
       }
       await cleanupClient().catch(() => {});
@@ -305,7 +305,7 @@ export function VapiBrandAgentPanel({
             {phase === "error" && (
               <p className="rounded-2xl border border-red-100 bg-red-50/80 px-4 py-5 text-center text-sm leading-relaxed text-red-800">
                 {errorDetail ??
-                  "The voice session stopped unexpectedly. Confirm your Vapi keys and assistant, then try again."}
+                  "The voice session dropped. Check your microphone permission, refresh if needed, and try again."}
               </p>
             )}
             <AnimatePresence initial={false}>
@@ -432,7 +432,7 @@ export function VapiBrandAgentPanel({
         <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
         <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
           {surface === "marketing"
-            ? "Live conversation via Vapi · allow microphone when prompted"
+            ? "Live voice in your browser · allow microphone access when prompted"
             : "Mic stays active during the session · tap the purple microphone to end"}
         </p>
       </div>

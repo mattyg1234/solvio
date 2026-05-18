@@ -30,7 +30,7 @@ export function MarketingSiteVoice({
   surface = "marketing",
 }: {
   className?: string;
-  /** Only used when the scripted ElevenLabs demo is showing (Vapi keys not configured). */
+  /** Only used when the scripted preview is showing instead of interactive voice. */
   heroAutoPlay?: boolean;
   surface?: "marketing" | "onboarding";
 }) {

@@ -34,12 +34,12 @@ export function LiveDemoSection() {
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
             {liveVapi
               ? "Talk live with Solvio\u2019s brand assistant."
-              : "Hear your personal AI receptionist — in your ElevenLabs voice."}
+              : "Hear how your personalised AI receptionist could sound."}
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
             {liveVapi
-              ? "This session runs in your browser through Vapi (microphone required). Ask how Solvio answers calls or handles bookings after hours."
-              : "Assistant lines synthesize speech with SOLVIO_VOICE_DEMO_VOICE_ID on the server — tap the mic to hear it live; we fall back to the browser if ElevenLabs is unavailable."}
+              ? "Use your microphone here in the browser and ask whatever you want—calls, bookings, late nights—we answer in character."
+              : "Short preview clips are generated behind the scenes. Tap the purple microphone to replay; your browser supplies audio if previews are muted."}
           </p>
         </motion.div>
 

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Scripted conversation; assistant lines call `/api/voice-demo/tts` (ElevenLabs on the server).
- * Fallback: browser `speechSynthesis` when env is missing or ElevenLabs errors.
+ * Scripted conversation lines call `/api/voice-demo/tts` (hosted synthesis on the server).
+ * Fallback: browser speech when upstream synthesis is unavailable.
  */
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
@@ -37,7 +37,7 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     eyebrowAssistant: "Quick peek",
     idleBadge: "Tap mic — hear preview",
     emptyHint: "Short preview — Solvio answering for your storefront.",
-    footer: "Powered by ElevenLabs with SOLVIO_VOICE_DEMO_VOICE_ID on the server.",
+    footer: "Hosted voice preview—matching what callers hear once your workspace is wired in.",
     assistantLabel: "Your reception",
     lines: [
       {
@@ -57,7 +57,7 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     emptyHint:
       "Build a convincing voice receptionist with personalised accent, rhythm and tonal finishing touches so callers still swear it is someone from your podium. Beneath that polish Solvio stitches together bookings, plated dinner rotations, tastings, salons, launches and confirmations that politely nag themselves closed. Explore the story on-screen — then audition the pacing below.",
     footer:
-      "Click the purple microphone to replay how it sounds live in motion. Deploy Vapi on your domain so callers can converse in real time about boosting sales and organising calendars more effortlessly.",
+      "Tap the purple microphone to replay how it sounds in motion—on your domain this becomes fully interactive so guests can steer the conversation.",
     assistantLabel: "Solvio voice preview",
     lines: [
       {
@@ -430,7 +430,7 @@ export function VoiceDemoPanel({
           <>
             <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
             <p className="mt-2 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
-              Scripted audio via SOLVIO_ELEVENLABS_API_KEY + SOLVIO_VOICE_DEMO_VOICE_ID · browser fallback if synth fails
+              Sample playback from our preview stack · swap to interactive voice when your assistant is live on site
             </p>
           </>
         ) : (
