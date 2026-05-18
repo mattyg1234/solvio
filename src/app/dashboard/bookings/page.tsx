@@ -6,7 +6,6 @@ import { ArrowLeft, CalendarClock } from "lucide-react";
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
 import {
   BookingOperationsHub,
-  parseBookingsHubQuery,
   type AppointmentWeekRow,
   type BusinessEventRow,
   type FloorPlanTableRow,
@@ -20,10 +19,30 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { suggestBookingSlug } from "@/lib/booking-slug";
+import { parseBookingsHubQuery } from "@/lib/bookings-hub-query";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 import { cn } from "@/lib/utils";
+
+type BookingPageSearchRaw = Record<string, string | string[] | undefined>;
+
+async function resolveBookingSearchParams(
+  raw: Promise<BookingPageSearchRaw> | BookingPageSearchRaw | undefined,
+): Promise<BookingPageSearchRaw> {
+  if (raw == null) return {};
+  if (typeof (raw as { then?: unknown }).then === "function") {
+    return await (raw as Promise<BookingPageSearchRaw>);
+  }
+  return raw as BookingPageSearchRaw;
+}
+
+function firstQueryString(raw: BookingPageSearchRaw, key: "tab" | "view" | "booking"): string | undefined {
+  const v = raw[key];
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return undefined;
+}
 
 export const metadata: Metadata = {
   title: "Bookings · Dashboard · Solvio",
@@ -32,7 +51,7 @@ export const metadata: Metadata = {
 export default async function DashboardBookingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ tab?: string; view?: string; booking?: string }>;
+  searchParams?: Promise<BookingPageSearchRaw> | BookingPageSearchRaw;
 }) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -44,11 +63,11 @@ export default async function DashboardBookingsPage({
   }
 
   const siteUrl = await getSiteUrl();
-  const qp = searchParams ? await searchParams : {};
+  const spat = await resolveBookingSearchParams(searchParams);
   const hub = parseBookingsHubQuery({
-    tab: typeof qp.tab === "string" ? qp.tab : undefined,
-    view: typeof qp.view === "string" ? qp.view : undefined,
-    booking: typeof qp.booking === "string" ? qp.booking : undefined,
+    tab: firstQueryString(spat, "tab"),
+    view: firstQueryString(spat, "view"),
+    booking: firstQueryString(spat, "booking"),
   });
 
   const { data: businessesRaw } = await supabase
@@ -143,7 +162,26 @@ export default async function DashboardBookingsPage({
     confirmedBookings = (vc.data ?? []) as VenueCalendarBookingRow[];
   }
 
-  const inboxRequests = requests as BookingRequestRow[];
+  const inboxRequests = (requests as BookingRequestRow[]).map((r) => ({
+    ...r,
+    intake_extras:
+      r.intake_extras != null && typeof r.intake_extras === "object"
+        ? (JSON.parse(JSON.stringify(r.intake_extras)) as unknown)
+        : r.intake_extras,
+  })) as BookingRequestRow[];
+
+  const hostedEventsForClient = hostedEvents.map((ev) => {
+    let recurrence: unknown = ev.recurrence;
+    if (recurrence != null && typeof recurrence === "object") {
+      try {
+        recurrence = JSON.parse(JSON.stringify(recurrence));
+      } catch {
+        recurrence = { type: "once" };
+      }
+    }
+    return { ...ev, recurrence };
+  });
+
   const bookingTips =
     businesses.length === 0
       ? null
@@ -220,7 +258,7 @@ export default async function DashboardBookingsPage({
         venueTimeZone={primaryVenueTz}
         schedules={schedules}
         exceptions={exceptions}
-        events={hostedEvents}
+        events={hostedEventsForClient}
         tables={floorTables}
         questions={tableQuestions}
         requests={inboxRequests}
