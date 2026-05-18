@@ -18,6 +18,7 @@ import {
   type PublicBusinessEvent,
   type PublicFloorTable,
 } from "@/lib/booking-public-context";
+import { coerceFloorPlanShape, normalizeFloorTableDimensions, normalizeFloorTableFillColor } from "@/lib/floor-plan-visuals";
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
 import { expandHostedEventForSubmit, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
 import {
@@ -86,17 +87,32 @@ function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
         Layout preview
       </div>
       {tables.map((t) => {
+        const sh = coerceFloorPlanShape(t.shape);
+        const fill = normalizeFloorTableFillColor(t.fill_color ?? undefined);
+        const dims = normalizeFloorTableDimensions(sh, t.width, t.height);
+        const isCircle = sh === "circle";
         const left = ((t.position_x - minX) / w) * 100;
         const top = ((t.position_y - minY) / h) * 100;
-        const width = (t.width / w) * 100;
-        const height = (t.height / h) * 100;
+        const pw = (dims.width / w) * 100;
+        const ph = (dims.height / h) * 100;
         return (
           <div
             key={t.id ?? `${t.label}-${t.position_x}-${t.position_y}`}
-            className="absolute flex items-center justify-center rounded-xl border border-[#c4b5fd]/70 bg-white/95 px-1 text-center text-[10px] font-semibold leading-tight text-[#5b21b6] shadow-sm shadow-[#ede9fe]/60"
-            style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
+            className={cn(
+              "absolute flex items-center justify-center border border-[#c4b5fd]/70 px-1 text-center text-[10px] font-semibold leading-tight shadow-sm shadow-[#ede9fe]/60",
+              isCircle ? "" : "rounded-xl",
+              fill ? "text-[#0f172a]" : "bg-white/95 text-[#5b21b6]",
+            )}
+            style={{
+              left: `${left}%`,
+              top: `${top}%`,
+              width: `${pw}%`,
+              height: `${ph}%`,
+              borderRadius: isCircle ? "50%" : undefined,
+              backgroundColor: fill ? fill : undefined,
+            }}
           >
-            <span className="line-clamp-2">{t.label}</span>
+            <span className={cn(isCircle ? "line-clamp-2" : "", "leading-tight")}>{t.label}</span>
           </div>
         );
       })}
@@ -191,6 +207,10 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
 
   const hostedListingNoUpcomingShows =
     effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length === 0;
+
+  const isEventBooking = effectiveKind === "event" && guestModes.includes("event");
+  /** Never show native `<input type="date">` while a hosted listing is tied to the enquiry — use the violet calendar or a strict YYYY-MM-DD fallback instead. */
+  const suppressGenericPreferredDateGuestsRow = isEventBooking && pickedHostedEvent != null;
 
   useEffect(() => {
     setHostedOccurrenceSel(null);
@@ -445,7 +465,8 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
                 When is this showing?
               </p>
               <p className="text-xs leading-relaxed text-[#64748b]">
-                Dates without this event are greyed out — tap a coloured day. If nothing fits, describe your ideal evening in Notes.
+                Only the violet cells are real performances for this act — grey days are intentionally disabled here. Tap a violet day to fix
+                the exact night below (this custom grid replaces the loose browser date field so nothing drifts across months).
               </p>
             </div>
             <input type="hidden" name="requested_date" value={hostedOccurrenceSel?.dateYmd ?? ""} required />
@@ -463,7 +484,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
             />
             {!hostedOccurrenceSel ? (
               <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
-                Pick a coloured date on the calendar so we know exactly which showing you mean — unlit days aren’t running this listing.
+                Tap a violet date on this calendar — that is how you chose the promoted show night (plain grey days never run this act).
               </p>
             ) : null}
           </section>
@@ -475,23 +496,28 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
           </p>
         ) : null}
 
-        {hostedCalendarMode ? (
-          <div className="space-y-2">
-            <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
-              Guests <span className="font-normal text-[#94a3b8]">(optional)</span>
+        {pickedHostedEvent && isEventBooking && !hostedCalendarMode ? (
+          <section className="space-y-2 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
+            <label htmlFor="hosted_fallback_requested_date" className="text-sm font-semibold text-[#0f172a]">
+              Show night date <span className="font-normal text-rose-600">*</span>
             </label>
+            <p className="text-[11px] leading-relaxed text-[#64748b]">
+              This listing couldn’t paint a clickable calendar yet — enter the performance date strictly as{' '}
+              <span className="font-mono font-semibold text-[#475569]">YYYY-MM-DD</span> so it matches venue records (no typed
+              DD/MM guesses).
+            </p>
             <input
-              id="guest_count"
-              name="guest_count"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={999}
-              placeholder="e.g. 4"
-              className="h-11 w-full max-w-sm rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              id="hosted_fallback_requested_date"
+              name="requested_date"
+              required
+              pattern="\d{4}-\d{2}-\d{2}"
+              placeholder="YYYY-MM-DD"
+              className="h-11 w-full max-w-sm rounded-xl border border-[#ebe7f7] bg-white px-4 font-mono text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
-          </div>
-        ) : (
+          </section>
+        ) : null}
+
+        {!suppressGenericPreferredDateGuestsRow ? (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label htmlFor="requested_date" className="text-sm font-semibold text-[#0f172a]">
@@ -508,27 +534,32 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
                 type="date"
                 value={requestedDate}
                 required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
+                max="9999-12-31"
                 onChange={(e) => setRequestedDate(e.target.value)}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               />
             </div>
-            <div className="space-y-2">
-              <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
-                Guests <span className="font-normal text-[#94a3b8]">(optional)</span>
-              </label>
-              <input
-                id="guest_count"
-                name="guest_count"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={999}
-                placeholder="e.g. 4"
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-              />
-            </div>
           </div>
-        )}
+        ) : null}
+
+        {effectiveKind !== "" ? (
+          <div className="space-y-2">
+            <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
+              How many are coming? <span className="font-normal text-rose-600">*</span>
+            </label>
+            <input
+              id="guest_count"
+              name="guest_count"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={999}
+              required
+              placeholder="Party size · e.g. 4"
+              className="h-11 w-full max-w-sm rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+            />
+          </div>
+        ) : null}
 
         {showTablesPanel ? (
           <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">

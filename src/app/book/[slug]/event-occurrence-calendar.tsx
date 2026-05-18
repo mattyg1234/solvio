@@ -4,16 +4,30 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
+import { dowSunday0, formatYmdInTimeZone } from "@/lib/business-event-occurrences";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { cn } from "@/lib/utils";
 
 const WEEK_HEAD_LABELS = ["S", "M", "T", "W", "T", "F", "S"] as const;
 
-function dowOfMonthFirst(year: number, month1Indexed: number, tz: string): number {
-  const isoDay = `${year}-${String(month1Indexed).padStart(2, "0")}-01T14:30:00Z`;
-  const d = new Date(isoDay);
-  const wd = d.toLocaleDateString("en-US", { weekday: "short", timeZone: tz });
-  const ix = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd);
-  return ix >= 0 ? ix : 0;
+/** Find a UTC instant whose calendar day in `timeZone` is `year-month-day`. */
+function findUtcProbeForVenueLocalCalendarDay(year: number, month1: number, day: number, timeZone: string): Date | null {
+  const zone = coerceValidIanaTimeZone(timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const target = `${year}-${pad(month1)}-${pad(day)}`;
+  const anchor = Date.UTC(year, month1 - 1, day, 14, 0, 0);
+  for (let h = -36; h <= 36; h++) {
+    const probe = new Date(anchor + h * 3_600_000);
+    if (formatYmdInTimeZone(probe, zone) === target) return probe;
+  }
+  return null;
+}
+
+function dowOfMonthFirst(year: number, month1Indexed: number, timeZone: string): number {
+  const zone = coerceValidIanaTimeZone(timeZone);
+  const probe = findUtcProbeForVenueLocalCalendarDay(year, month1Indexed, 1, zone);
+  if (!probe) return 0;
+  return dowSunday0(probe, zone);
 }
 
 function daysInMonth(year: number, month1Indexed: number): number {
@@ -197,8 +211,8 @@ export function EventOccurrenceMonthCalendar({
                 !hasShow
                   ? "cursor-not-allowed border-transparent bg-[#f1f5f9] text-[#cbd5e1]"
                   : isSelected || isPendingPick
-                    ? "border-[#7c3aed] bg-gradient-to-br from-[#ede9fe] via-[#f5f3ff] to-white text-[#4c1d95] shadow-inner shadow-[#a78bfa]/40 ring-2 ring-[#c4b5fd]/70"
-                    : "border-[#ddd6fe] bg-gradient-to-br from-[#f5f3ff]/90 to-white text-[#5b21b6] hover:border-[#a78bfa] hover:bg-[#ede9fe]/70 hover:shadow-sm",
+                    ? "border-[#7c3aed] bg-gradient-to-br from-[#ddd6fe] via-[#ede9fe] to-[#f5f3ff] text-[#4c1d95] shadow-inner shadow-[#7c3aed]/35 ring-2 ring-[#a78bfa]"
+                    : "border-[#c4b5fd] bg-gradient-to-br from-[#ede9fe] to-[#f5f3ff] text-[#5b21b6] shadow-[0_1px_0_rgba(124,58,237,0.12)] hover:border-[#7c3aed] hover:bg-[#ddd6fe]/90 hover:shadow-md",
               )}
             >
               {label}
@@ -209,7 +223,9 @@ export function EventOccurrenceMonthCalendar({
       {pendingSameDayChoices?.length ? (
         <fieldset className="space-y-2 rounded-xl border border-[#ebe7f7] bg-[#fafbff] p-4">
           <legend className="text-[13px] font-semibold text-[#0f172a]">Which showing?</legend>
-          <p className="text-[11px] leading-relaxed text-[#64748b]">There are two or more performances on this date — choose the start time you want.</p>
+          <p className="text-[11px] leading-relaxed text-[#64748b]">
+            There are two or more performances on this date — choose the start time you want.
+          </p>
           <div className="flex flex-col gap-2">
             {pendingSameDayChoices.map((opt) => {
               const same = selected && sameSel(selected, opt);
@@ -253,7 +269,7 @@ export function EventOccurrenceMonthCalendar({
       ) : null}
       <p className="text-[11px] leading-relaxed text-[#94a3b8]">
         Grey days do not run this listing —{' '}
-        <span className="font-semibold text-[#5b21b6]">violet-highlighted dates</span> are bookable performances.
+        <span className="font-semibold text-[#5b21b6]">purple-filled dates</span> match the promoted show nights above.
       </p>
     </div>
   );

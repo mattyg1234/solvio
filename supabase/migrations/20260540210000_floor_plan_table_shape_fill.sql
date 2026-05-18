@@ -1,26 +1,34 @@
-/*
- * Appointment slot exceptions: uniqueness + expose to public RPC for guest slot filtering.
- */
+-- Visual metadata for floor-plan tables: silhouette + optional fill hex for merchant + guest preview.
 
--- Hard dependency: baseline booking inventory creates this table (+ related RPC sources).
+alter table public.floor_plan_tables
+  add column if not exists shape text not null default 'rectangle';
+
+alter table public.floor_plan_tables
+  add column if not exists fill_color text;
+
 do $$
 begin
-  if to_regclass('public.appointment_slot_exceptions') is null then
-    raise exception
-      'missing public.appointment_slot_exceptions: apply prior migrations first (minimum: 20260523120000_booking_inventory_voice_prompts.sql), then re-run.';
+  if not exists (
+    select 1
+    from pg_constraint c
+    join pg_class r on r.oid = c.conrelid
+    join pg_namespace n on n.oid = r.relnamespace
+    where c.conname = 'floor_plan_tables_shape_chk'
+      and n.nspname = 'public'
+      and r.relname = 'floor_plan_tables'
+  ) then
+    alter table public.floor_plan_tables
+      add constraint floor_plan_tables_shape_chk
+      check (shape = any (array['square'::text, 'rectangle'::text, 'circle'::text]));
   end if;
 end $$;
 
--- One whole-day closure per venue per calendar date (slot_start IS NULL).
-create unique index if not exists appointment_slot_exceptions_wholeday_uidx
-  on public.appointment_slot_exceptions (business_id, exception_date)
-  where slot_start is null;
+comment on column public.floor_plan_tables.shape is
+  'Map silhouette: square, rectangle (default), circle. Width/height are normalized to matching sides when square/circle.';
+comment on column public.floor_plan_tables.fill_color is
+  'Optional #RRGGBB fill for dashboard + public booking layout preview (null → theme defaults).';
 
--- One exception row per discrete slot_start per venue per calendar date.
-create unique index if not exists appointment_slot_exceptions_slot_uidx
-  on public.appointment_slot_exceptions (business_id, exception_date, slot_start)
-  where slot_start is not null;
-
+-- Keep public RPC in sync — extends table JSON consumed by `/book/[slug]` + booking-public-context.
 create or replace function public.get_booking_public_context(p_slug text)
 returns jsonb
 language plpgsql
@@ -41,6 +49,7 @@ declare
   v_tables jsonb;
   v_questions jsonb;
   v_tz_anchor date;
+  v_policies jsonb;
 begin
   select
     b.id,
@@ -60,6 +69,17 @@ begin
   end if;
 
   v_tz_anchor := (now() AT TIME ZONE v_tz)::date;
+
+  v_policies := jsonb_build_object(
+    'block_public_table_when_hosted_event_date',
+    case jsonb_typeof(coalesce(v_details -> 'block_public_table_when_hosted_event_date', 'false'::jsonb))
+      when 'boolean' then (v_details -> 'block_public_table_when_hosted_event_date')::text::boolean
+      when 'string' then lower(trim(v_details ->> 'block_public_table_when_hosted_event_date')) = any (
+        array['true', '1', 'yes']::text[]
+      )
+      else false
+    end
+  );
 
   v_modes := coalesce(
     v_details -> 'guest_booking_modes',
@@ -113,6 +133,7 @@ begin
         'description', coalesce(e.description, ''),
         'starts_at', e.starts_at,
         'ends_at', e.ends_at,
+        'recurrence', coalesce(e.recurrence, '{}'::jsonb),
         'cancelled', (e.cancelled_at is not null),
         'cancellation_reason', coalesce(e.cancellation_reason, '')
       )
@@ -126,13 +147,25 @@ begin
     from public.business_events be
     where be.business_id = v_id
       and be.deleted_at is null
-      and be.starts_at >= (now() - interval '6 hours')
+      and (
+        be.starts_at >= (now() - interval '48 hours')
+        or lower(trim(coalesce(be.recurrence ->> 'type', ''))) = any (array['daily', 'weekly']::text[])
+      )
     order by be.starts_at asc
-    limit 24
+    limit 48
   ) e;
 
   select coalesce(
     jsonb_agg(
+      obj
+      order by lbl
+    ),
+    '[]'::jsonb
+  )
+  into v_tables
+  from (
+    select
+      t.label as lbl,
       jsonb_build_object(
         'id', t.id,
         'label', t.label,
@@ -142,15 +175,29 @@ begin
         'position_x', t.position_x,
         'position_y', t.position_y,
         'width', t.width,
-        'height', t.height
-      )
-      order by t.label
-    ),
-    '[]'::jsonb
-  )
-  into v_tables
-  from public.floor_plan_tables t
-  where t.business_id = v_id;
+        'height', t.height,
+        'shape', coalesce(nullif(trim(t.shape), ''), 'rectangle'),
+        'fill_color', t.fill_color,
+        'weekday_hours', coalesce(hw.h_arr, '[]'::jsonb)
+      ) as obj
+    from public.floor_plan_tables t
+    left join lateral (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'weekday', h.weekday,
+            'open_time', to_char(h.open_time, 'HH24:MI'),
+            'close_time', to_char(h.close_time, 'HH24:MI')
+          )
+          order by h.weekday
+        ),
+        '[]'::jsonb
+      ) as h_arr
+      from public.floor_plan_table_weekday_hours h
+      where h.floor_plan_table_id = t.id
+    ) hw on true
+    where t.business_id = v_id
+  ) z;
 
   select coalesce(
     jsonb_agg(
@@ -177,7 +224,8 @@ begin
     'appointment_slot_exceptions', coalesce(v_slots, '[]'::jsonb),
     'events', v_events,
     'tables', v_tables,
-    'table_questions', v_questions
+    'table_questions', v_questions,
+    'booking_policies', coalesce(v_policies, '{}'::jsonb)
   );
 end;
 $$;

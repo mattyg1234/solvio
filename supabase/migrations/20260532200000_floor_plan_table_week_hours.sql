@@ -1,5 +1,14 @@
 -- Per-table booking windows (optional). Empty set for a table = inherit venue-wide appointment weekday hours.
 
+-- Hard dependency: floor plan tables migration must run before this file.
+do $$
+begin
+  if to_regclass('public.floor_plan_tables') is null then
+    raise exception
+      'missing public.floor_plan_tables: apply prior migrations first (minimum: 20260523120000_booking_inventory_voice_prompts.sql), then re-run.';
+  end if;
+end $$;
+
 create table if not exists public.floor_plan_table_weekday_hours (
   id uuid primary key default gen_random_uuid(),
   floor_plan_table_id uuid not null references public.floor_plan_tables (id) on delete cascade,

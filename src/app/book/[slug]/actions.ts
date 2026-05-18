@@ -1,7 +1,8 @@
 "use server";
 
 import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprint";
-import { parseBookingPublicContext } from "@/lib/booking-public-context";
+import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
+import { isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
 import { sendBookingRequestReceivedEmail } from "@/lib/notifications/booking-emails";
@@ -89,6 +90,28 @@ export async function submitBookingRequestAction(
   const supabase = await createSupabaseServerClient();
   const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
   const parsedCtx = parseBookingPublicContext(ctxRaw);
+
+  const bkLower = bookingKind.trim().toLowerCase();
+  if (!guestCount.trim()) {
+    return { ok: false, message: "Please enter how many people are coming." };
+  }
+  const gc = Number.parseInt(guestCount, 10);
+  if (!Number.isFinite(gc) || gc < 1 || gc > 999) {
+    return { ok: false, message: "Guest count must be a whole number between 1 and 999." };
+  }
+
+  const allowedKinds = parsedCtx ? parseGuestModesFromRpc(parsedCtx.guest_modes_raw) : [];
+  const kindOk =
+    isBookingGuestMode(bkLower) && (allowedKinds.length === 0 || allowedKinds.some((m) => m === bkLower));
+  const needsPreferredDateOutsideHostedCalendar =
+    kindOk &&
+    bkLower !== "event" &&
+    ((bkLower === "appointment" && (parsedCtx?.appointment_hours?.length ?? 0) > 0) ||
+      (bkLower === "table" && (parsedCtx?.tables?.length ?? 0) > 0));
+
+  if (needsPreferredDateOutsideHostedCalendar && !requestedDate.trim()) {
+    return { ok: false, message: "Choose your preferred date for this enquiry." };
+  }
 
   const hostedCheck = validateHostedEventSubmission({
     ctx: parsedCtx,

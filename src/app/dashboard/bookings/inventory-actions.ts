@@ -9,6 +9,8 @@ import {
   removeSkippedDate,
   setInstanceOverride,
 } from "@/lib/business-event-occurrences";
+import type { FloorPlanTableShape } from "@/lib/floor-plan-visuals";
+import { normalizeFloorTableDimensions, normalizeFloorTableFillColor } from "@/lib/floor-plan-visuals";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function getOwnedSupabase(businessId: string) {
@@ -368,19 +370,25 @@ export async function upsertFloorPlanTable(params: {
   positionY: number;
   width: number;
   height: number;
+  shape?: FloorPlanTableShape;
+  fillColor?: string | null;
   pricingMode: "table" | "person" | "group_tier";
   priceCents: number;
   groupPricing?: Record<string, unknown> | null;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
+  const shape = params.shape ?? "rectangle";
+  const dims = normalizeFloorTableDimensions(shape, params.width, params.height);
   const row = {
     business_id: params.businessId,
     label: params.label.trim(),
     capacity: params.capacity,
     position_x: params.positionX,
     position_y: params.positionY,
-    width: params.width,
-    height: params.height,
+    width: dims.width,
+    height: dims.height,
+    shape,
+    fill_color: normalizeFloorTableFillColor(params.fillColor ?? undefined),
     pricing_mode: params.pricingMode,
     price_cents: params.priceCents,
     group_pricing: (params.groupPricing ?? null) as unknown as Record<string, unknown> | null,

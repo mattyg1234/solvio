@@ -1,5 +1,6 @@
 import type { BookingGuestMode } from "@/lib/booking-guest-modes";
 import { isBookingGuestMode, parseGuestModesJson } from "@/lib/booking-guest-modes";
+import { coerceFloorPlanShape, normalizeFloorTableFillColor, type FloorPlanTableShape } from "@/lib/floor-plan-visuals";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 
 /** Matches Postgres `extract(dow)` convention used in dashboards: 0 = Sunday … 6 = Saturday */
@@ -46,6 +47,8 @@ export type PublicFloorTable = {
   position_y: number;
   width: number;
   height: number;
+  shape: FloorPlanTableShape;
+  fill_color?: string;
   /** When non-empty on the hub, replaces venue appointment hours entirely for weekday checks on this table. */
   weekday_hours?: PublicTableWeekdayBar[];
 };
@@ -200,6 +203,10 @@ function parseTables(raw: unknown): PublicFloorTable[] {
     const id =
       typeof o.id === "string" && /^[0-9a-f-]{36}$/i.test(o.id.trim()) ? o.id.trim() : undefined;
     const weekdayHours = parseTableWeekdayBars(o.weekday_hours);
+    const shape = coerceFloorPlanShape(o.shape);
+    const fillParsed = normalizeFloorTableFillColor(
+      typeof o.fill_color === "string" ? o.fill_color : undefined,
+    );
     const ft: PublicFloorTable = {
       ...(id ? { id } : {}),
       label,
@@ -210,6 +217,8 @@ function parseTables(raw: unknown): PublicFloorTable[] {
       position_y: Number.isFinite(positionY) ? positionY : 0,
       width: Number.isFinite(width) ? Math.max(1, width) : 120,
       height: Number.isFinite(height) ? Math.max(1, height) : 80,
+      shape,
+      ...(fillParsed ? { fill_color: fillParsed } : {}),
       ...(weekdayHours?.length ? { weekday_hours: weekdayHours } : {}),
     };
     out.push(ft);

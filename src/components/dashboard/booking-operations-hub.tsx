@@ -42,6 +42,12 @@ import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 export type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 import { cn } from "@/lib/utils";
+import {
+  coerceFloorPlanShape,
+  normalizeFloorTableDimensions,
+  normalizeFloorTableFillColor,
+  type FloorPlanTableShape,
+} from "@/lib/floor-plan-visuals";
 
 import type { BookingGuestsSub, BookingHubPrimary, BookingOfferingsSub } from "@/lib/bookings-hub-query";
 
@@ -76,6 +82,8 @@ export type FloorPlanTableRow = {
   pricing_mode: string;
   price_cents: number;
   group_pricing: Record<string, unknown> | null;
+  shape?: string | null;
+  fill_color?: string | null;
   table_week_hours?: FloorPlanTableWeekHourRow[];
 };
 
@@ -1124,6 +1132,225 @@ function EventsPanel({
   );
 }
 
+function tierEuroDefaults(table: FloorPlanTableRow): {
+  threshold: string;
+  aboveEuro: string;
+  belowEuro: string;
+} {
+  const gp = table.group_pricing;
+  const fallback = { threshold: "10", aboveEuro: "100", belowEuro: "50" };
+  if (!gp || typeof gp !== "object" || Array.isArray(gp)) return fallback;
+  const o = gp as Record<string, unknown>;
+  const tpRaw = typeof o.thresholdPeople === "number" ? o.thresholdPeople : Number.parseInt(String(o.thresholdPeople ?? ""), 10);
+  const threshold = Number.isFinite(tpRaw) ? String(tpRaw) : fallback.threshold;
+  const aboveEuro =
+    typeof o.atOrAboveCents === "number" && Number.isFinite(o.atOrAboveCents)
+      ? (o.atOrAboveCents / 100).toFixed(2)
+      : fallback.aboveEuro;
+  const belowEuro =
+    typeof o.belowCents === "number" && Number.isFinite(o.belowCents)
+      ? (o.belowCents / 100).toFixed(2)
+      : fallback.belowEuro;
+  return { threshold, aboveEuro, belowEuro };
+}
+
+function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; table: FloorPlanTableRow }) {
+  const snapshotKey = `${table.id}|${table.label}|${table.capacity}|${coerceFloorPlanShape(table.shape)}|${normalizeFloorTableFillColor(table.fill_color) ?? ""}|${Math.round(table.width)}|${Math.round(table.height)}|${table.pricing_mode}|${table.price_cents}|${JSON.stringify(table.group_pricing ?? null)}`;
+
+  const [pending, startTransition] = useTransition();
+  const [label, setLabel] = useState(table.label);
+  const [capacity, setCapacity] = useState(table.capacity);
+  const [shape, setShape] = useState<FloorPlanTableShape>(() => coerceFloorPlanShape(table.shape));
+  const [widthPx, setWidthPx] = useState(Math.round(table.width));
+  const [heightPx, setHeightPx] = useState(Math.round(table.height));
+  const [hexText, setHexText] = useState(normalizeFloorTableFillColor(table.fill_color) ?? "");
+  const pmInit =
+    table.pricing_mode === "person"
+      ? "person"
+      : table.pricing_mode === "group_tier"
+        ? "group_tier"
+        : "table";
+  const [pricingMode, setPricingMode] = useState<"table" | "person" | "group_tier">(pmInit);
+  const [priceEuro, setPriceEuro] = useState((table.price_cents / 100).toFixed(2));
+  const teInit = tierEuroDefaults(table);
+  const [threshold, setThreshold] = useState(teInit.threshold);
+  const [aboveEuro, setAboveEuro] = useState(teInit.aboveEuro);
+  const [belowEuro, setBelowEuro] = useState(teInit.belowEuro);
+
+  useEffect(() => {
+    setLabel(table.label);
+    setCapacity(table.capacity);
+    setShape(coerceFloorPlanShape(table.shape));
+    setWidthPx(Math.round(table.width));
+    setHeightPx(Math.round(table.height));
+    setHexText(normalizeFloorTableFillColor(table.fill_color) ?? "");
+    const pm =
+      table.pricing_mode === "person"
+        ? "person"
+        : table.pricing_mode === "group_tier"
+          ? "group_tier"
+          : "table";
+    setPricingMode(pm);
+    setPriceEuro((table.price_cents / 100).toFixed(2));
+    const te = tierEuroDefaults(table);
+    setThreshold(te.threshold);
+    setAboveEuro(te.aboveEuro);
+    setBelowEuro(te.belowEuro);
+  }, [snapshotKey, table]);
+
+  function euroToCentsScratch(s: string) {
+    const n = Number.parseFloat(s.replace(",", "."));
+    if (Number.isNaN(n)) return 0;
+    return Math.round(n * 100);
+  }
+
+  function runSave(fn: () => Promise<void>) {
+    startTransition(() => {
+      void (async () => {
+        try {
+          await fn();
+        } catch (e) {
+          alert(e instanceof Error ? e.message : "Could not save.");
+        }
+      })();
+    });
+  }
+
+  const pickerValue = normalizeFloorTableFillColor(hexText) ?? "#EEF2FF";
+
+  return (
+    <div className="mt-4 space-y-4 rounded-xl border border-dashed border-[#dcd6fb] bg-[#fcfbff]/80 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Edit table details</p>
+      <div className="grid gap-3 md:grid-cols-6 md:items-end">
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Name</label>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2 md:col-span-1">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Capacity</label>
+          <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2 md:col-span-1">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Shape</label>
+          <select
+            value={shape}
+            onChange={(e) => setShape(e.target.value as FloorPlanTableShape)}
+            className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3"
+          >
+            <option value="rectangle">Rectangle</option>
+            <option value="square">Square</option>
+            <option value="circle">Circle</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Fill</label>
+            <div className="flex gap-2">
+              <input
+                type="color"
+                aria-label="Table fill colour picker"
+                className="h-11 w-14 cursor-pointer rounded-lg border border-[#ebe7f7] bg-white p-1"
+                value={pickerValue}
+                onChange={(e) =>
+                  setHexText(normalizeFloorTableFillColor(e.target.value) ?? "")
+                }
+              />
+              <input
+                value={hexText}
+                onChange={(e) => setHexText(e.target.value)}
+                placeholder="#EEF2FF or empty for default"
+                className="h-11 min-w-[9rem] flex-1 rounded-xl border border-[#ebe7f7] px-3 font-mono text-sm"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2 md:col-span-1">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Width (px)</label>
+          <input type="number" min={48} value={widthPx} onChange={(e) => setWidthPx(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2 md:col-span-1">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Height (px)</label>
+          <input type="number" min={48} value={heightPx} onChange={(e) => setHeightPx(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Pricing mode</label>
+          <select
+            value={pricingMode}
+            onChange={(e) => setPricingMode(e.target.value as typeof pricingMode)}
+            className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3"
+          >
+            <option value="table">Flat per table (€)</option>
+            <option value="person">Per person (€)</option>
+            <option value="group_tier">Tier by group size</option>
+          </select>
+        </div>
+        {pricingMode !== "group_tier" ? (
+          <div className="space-y-2 md:col-span-2">
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
+            <input value={priceEuro} onChange={(e) => setPriceEuro(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-3 md:col-span-6">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#64748b]">If ≥ guests</label>
+              <input value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#64748b]">Charge €</label>
+              <input value={aboveEuro} onChange={(e) => setAboveEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-[#64748b]">Else €</label>
+              <input value={belowEuro} onChange={(e) => setBelowEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+            </div>
+          </div>
+        )}
+      </div>
+      <Button
+        type="button"
+        disabled={pending || !label.trim()}
+        className="rounded-full font-semibold"
+        onClick={() =>
+          runSave(async () => {
+            const trimmed = label.trim();
+            const price_cents =
+              pricingMode === "group_tier" ? euroToCentsScratch(belowEuro) : euroToCentsScratch(priceEuro);
+            const group_pricing =
+              pricingMode === "group_tier"
+                ? {
+                    thresholdPeople: Number.parseInt(threshold, 10) || 10,
+                    atOrAboveCents: euroToCentsScratch(aboveEuro),
+                    belowCents: euroToCentsScratch(belowEuro),
+                  }
+                : null;
+            await upsertFloorPlanTable({
+              businessId,
+              id: table.id,
+              label: trimmed,
+              capacity,
+              positionX: table.position_x,
+              positionY: table.position_y,
+              width: widthPx,
+              height: heightPx,
+              shape,
+              fillColor: hexText.trim().length === 0 ? null : hexText.trim(),
+              pricingMode,
+              priceCents: price_cents,
+              groupPricing: group_pricing,
+            });
+          })
+        }
+      >
+        {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
+        Save changes
+      </Button>
+      <p className="text-[11px] text-[#94a3b8]">
+        Square/circle footprints normalize to equal width/height on save. Use “Save layout positions” below the canvas after dragging.
+      </p>
+    </div>
+  );
+}
+
 function TablesPanel({
   businessId,
   schedules,
@@ -1150,6 +1377,10 @@ function TablesPanel({
   const [aboveEuro, setAboveEuro] = useState("100");
   const [belowEuro, setBelowEuro] = useState("50");
   const [qLabel, setQLabel] = useState("How many children?");
+  const [addShape, setAddShape] = useState<FloorPlanTableShape>("rectangle");
+  const [addFillHex, setAddFillHex] = useState("");
+  const [addWidth, setAddWidth] = useState(120);
+  const [addHeight, setAddHeight] = useState(80);
 
   function euroToCents(s: string) {
     const n = Number.parseFloat(s.replace(",", "."));
@@ -1191,32 +1422,46 @@ function TablesPanel({
 
       <div className="relative h-[340px] overflow-hidden rounded-2xl border border-[#ebe7f7] bg-[#f8fafc]">
         <p className="absolute left-3 top-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8]">Floor preview</p>
-        {tables.map((t) => (
-          <motion.div
-            key={t.id}
-            drag
-            dragMomentum={false}
-            className="absolute cursor-grab rounded-xl border-2 border-[#c4b5fd] bg-white/95 px-3 py-2 text-xs font-semibold text-[#312e81] shadow-md active:cursor-grabbing"
-            style={{
-              width: t.width,
-              height: t.height,
-              left: positions[t.id]?.x ?? t.position_x,
-              top: positions[t.id]?.y ?? t.position_y,
-            }}
-            onDragEnd={(_, info) => {
-              setPositions((prev) => ({
-                ...prev,
-                [t.id]: {
-                  x: (prev[t.id]?.x ?? t.position_x) + info.delta.x,
-                  y: (prev[t.id]?.y ?? t.position_y) + info.delta.y,
-                },
-              }));
-            }}
-          >
-            {t.label}
-            <span className="block text-[10px] font-normal text-[#64748b]">Cap {t.capacity}</span>
-          </motion.div>
-        ))}
+        {tables.map((t) => {
+          const tabShape = coerceFloorPlanShape(t.shape);
+          const fill = normalizeFloorTableFillColor(t.fill_color ?? undefined);
+          const dims = normalizeFloorTableDimensions(tabShape, t.width, t.height);
+          const isCircle = tabShape === "circle";
+          return (
+            <motion.div
+              key={t.id}
+              drag
+              dragMomentum={false}
+              className={cn(
+                "absolute cursor-grab border-2 border-[#c4b5fd] px-3 py-2 text-xs font-semibold text-[#312e81] shadow-md active:cursor-grabbing",
+                isCircle ? "flex items-center justify-center text-center leading-tight" : "rounded-xl",
+                fill ? "" : "bg-white/95",
+              )}
+              style={{
+                width: dims.width,
+                height: dims.height,
+                left: positions[t.id]?.x ?? t.position_x,
+                top: positions[t.id]?.y ?? t.position_y,
+                borderRadius: isCircle ? "50%" : "0.75rem",
+                backgroundColor: fill ? fill : undefined,
+              }}
+              onDragEnd={(_, info) => {
+                setPositions((prev) => ({
+                  ...prev,
+                  [t.id]: {
+                    x: (prev[t.id]?.x ?? t.position_x) + info.delta.x,
+                    y: (prev[t.id]?.y ?? t.position_y) + info.delta.y,
+                  },
+                }));
+              }}
+            >
+              <span className={isCircle ? "line-clamp-3" : ""}>
+                {t.label}
+                <span className="block text-[10px] font-normal text-[#64748b]">Cap {t.capacity}</span>
+              </span>
+            </motion.div>
+          );
+        })}
         {tables.length === 0 ? (
           <p className="absolute inset-0 flex items-center justify-center text-sm text-[#94a3b8]">Add a table below to start arranging.</p>
         ) : null}
@@ -1227,9 +1472,9 @@ function TablesPanel({
         Save layout positions
       </Button>
 
-      <div className="grid gap-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5 md:grid-cols-3 md:items-end">
-        <div className="space-y-2 md:col-span-1">
-          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Label</label>
+      <div className="grid gap-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5 md:grid-cols-6 md:items-end">
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Table name</label>
           <input value={label} onChange={(e) => setLabel(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2">
@@ -1237,6 +1482,40 @@ function TablesPanel({
           <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Shape</label>
+          <select value={addShape} onChange={(e) => setAddShape(e.target.value as FloorPlanTableShape)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3">
+            <option value="rectangle">Rectangle</option>
+            <option value="square">Square</option>
+            <option value="circle">Circle</option>
+          </select>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Fill colour</label>
+          <div className="flex gap-2">
+            <input
+              type="color"
+              aria-label="Pick fill colour"
+              value={normalizeFloorTableFillColor(addFillHex) ?? "#EEF2FF"}
+              onChange={(e) => setAddFillHex(normalizeFloorTableFillColor(e.target.value) ?? "")}
+              className="h-11 w-14 cursor-pointer rounded-lg border border-[#ebe7f7] bg-white p-1"
+            />
+            <input
+              value={addFillHex}
+              onChange={(e) => setAddFillHex(e.target.value)}
+              placeholder="#Hex or blank"
+              className="h-11 min-w-[7rem] flex-1 rounded-xl border border-[#ebe7f7] px-3 font-mono text-sm"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Width (px)</label>
+          <input type="number" min={48} value={addWidth} onChange={(e) => setAddWidth(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Height (px)</label>
+          <input type="number" min={48} value={addHeight} onChange={(e) => setAddHeight(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+        </div>
+        <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Pricing</label>
           <select value={pricingMode} onChange={(e) => setPricingMode(e.target.value as typeof pricingMode)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3">
             <option value="table">Flat per table (€)</option>
@@ -1245,12 +1524,12 @@ function TablesPanel({
           </select>
         </div>
         {pricingMode !== "group_tier" ? (
-          <div className="space-y-2 md:col-span-3">
+          <div className="space-y-2 md:col-span-4">
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
             <input value={priceEuro} onChange={(e) => setPriceEuro(e.target.value)} className="h-11 w-full max-w-[200px] rounded-xl border border-[#ebe7f7] px-3" />
           </div>
         ) : (
-          <div className="flex flex-wrap gap-3 md:col-span-3">
+          <div className="flex flex-wrap gap-3 md:col-span-6">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#64748b]">If ≥ guests</label>
               <input value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
@@ -1265,7 +1544,7 @@ function TablesPanel({
             </div>
           </div>
         )}
-        <div className="md:col-span-3">
+        <div className="md:col-span-6">
           <Button
             type="button"
             disabled={pending || !label.trim()}
@@ -1290,8 +1569,10 @@ function TablesPanel({
                   capacity,
                   positionX: 40 + tables.length * 24,
                   positionY: 60 + tables.length * 12,
-                  width: 120,
-                  height: 80,
+                  width: addWidth,
+                  height: addHeight,
+                  shape: addShape,
+                  fillColor: addFillHex.trim().length ? addFillHex.trim() : null,
                   pricingMode,
                   priceCents: price_cents,
                   groupPricing: group_pricing,
@@ -1311,7 +1592,8 @@ function TablesPanel({
             <li key={t.id} className="rounded-xl border border-[#f1eefc] px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[#0f172a]">
-                  {t.label} · cap {t.capacity} · {t.pricing_mode} · {(t.price_cents / 100).toFixed(2)} €
+                  {t.label} · {coerceFloorPlanShape(t.shape)} · cap {t.capacity} · {(t.price_cents / 100).toFixed(2)} € ·{" "}
+                  {String(t.pricing_mode ?? "").replace(/_/g, " ")}
                 </span>
                 <button
                   type="button"
@@ -1327,6 +1609,7 @@ function TablesPanel({
                 </button>
               </div>
               <FloorTableWeekHoursStrip businessId={businessId} table={t} venueSchedules={schedules} />
+              <SavedFloorTableDetailForm businessId={businessId} table={t} />
             </li>
           ))}
           {tables.length === 0 ? <li className="text-[#94a3b8]">No tables saved.</li> : null}

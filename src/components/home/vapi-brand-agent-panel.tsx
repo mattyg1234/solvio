@@ -34,7 +34,7 @@ const copy = {
     starterBubbleMicCta:
       "Click the purple mic icon and chat to me in real time about how we can help you boost your sales and business organisation.",
     footer:
-      "After you tap the mic, responses come from your assistant as configured in Vapi—nothing scripted plays from this page. Allow microphone access when your browser prompts you.",
+      "Each new purple-mic session starts with a blank transcript below. Speak after the assistant pauses—you should see streaming text for both sides once the microphone is live (allow Chrome/Safari to use the mic).",
     assistantLabel: "Solvio",
   },
   onboarding: {
@@ -45,10 +45,18 @@ const copy = {
     starterBubbleIntro:
       "Nothing is auto-played from this step—tap the microphone to rehearse bookings, timelines, and confirmations with your configured assistant.",
     starterBubbleMicCta: "Tap the purple mic whenever you’re ready to start.",
-    footer: "Click the microphone to start a live session. Leave your microphone on while we talk—you can tap again to disconnect.",
+    footer:
+      "We clear transcripts each time you connect. Speak after prompts play through so microphone capture runs—you should see your words appear beside the assistant’s.",
     assistantLabel: "Solvio",
   },
 } as const;
+
+const PARTIAL_USER_BUBBLE_ID = "__solvio_partial_user_transcript";
+
+type TranscriptBubblePatch =
+  | { kind: "append_unique"; bubble: Omit<Bubble, "id"> }
+  | { kind: "user_partial_replace"; text: string }
+  | { kind: "user_finalize"; text: string };
 
 function nextBubbleId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -57,16 +65,25 @@ function nextBubbleId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function bubbleFromAppMessage(raw: unknown): Pick<Bubble, "role" | "text"> | null {
+function transcriptBubblePatch(raw: unknown): TranscriptBubblePatch | null {
   if (!raw || typeof raw !== "object") return null;
   const msg = raw as Record<string, unknown>;
   if (msg.type !== "transcript") return null;
-  if (msg.transcriptType !== "final") return null;
   const text = typeof msg.transcript === "string" ? msg.transcript.trim() : "";
+  const role = msg.role === "assistant" ? "assistant" : msg.role === "user" ? "user" : null;
+  if (!role) return null;
+
+  const tt = typeof msg.transcriptType === "string" ? msg.transcriptType.trim().toLowerCase() : "final";
+
+  if (role === "user") {
+    if (tt === "partial") return text ? { kind: "user_partial_replace", text } : null;
+    if (!text) return null;
+    return { kind: "user_finalize", text };
+  }
+
+  if (role === "assistant" && tt === "partial") return null;
   if (!text) return null;
-  if (msg.role === "assistant") return { role: "assistant", text };
-  if (msg.role === "user") return { role: "user", text };
-  return null;
+  return { kind: "append_unique", bubble: { role: "assistant", text } };
 }
 
 export function VapiBrandAgentPanel({
@@ -112,6 +129,7 @@ export function VapiBrandAgentPanel({
 
     setPhase("connecting");
     setErrorDetail(null);
+    setBubbles([]);
 
     await cleanupClient();
 
@@ -129,13 +147,33 @@ export function VapiBrandAgentPanel({
       const onMessage = (message: unknown) => {
         if (sessionCtlRef.current !== ctl || ctl.cancelled) return;
 
-        const next = bubbleFromAppMessage(message);
-        if (!next) return;
+        const patch = transcriptBubblePatch(message);
+        if (!patch) return;
 
         setBubbles((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === next.role && last.text === next.text) return prev;
-          return [...prev, { ...next, id: nextBubbleId() }];
+          if (patch.kind === "user_partial_replace") {
+            const withoutPartial = prev.filter((b) => b.id !== PARTIAL_USER_BUBBLE_ID);
+            return [
+              ...withoutPartial,
+              { id: PARTIAL_USER_BUBBLE_ID, role: "user" as const, text: patch.text },
+            ];
+          }
+
+          const dropPartial = prev.filter((b) => b.id !== PARTIAL_USER_BUBBLE_ID);
+
+          if (patch.kind === "user_finalize") {
+            const duplicate = patch.text && dropPartial.some((b) => b.role === "user" && b.text === patch.text);
+            if (duplicate) return prev;
+            return [...dropPartial, { id: nextBubbleId(), role: "user", text: patch.text }];
+          }
+
+          const last = dropPartial[dropPartial.length - 1];
+          if (
+            last?.role === patch.bubble.role &&
+            last?.text === patch.bubble.text
+          )
+            return prev;
+          return [...dropPartial, { ...patch.bubble, id: nextBubbleId() }];
         });
       };
 
@@ -445,8 +483,8 @@ export function VapiBrandAgentPanel({
         <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
         <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
           {surface === "marketing"
-            ? "Live voice in your browser · allow microphone access when prompted"
-            : "Mic stays active during the session · tap the purple microphone to end"}
+            ? "Each session resets the bubbles · transcript comes from live Vapi data (mic permission required)"
+            : "Purple mic cleanly ends capture · summaries reset every fresh connect"}
         </p>
       </div>
     </Card>
