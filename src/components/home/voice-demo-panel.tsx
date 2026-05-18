@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * Scripted conversation; assistant lines call `/api/voice-demo/tts` (ElevenLabs on the server).
+ * Fallback: browser `speechSynthesis` when env is missing or ElevenLabs errors.
+ */
+
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { Mic, Sparkles } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -13,20 +18,130 @@ type Phase = "idle" | "listening" | "thinking" | "speaking";
 
 type Bubble = { id: string; role: "user" | "assistant"; text: string };
 
-const DEMO_LINES: Omit<Bubble, "id">[] = [
-  {
-    role: "user",
-    text: "How can Solvio help my restaurant?",
+export type VoiceDemoScenario = "default" | "bella_restaurant";
+
+type ScenarioMeta = {
+  productLine: string;
+  eyebrowAssistant: string;
+  idleBadge: string;
+  emptyHint: string;
+  footer: string;
+  assistantLabel: string;
+  lines: Omit<Bubble, "id">[];
+};
+
+const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
+  default: {
+    productLine: "Solvio Voice",
+    eyebrowAssistant: "Assistant preview",
+    idleBadge: "Tap mic — hear Solvio",
+    emptyHint: "Ask anything — Solvio answers like a calm teammate at your front desk.",
+    footer: "Assistant audio via ElevenLabs when server env is set — otherwise browser speech.",
+    assistantLabel: "Solvio",
+    lines: [
+      {
+        role: "user",
+        text: "How can you help my restaurant?",
+      },
+      {
+        role: "assistant",
+        text:
+          "I can answer calls, draft reservations and keep your books full while you welcome guests.",
+      },
+    ],
   },
-  {
-    role: "assistant",
-    text:
-      "I can answer calls, take reservations, send confirmations and help you never miss bookings again.",
+  bella_restaurant: {
+    productLine: "Live receptionist demo",
+    eyebrowAssistant: "Bella Vista Restaurant",
+    idleBadge: "Talk to AI receptionist",
+    emptyHint: "Incoming call vibe — Bella Vista answers first.",
+    footer:
+      "Receptionist lines use ElevenLabs from your deployment env where configured — else browser fallback.",
+    assistantLabel: "AI receptionist",
+    lines: [
+      {
+        role: "assistant",
+        text: "Hi! Thanks for calling Bella Vista Restaurant, how can I help today?",
+      },
+      {
+        role: "user",
+        text: "I need a table for four tomorrow night.",
+      },
+      {
+        role: "assistant",
+        text: "I have waterfront seating at 8 pm — shall I reserve it and SMS a confirmation?",
+      },
+    ],
   },
-];
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function cancelBrowserSpeech() {
+  if (typeof window !== "undefined" && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function speakFallbackBrowser(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      resolve();
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(text);
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    window.speechSynthesis.speak(u);
+  });
+}
+
+async function speakAssistantLine(text: string, audioRef: MutableRefObject<HTMLAudioElement | null>) {
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current.src = "";
+    audioRef.current = null;
+  }
+  cancelBrowserSpeech();
+
+  const res = await fetch("/api/voice-demo/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) {
+    await speakFallbackBrowser(text);
+    return;
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audioRef.current = audio;
+
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      URL.revokeObjectURL(url);
+      if (audioRef.current === audio) audioRef.current = null;
+      resolve();
+    };
+    audio.addEventListener("ended", done, { once: true });
+    audio.addEventListener(
+      "error",
+      () => {
+        cancelBrowserSpeech();
+        void speakFallbackBrowser(text).finally(done);
+      },
+      { once: true },
+    );
+    void audio.play().catch(() => {
+      cancelBrowserSpeech();
+      void speakFallbackBrowser(text).finally(done);
+    });
+  });
 }
 
 function Waveform({ active }: { active: boolean }) {
@@ -67,44 +182,105 @@ function Waveform({ active }: { active: boolean }) {
 export function VoiceDemoPanel({
   className,
   autoPlay = false,
+  scenario = "default",
 }: {
   className?: string;
   autoPlay?: boolean;
+  scenario?: VoiceDemoScenario;
 }) {
   const reduce = useReducedMotion();
   const [phase, setPhase] = useState<Phase>("idle");
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const ranAuto = useRef(false);
   const running = useRef(false);
+  const scenarioRef = useRef(scenario);
+  const demoAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  scenarioRef.current = scenario;
+  const meta = SCENARIOS[scenario];
 
   const clearAndPlay = useCallback(async () => {
     if (running.current) return;
     running.current = true;
+    if (demoAudioRef.current) {
+      demoAudioRef.current.pause();
+      demoAudioRef.current.src = "";
+      demoAudioRef.current = null;
+    }
+    cancelBrowserSpeech();
+
+    const activeScenario = scenarioRef.current;
+    const lines = SCENARIOS[activeScenario].lines;
     setBubbles([]);
-    setPhase("listening");
-    await sleep(reduce ? 400 : 900);
-    setPhase("thinking");
-    await sleep(reduce ? 250 : 550);
-
     const idBase = Date.now().toString();
-    setBubbles([{ id: `${idBase}-u`, role: "user", text: DEMO_LINES[0].text }]);
-    setPhase("speaking");
-    await sleep(reduce ? 350 : 750);
 
-    setBubbles((prev) => [
-      ...prev,
-      { id: `${idBase}-a`, role: "assistant", text: DEMO_LINES[1].text },
-    ]);
-    await sleep(reduce ? 600 : 1400);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) break;
+
+      if (line.role === "user") {
+        setPhase("listening");
+        await sleep(reduce ? 380 : 750);
+        setPhase("thinking");
+        await sleep(reduce ? 220 : 450);
+      } else {
+        setPhase("thinking");
+        await sleep(reduce ? 220 : 450);
+      }
+
+      setPhase("speaking");
+      const bubble: Bubble = {
+        id: `${idBase}-${i}-${line.role}`,
+        role: line.role,
+        text: line.text,
+      };
+      setBubbles((prev) => [...prev, bubble]);
+
+      if (line.role === "assistant") {
+        try {
+          await speakAssistantLine(line.text, demoAudioRef);
+        } catch {
+          cancelBrowserSpeech();
+          await speakFallbackBrowser(line.text);
+        }
+      } else {
+        await sleep(reduce ? 500 : 980);
+      }
+    }
+
     setPhase("idle");
     running.current = false;
   }, [reduce]);
 
   useEffect(() => {
+    return () => {
+      if (demoAudioRef.current) {
+        demoAudioRef.current.pause();
+        demoAudioRef.current.src = "";
+        demoAudioRef.current = null;
+      }
+      cancelBrowserSpeech();
+    };
+  }, []);
+
+  useEffect(() => {
+    ranAuto.current = false;
+    setPhase("idle");
+    setBubbles([]);
+    running.current = false;
+    if (demoAudioRef.current) {
+      demoAudioRef.current.pause();
+      demoAudioRef.current.src = "";
+      demoAudioRef.current = null;
+    }
+    cancelBrowserSpeech();
+  }, [scenario]);
+
+  useEffect(() => {
     if (!autoPlay || ranAuto.current) return;
     ranAuto.current = true;
     void clearAndPlay();
-  }, [autoPlay, clearAndPlay]);
+  }, [autoPlay, clearAndPlay, scenario]);
 
   const listening = phase === "listening";
   const micGlow =
@@ -129,9 +305,9 @@ export function VoiceDemoPanel({
             </span>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">
-                Solvio Voice
+                {meta.productLine}
               </p>
-              <p className="text-sm font-semibold text-[#0f172a]">Assistant preview</p>
+              <p className="text-sm font-semibold text-[#0f172a]">{meta.eyebrowAssistant}</p>
             </div>
           </div>
           <AnimatePresence mode="wait">
@@ -165,7 +341,7 @@ export function VoiceDemoPanel({
             ) : (
               <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <Badge variant="outline" className="rounded-full border-[#ebe7f7] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#64748b]">
-                  Tap mic to hear Solvio
+                  {meta.idleBadge}
                 </Badge>
               </motion.div>
             )}
@@ -184,7 +360,7 @@ export function VoiceDemoPanel({
                   animate={{ opacity: 1 }}
                   className="rounded-2xl bg-[#f8fafc] px-4 py-6 text-center text-sm leading-relaxed text-[#64748b]"
                 >
-                  Ask anything — Solvio replies like a calm teammate at your front desk.
+                  {meta.emptyHint}
                 </motion.p>
               )}
               {bubbles.map((b, idx) => (
@@ -206,7 +382,7 @@ export function VoiceDemoPanel({
                   )}
                 >
                   <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.26em] text-current opacity-75">
-                    {b.role === "user" ? "Guest" : "Solvio"}
+                    {b.role === "user" ? "Caller" : meta.assistantLabel}
                   </span>
                   {b.text}
                 </motion.div>
@@ -228,7 +404,7 @@ export function VoiceDemoPanel({
           <motion.div whileTap={{ scale: reduce ? 1 : 0.96 }} className="relative">
             <motion.button
               type="button"
-              aria-label={listening ? "Listening" : "Talk to Solvio"}
+              aria-label={listening ? "Listening" : meta.idleBadge}
               aria-pressed={listening || phase !== "idle"}
               onClick={() => void clearAndPlay()}
               className={cn(
@@ -262,7 +438,7 @@ export function VoiceDemoPanel({
         </div>
 
         <p className="text-center text-[11px] font-medium uppercase tracking-[0.28em] text-[#94a3b8]">
-          Interactive preview — tap the mic to hear how Solvio sounds with guests.
+          {meta.footer}
         </p>
       </div>
     </Card>

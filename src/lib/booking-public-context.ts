@@ -1,0 +1,272 @@
+import type { BookingGuestMode } from "@/lib/booking-guest-modes";
+import { isBookingGuestMode, parseGuestModesJson } from "@/lib/booking-guest-modes";
+
+/** Matches Postgres `extract(dow)` convention used in dashboards: 0 = Sunday … 6 = Saturday */
+export const BOOKING_PUBLIC_WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+export type PublicAppointmentHour = {
+  weekday: number;
+  open_time: string;
+  close_time: string;
+  slot_minutes: number;
+};
+
+export type PublicAppointmentSlotException = {
+  exception_date: string;
+  slot_start: string | null;
+  kind: "removed" | "cancelled";
+};
+
+export type PublicBusinessEvent = {
+  id?: string;
+  title: string;
+  description: string;
+  starts_at: string;
+  ends_at: string;
+  cancelled: boolean;
+  cancellation_reason: string;
+};
+
+export type PublicFloorTable = {
+  id?: string;
+  label: string;
+  capacity: number;
+  pricing_mode: string;
+  price_cents: number;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+};
+
+export type PublicTableQuestion = {
+  question_label: string;
+  required: boolean;
+  sort_order: number;
+};
+
+export type BookingPublicContextPayload = {
+  business_name: string;
+  guest_message: string;
+  booking_flow_kind: string;
+  venue_time_zone: string;
+  guest_modes_raw: unknown;
+  appointment_hours: PublicAppointmentHour[];
+  appointment_slot_exceptions: PublicAppointmentSlotException[];
+  events: PublicBusinessEvent[];
+  tables: PublicFloorTable[];
+  table_questions: PublicTableQuestion[];
+};
+
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function parseHours(raw: unknown): PublicAppointmentHour[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicAppointmentHour[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const weekday = typeof o.weekday === "number" ? o.weekday : Number(o.weekday);
+    const slotMinutes =
+      typeof o.slot_minutes === "number" ? o.slot_minutes : Number(o.slot_minutes);
+    const openTime = typeof o.open_time === "string" ? o.open_time : "";
+    const closeTime = typeof o.close_time === "string" ? o.close_time : "";
+    if (!Number.isFinite(weekday) || weekday < 0 || weekday > 6) continue;
+    if (!openTime || !closeTime || !Number.isFinite(slotMinutes)) continue;
+    out.push({
+      weekday,
+      open_time: openTime,
+      close_time: closeTime,
+      slot_minutes: slotMinutes,
+    });
+  }
+  return out;
+}
+
+function parseAppointmentSlotExceptions(raw: unknown): PublicAppointmentSlotException[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicAppointmentSlotException[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const ds = typeof o.exception_date === "string" ? o.exception_date.trim() : "";
+    const ymd = /^(\d{4}-\d{2}-\d{2})/.exec(ds);
+    const exception_date = ymd?.[1] ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(exception_date)) continue;
+
+    let kindRaw: PublicAppointmentSlotException["kind"] = "removed";
+    if (typeof o.kind === "string" && (o.kind === "removed" || o.kind === "cancelled")) {
+      kindRaw = o.kind;
+    }
+
+    let slot_start: string | null = null;
+    if (o.slot_start === null || o.slot_start === undefined) {
+      slot_start = null;
+    } else if (typeof o.slot_start === "string") {
+      const t = o.slot_start.trim();
+      if (!t.length) slot_start = null;
+      else {
+        const clip = /^(\d{2}:\d{2})(?::\d{2})?/.exec(t);
+        slot_start = clip ? clip[1] : null;
+      }
+    }
+
+    out.push({ exception_date, slot_start: slot_start ?? null, kind: kindRaw });
+  }
+  return out;
+}
+
+function parseEvents(raw: unknown): PublicBusinessEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicBusinessEvent[] = [];
+  for (const item of raw) {
+    const o = asRecord(item);
+    if (!o) continue;
+    const title = typeof o.title === "string" ? o.title.trim() : "";
+    const startsAt = typeof o.starts_at === "string" ? o.starts_at : "";
+    const endsAt = typeof o.ends_at === "string" ? o.ends_at : "";
+    if (!title || !startsAt || !endsAt) continue;
+    const id =
+      typeof o.id === "string" && /^[0-9a-f-]{36}$/i.test(o.id.trim())
+        ? o.id.trim()
+        : undefined;
+    const evt: PublicBusinessEvent = {
+      ...(id ? { id } : {}),
+      title,
+      description: typeof o.description === "string" ? o.description : "",
+      starts_at: startsAt,
+      ends_at: endsAt,
+      cancelled: Boolean(o.cancelled),
+      cancellation_reason:
+        typeof o.cancellation_reason === "string" ? o.cancellation_reason : "",
+    };
+    out.push(evt);
+  }
+  return out;
+}
+
+function parseTables(raw: unknown): PublicFloorTable[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicFloorTable[] = [];
+  for (const item of raw) {
+    const o = asRecord(item);
+    if (!o) continue;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    const capacity = typeof o.capacity === "number" ? o.capacity : Number(o.capacity);
+    const pricingMode = typeof o.pricing_mode === "string" ? o.pricing_mode.trim() : "table";
+    const priceCents = typeof o.price_cents === "number" ? o.price_cents : Number(o.price_cents);
+    const positionX = typeof o.position_x === "number" ? o.position_x : Number(o.position_x);
+    const positionY = typeof o.position_y === "number" ? o.position_y : Number(o.position_y);
+    const width = typeof o.width === "number" ? o.width : Number(o.width);
+    const height = typeof o.height === "number" ? o.height : Number(o.height);
+    if (!label || !Number.isFinite(capacity)) continue;
+    const id =
+      typeof o.id === "string" && /^[0-9a-f-]{36}$/i.test(o.id.trim()) ? o.id.trim() : undefined;
+    const ft: PublicFloorTable = {
+      ...(id ? { id } : {}),
+      label,
+      capacity: Number.isFinite(capacity) ? capacity : 0,
+      pricing_mode: pricingMode || "table",
+      price_cents: Number.isFinite(priceCents) ? Math.max(0, Math.round(priceCents)) : 0,
+      position_x: Number.isFinite(positionX) ? positionX : 0,
+      position_y: Number.isFinite(positionY) ? positionY : 0,
+      width: Number.isFinite(width) ? Math.max(1, width) : 120,
+      height: Number.isFinite(height) ? Math.max(1, height) : 80,
+    };
+    out.push(ft);
+  }
+  return out;
+}
+
+function parseQuestions(raw: unknown): PublicTableQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicTableQuestion[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const questionLabel = typeof o.question_label === "string" ? o.question_label.trim() : "";
+    const sortOrder = typeof o.sort_order === "number" ? o.sort_order : Number(o.sort_order);
+    if (!questionLabel) continue;
+    out.push({
+      question_label: questionLabel,
+      required: Boolean(o.required),
+      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    });
+  }
+  out.sort((a, b) => a.sort_order - b.sort_order || a.question_label.localeCompare(b.question_label));
+  return out;
+}
+
+export function parseGuestModesFromRpc(raw: unknown): BookingGuestMode[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    const out = raw.filter((x): x is BookingGuestMode => typeof x === "string" && isBookingGuestMode(x));
+    return [...new Set(out)];
+  }
+  if (typeof raw === "string") {
+    return parseGuestModesJson(raw);
+  }
+  return [];
+}
+
+/** Parses JSON returned by `get_booking_public_context`. Returns null when slug unknown or malformed. */
+export function parseBookingPublicContext(raw: unknown): BookingPublicContextPayload | null {
+  let decoded: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      decoded = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  const root = asRecord(decoded);
+  if (!root) return null;
+  const businessName = typeof root.business_name === "string" ? root.business_name.trim() : "";
+  if (!businessName) return null;
+
+  return {
+    business_name: businessName,
+    guest_message: typeof root.guest_message === "string" ? root.guest_message.trim() : "",
+    booking_flow_kind:
+      typeof root.booking_flow_kind === "string" ? root.booking_flow_kind.trim() : "",
+    venue_time_zone:
+      typeof root.venue_time_zone === "string" && root.venue_time_zone.trim()
+        ? root.venue_time_zone.trim()
+        : "UTC",
+    guest_modes_raw: root.guest_modes,
+    appointment_hours: parseHours(root.appointment_hours),
+    appointment_slot_exceptions: parseAppointmentSlotExceptions(root.appointment_slot_exceptions),
+    events: parseEvents(root.events),
+    tables: parseTables(root.tables),
+    table_questions: parseQuestions(root.table_questions),
+  };
+}
+
+export function formatPublicTablePriceEUR(priceCents: number, pricingMode: string): string {
+  const safe = Number.isFinite(priceCents) ? Math.max(0, priceCents) : 0;
+  const euros = safe % 100 === 0 ? String(safe / 100) : (safe / 100).toFixed(2);
+  const base = `€${euros}`;
+  switch (pricingMode) {
+    case "person":
+      return `${base} / guest`;
+    case "group_tier":
+      return `${base} · group tiers`;
+    default:
+      return `${base} / table`;
+  }
+}
+
+export function formatPublicRange(startIso: string, endIso: string): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
+  const sameDay = start.toDateString() === end.toDateString();
+  const dateFmt: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" };
+  const timeFmt: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  if (sameDay) {
+    return `${start.toLocaleString(undefined, { ...dateFmt, ...timeFmt })} – ${end.toLocaleTimeString(undefined, timeFmt)}`;
+  }
+  return `${start.toLocaleString(undefined, { ...dateFmt, ...timeFmt })} → ${end.toLocaleString(undefined, { ...dateFmt, ...timeFmt })}`;
+}

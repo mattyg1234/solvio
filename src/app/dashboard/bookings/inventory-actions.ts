@@ -1,0 +1,337 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+async function getOwnedSupabase(businessId: string) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+  const { data: row } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("id", businessId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!row) {
+    throw new Error("Business not found.");
+  }
+  return supabase;
+}
+
+function revBookings() {
+  revalidatePath("/dashboard/bookings");
+}
+
+/** Upsert weekly row for one weekday (0=Sun … 6=Sat). Times as HH:MM (24h). */
+export async function upsertAppointmentWeekdayHour(params: {
+  businessId: string;
+  weekday: number;
+  openTime: string;
+  closeTime: string;
+  slotMinutes: number;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  await supabase
+    .from("appointment_weekday_hours")
+    .delete()
+    .eq("business_id", params.businessId)
+    .eq("weekday", params.weekday);
+
+  const { error } = await supabase.from("appointment_weekday_hours").insert({
+    business_id: params.businessId,
+    weekday: params.weekday,
+    open_time: params.openTime,
+    close_time: params.closeTime,
+    slot_minutes: params.slotMinutes,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function deleteAppointmentWeekdayHour(businessId: string, rowId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase.from("appointment_weekday_hours").delete().eq("id", rowId).eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function addAppointmentSlotException(params: {
+  businessId: string;
+  exceptionDate: string;
+  slotStart: string | null;
+  kind: "removed" | "cancelled";
+  reason?: string | null;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { error } = await supabase.from("appointment_slot_exceptions").insert({
+    business_id: params.businessId,
+    exception_date: params.exceptionDate,
+    slot_start: params.slotStart && params.slotStart.length > 0 ? params.slotStart : null,
+    kind: params.kind,
+    reason: params.reason?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function deleteAppointmentSlotException(businessId: string, rowId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase.from("appointment_slot_exceptions").delete().eq("id", rowId).eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/**
+ * Replace every exception saved for `exceptionDate`, then optionally insert closures.
+ * `clear` — remove all exceptions for that date only.
+ */
+export async function replaceAppointmentSlotExceptionsForDate(params: {
+  businessId: string;
+  exceptionDate: string;
+  kind: "removed" | "cancelled";
+  reason?: string | null;
+  mode: "clear" | "slots" | "whole_day";
+  /** HH:MM per blocked slot start (weekly template aligns these). Required when mode === "slots". */
+  slotStartsHm?: string[];
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const ds = params.exceptionDate.trim();
+  await supabase.from("appointment_slot_exceptions").delete().eq("business_id", params.businessId).eq("exception_date", ds);
+
+  if (params.mode === "clear") {
+    revBookings();
+    return;
+  }
+
+  const reasonTrim = params.reason?.trim() || null;
+
+  if (params.mode === "whole_day") {
+    const { error } = await supabase.from("appointment_slot_exceptions").insert({
+      business_id: params.businessId,
+      exception_date: ds,
+      slot_start: null,
+      kind: params.kind,
+      reason: reasonTrim,
+    });
+    if (error) throw new Error(error.message);
+    revBookings();
+    return;
+  }
+
+  const uniqueHm = [...new Set((params.slotStartsHm ?? []).map((x) => x.trim()).filter(Boolean))].sort();
+  if (!uniqueHm.length) {
+    revBookings();
+    return;
+  }
+
+  const rows = uniqueHm.map((hm) => ({
+    business_id: params.businessId,
+    exception_date: ds,
+    slot_start: /^(\d{2}:\d{2})$/.test(hm) ? `${hm}:00` : hm,
+    kind: params.kind,
+    reason: reasonTrim,
+  }));
+
+  const { error } = await supabase.from("appointment_slot_exceptions").insert(rows);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function upsertBusinessEvent(params: {
+  businessId: string;
+  id?: string | null;
+  title: string;
+  description?: string | null;
+  startsAt: string;
+  endsAt: string;
+  recurrence: Record<string, unknown>;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+
+  if (params.id) {
+    const { error } = await supabase
+      .from("business_events")
+      .update({
+        title: params.title.trim(),
+        description: params.description?.trim() || null,
+        starts_at: params.startsAt,
+        ends_at: params.endsAt,
+        recurrence: params.recurrence,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", params.id)
+      .eq("business_id", params.businessId);
+    if (error) throw new Error(error.message);
+    revBookings();
+    return;
+  }
+
+  const { error } = await supabase.from("business_events").insert({
+    business_id: params.businessId,
+    title: params.title.trim(),
+    description: params.description?.trim() || null,
+    starts_at: params.startsAt,
+    ends_at: params.endsAt,
+    recurrence: params.recurrence,
+    cancelled_at: null,
+    cancellation_reason: null,
+    deleted_at: null,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function cancelBusinessEvent(businessId: string, eventId: string, reason?: string | null) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("business_events")
+    .update({
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: reason?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function uncancelBusinessEvent(businessId: string, eventId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("business_events")
+    .update({
+      cancelled_at: null,
+      cancellation_reason: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Soft-delete — hidden from listings / AI scripts unless you restore later. */
+export async function softDeleteBusinessEvent(businessId: string, eventId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("business_events")
+    .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function restoreBusinessEvent(businessId: string, eventId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("business_events")
+    .update({ deleted_at: null, updated_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function upsertFloorPlanTable(params: {
+  businessId: string;
+  id?: string | null;
+  label: string;
+  capacity: number;
+  positionX: number;
+  positionY: number;
+  width: number;
+  height: number;
+  pricingMode: "table" | "person" | "group_tier";
+  priceCents: number;
+  groupPricing?: Record<string, unknown> | null;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const row = {
+    business_id: params.businessId,
+    label: params.label.trim(),
+    capacity: params.capacity,
+    position_x: params.positionX,
+    position_y: params.positionY,
+    width: params.width,
+    height: params.height,
+    pricing_mode: params.pricingMode,
+    price_cents: params.priceCents,
+    group_pricing: (params.groupPricing ?? null) as unknown as Record<string, unknown> | null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (params.id) {
+    const { error } = await supabase.from("floor_plan_tables").update(row).eq("id", params.id).eq("business_id", params.businessId);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("floor_plan_tables").insert(row);
+    if (error) throw new Error(error.message);
+  }
+  revBookings();
+}
+
+export async function saveFloorPlanLayout(
+  businessId: string,
+  updates: { id: string; positionX: number; positionY: number }[],
+) {
+  const supabase = await getOwnedSupabase(businessId);
+  const now = new Date().toISOString();
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("floor_plan_tables")
+      .update({ position_x: u.positionX, position_y: u.positionY, updated_at: now })
+      .eq("id", u.id)
+      .eq("business_id", businessId);
+    if (error) throw new Error(error.message);
+  }
+  revBookings();
+}
+
+export async function deleteFloorPlanTable(businessId: string, tableId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase.from("floor_plan_tables").delete().eq("id", tableId).eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+export async function upsertTableBookingQuestion(params: {
+  businessId: string;
+  id?: string | null;
+  questionLabel: string;
+  required: boolean;
+  sortOrder: number;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const row = {
+    business_id: params.businessId,
+    question_label: params.questionLabel.trim(),
+    required: params.required,
+    sort_order: params.sortOrder,
+  };
+  if (params.id) {
+    const { error } = await supabase.from("booking_table_questions").update(row).eq("id", params.id).eq("business_id", params.businessId);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("booking_table_questions").insert(row);
+    if (error) throw new Error(error.message);
+  }
+  revBookings();
+}
+
+export async function deleteTableBookingQuestion(businessId: string, questionId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase.from("booking_table_questions").delete().eq("id", questionId).eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}

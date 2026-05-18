@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
+
 export function SiteFooter() {
   return (
     <footer id="contact" className="border-t border-[#ebe7f7] bg-[#f8fafc] py-14">
@@ -9,10 +11,10 @@ export function SiteFooter() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] text-sm font-bold text-white">
               S
             </span>
-            <span className="text-lg font-semibold tracking-tight">Solvio</span>
+            <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={0.42} />
           </div>
           <p className="text-[15px] leading-relaxed text-[#64748b]">
-            Your AI receptionist for restaurants, salons, cafés and tourist-facing teams across Spain — built for growth, not jargon.
+            Booking infrastructure for restaurants, salons and cafés — voice reception, Stripe-ready deposits and confirmations without enterprise baggage.
           </p>
           <p className="text-sm font-medium text-[#7c3aed]">
             <a href="mailto:hello@solvio.es" className="underline-offset-4 hover:underline">
@@ -26,18 +28,33 @@ export function SiteFooter() {
             <p className="font-semibold text-[#0f172a]">Product</p>
             <ul className="space-y-2 text-[#64748b]">
               <li>
-                <Link href="#growth" className="hover:text-[#7c3aed]">
+                <Link href="/#growth" className="hover:text-[#7c3aed]">
                   What you get
                 </Link>
               </li>
               <li>
-                <Link href="#demo" className="hover:text-[#7c3aed]">
+                <Link href="/#commerce" className="hover:text-[#7c3aed]">
+                  Bookings & Stripe
+                </Link>
+              </li>
+              <li>
+                <Link href="/#demo" className="hover:text-[#7c3aed]">
                   Voice demo
                 </Link>
               </li>
               <li>
-                <Link href="#proof" className="hover:text-[#7c3aed]">
+                <Link href="/#proof" className="hover:text-[#7c3aed]">
                   Results
+                </Link>
+              </li>
+              <li>
+                <Link href="/login" className="hover:text-[#7c3aed]">
+                  Log in
+                </Link>
+              </li>
+              <li>
+                <Link href="/signup" className="hover:text-[#7c3aed]">
+                  Sign up
                 </Link>
               </li>
             </ul>

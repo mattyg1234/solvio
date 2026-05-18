@@ -1,5 +1,6 @@
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { CommerceSection } from "@/components/home/commerce-section";
 import { GrowthSection } from "@/components/home/growth-section";
 import { HeroSection } from "@/components/home/hero-section";
 import { LiveDemoSection } from "@/components/home/live-demo-section";
@@ -12,6 +13,7 @@ export default function Home() {
       <main className="bg-white">
         <HeroSection />
         <GrowthSection />
+        <CommerceSection />
         <SocialProofSection />
         <LiveDemoSection />
       </main>

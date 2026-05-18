@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 
+import { AmbientOrbs } from "@/components/site/ambient-orbs";
 import { VoiceDemoPanel } from "@/components/home/voice-demo-panel";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,8 @@ export function LiveDemoSection() {
       id="demo"
       className="relative overflow-hidden border-b border-[#ebe7f7]/70 bg-gradient-to-b from-[#faf7ff] via-white to-[#f8fafc] py-20 sm:py-28"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_25%,rgba(167,139,250,0.25),transparent_55%),radial-gradient(circle_at_82%_70%,rgba(124,58,237,0.12),transparent_45%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_25%,rgba(167,139,250,0.18),transparent_56%),radial-gradient(circle_at_82%_70%,rgba(124,58,237,0.09),transparent_46%)]" />
+      <AmbientOrbs />
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <motion.div
@@ -29,10 +31,11 @@ export function LiveDemoSection() {
             Hands-on preview
           </p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            Hear Solvio handle your front desk — live preview.
+            Watch Solvio preview a live reception — before you plug in telephony.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            Tap the mic, listen to the waveform glow and watch how effortless AI-first hospitality feels when it&apos;s done right.
+            This is scripted today and streams from your stack tomorrow — tap the waveform to feel the premium calm we bring to
+            every guest ping.
           </p>
         </motion.div>
 
@@ -43,7 +46,7 @@ export function LiveDemoSection() {
           transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto mt-14 max-w-xl"
         >
-          <VoiceDemoPanel autoPlay={false} />
+          <VoiceDemoPanel scenario="default" autoPlay={false} />
         </motion.div>
 
         <motion.div
@@ -54,7 +57,7 @@ export function LiveDemoSection() {
           className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
           <Link
-            href="#contact"
+            href="/#contact"
             className={cn(
               buttonVariants({ variant: "default", size: "lg" }),
               "h-12 rounded-full px-9 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
@@ -63,7 +66,7 @@ export function LiveDemoSection() {
             Book a personalised demo
           </Link>
           <Link
-            href="#growth"
+            href="/#growth"
             className={cn(
               buttonVariants({ variant: "ghost", size: "lg" }),
               "h-12 rounded-full px-6 text-base font-semibold text-[#64748b] hover:bg-white/70",

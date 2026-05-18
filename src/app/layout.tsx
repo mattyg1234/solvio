@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Solvio · AI reception that grows your business",
   description:
-    "Solvio answers calls, books customers, manages appointments and helps local businesses grow — simply, 24/7.",
+    "Solvio answers calls, books reservations, collects deposits via Stripe Connect, syncs calendars and confirms guests — commerce-ready AI for local businesses.",
 };
 
 export default function RootLayout({
