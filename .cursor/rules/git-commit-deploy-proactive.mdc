@@ -1,0 +1,20 @@
+---
+description: Proactively commit and deploy Solvio after substantive work unless the user opts out for the session.
+alwaysApply: true
+---
+
+# Git commit and Vercel deploy (Solvio)
+
+For **this repo**, balance is toward **shipping**, not asking permission each time:
+
+- After completing a **coherent, working change** you would keep (feature slice, bugfix, wiring, docs that belong in git), **`git commit` with a concise message** and **`git push`** to `origin/main` unless the user has said they do **not** want commits in this conversation.
+- When the push should be **live on marketing/prod**, also run **`npx vercel deploy --prod --yes`** (or rely on Git-integrated Production deploy—use whichever already matches this project, but prefer an explicit prod deploy after important site-facing changes).
+
+## Still mandatory
+
+- **Never** stage or commit `.env.local`, `.env`, secrets, or credential files—warn if the user asks to commit them.
+- Follow safe git hygiene: no `push --force` to shared branches, no `git config` changes, **no** `--no-verify` / `--no-gpg-sign` unless the user explicitly asks.
+
+## Grey area
+
+If the scope is exploratory, half-finished with failing tests/build, **or** the user is clearly iterating before a checkpoint, **defer** commit until it makes sense—or ask one short question if ambiguity is costly.
