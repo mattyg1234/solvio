@@ -3,6 +3,8 @@
  * respecting optional `skipped_dates` and `instance_overrides` on `recurrence` JSON.
  */
 
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
+
 const WEEK_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 export type ExpandedOccurrence = {
@@ -114,8 +116,9 @@ export function clearInstanceOverride(recurrence: Record<string, unknown>, dateY
 }
 
 export function formatYmdInTimeZone(date: Date, timeZone: string): string {
+  const zone = coerceValidIanaTimeZone(timeZone);
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timeZone,
+    timeZone: zone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -124,7 +127,8 @@ export function formatYmdInTimeZone(date: Date, timeZone: string): string {
 
 /** 0 = Sunday … 6 = Saturday, evaluated in `timeZone`. */
 export function dowSunday0(date: Date, timeZone: string): number {
-  const wd = date.toLocaleDateString("en-US", { weekday: "short", timeZone });
+  const zone = coerceValidIanaTimeZone(timeZone);
+  const wd = date.toLocaleDateString("en-US", { weekday: "short", timeZone: zone });
   const idx = (WEEK_SHORT as readonly string[]).indexOf(wd);
   return idx >= 0 ? idx : 0;
 }

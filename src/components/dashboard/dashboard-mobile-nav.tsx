@@ -8,7 +8,7 @@ import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, PhoneCall, Se
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
 
-function buildMobileNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete: boolean): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string }[] {
+function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string }[] {
   const items: {
     href: string;
     label: string;
@@ -19,11 +19,7 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete:
 
   items.push({ href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" });
 
-  items.push(
-    bookingSetupComplete
-      ? { href: "/dashboard/bookings", label: "Offerings", icon: ClipboardList, key: "booking-offerings" }
-      : { href: "/dashboard/setup/bookings", label: "Setup", icon: ClipboardList, key: "booking-setup" },
-  );
+  items.push({ href: "/dashboard/setup/bookings", label: "Setup", icon: ClipboardList, key: "booking-setup" });
 
   items.push({ href: "/dashboard/payments", label: "Pay", icon: CreditCard, key: "pay" });
 
@@ -38,12 +34,11 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete:
 
 export type DashboardMobileNavProps = {
   capabilities: ResolvedPlatformCapabilities;
-  bookingSetupComplete?: boolean;
 };
 
-export function DashboardMobileNav({ capabilities, bookingSetupComplete }: DashboardMobileNavProps) {
+export function DashboardMobileNav({ capabilities }: DashboardMobileNavProps) {
   const pathname = usePathname();
-  const items = buildMobileNav(capabilities, Boolean(bookingSetupComplete));
+  const items = buildMobileNav(capabilities);
 
   function navActive(href: string, exact?: boolean) {
     const pathOnly = href.split("#")[0] ?? href;

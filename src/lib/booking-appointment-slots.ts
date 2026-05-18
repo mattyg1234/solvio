@@ -1,5 +1,6 @@
 import type { PublicAppointmentHour, PublicAppointmentSlotException } from "@/lib/booking-public-context";
 import { BOOKING_PUBLIC_WEEKDAY_SHORT } from "@/lib/booking-public-context";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 
 export type AppointmentSlotChoice = {
   /** Sent with the form (`preferred_time`) — human-readable for inbox. */
@@ -20,17 +21,17 @@ export function dowSundayZeroInBusinessTZ(dateYmd: string, ianaTz: string): numb
   const mo = Number(parts[2]);
   const d = Number(parts[3]);
   const utcMid = Date.UTC(y, mo - 1, d, 12, 0, 0);
-  const wd = new Intl.DateTimeFormat("en-US", { timeZone: ianaTz.trim() || "UTC", weekday: "short" }).format(
-    new Date(utcMid),
-  );
+  const zone = coerceValidIanaTimeZone(ianaTz);
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "short" }).format(new Date(utcMid));
   const map: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   return map[wd] ?? 0;
 }
 
 /** YYYY-MM-DD in a given IANA zone, anchored at noon UTC + day delta — stable for DST edges. */
 export function calendarYmdInZone(utcMidAnchorMs: number, ianaTz: string): string {
+  const zone = coerceValidIanaTimeZone(ianaTz);
   const s = new Intl.DateTimeFormat("en-CA", {
-    timeZone: ianaTz.trim() || "UTC",
+    timeZone: zone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -151,7 +152,7 @@ export function buildAppointmentSlotChoices(
   if (unavailable.wholeDay) return [];
   const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[row.weekday];
   const intervals = intervalsForHourRow(row);
-  const tz = venueTimeZone.trim() || "UTC";
+  const tz = coerceValidIanaTimeZone(venueTimeZone);
 
   const out: AppointmentSlotChoice[] = [];
   for (const { start, end } of intervals) {

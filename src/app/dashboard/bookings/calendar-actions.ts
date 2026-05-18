@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { sendBookingConfirmedEmail } from "@/lib/notifications/booking-emails";
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { getSiteUrl } from "@/lib/site-url";
@@ -134,7 +135,7 @@ export async function createVenueCalendarBookingFromRequest(params: {
 
   revBookings();
 
-  const tz = biz.time_zone?.trim() || "UTC";
+  const tz = coerceValidIanaTimeZone(biz.time_zone ?? "");
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
 
   await sendBookingConfirmedEmail({

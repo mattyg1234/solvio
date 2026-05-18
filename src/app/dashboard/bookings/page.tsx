@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { suggestBookingSlug } from "@/lib/booking-slug";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 import { cn } from "@/lib/utils";
@@ -67,8 +68,7 @@ export default async function DashboardBookingsPage({
   const bizNameById = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
   const primaryBizId = businesses[0]?.id ?? null;
   const primaryBizName = businesses[0]?.name ?? null;
-  const rawFirstTz = typeof businessesRaw?.[0]?.time_zone === "string" ? businessesRaw[0].time_zone.trim() : "";
-  const primaryVenueTz = rawFirstTz.length > 0 ? rawFirstTz : "UTC";
+  const primaryVenueTz = coerceValidIanaTimeZone(businessesRaw?.[0]?.time_zone ?? "");
 
   const primaryBookingFlowComplete = Boolean(businessesRaw?.[0]?.booking_flow_completed_at);
   type BookingRow = {

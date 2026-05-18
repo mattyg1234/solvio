@@ -11,6 +11,7 @@ import {
 } from "@/app/dashboard/bookings/inventory-actions";
 import { Button } from "@/components/ui/button";
 import { expandBusinessEventOccurrences, formatYmdInTimeZone } from "@/lib/business-event-occurrences";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { cn } from "@/lib/utils";
 
 /** Mirror of `BusinessEventRow` minus soft-delete bookkeeping (drawer hides deleted rows upstream). */
@@ -63,7 +64,7 @@ export function EventSeriesCalendarSheet({
   venueTimeZone,
   onClose,
 }: EventSeriesCalendarSheetProps) {
-  const tz = venueTimeZone && venueTimeZone.trim().length ? venueTimeZone.trim() : "UTC";
+  const tz = coerceValidIanaTimeZone(venueTimeZone);
 
   const now = useMemo(() => new Date(), []);
   const initialYmd = formatYmdInTimeZone(now, tz);

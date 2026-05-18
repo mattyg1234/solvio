@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string };
 
-function buildSidebarNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete: boolean): NavItem[] {
+function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
   const items: NavItem[] = [];
 
   items.push({
@@ -41,21 +41,13 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete
     key: "bookings",
   });
 
-  items.push(
-    bookingSetupComplete
-      ? {
-          href: "/dashboard/bookings",
-          label: "Edit or create bookings",
-          icon: ClipboardList,
-          key: "booking-offerings",
-        }
-      : {
-          href: "/dashboard/setup/bookings",
-          label: "Booking setup",
-          icon: ClipboardList,
-          key: "booking-setup",
-        },
-  );
+  /** Always reachable — flow kind, guest modes, and message remain editable after first completion. */
+  items.push({
+    href: "/dashboard/setup/bookings",
+    label: "Booking setup",
+    icon: ClipboardList,
+    key: "booking-setup",
+  });
 
   if (cap.ai_receptionist) {
     items.push({
@@ -81,13 +73,11 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, bookingSetupComplete
 
 export type DashboardSidebarProps = {
   capabilities: ResolvedPlatformCapabilities;
-  /** Mirrors `booking_flow_completed_at` for the merchant’s primary business. */
-  bookingSetupComplete?: boolean;
 };
 
-export function DashboardSidebar({ capabilities, bookingSetupComplete }: DashboardSidebarProps) {
+export function DashboardSidebar({ capabilities }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const nav = buildSidebarNav(capabilities, Boolean(bookingSetupComplete));
+  const nav = buildSidebarNav(capabilities);
 
   function active(href: string, exact?: boolean) {
     if (exact) return pathname === href;

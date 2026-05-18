@@ -1,5 +1,6 @@
 import type { BookingGuestMode } from "@/lib/booking-guest-modes";
 import { isBookingGuestMode, parseGuestModesJson } from "@/lib/booking-guest-modes";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 
 /** Matches Postgres `extract(dow)` convention used in dashboards: 0 = Sunday … 6 = Saturday */
 export const BOOKING_PUBLIC_WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -231,10 +232,7 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     guest_message: typeof root.guest_message === "string" ? root.guest_message.trim() : "",
     booking_flow_kind:
       typeof root.booking_flow_kind === "string" ? root.booking_flow_kind.trim() : "",
-    venue_time_zone:
-      typeof root.venue_time_zone === "string" && root.venue_time_zone.trim()
-        ? root.venue_time_zone.trim()
-        : "UTC",
+    venue_time_zone: coerceValidIanaTimeZone(root.venue_time_zone),
     guest_modes_raw: root.guest_modes,
     appointment_hours: parseHours(root.appointment_hours),
     appointment_slot_exceptions: parseAppointmentSlotExceptions(root.appointment_slot_exceptions),
