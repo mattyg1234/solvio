@@ -72,7 +72,7 @@ export default async function DashboardBookingsPage({
 
   const { data: businessesRaw } = await supabase
     .from("businesses")
-    .select("id,name,booking_slug,time_zone,booking_flow_completed_at")
+    .select("id,name,booking_slug,time_zone,booking_flow_completed_at,stripe_connect_account_id,stripe_connect_charges_enabled")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
@@ -82,6 +82,13 @@ export default async function DashboardBookingsPage({
       name: b.name,
       booking_slug: b.booking_slug as string | null,
     })) ?? [];
+
+  const stripeReadyByBizId = Object.fromEntries(
+    (businessesRaw ?? []).map((b) => [
+      b.id,
+      Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled),
+    ]),
+  );
 
   const businessIds = businesses.map((b) => b.id);
   const bizNameById = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
@@ -103,6 +110,8 @@ export default async function DashboardBookingsPage({
     requested_date: string | null;
     guest_count: number | null;
     intake_extras: unknown | null;
+    payment_status: string | null;
+    deposit_amount_cents: number | null;
     created_at: string;
   };
 
@@ -112,7 +121,7 @@ export default async function DashboardBookingsPage({
     const { data: reqData } = await supabase
       .from("booking_requests")
       .select(
-        "id,business_id,customer_name,email,phone,notes,preferred_time,event_title,booking_kind,requested_date,guest_count,intake_extras,created_at",
+        "id,business_id,customer_name,email,phone,notes,preferred_time,event_title,booking_kind,requested_date,guest_count,intake_extras,payment_status,deposit_amount_cents,created_at",
       )
       .in("business_id", businessIds)
       .order("created_at", { ascending: false })
@@ -247,6 +256,7 @@ export default async function DashboardBookingsPage({
           initialGuestsSub={hub.guestsSub}
           initialOfferingsSub={hub.offeringsSub}
           bookingRequestHighlight={hub.bookingHighlight}
+          stripeReadyByBizId={stripeReadyByBizId}
         />
       </div>
 

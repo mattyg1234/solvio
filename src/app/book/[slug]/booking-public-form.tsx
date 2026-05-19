@@ -89,6 +89,7 @@ type BookingPublicFormProps = {
   slug: string;
   context: BookingPublicContextPayload;
   guestModes: BookingGuestMode[];
+  depositFlash?: "success" | "cancel" | null;
 };
 
 function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
@@ -154,7 +155,7 @@ function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
   );
 }
 
-export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFormProps) {
+export function BookingPublicForm({ slug, context, guestModes, depositFlash = null }: BookingPublicFormProps) {
   const bound = submitBookingRequestAction.bind(null, slug);
   const [state, formAction, pending] = useActionState(bound, initialState);
 
@@ -339,6 +340,26 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     );
   }
 
+  if (depositFlash === "success") {
+    return (
+      <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ecfdf5] text-emerald-600 ring-1 ring-emerald-100">
+          <CalendarCheck className="h-8 w-8" aria-hidden />
+        </span>
+        <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Deposit received</h2>
+        <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
+          Thank you — your table deposit was processed securely. {businessName} will confirm your booking using the contact details you shared.
+        </p>
+        <p className="mt-8 text-center text-sm text-[#94a3b8]">
+          Powered by{" "}
+          <Link href="/" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+            Solvio
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   if (state?.ok && !("depositCheckoutUrl" in state && state.depositCheckoutUrl)) {
     return (
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
@@ -361,6 +382,12 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
 
   return (
     <div className="mx-auto w-full max-w-lg">
+      {depositFlash === "cancel" ? (
+        <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950">
+          Payment was cancelled — your enquiry is still saved. You can submit again or contact {businessName} directly to arrange a deposit.
+        </p>
+      ) : null}
+
       <div className="mb-6 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Book with {businessName}</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Request a booking</h1>

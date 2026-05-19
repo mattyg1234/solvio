@@ -51,10 +51,12 @@ export default async function DashboardOverviewPage() {
   const businessIds = businesses?.map((b) => b.id) ?? [];
   let inboundBookingCount = 0;
   let todayInboundCount = 0;
+  let todayDepositRevenueCents = 0;
   if (businessIds.length > 0) {
     const startUtc = new Date();
     startUtc.setUTCHours(0, 0, 0, 0);
-    const [{ count }, { count: todayCount }] = await Promise.all([
+    const startIso = startUtc.toISOString();
+    const [{ count }, { count: todayCount }, { data: paidTodayRows }] = await Promise.all([
       supabase
         .from("booking_requests")
         .select("*", { count: "exact", head: true })
@@ -63,12 +65,29 @@ export default async function DashboardOverviewPage() {
         .from("booking_requests")
         .select("*", { count: "exact", head: true })
         .in("business_id", businessIds)
-        .gte("created_at", startUtc.toISOString()),
+        .gte("created_at", startIso),
+      supabase
+        .from("booking_requests")
+        .select("deposit_amount_cents")
+        .in("business_id", businessIds)
+        .eq("payment_status", "paid")
+        .gte("created_at", startIso),
     ]);
     inboundBookingCount = count ?? 0;
     /** UTC-midnight “today”; swap to merchant `businesses.time_zone` when analytics ship. */
     todayInboundCount = todayCount ?? 0;
+    todayDepositRevenueCents = (paidTodayRows ?? []).reduce(
+      (sum, row) => sum + (typeof row.deposit_amount_cents === "number" ? row.deposit_amount_cents : 0),
+      0,
+    );
   }
+
+  const todayRevenueLabel =
+    todayDepositRevenueCents > 0
+      ? new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" }).format(todayDepositRevenueCents / 100)
+      : stripeConnected
+        ? "€0"
+        : "—";
 
   let recentSignals: {
     customer_name: string | null;
@@ -175,9 +194,11 @@ export default async function DashboardOverviewPage() {
             <Coins className="h-4 w-4 text-[#7c3aed]" aria-hidden />
           </CardHeader>
           <CardContent className="pb-5 pt-1 space-y-1">
-            <p className="text-3xl font-semibold text-[#0f172a]">{stripeConnected ? "Live" : "—"}</p>
+            <p className="text-3xl font-semibold text-[#0f172a]">{todayRevenueLabel}</p>
             <p className="text-[13px] text-[#64748b]">
-              {stripeConnected ? "Webhooks hydrate this card next." : "Connect Stripe below to unlock payouts."}
+              {stripeConnected
+                ? "Table deposits marked paid today (UTC)."
+                : "Connect Stripe below to unlock payouts."}
             </p>
           </CardContent>
         </Card>
@@ -187,9 +208,11 @@ export default async function DashboardOverviewPage() {
             <PhoneForwarded className="h-4 w-4 text-[#7c3aed]" aria-hidden />
           </CardHeader>
           <CardContent className="pb-5 pt-1 space-y-1">
-            <p className="text-3xl font-semibold text-[#0f172a]">{voiceComplete ? "Ready" : "—"}</p>
+            <p className="text-3xl font-semibold text-[#0f172a]">{voiceComplete ? "Configured" : "—"}</p>
             <p className="text-[13px] text-[#64748b]">
-              {voiceComplete ? "Persona saved · telephony KPIs dock here." : "Finish AI receptionist setup."}
+              {voiceComplete
+                ? "Receptionist saved — call logging ships when telephony connects."
+                : "Finish AI receptionist setup."}
             </p>
           </CardContent>
         </Card>

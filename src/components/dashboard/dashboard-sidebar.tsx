@@ -21,7 +21,7 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string };
+type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string };
 
 function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
   const items: NavItem[] = [];
@@ -56,7 +56,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
       icon: Mic2,
       key: "voice",
     });
-    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
+    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls", badge: "Soon" });
   }
 
   if (cap.lead_generation) {
@@ -64,7 +64,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
   }
 
   items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
-  items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
+  items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics", badge: "Soon" });
   items.push({ href: "/dashboard/pricing", label: "Plans", icon: Euro, key: "plans" });
   items.push({ href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" });
 
@@ -113,7 +113,14 @@ export function DashboardSidebar({ capabilities }: DashboardSidebarProps) {
               )}
             >
               <Icon className={cn("h-5 w-5 shrink-0", isOn ? "text-[#7c3aed]" : "text-[#94a3b8]")} aria-hidden />
-              {item.label}
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="truncate">{item.label}</span>
+                {item.badge ? (
+                  <span className="shrink-0 rounded-full bg-[#f1f5f9] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#64748b]">
+                    {item.badge}
+                  </span>
+                ) : null}
+              </span>
             </Link>
           );
         })}

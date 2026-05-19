@@ -8,13 +8,14 @@ import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, Mic2, PhoneCa
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
 
-function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string }[] {
+function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string }[] {
   const items: {
     href: string;
     label: string;
     icon: LucideIcon;
     exact?: boolean;
     key: string;
+    badge?: string;
   }[] = [{ href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true, key: "home" }];
 
   items.push({ href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" });
@@ -25,7 +26,7 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; labe
 
   if (cap.ai_receptionist) {
     items.push({ href: "/dashboard/setup/voice", label: "Voice", icon: Mic2, key: "voice" });
-    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
+    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls", badge: "Soon" });
   }
 
   items.push({ href: "/dashboard/settings", label: "More", icon: Settings2, key: "settings" });

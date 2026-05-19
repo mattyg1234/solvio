@@ -43,6 +43,7 @@ export function FloorTableWeekHoursStrip({
   venueSchedules: AppointmentWeekRow[];
 }) {
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   type Row = { open: string; close: string; enabled: boolean };
   const [rows, setRows] = useState<Record<number, Row>>(() =>
@@ -81,6 +82,7 @@ export function FloorTableWeekHoursStrip({
 
   return (
     <div className="mt-4 space-y-3 rounded-xl border border-dashed border-[#ddd6fe] bg-white/85 px-3 py-3">
+      {error ? <p className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p> : null}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b]">Custom weekday windows</p>
@@ -171,7 +173,7 @@ export function FloorTableWeekHoursStrip({
                     rows: payload,
                   });
                 } catch (e) {
-                  alert(e instanceof Error ? e.message : "Could not save table hours.");
+                  setError(e instanceof Error ? e.message : "Could not save table hours.");
                 }
               })();
             });

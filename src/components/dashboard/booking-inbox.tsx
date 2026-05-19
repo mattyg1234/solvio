@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronUp,
+  CreditCard,
   Loader2,
   Mail,
   MessageSquare,
@@ -20,6 +21,7 @@ import {
   sendBookingOutboundBulk,
   type BookingMessageRow,
 } from "@/app/dashboard/bookings/actions";
+import { createDepositCheckoutForBookingRequest } from "@/app/dashboard/bookings/payment-actions";
 import { createVenueCalendarBookingFromRequest } from "@/app/dashboard/bookings/calendar-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -40,6 +42,8 @@ export type BookingRequestRow = {
   requested_date: string | null;
   guest_count: number | null;
   intake_extras?: unknown;
+  payment_status?: string | null;
+  deposit_amount_cents?: number | null;
   created_at: string;
 };
 
@@ -56,6 +60,36 @@ export function telBookingHref(phone: string) {
 function bookingKindLabel(kind: string | null | undefined) {
   if (!kind) return "—";
   return isBookingGuestMode(kind) ? BOOKING_GUEST_MODE_LABELS[kind] : kind;
+}
+
+function paymentStatusBadge(
+  status: string | null | undefined,
+  depositCents: number | null | undefined,
+): { label: string; className: string } | null {
+  const st = (status ?? "none").trim().toLowerCase();
+  if (st === "paid") {
+    const euros =
+      typeof depositCents === "number" && depositCents > 0
+        ? `€${(depositCents / 100).toFixed(2)}`
+        : null;
+    return {
+      label: euros ? `Deposit paid ${euros}` : "Deposit paid",
+      className: "rounded-full bg-emerald-50 px-2 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-100",
+    };
+  }
+  if (st === "pending") {
+    return {
+      label: "Deposit pending",
+      className: "rounded-full bg-amber-50 px-2 py-0 text-[10px] font-semibold uppercase tracking-wide text-amber-900 ring-1 ring-amber-100",
+    };
+  }
+  if (st === "failed") {
+    return {
+      label: "Payment failed",
+      className: "rounded-full bg-rose-50 px-2 py-0 text-[10px] font-semibold uppercase tracking-wide text-rose-800 ring-1 ring-rose-100",
+    };
+  }
+  return null;
 }
 
 function fmtRequestedDate(iso: string | null | undefined): string | null {
@@ -293,9 +327,131 @@ function summarizeIntakeExtras(v: unknown): string | null {
   }
 }
 
+function BookingDepositSection({
+  request,
+  stripeReady,
+  pending,
+}: {
+  request: BookingRequestRow;
+  stripeReady: boolean;
+  pending: boolean;
+}) {
+  const [amountEuro, setAmountEuro] = useState("");
+  const [localPending, startLocal] = useTransition();
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
+  const paid = request.payment_status === "paid";
+  const busy = pending || localPending;
+
+  if (!stripeReady) {
+    return (
+      <div className="rounded-2xl border border-dashed border-[#ddd6fe] bg-[#fafbff] px-4 py-4 text-sm text-[#64748b]">
+        <p className="font-semibold text-[#0f172a]">Collect a deposit</p>
+        <p className="mt-1 leading-relaxed">
+          Connect Stripe under{" "}
+          <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+            Payments
+          </Link>{" "}
+          to send checkout links. Set table prices under Bookings → Tables.
+        </p>
+      </div>
+    );
+  }
+
+  if (paid) {
+    return (
+      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-4 text-sm text-emerald-900">
+        <p className="font-semibold">Deposit collected</p>
+        <p className="mt-1">
+          {request.deposit_amount_cents
+            ? `€${(request.deposit_amount_cents / 100).toFixed(2)} marked paid via Stripe.`
+            : "Payment recorded on this enquiry."}
+        </p>
+      </div>
+    );
+  }
+
+  function createLink() {
+    setDepositError(null);
+    setCheckoutUrl(null);
+    const euroRaw = amountEuro.trim().replace(",", ".");
+    const overrideCents = euroRaw.length ? Math.round(Number.parseFloat(euroRaw) * 100) : undefined;
+    if (overrideCents != null && (!Number.isFinite(overrideCents) || overrideCents < 50)) {
+      setDepositError("Enter a valid amount of at least €0.50, or leave blank to use table pricing.");
+      return;
+    }
+    startLocal(() => {
+      void (async () => {
+        try {
+          const { checkoutUrl: url } = await createDepositCheckoutForBookingRequest({
+            businessId: request.business_id,
+            bookingRequestId: request.id,
+            amountCents: overrideCents,
+          });
+          setCheckoutUrl(url);
+        } catch (e) {
+          setDepositError(e instanceof Error ? e.message : "Could not create payment link.");
+        }
+      })();
+    });
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#ede9fe] bg-[#fafbff] px-4 py-4">
+      <div className="flex items-start gap-3">
+        <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-[#7c3aed]" aria-hidden />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <p className="text-sm font-semibold text-[#0f172a]">Stripe deposit link</p>
+            <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
+              Creates a checkout on your connected Stripe account. Leave amount blank to use the table price you configured
+              — or enter a custom € amount below.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <label htmlFor={`dep-euro-${request.id}`} className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+                Custom amount (€)
+              </label>
+              <input
+                id={`dep-euro-${request.id}`}
+                value={amountEuro}
+                onChange={(e) => setAmountEuro(e.target.value)}
+                placeholder="Uses table price"
+                className="h-10 w-36 rounded-xl border border-[#ebe7f7] bg-white px-3 text-sm"
+              />
+            </div>
+            <Button type="button" disabled={busy} className="rounded-full font-semibold" onClick={() => createLink()}>
+              {busy ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : null}
+              Create payment link
+            </Button>
+          </div>
+          {depositError ? <p className="text-sm text-rose-800">{depositError}</p> : null}
+          {checkoutUrl ? (
+            <div className="space-y-2 rounded-xl border border-[#dbeafe] bg-white px-3 py-3 text-sm">
+              <p className="font-semibold text-[#0f172a]">Link ready — send to {request.customer_name}</p>
+              <a
+                href={checkoutUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all font-mono text-xs text-[#7c3aed] underline-offset-2 hover:underline"
+              >
+                {checkoutUrl}
+              </a>
+              <p className="text-xs text-[#64748b]">Guest pays on Stripe; funds land in your connected account.</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type BookingInboxProps = {
   requests: BookingRequestRow[];
   bizNameById: Record<string, string>;
+  stripeReadyByBizId?: Record<string, boolean>;
   inventoryLinks?: {
     tables: { id: string; label: string }[];
     events: { id: string; title: string }[];
@@ -304,7 +460,7 @@ type BookingInboxProps = {
   highlightBookingRequestId?: string | null;
 };
 
-export function BookingInbox({ requests, bizNameById, inventoryLinks, highlightBookingRequestId }: BookingInboxProps) {
+export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, inventoryLinks, highlightBookingRequestId }: BookingInboxProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -578,6 +734,7 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks, highlightB
                     const whenBits =
                       [intake, r.preferred_time?.trim(), r.notes?.trim()].filter(Boolean).join(" · ") || "—";
                     const open = expandedId === r.id;
+                    const payBadge = paymentStatusBadge(r.payment_status, r.deposit_amount_cents);
                     return (
                       <Fragment key={r.id}>
                         <tr className={cn("border-b border-[#f8fafc] last:border-0", open ? "bg-[#fafbff]/70" : "")}>
@@ -597,6 +754,9 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks, highlightB
                                 <Badge variant="secondary" className="rounded-full bg-[#f5f3ff] px-2 py-0 text-[10px] font-semibold uppercase tracking-wide text-[#7c3aed] hover:bg-[#f5f3ff]">
                                   {bookingKindLabel(r.booking_kind)}
                                 </Badge>
+                              ) : null}
+                              {payBadge ? (
+                                <span className={payBadge.className}>{payBadge.label}</span>
                               ) : null}
                             </div>
                             <p className="mt-1 text-xs text-[#94a3b8]">
@@ -727,6 +887,12 @@ export function BookingInbox({ requests, bizNameById, inventoryLinks, highlightB
                                     ) : null}
                                   </dl>
                                 </div>
+
+                                <BookingDepositSection
+                                  request={r}
+                                  stripeReady={Boolean(stripeReadyByBizId?.[r.business_id])}
+                                  pending={pending}
+                                />
 
                                 <ConfirmBookingSlotSection
                                   request={r}

@@ -60,6 +60,7 @@ export function AppointmentExceptionGrid({ businessId, schedules, exceptions, ve
   const [closedHm, setClosedHm] = useState<Set<string>>(() => new Set());
   const [exKind, setExKind] = useState<"removed" | "cancelled">("removed");
   const [exReason, setExReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const rowForDay = useMemo(() => rowsForAppointmentDate(schedules, pickDate, tz), [schedules, pickDate, tz]);
   const templateSlots = useMemo(() => buildAppointmentSlotsForPainting(rowForDay), [rowForDay]);
@@ -123,6 +124,7 @@ export function AppointmentExceptionGrid({ businessId, schedules, exceptions, ve
   }, []);
 
   function runSave(forDates: string[], modeSlots: Map<string, Set<string>> | "whole_week_whole_days") {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
@@ -173,7 +175,7 @@ export function AppointmentExceptionGrid({ businessId, schedules, exceptions, ve
           }
           router.refresh();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not save.");
+          setError(e instanceof Error ? e.message : "Could not save.");
         }
       })();
     });
@@ -183,6 +185,7 @@ export function AppointmentExceptionGrid({ businessId, schedules, exceptions, ve
 
   return (
     <div className="space-y-4 rounded-2xl border border-[#f1eefc] bg-white p-5">
+      {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-[#0f172a]">Paint closed slots — day grid</h3>
         <p className="text-sm text-[#64748b]">

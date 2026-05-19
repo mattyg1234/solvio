@@ -137,15 +137,17 @@ export function EventSeriesCalendarSheet({
   }, [ym.year, ym.month, tz]);
 
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(
     (fn: () => Promise<void>) => {
+      setError(null);
       startTransition(() => {
         void (async () => {
           try {
             await fn();
           } catch (e) {
-            alert(e instanceof Error ? e.message : "Something went wrong.");
+            setError(e instanceof Error ? e.message : "Something went wrong.");
           }
         })();
       });
@@ -201,6 +203,7 @@ export function EventSeriesCalendarSheet({
         </header>
 
         <div className="flex flex-1 flex-col px-6 py-5">
+          {error ? <p className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
           <div className="flex items-center justify-between gap-2">
             <Button
               type="button"

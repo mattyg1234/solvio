@@ -164,6 +164,7 @@ type BookingOperationsHubProps = {
   initialGuestsSub?: BookingGuestsSub;
   initialOfferingsSub?: BookingOfferingsSub;
   bookingRequestHighlight?: string | null;
+  stripeReadyByBizId?: Record<string, boolean>;
 };
 
 export function BookingOperationsHub({
@@ -183,6 +184,7 @@ export function BookingOperationsHub({
   initialGuestsSub,
   initialOfferingsSub,
   bookingRequestHighlight,
+  stripeReadyByBizId,
 }: BookingOperationsHubProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -309,6 +311,7 @@ export function BookingOperationsHub({
                 .map((ev) => ({ id: ev.id, title: ev.title })),
             }}
             bookingRequestHighlight={bookingRequestHighlight}
+            stripeReadyByBizId={stripeReadyByBizId}
           />
         ) : (
           <OfferingsHubPanel
@@ -343,6 +346,7 @@ function GuestsHubPanel(props: {
   bookingRequestHighlight?: string | null;
   confirmedBookings: VenueCalendarBookingRow[];
   businessName: string;
+  stripeReadyByBizId?: Record<string, boolean>;
 }) {
   return (
     <div className="space-y-6">
@@ -373,6 +377,7 @@ function GuestsHubPanel(props: {
         <BookingInbox
           requests={props.requests}
           bizNameById={props.bizNameById}
+          stripeReadyByBizId={props.stripeReadyByBizId}
           inventoryLinks={props.inventoryLinks}
           highlightBookingRequestId={props.bookingRequestHighlight ?? undefined}
         />
@@ -453,6 +458,7 @@ function ConfirmedBookingsPanelWithContacts({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showCancelled, setShowCancelled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const base = showCancelled ? bookings : bookings.filter((b) => b.status !== "cancelled");
@@ -460,13 +466,14 @@ function ConfirmedBookingsPanelWithContacts({
   }, [bookings, showCancelled]);
 
   function runCancel(id: string) {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
           await cancelVenueCalendarBooking(id);
           router.refresh();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not cancel.");
+          setError(e instanceof Error ? e.message : "Could not cancel.");
         }
       })();
     });
@@ -474,6 +481,7 @@ function ConfirmedBookingsPanelWithContacts({
 
   return (
     <div className="space-y-6">
+      {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[#0f172a]">Scheduled guests</h2>
@@ -662,16 +670,18 @@ function AppointmentsPanel({
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("17:00");
   const [slotMin, setSlotMin] = useState(30);
+  const [error, setError] = useState<string | null>(null);
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
 
   function run(fn: () => Promise<void>) {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
           await fn();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not save.");
+          setError(e instanceof Error ? e.message : "Could not save.");
         }
       })();
     });
@@ -679,6 +689,7 @@ function AppointmentsPanel({
 
   return (
     <div className="space-y-8">
+      {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Weekly appointment windows</h2>
         <p className="mt-1 text-sm text-[#64748b]">
@@ -848,6 +859,7 @@ function EventsPanel({
   const [ends, setEnds] = useState("");
   const [recPreset, setRecPreset] = useState<"once" | "daily" | "weekly">("once");
   const [weekBits, setWeekBits] = useState<number[]>([1, 3]);
+  const [error, setError] = useState<string | null>(null);
 
   const visible = events.filter((e) => !e.deleted_at);
 
@@ -858,12 +870,13 @@ function EventsPanel({
   }
 
   function run(fn: () => Promise<void>) {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
           await fn();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not save.");
+          setError(e instanceof Error ? e.message : "Could not save.");
         }
       })();
     });
@@ -875,6 +888,7 @@ function EventsPanel({
 
   return (
     <div className="space-y-8">
+      {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
       <EventSeriesCalendarSheet
         event={manageCalendarFor as SheetBusinessEventRow | null}
         businessId={businessId}
@@ -1103,6 +1117,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
 
   const [pending, startTransition] = useTransition();
   const [capacity, setCapacity] = useState(table.capacity);
+  const [error, setError] = useState<string | null>(null);
   const [shape, setShape] = useState<FloorPlanTableShape>(() => coerceFloorPlanShape(table.shape));
   const [widthPx, setWidthPx] = useState(Math.round(table.width));
   const [heightPx, setHeightPx] = useState(Math.round(table.height));
@@ -1147,12 +1162,13 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
   }
 
   function runSave(fn: () => Promise<void>) {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
           await fn();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not save.");
+          setError(e instanceof Error ? e.message : "Could not save.");
         }
       })();
     });
@@ -1162,6 +1178,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-dashed border-[#dcd6fb] bg-[#fcfbff]/80 px-4 py-3">
+      {error ? <p className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p> : null}
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Edit capacity, shape & pricing</p>
       <div className="grid gap-3 md:grid-cols-6 md:items-end">
         <div className="space-y-2 md:col-span-1">
@@ -1401,6 +1418,7 @@ function TablesPanel({
   const [addFillHex, setAddFillHex] = useState("");
   const [addWidth, setAddWidth] = useState(120);
   const [addHeight, setAddHeight] = useState(80);
+  const [error, setError] = useState<string | null>(null);
 
   function euroToCents(s: string) {
     const n = Number.parseFloat(s.replace(",", "."));
@@ -1409,12 +1427,13 @@ function TablesPanel({
   }
 
   function run(fn: () => Promise<void>) {
+    setError(null);
     startTransition(() => {
       void (async () => {
         try {
           await fn();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Could not save.");
+          setError(e instanceof Error ? e.message : "Could not save.");
         }
       })();
     });
@@ -1433,6 +1452,7 @@ function TablesPanel({
 
   return (
     <div className="space-y-10">
+      {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Tables & layout</h2>
         <p className="mt-1 text-sm text-[#64748b]">

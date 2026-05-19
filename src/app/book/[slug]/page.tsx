@@ -7,7 +7,15 @@ import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking
 
 type PageProps = {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ deposit?: string | string[] }>;
 };
+
+function parseDepositFlash(raw: string | string[] | undefined): "success" | "cancel" | null {
+  const v = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
+  if (v === "success") return "success";
+  if (v === "cancel") return "cancel";
+  return null;
+}
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -24,8 +32,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicBookingPage({ params }: PageProps) {
+export default async function PublicBookingPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const depositFlash = parseDepositFlash(sp.deposit);
   if (!slug?.trim()) {
     notFound();
   }
@@ -49,7 +59,7 @@ export default async function PublicBookingPage({ params }: PageProps) {
       <div className="pointer-events-none absolute -right-24 bottom-20 h-80 w-80 rounded-full bg-[#dbeafe]/60 blur-3xl" aria-hidden />
       <div className="relative z-10 flex min-h-screen flex-col items-center px-4 py-12 md:py-16">
         <div className="w-full max-w-lg rounded-[28px] border border-[#ebe7f7]/90 bg-white/95 p-6 shadow-[0_28px_90px_-48px_rgba(124,58,237,0.35)] backdrop-blur-sm md:p-8">
-          <BookingPublicForm slug={slug} context={ctx} guestModes={guestModes} />
+          <BookingPublicForm slug={slug} context={ctx} guestModes={guestModes} depositFlash={depositFlash} />
         </div>
       </div>
     </div>

@@ -111,3 +111,26 @@ export async function refreshStripeConnectStatusAction(businessId: string): Prom
     detailsSubmitted: Boolean(account.details_submitted),
   };
 }
+
+/** Clears Solvio's link to Stripe — the Connect account stays in Stripe until deleted there. */
+export async function disconnectStripeConnectAction(businessId: string): Promise<void> {
+  const { supabase, biz } = await assertOwnedBusiness(businessId);
+  if (!biz.stripe_connect_account_id?.trim()) {
+    throw new Error("This venue is not connected to Stripe.");
+  }
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      stripe_connect_account_id: null,
+      stripe_connect_charges_enabled: false,
+      stripe_connect_details_submitted: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", businessId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/dashboard/payments");
+  revalidatePath("/dashboard");
+}
