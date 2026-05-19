@@ -663,11 +663,9 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
               Tap the purple microphone — the same experience guests get on your homepage when Vapi keys are configured.
             </p>
             <VoiceLiveTrial
-              businessName={businessName}
-              agentPrompt={agentPromptCustom}
-              toneLabel={tones.find((x) => x.id === tone)?.label ?? "Warm professional"}
               vapiAssistantId={vapiAssistantId}
               vapiAssistantName={vapiAssistantName}
+              firstMessage={agentFirstMessage}
             />
           </div>
         ) : null}

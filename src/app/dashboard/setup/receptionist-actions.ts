@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import { composeVoiceAgentPrompt } from "@/lib/compose-voice-agent-prompt";
+import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import type { VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createMerchantVapiAssistant, syncVapiAssistantConfig } from "@/lib/vapi-assistant-sync";
@@ -38,16 +39,21 @@ export async function saveReceptionistStudioAction(
 
   const receptionistName = details.receptionist_name?.trim() ?? "";
   const firstMessage = details.agent_first_message?.trim() ?? "";
-  const voiceId = details.elevenlabs_voice_id?.trim() ?? "";
+
+  const platformVoice = await resolvePlatformElevenLabsVoice();
+  if (!platformVoice.voiceId) {
+    return {
+      ok: false,
+      message:
+        "Platform voice is not configured. Set SOLVIO_PLATFORM_ELEVENLABS_VOICE_ID to the same ElevenLabs voice as your homepage agent, then redeploy.",
+    };
+  }
 
   if (!receptionistName) {
     return { ok: false, message: "Give your receptionist a name before saving." };
   }
   if (!firstMessage) {
     return { ok: false, message: "Add a first spoken line — what callers hear when they connect." };
-  }
-  if (!voiceId) {
-    return { ok: false, message: "Choose a voice for your receptionist." };
   }
   if (!details.reception_scope?.trim() && !details.agent_prompt_custom?.trim()) {
     return {
@@ -75,12 +81,17 @@ export async function saveReceptionistStudioAction(
   const assistantLabel = vapiAssistantLabel(businessName, receptionistName);
   let assistantId = details.vapi_assistant_id?.trim() ?? "";
 
+  const voicePatch = {
+    elevenlabsVoiceId: platformVoice.voiceId,
+    elevenlabsVoiceModel: platformVoice.model,
+  };
+
   if (!assistantId) {
     const created = await createMerchantVapiAssistant({
       assistantName: assistantLabel,
       firstMessage,
       systemPrompt,
-      elevenlabsVoiceId: voiceId,
+      ...voicePatch,
     });
     if (!created.ok) return { ok: false, message: created.message };
     assistantId = created.assistantId;
@@ -89,7 +100,7 @@ export async function saveReceptionistStudioAction(
       assistantName: assistantLabel,
       firstMessage,
       systemPrompt,
-      elevenlabsVoiceId: voiceId,
+      ...voicePatch,
     });
     if (!synced.ok) return { ok: false, message: synced.message };
   }
@@ -99,7 +110,8 @@ export async function saveReceptionistStudioAction(
     agent_prompt_custom: systemPrompt,
     vapi_assistant_id: assistantId,
     vapi_assistant_name: assistantLabel,
-    elevenlabs_voice_id: voiceId,
+    elevenlabs_voice_id: platformVoice.voiceId,
+    elevenlabs_voice_name: "Solvio platform voice",
   };
 
   await saveVoiceReceptionistSetup(businessId, payload);

@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Loader2, Mic2, Save, Sparkles } from "lucide-react";
 
 import { saveReceptionistStudioAction } from "@/app/dashboard/setup/receptionist-actions";
 import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
-import {
-  listElevenLabsVoicesForBusiness,
-  type ElevenLabsVoiceOption,
-} from "@/app/dashboard/setup/voice-integration-actions";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { buttonVariants } from "@/components/ui/button";
 import type { VoiceReceptionistClientDetails } from "@/lib/voice-receptionist";
@@ -28,6 +24,8 @@ type ReceptionistStudioProps = {
   businessName: string;
   initialDetails: VoiceReceptionistClientDetails;
   voiceComplete: boolean;
+  platformVoiceId: string;
+  platformVoiceSource: "env" | "marketing_vapi" | "none";
 };
 
 export function ReceptionistStudio({
@@ -35,6 +33,8 @@ export function ReceptionistStudio({
   businessName,
   initialDetails,
   voiceComplete,
+  platformVoiceId,
+  platformVoiceSource,
 }: ReceptionistStudioProps) {
   const [receptionistName, setReceptionistName] = useState(
     initialDetails.receptionist_name ?? initialDetails.vapi_assistant_name?.split(" — ").pop() ?? "",
@@ -48,38 +48,13 @@ export function ReceptionistStudio({
   const [tone, setTone] = useState(initialDetails.greeting_style);
   const [agentPromptCustom, setAgentPromptCustom] = useState(initialDetails.agent_prompt_custom ?? "");
   const [showAdvancedPrompt, setShowAdvancedPrompt] = useState(Boolean(initialDetails.agent_prompt_custom?.trim()));
-  const [voiceId, setVoiceId] = useState(initialDetails.elevenlabs_voice_id ?? "");
-  const [voiceName, setVoiceName] = useState(initialDetails.elevenlabs_voice_name ?? "");
   const [vapiAssistantId, setVapiAssistantId] = useState(initialDetails.vapi_assistant_id ?? "");
   const [vapiAssistantName] = useState(initialDetails.vapi_assistant_name ?? "");
 
-  const [voices, setVoices] = useState<ElevenLabsVoiceOption[]>([]);
-  const [voicesErr, setVoicesErr] = useState<string | null>(null);
-  const [voicesPending, setVoicesPending] = useState(true);
   const [genPromptPending, setGenPromptPending] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<boolean | null>(null);
   const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setVoicesPending(true);
-      setVoicesErr(null);
-      const res = await listElevenLabsVoicesForBusiness(businessId);
-      if (cancelled) return;
-      if (res.error) {
-        setVoicesErr(res.error);
-        setVoices([]);
-      } else {
-        setVoices(res.voices);
-      }
-      setVoicesPending(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [businessId]);
 
   async function handleBuildPrompt() {
     setGenPromptPending(true);
@@ -118,8 +93,6 @@ export function ReceptionistStudio({
           languages_note: languagesNote.trim() || undefined,
           escalation_phone: escalationPhone.trim() || undefined,
           agent_prompt_custom: showAdvancedPrompt ? agentPromptCustom.trim() || undefined : undefined,
-          elevenlabs_voice_id: voiceId.trim() || undefined,
-          elevenlabs_voice_name: voiceName.trim() || undefined,
           vapi_assistant_id: vapiAssistantId.trim() || undefined,
           vapi_assistant_name: vapiAssistantName.trim() || undefined,
         });
@@ -130,12 +103,6 @@ export function ReceptionistStudio({
         }
       })();
     });
-  }
-
-  function onVoicePick(nextId: string) {
-    setVoiceId(nextId);
-    const match = voices.find((v) => v.voice_id === nextId);
-    setVoiceName(match?.name ?? "");
   }
 
   const trialName = receptionistName.trim() || vapiAssistantName || "Your receptionist";
@@ -150,7 +117,8 @@ export function ReceptionistStudio({
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">Your AI receptionist</h1>
             <p className="text-sm text-[#64748b]">
-              Name them, pick a voice, say what they should do — then save. Same live purple mic as the Solvio homepage.
+              Name them, say what they should do, then save. Every receptionist uses the same Solvio voice as the
+              homepage — live purple mic, no browser fallback.
             </p>
           </div>
           {voiceComplete ? (
@@ -184,31 +152,19 @@ export function ReceptionistStudio({
               />
             </div>
 
-            <div className="space-y-2">
-              <label htmlFor="voice-pick" className="text-sm font-semibold text-[#0f172a]">
-                Voice
-              </label>
-              {voicesPending ? (
-                <p className="flex items-center gap-2 text-sm text-[#64748b]">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Loading voices…
-                </p>
-              ) : voicesErr ? (
-                <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-900">{voicesErr}</p>
+            <div className="rounded-xl border border-[#ede9fe] bg-[#faf7ff] px-4 py-4">
+              <p className="text-sm font-semibold text-[#0f172a]">Voice</p>
+              <p className="mt-1 text-sm text-[#64748b]">
+                Locked to the Solvio platform voice — identical to your homepage receptionist (
+                {platformVoiceSource === "env" ? "from env" : "from marketing Vapi agent"}).
+              </p>
+              {platformVoiceId ? (
+                <p className="mt-2 font-mono text-[11px] text-[#5b21b6]">{platformVoiceId}</p>
               ) : (
-                <select
-                  id="voice-pick"
-                  value={voiceId}
-                  onChange={(e) => onVoicePick(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                >
-                  <option value="">Choose a voice…</option>
-                  {voices.map((v) => (
-                    <option key={v.voice_id} value={v.voice_id}>
-                      {v.name}
-                    </option>
-                  ))}
-                </select>
+                <p className="mt-2 text-sm text-rose-700">
+                  Platform voice not configured. Set{" "}
+                  <code className="font-mono text-xs">SOLVIO_PLATFORM_ELEVENLABS_VOICE_ID</code> on this deployment.
+                </p>
               )}
             </div>
 
@@ -373,9 +329,6 @@ export function ReceptionistStudio({
           </p>
           <div className="mt-6">
             <VoiceLiveTrial
-              businessName={businessName}
-              agentPrompt={agentPromptCustom || receptionScope}
-              toneLabel={tones.find((t) => t.id === tone)?.label ?? "Warm professional"}
               vapiAssistantId={vapiAssistantId}
               vapiAssistantName={trialName}
               firstMessage={agentFirstMessage}

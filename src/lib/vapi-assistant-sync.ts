@@ -1,3 +1,4 @@
+import { PLATFORM_ELEVENLABS_VOICE_MODEL } from "@/lib/platform-voice-config";
 import {
   getSolvioVapiAgentAnthropicModel,
   getSolvioVapiApiKey,
@@ -8,6 +9,7 @@ export type VapiAssistantSyncPatch = {
   firstMessage?: string;
   systemPrompt?: string;
   elevenlabsVoiceId?: string;
+  elevenlabsVoiceModel?: string;
 };
 
 type VapiModelPayload = {
@@ -69,11 +71,11 @@ function defaultMerchantModel(systemPrompt: string): VapiModelPayload {
   };
 }
 
-function defaultMerchantVoice(voiceId: string): VapiVoicePayload {
+function defaultMerchantVoice(voiceId: string, model = PLATFORM_ELEVENLABS_VOICE_MODEL): VapiVoicePayload {
   return {
     provider: "11labs",
     voiceId,
-    model: "eleven_turbo_v2_5",
+    model,
   };
 }
 
@@ -87,7 +89,10 @@ function defaultMerchantTranscriber() {
 
 /** Create a dedicated Vapi assistant for a merchant venue. */
 export async function createMerchantVapiAssistant(
-  patch: Required<Pick<VapiAssistantSyncPatch, "assistantName" | "firstMessage" | "systemPrompt" | "elevenlabsVoiceId">>,
+  patch: Required<
+    Pick<VapiAssistantSyncPatch, "assistantName" | "firstMessage" | "systemPrompt" | "elevenlabsVoiceId">
+  > &
+    Pick<VapiAssistantSyncPatch, "elevenlabsVoiceModel">,
 ): Promise<{ ok: true; assistantId: string } | { ok: false; message: string }> {
   const apiKey = getSolvioVapiApiKey().trim();
   if (!apiKey) {
@@ -99,7 +104,10 @@ export async function createMerchantVapiAssistant(
     firstMessage: patch.firstMessage.trim(),
     firstMessageMode: "assistant-speaks-first",
     model: defaultMerchantModel(patch.systemPrompt.trim()),
-    voice: defaultMerchantVoice(patch.elevenlabsVoiceId.trim()),
+    voice: defaultMerchantVoice(
+      patch.elevenlabsVoiceId.trim(),
+      patch.elevenlabsVoiceModel?.trim() || PLATFORM_ELEVENLABS_VOICE_MODEL,
+    ),
     transcriber: defaultMerchantTranscriber(),
   };
 
@@ -151,15 +159,8 @@ export async function syncVapiAssistantConfig(
   }
 
   if (patch.elevenlabsVoiceId?.trim()) {
-    const rawVoice = existing.voice;
-    const voice =
-      rawVoice !== null && typeof rawVoice === "object" ? (rawVoice as VapiVoicePayload) : ({} as VapiVoicePayload);
-    body.voice = {
-      ...voice,
-      provider: "11labs",
-      voiceId: patch.elevenlabsVoiceId.trim(),
-      model: voice.model || "eleven_turbo_v2_5",
-    };
+    const voiceModel = patch.elevenlabsVoiceModel?.trim() || PLATFORM_ELEVENLABS_VOICE_MODEL;
+    body.voice = defaultMerchantVoice(patch.elevenlabsVoiceId.trim(), voiceModel);
   }
 
   if (!Object.keys(body).length) {

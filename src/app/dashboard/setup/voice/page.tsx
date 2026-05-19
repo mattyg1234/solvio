@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ReceptionistStudio } from "@/components/dashboard/receptionist-studio";
 import type { VoiceReceptionistDetails } from "@/lib/voice-receptionist";
 import { voiceDetailsToClient } from "@/lib/voice-receptionist";
+import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -64,6 +65,7 @@ export default async function VoiceSetupPage() {
   }
 
   const stored = parseStoredVoiceDetails(biz.voice_receptionist_details);
+  const platformVoice = await resolvePlatformElevenLabsVoice();
 
   return (
     <ReceptionistStudio
@@ -71,6 +73,8 @@ export default async function VoiceSetupPage() {
       businessName={biz.name}
       initialDetails={voiceDetailsToClient(stored)}
       voiceComplete={Boolean(biz.voice_receptionist_completed_at)}
+      platformVoiceId={platformVoice.voiceId}
+      platformVoiceSource={platformVoice.source}
     />
   );
 }
