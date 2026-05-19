@@ -1,0 +1,22 @@
+---
+description: Solvio booking domain — invoke solvio-booking skill for public book pages, events, tables, recurrence.
+globs:
+  - src/app/book/**
+  - src/app/dashboard/bookings/**
+  - src/lib/booking-*.ts
+  - src/lib/business-event-occurrences.ts
+  - src/components/dashboard/booking-*.tsx
+  - src/components/dashboard/event-series-calendar-sheet.tsx
+  - src/components/dashboard/appointment-exception-grid.tsx
+  - supabase/migrations/*booking*
+alwaysApply: false
+---
+
+# Solvio booking
+
+When editing matched files, read and follow:
+
+- `.cursor/skills/solvio-booking/SKILL.md`
+- `docs/superpowers/specs/2026-05-19-solvio-booking-domain-design.md`
+
+Hard rules: no table bookings on upcoming show nights; event nights use purple calendar; cancel nights via `cancelled_occurrences` with optional guest-facing reason; validate on server in `actions.ts`.
