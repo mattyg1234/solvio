@@ -79,7 +79,7 @@ export function OverviewSetupTabs({
           onClick={() => setTab("voice")}
         >
           <Mic2 className="h-4 w-4 shrink-0" aria-hidden />
-          Voice receptionist
+          Your AI receptionist
           {voiceComplete ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden /> : null}
         </button>
         <button

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { ReceptionistStudio } from "@/components/dashboard/receptionist-studio";
 import type { VoiceReceptionistDetails } from "@/lib/voice-receptionist";
 import { voiceDetailsToClient } from "@/lib/voice-receptionist";
-import { VoiceSetupWizard } from "@/components/dashboard/voice-setup-wizard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Voice receptionist setup · Dashboard · Solvio",
+  title: "Your AI receptionist · Dashboard · Solvio",
 };
 
 function parseStoredVoiceDetails(raw: unknown): VoiceReceptionistDetails {
@@ -23,6 +23,7 @@ function parseStoredVoiceDetails(raw: unknown): VoiceReceptionistDetails {
 
   return {
     greeting_style,
+    receptionist_name: str("receptionist_name"),
     languages_note: str("languages_note"),
     escalation_phone: str("escalation_phone"),
     reception_identity: str("reception_identity"),
@@ -52,7 +53,7 @@ export default async function VoiceSetupPage() {
 
   const { data: biz } = await supabase
     .from("businesses")
-    .select("id,name,voice_receptionist_details")
+    .select("id,name,voice_receptionist_details,voice_receptionist_completed_at")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -65,6 +66,11 @@ export default async function VoiceSetupPage() {
   const stored = parseStoredVoiceDetails(biz.voice_receptionist_details);
 
   return (
-    <VoiceSetupWizard businessId={biz.id} businessName={biz.name} initialDetails={voiceDetailsToClient(stored)} />
+    <ReceptionistStudio
+      businessId={biz.id}
+      businessName={biz.name}
+      initialDetails={voiceDetailsToClient(stored)}
+      voiceComplete={Boolean(biz.voice_receptionist_completed_at)}
+    />
   );
 }

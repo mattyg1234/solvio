@@ -52,7 +52,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
   if (cap.ai_receptionist) {
     items.push({
       href: "/dashboard/setup/voice",
-      label: "AI receptionist",
+      label: "Your AI receptionist",
       icon: Mic2,
       key: "voice",
     });

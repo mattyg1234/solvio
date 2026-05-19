@@ -17,3 +17,8 @@ export function getSolvioOpenAiApiKey(): string {
 export function getVapiAgentOpenAiModel(): string {
   return process.env.SOLVIO_VAPI_AGENT_OPENAI_MODEL?.trim() || "gpt-4o-mini";
 }
+
+/** Anthropic model for merchant receptionist assistants (matches marketing stack when unset). */
+export function getSolvioVapiAgentAnthropicModel(): string {
+  return process.env.SOLVIO_VAPI_AGENT_ANTHROPIC_MODEL?.trim() || "claude-3-5-haiku-20241022";
+}

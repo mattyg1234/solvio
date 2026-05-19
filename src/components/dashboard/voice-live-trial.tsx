@@ -19,15 +19,17 @@ type VoiceLiveTrialProps = {
   toneLabel: string;
   vapiAssistantId: string;
   vapiAssistantName: string;
+  firstMessage?: string;
 };
 
-/** Live Vapi receptionist in dashboard setup; scripted fallback when public key is missing. */
+/** Live Vapi receptionist — connects directly to the merchant's Vapi assistant. */
 export function VoiceLiveTrial({
   businessName,
   agentPrompt,
   toneLabel,
   vapiAssistantId,
   vapiAssistantName,
+  firstMessage,
 }: VoiceLiveTrialProps) {
   const publicKey = resolveMarketingVapiPublicKey();
   const assistantId = vapiAssistantId.trim();
@@ -36,10 +38,16 @@ export function VoiceLiveTrial({
     return (
       <div className="space-y-3">
         <p className="text-sm text-[#64748b]">
-          Same receptionist as the public homepage — powered by{" "}
-          <span className="font-semibold text-[#0f172a]">{vapiAssistantName || "your Vapi assistant"}</span>.
+          Talking to{" "}
+          <span className="font-semibold text-[#0f172a]">{vapiAssistantName || "your receptionist"}</span> — powered
+          by your Vapi assistant (save to push the latest voice and instructions).
         </p>
-        <VapiBrandAgentPanel publicKey={publicKey} assistantId={assistantId} surface="onboarding" />
+        <VapiBrandAgentPanel
+          publicKey={publicKey}
+          assistantId={assistantId}
+          firstMessage={firstMessage}
+          surface="onboarding"
+        />
       </div>
     );
   }
@@ -47,8 +55,9 @@ export function VoiceLiveTrial({
   return (
     <div className="space-y-3">
       <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        Add <code className="font-mono text-xs">NEXT_PUBLIC_VAPI_PUBLIC_KEY</code> to this deployment to use your real
-        Vapi receptionist here. Until then, a short scripted sample appears below.
+        Save your receptionist first to create a Vapi assistant, with{" "}
+        <code className="font-mono text-xs">NEXT_PUBLIC_VAPI_PUBLIC_KEY</code> set on this deployment for live voice
+        here.
       </p>
       <VoiceBrowserTrial businessName={businessName} agentPrompt={agentPrompt} toneLabel={toneLabel} />
     </div>

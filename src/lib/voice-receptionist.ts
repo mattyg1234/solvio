@@ -1,5 +1,7 @@
 export type VoiceReceptionistDetails = {
   greeting_style: "warm" | "casual" | "luxury";
+  /** Merchant-facing display name, e.g. "Riley" or "Front desk". */
+  receptionist_name?: string;
   languages_note?: string;
   escalation_phone?: string;
   /** First utterance when the call connects (Vapi `firstMessage`). */
@@ -41,6 +43,7 @@ export function mergeVoiceReceptionistDetails(
   merged.greeting_style = input.greeting_style;
 
   const optionalScalars = [
+    "receptionist_name",
     "languages_note",
     "escalation_phone",
     "agent_first_message",

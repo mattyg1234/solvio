@@ -2,21 +2,14 @@
 
 import { redirect } from "next/navigation";
 
+import {
+  composeVoiceAgentPrompt,
+  type VoicePromptComposeFields,
+} from "@/lib/compose-voice-agent-prompt";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
 
-export type VoicePromptComposeFields = {
-  businessName: string;
-  receptionIdentity?: string;
-  receptionScope?: string;
-  callerIntakePriorities?: string;
-  agentGoal?: string;
-  conversationFeel?: string;
-  outboundNumberNote?: string;
-  greetingStyle?: string;
-  languagesNote?: string;
-  agentFirstMessage?: string;
-};
+export type { VoicePromptComposeFields };
 
 /** Deterministic starter prompt — replaces manual drafting when merchants click Generate from brief. */
 export async function composeVoiceAgentPromptAction(fields: VoicePromptComposeFields): Promise<string> {
@@ -28,30 +21,7 @@ export async function composeVoiceAgentPromptAction(fields: VoicePromptComposeFi
     redirect("/login");
   }
 
-  const tone = fields.greetingStyle ?? "warm";
-  const lines = [
-    `You are an AI voice assistant representing ${fields.businessName.trim() || "this business"} on phone calls.`,
-    fields.agentFirstMessage?.trim()
-      ? `Your scripted opening plays as structured audio first — stay aligned with its tone (concept): "${fields.agentFirstMessage.trim()}"`
-      : null,
-    fields.receptionIdentity?.trim() ? `Persona / introduction: ${fields.receptionIdentity.trim()}` : null,
-    fields.agentGoal?.trim() ? `Primary goal on every call: ${fields.agentGoal.trim()}` : null,
-    fields.receptionScope?.trim() ? `What you handle: ${fields.receptionScope.trim()}` : null,
-    fields.callerIntakePriorities?.trim()
-      ? `Information you must capture before transferring or ending: ${fields.callerIntakePriorities.trim()}`
-      : null,
-    fields.languagesNote?.trim() ? `Language policy: ${fields.languagesNote.trim()}` : null,
-    fields.conversationFeel?.trim()
-      ? `Conversation style: ${fields.conversationFeel.trim()}`
-      : `Conversation style cues: ${tone} professional pacing; concise sentences; mirror caller energy.`,
-    fields.outboundNumberNote?.trim()
-      ? `Caller ID / outbound numbers policy: ${fields.outboundNumberNote.trim()}`
-      : null,
-    `Never invent discounts or bookings you cannot fulfil—offer to escalate if unsure.`,
-    `Confirm spelling for names and repeat phone numbers digit-by-digit before hanging up.`,
-  ];
-
-  return lines.filter(Boolean).join("\n\n");
+  return composeVoiceAgentPrompt(fields);
 }
 
 /** GPT-drafted receptionist prompt (requires SOLVIO_OPENAI_API_KEY on the deployment). */
@@ -77,6 +47,7 @@ export async function generateVoiceAgentPromptOpenAIAction(
 
   const userPayload = [
     `Business name: ${fields.businessName.trim() || "(unknown)"}`,
+    fields.receptionistName?.trim() ? `Receptionist name: ${fields.receptionistName.trim()}` : null,
     fields.agentFirstMessage?.trim()
       ? `Desired first spoken line vibe (opening): ${fields.agentFirstMessage.trim()}`
       : null,

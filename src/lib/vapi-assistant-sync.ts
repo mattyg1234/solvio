@@ -1,8 +1,13 @@
-import { getSolvioVapiApiKey } from "@/lib/voice-platform-env";
+import {
+  getSolvioVapiAgentAnthropicModel,
+  getSolvioVapiApiKey,
+} from "@/lib/voice-platform-env";
 
-export type VapiAssistantPromptPatch = {
+export type VapiAssistantSyncPatch = {
+  assistantName?: string;
   firstMessage?: string;
   systemPrompt?: string;
+  elevenlabsVoiceId?: string;
 };
 
 type VapiModelPayload = {
@@ -12,23 +17,38 @@ type VapiModelPayload = {
   [key: string]: unknown;
 };
 
-async function fetchAssistant(assistantId: string, apiKey: string): Promise<Record<string, unknown> | null> {
+type VapiVoicePayload = {
+  provider?: string;
+  voiceId?: string;
+  model?: string;
+  [key: string]: unknown;
+};
+
+async function vapiFetch(
+  apiKey: string,
+  path: string,
+  init?: RequestInit,
+): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null }> {
   let res: Response;
   try {
-    res = await fetch(`https://api.vapi.ai/assistant/${encodeURIComponent(assistantId)}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${apiKey}` },
+    res = await fetch(`https://api.vapi.ai${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
       cache: "no-store",
     });
   } catch {
-    return null;
+    return { ok: false, status: 0, json: null };
   }
-  if (!res.ok) return null;
   try {
-    const json = (await res.json()) as unknown;
-    return json !== null && typeof json === "object" ? (json as Record<string, unknown>) : null;
+    const raw = await res.json();
+    const json = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    return { ok: res.ok, status: res.status, json };
   } catch {
-    return null;
+    return { ok: res.ok, status: res.status, json: null };
   }
 }
 
@@ -41,10 +61,66 @@ function mergeSystemMessage(model: VapiModelPayload, systemPrompt: string): Vapi
   return { ...model, messages };
 }
 
-/** PATCH Vapi assistant firstMessage + system prompt (preserves model provider/id). */
-export async function syncVapiAssistantPrompt(
+function defaultMerchantModel(systemPrompt: string): VapiModelPayload {
+  return {
+    provider: "anthropic",
+    model: getSolvioVapiAgentAnthropicModel(),
+    messages: [{ role: "system", content: systemPrompt }],
+  };
+}
+
+function defaultMerchantVoice(voiceId: string): VapiVoicePayload {
+  return {
+    provider: "11labs",
+    voiceId,
+    model: "eleven_turbo_v2_5",
+  };
+}
+
+function defaultMerchantTranscriber() {
+  return {
+    provider: "deepgram",
+    model: "nova-3",
+    language: "multi",
+  };
+}
+
+/** Create a dedicated Vapi assistant for a merchant venue. */
+export async function createMerchantVapiAssistant(
+  patch: Required<Pick<VapiAssistantSyncPatch, "assistantName" | "firstMessage" | "systemPrompt" | "elevenlabsVoiceId">>,
+): Promise<{ ok: true; assistantId: string } | { ok: false; message: string }> {
+  const apiKey = getSolvioVapiApiKey().trim();
+  if (!apiKey) {
+    return { ok: false, message: "SOLVIO_VAPI_API_KEY is not configured on this deployment." };
+  }
+
+  const body = {
+    name: patch.assistantName.trim(),
+    firstMessage: patch.firstMessage.trim(),
+    firstMessageMode: "assistant-speaks-first",
+    model: defaultMerchantModel(patch.systemPrompt.trim()),
+    voice: defaultMerchantVoice(patch.elevenlabsVoiceId.trim()),
+    transcriber: defaultMerchantTranscriber(),
+  };
+
+  const { ok, status, json } = await vapiFetch(apiKey, "/assistant", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  if (!ok || !json) {
+    return { ok: false, message: `Vapi returned ${status || "error"} creating your assistant.` };
+  }
+
+  const id = typeof json.id === "string" ? json.id.trim() : "";
+  if (!id) return { ok: false, message: "Vapi created an assistant but no id was returned." };
+  return { ok: true, assistantId: id };
+}
+
+/** PATCH Vapi assistant name, voice, first message, and system prompt. */
+export async function syncVapiAssistantConfig(
   assistantId: string,
-  patch: VapiAssistantPromptPatch,
+  patch: VapiAssistantSyncPatch,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const id = assistantId.trim();
   if (!id) return { ok: false, message: "Missing assistant id." };
@@ -54,43 +130,58 @@ export async function syncVapiAssistantPrompt(
     return { ok: false, message: "SOLVIO_VAPI_API_KEY is not configured on this deployment." };
   }
 
-  const existing = await fetchAssistant(id, apiKey);
-  if (!existing) {
+  const existingRes = await vapiFetch(apiKey, `/assistant/${encodeURIComponent(id)}`, { method: "GET" });
+  if (!existingRes.ok || !existingRes.json) {
     return { ok: false, message: "Could not load assistant from Vapi — check the assistant id and API key." };
   }
 
+  const existing = existingRes.json;
   const body: Record<string, unknown> = {};
+
+  if (patch.assistantName?.trim()) body.name = patch.assistantName.trim();
   if (patch.firstMessage?.trim()) body.firstMessage = patch.firstMessage.trim();
 
   if (patch.systemPrompt?.trim()) {
     const rawModel = existing.model;
     const model =
       rawModel !== null && typeof rawModel === "object" ? (rawModel as VapiModelPayload) : ({} as VapiModelPayload);
+    if (!model.provider) model.provider = "anthropic";
+    if (!model.model) model.model = getSolvioVapiAgentAnthropicModel();
     body.model = mergeSystemMessage(model, patch.systemPrompt.trim());
   }
 
+  if (patch.elevenlabsVoiceId?.trim()) {
+    const rawVoice = existing.voice;
+    const voice =
+      rawVoice !== null && typeof rawVoice === "object" ? (rawVoice as VapiVoicePayload) : ({} as VapiVoicePayload);
+    body.voice = {
+      ...voice,
+      provider: "11labs",
+      voiceId: patch.elevenlabsVoiceId.trim(),
+      model: voice.model || "eleven_turbo_v2_5",
+    };
+  }
+
   if (!Object.keys(body).length) {
-    return { ok: false, message: "Nothing to sync — provide a first message or system prompt." };
+    return { ok: false, message: "Nothing to sync — add a name, voice, greeting, or instructions." };
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`https://api.vapi.ai/assistant/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
-  } catch {
-    return { ok: false, message: "Could not reach Vapi — try again shortly." };
-  }
+  const { ok, status } = await vapiFetch(apiKey, `/assistant/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 
-  if (!res.ok) {
-    return { ok: false, message: `Vapi returned ${res.status} updating the assistant.` };
+  if (!ok) {
+    return { ok: false, message: `Vapi returned ${status} updating the assistant.` };
   }
 
   return { ok: true };
+}
+
+/** @deprecated Use syncVapiAssistantConfig */
+export async function syncVapiAssistantPrompt(
+  assistantId: string,
+  patch: { firstMessage?: string; systemPrompt?: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  return syncVapiAssistantConfig(assistantId, patch);
 }

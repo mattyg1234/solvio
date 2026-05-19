@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, PhoneCall, Settings2 } from "lucide-react";
+import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, Mic2, PhoneCall, Settings2 } from "lucide-react";
 
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; labe
   items.push({ href: "/dashboard/payments", label: "Pay", icon: CreditCard, key: "pay" });
 
   if (cap.ai_receptionist) {
+    items.push({ href: "/dashboard/setup/voice", label: "Voice", icon: Mic2, key: "voice" });
     items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
   }
 
