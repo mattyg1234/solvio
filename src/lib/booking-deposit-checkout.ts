@@ -1,4 +1,5 @@
 import { stripeClient } from "@/lib/stripe-client";
+import { computeSolvioPlatformFeeCents } from "@/lib/solvio-platform-fee";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -16,6 +17,7 @@ export async function createBookingDepositCheckoutSession(args: {
 
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
   const amount = Math.max(50, Math.floor(args.amountCents));
+  const platformFeeCents = computeSolvioPlatformFeeCents(amount);
 
   const session = await stripe.checkout.sessions.create(
     {
@@ -33,10 +35,17 @@ export async function createBookingDepositCheckoutSession(args: {
           },
         },
       ],
+      payment_intent_data:
+        platformFeeCents > 0
+          ? {
+              application_fee_amount: platformFeeCents,
+            }
+          : undefined,
       metadata: {
         solvio_booking_request_id: args.bookingRequestId,
         solvio_business_id: args.businessId,
         solvio_booking_slug: args.slug,
+        solvio_platform_fee_cents: String(platformFeeCents),
       },
       success_url: `${siteUrl}/book/${encodeURIComponent(args.slug)}?deposit=success`,
       cancel_url: `${siteUrl}/book/${encodeURIComponent(args.slug)}?deposit=cancel`,
