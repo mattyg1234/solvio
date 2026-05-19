@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import {
-  Boxes,
   CalendarOff,
   Loader2,
   Mail,
@@ -212,6 +211,37 @@ export function BookingOperationsHub({
   const inventoryBare =
     bookingFlowComplete && schedules.length === 0 && tables.length === 0 && activeEventsCount === 0;
 
+  const workspaceHeading = useMemo(() => {
+    if (primary === "guests") {
+      if (guestsSub === "confirmed") {
+        return {
+          title: "Confirmed diary",
+          subtitle: "Guests already on your calendar — contact them or cancel a slot.",
+        };
+      }
+      return {
+        title: "Incoming requests",
+        subtitle: "Open a row to reply, call, or use Confirm slot to add them to the diary.",
+      };
+    }
+    if (offeringsSub === "events") {
+      return {
+        title: "Hosted events",
+        subtitle: "Add or edit show listings — purple calendar dates on your guest link come from here.",
+      };
+    }
+    if (offeringsSub === "tables") {
+      return {
+        title: "Tables & floor plan",
+        subtitle: "Drag tables on the canvas, set capacity and colours, save layout when done.",
+      };
+    }
+    return {
+      title: "Appointment hours",
+      subtitle: "Set weekday open/close times and slot length — block individual slots for breaks below.",
+    };
+  }, [primary, guestsSub, offeringsSub]);
+
   if (!businessId || !businessName) {
     return (
       <section className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-white px-6 py-8 text-sm text-[#64748b]">
@@ -219,21 +249,6 @@ export function BookingOperationsHub({
       </section>
     );
   }
-
-  const primaryTabs: { key: BookingHubPrimary; label: string; description: string; icon: typeof MessageSquare }[] = [
-    {
-      key: "guests",
-      label: "Guests & replies",
-      description: "Phone numbers, confirmations, drafts, SMS/email queues, AI call trails tied to Solvio inbound requests.",
-      icon: MessageSquare,
-    },
-    {
-      key: "offerings",
-      label: "Create openings",
-      description: "Appointment grids, hosted events, and table inventory—the things guests pick on your booking link.",
-      icon: Boxes,
-    },
-  ];
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-[#ebe7f7]/90 bg-white shadow-sm">
@@ -262,88 +277,16 @@ export function BookingOperationsHub({
 
       {bookingFlowComplete && inventoryBare ? (
         <div className="border-b border-sky-200/80 bg-[#f0f9ff] px-4 py-4 md:px-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div className="max-w-[46rem] space-y-1">
-              <p className="text-sm font-semibold text-[#0369a1]">Publish bookable openings</p>
-              <p className="text-sm leading-relaxed text-[#0c4a6e]">
-                Use <span className="font-semibold text-[#0f172a]">Create openings</span> to add calendars, repeating shows, or
-                tables—the live booking link pulls from whatever you mint here first.
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full border-[#bae6fd] font-semibold"
-                onClick={() => {
-                  setPrimary("offerings");
-                  setOfferingsSub("appointments");
-                  pushBookingHubUrl("offerings", guestsSub, "appointments");
-                }}
-              >
-                Appointment hours
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full border-[#bae6fd] font-semibold"
-                onClick={() => {
-                  setPrimary("offerings");
-                  setOfferingsSub("events");
-                  pushBookingHubUrl("offerings", guestsSub, "events");
-                }}
-              >
-                Hosted events
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full border-[#bae6fd] font-semibold"
-                onClick={() => {
-                  setPrimary("offerings");
-                  setOfferingsSub("tables");
-                  pushBookingHubUrl("offerings", guestsSub, "tables");
-                }}
-              >
-                Tables
-              </Button>
-            </div>
-          </div>
+          <p className="text-sm leading-relaxed text-[#0c4a6e]">
+            No inventory yet — use the <span className="font-semibold text-[#0f172a]">Create &amp; edit</span> tiles above to add
+            appointment hours, a hosted event, or your first table.
+          </p>
         </div>
       ) : null}
 
-      <div className="border-b border-[#f1eefc] px-4 pt-4 md:px-6 md:pt-6" role="tablist">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Pick a workspace</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {primaryTabs.map((item) => {
-            const Icon = item.icon;
-            const on = primary === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => {
-                  setPrimary(item.key);
-                  pushBookingHubUrl(item.key, guestsSub, offeringsSub);
-                }}
-                className={cn(
-                  "rounded-[22px] border px-4 py-4 text-left transition-colors md:min-h-[132px]",
-                  on
-                    ? "border-[#c4b5fd] bg-[#f5f3ff] text-[#0f172a] shadow-inner shadow-[#ede9fe]/60"
-                    : "border-transparent bg-[#fafbff]/80 hover:border-[#ebe7f7]",
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon className="h-6 w-6 shrink-0 text-[#7c3aed]" aria-hidden />
-                  <span className="text-base font-semibold">{item.label}</span>
-                </div>
-                <p className="mt-3 text-[13px] leading-relaxed text-[#64748b]">{item.description}</p>
-              </button>
-            );
-          })}
-        </div>
+      <div className="border-b border-[#f1eefc] bg-[#fafbff]/60 px-4 py-5 md:px-8 md:py-6">
+        <h2 className="text-xl font-semibold tracking-tight text-[#0f172a]">{workspaceHeading.title}</h2>
+        <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-[#64748b]">{workspaceHeading.subtitle}</p>
       </div>
 
       <div className="px-4 py-7 md:px-6 md:py-10">
@@ -401,27 +344,27 @@ function GuestsHubPanel(props: {
   businessName: string;
 }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
         <button
           type="button"
           onClick={() => props.onGuestsSub("inbox")}
           className={cn(
-            "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
-            props.guestsSub === "inbox" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+            "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
+            props.guestsSub === "inbox" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
           )}
         >
-          Inbox requests
+          Incoming
         </button>
         <button
           type="button"
           onClick={() => props.onGuestsSub("confirmed")}
           className={cn(
-            "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
-            props.guestsSub === "confirmed" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+            "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
+            props.guestsSub === "confirmed" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
           )}
         >
-          Scheduled & confirmed
+          Confirmed
         </button>
       </div>
 
@@ -450,23 +393,23 @@ function OfferingsHubPanel(props: {
   tables: FloorPlanTableRow[];
   questions: TableQuestionRow[];
 }) {
-  const subTabs: { key: BookingOfferingsSub; label: string }[] = [
-    { key: "appointments", label: "Appointment hours" },
-    { key: "events", label: "Hosted events" },
-    { key: "tables", label: "Tables & layouts" },
-  ];
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
-        {subTabs.map((t) => (
+        {(
+          [
+            { key: "appointments" as const, label: "Appointments" },
+            { key: "events" as const, label: "Events" },
+            { key: "tables" as const, label: "Tables" },
+          ] as const
+        ).map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => props.onOfferingsSub(t.key)}
             className={cn(
-              "rounded-full px-4 py-2 text-[13px] font-semibold transition-colors",
-              props.offeringsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b]",
+              "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
+              props.offeringsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
             )}
           >
             {t.label}

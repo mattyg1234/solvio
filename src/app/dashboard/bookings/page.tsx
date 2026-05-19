@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, CalendarClock } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
 import {
@@ -15,8 +15,7 @@ import {
   type VenueCalendarBookingRow,
 } from "@/components/dashboard/booking-operations-hub";
 import type { BookingRequestRow } from "@/components/dashboard/booking-inbox";
-import { BookingsInventoryRail } from "@/components/dashboard/bookings-inventory-rail";
-import { Badge } from "@/components/ui/badge";
+import { BookingsCommandCenter } from "@/components/dashboard/bookings-command-center";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { suggestBookingSlug } from "@/lib/booking-slug";
@@ -206,8 +205,10 @@ export default async function DashboardBookingsPage({
           }))
         : null;
 
+  const confirmedActiveCount = confirmedBookings.filter((b) => b.status !== "cancelled").length;
+
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <Link
         href="/dashboard"
         className={cn(
@@ -219,37 +220,50 @@ export default async function DashboardBookingsPage({
         Overview
       </Link>
 
-      <section className="relative overflow-hidden rounded-[28px] border border-[#ebe7f7]/90 bg-white p-8 shadow-sm md:p-10">
-        <div className="pointer-events-none absolute -right-16 top-8 h-40 w-40 rounded-full bg-[#ede9fe]/80 blur-3xl" aria-hidden />
-        <div className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-3">
-            <Badge className="rounded-full bg-[#ede9fe] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#5b21b6] hover:bg-[#ede9fe]">
-              Customer booking links
-            </Badge>
-            <h1 className="text-[clamp(1.45rem,3vw,2rem)] font-semibold tracking-tight text-[#0f172a]">
-              Host intake on Solvio — keep every email & number
-            </h1>
-            <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-              Publish a link your guests share like any URL. Requests stay in Solvio so you can follow up by phone or SMS now,
-              and plug automated voice messages when you&apos;re ready.
-            </p>
-          </div>
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f5f3ff] text-[#7c3aed] ring-1 ring-[#ebe7f7]">
-            <CalendarClock className="h-7 w-7" aria-hidden />
-          </span>
+      <BookingsCommandCenter
+        inboxCount={inboxRequests.length}
+        confirmedCount={confirmedActiveCount}
+        activePrimary={hub.primary}
+        activeGuestsSub={hub.guestsSub}
+        activeOfferingsSub={hub.offeringsSub}
+        bookingFlowComplete={primaryBookingFlowComplete}
+      />
+
+      <div id="bookings-workspace" className="scroll-mt-6">
+        <BookingOperationsHub
+          businessId={primaryBizId}
+          businessName={primaryBizName}
+          venueTimeZone={primaryVenueTz}
+          schedules={schedules}
+          exceptions={exceptions}
+          events={hostedEventsForClient}
+          tables={floorTables}
+          questions={tableQuestions}
+          requests={inboxRequests}
+          bizNameById={bizNameById}
+          confirmedBookings={confirmedBookings}
+          bookingFlowComplete={primaryBookingFlowComplete}
+          initialPrimary={hub.primary}
+          initialGuestsSub={hub.guestsSub}
+          initialOfferingsSub={hub.offeringsSub}
+          bookingRequestHighlight={hub.bookingHighlight}
+        />
+      </div>
+
+      <section id="booking-links" className="scroll-mt-28 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Guest booking link</h2>
+          <p className="mt-1 text-[14px] text-[#64748b]">Set your slug and copy the URL you share with customers.</p>
         </div>
+        <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
       </section>
-
-      <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
-
-      {primaryBookingFlowComplete ? <BookingsInventoryRail /> : null}
 
       {bookingTips?.length ? (
         <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/90 shadow-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base text-[#0f172a]">Publish tips</CardTitle>
+            <CardTitle className="text-base text-[#0f172a]">Suggested booking URL slugs</CardTitle>
             <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              These suggested paths match how Solvio generates defaults — tweak anything readable before going live.
+              Pick a readable path before you share the link above.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 pb-6">
@@ -264,34 +278,6 @@ export default async function DashboardBookingsPage({
           </CardContent>
         </Card>
       ) : null}
-
-      <BookingOperationsHub
-        businessId={primaryBizId}
-        businessName={primaryBizName}
-        venueTimeZone={primaryVenueTz}
-        schedules={schedules}
-        exceptions={exceptions}
-        events={hostedEventsForClient}
-        tables={floorTables}
-        questions={tableQuestions}
-        requests={inboxRequests}
-        bizNameById={bizNameById}
-        confirmedBookings={confirmedBookings}
-        bookingFlowComplete={primaryBookingFlowComplete}
-        initialPrimary={hub.primary}
-        initialGuestsSub={hub.guestsSub}
-        initialOfferingsSub={hub.offeringsSub}
-        bookingRequestHighlight={hub.bookingHighlight}
-      />
-
-      <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/80 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base text-[#0f172a]">Delivery roadmap</CardTitle>
-          <CardDescription className="text-[14px] leading-relaxed text-[#64748b]">
-            Messages you queue here become structured SMS/email/call logs instantly — ideal for audits today. Wire Twilio/SendGrid later so the same drafts hit carriers automatically and inbound replies append without manual paste.
-          </CardDescription>
-        </CardHeader>
-      </Card>
     </div>
   );
 }
