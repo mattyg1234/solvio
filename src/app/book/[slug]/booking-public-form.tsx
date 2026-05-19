@@ -1,18 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CalendarCheck, Loader2, MapPin, Mic2, PartyPopper, Sparkles } from "lucide-react";
+import { CalendarCheck, Loader2, MapPin, Mic2, PartyPopper, Sparkles, UtensilsCrossed } from "lucide-react";
 
 import { submitBookingRequestAction, type SubmitBookingState } from "./actions";
 import {
-  BOOKING_GUEST_MODE_LABELS,
   type BookingGuestMode,
 } from "@/lib/booking-guest-modes";
 import {
   BOOKING_PUBLIC_WEEKDAY_SHORT,
   type BookingPublicContextPayload,
-  formatPublicRange,
   formatPublicTablePriceEUR,
   type PublicAppointmentHour,
   type PublicBusinessEvent,
@@ -25,6 +23,7 @@ import {
   datesWithUpcomingHostedOccurrences,
   effectiveBarsForFloorTable,
   isWeekdayInsideTableBookingWindows,
+  tableBlockedByHostedShowMessage,
 } from "@/lib/booking-table-rules";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import {
@@ -43,13 +42,47 @@ function hostedEventPickKey(evt: PublicBusinessEvent): string {
 }
 
 const FLOW_KIND_HINT: Record<string, string> = {
-  restaurant_tables:
-    "Share party size and any seating notes — we’ll match you to available tables or zones for your visit.",
-  salon_appointments:
-    "Pick a date and a time slot built from venue hours — or browse hosted events when they’re on offer.",
-  walk_in_waitlist: "Tell us when you’d like to arrive and your party size so we can add you to the waitlist.",
-  mixed: "You may see appointments with fixed slots, ticketed events, table reservations, or a waitlist — pick what fits.",
+  restaurant_tables: "Pick a date and table — or switch to Events for hosted show nights.",
+  salon_appointments: "Choose a date and time slot from the venue calendar.",
+  walk_in_waitlist: "Tell us when you plan to arrive and how many are in your party.",
+  mixed: "Start by choosing how you want to book below.",
 };
+
+const MODE_PICKER: {
+  mode: BookingGuestMode;
+  label: string;
+  blurb: string;
+  Icon: typeof PartyPopper;
+}[] = [
+  { mode: "event", label: "Events", blurb: "Hosted shows — pick the act, then a purple calendar date", Icon: PartyPopper },
+  { mode: "table", label: "Tables", blurb: "Reserve seating for a regular visit", Icon: UtensilsCrossed },
+  { mode: "appointment", label: "Appointments", blurb: "Timed slots from the weekly schedule", Icon: Mic2 },
+  { mode: "walk_in", label: "Walk-in", blurb: "Join the waitlist or ask about availability", Icon: Sparkles },
+];
+
+function FormSection({
+  step,
+  title,
+  children,
+  className,
+}: {
+  step: number;
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("space-y-3 rounded-2xl border border-[#ebe7f7] bg-white px-4 py-4 md:px-5 md:py-5", className)}>
+      <div className="flex items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#ede9fe] text-sm font-bold text-[#5b21b6]">
+          {step}
+        </span>
+        <h2 className="text-[15px] font-semibold text-[#0f172a]">{title}</h2>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 type BookingPublicFormProps = {
   slug: string;
@@ -170,17 +203,9 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     [context.table_questions],
   );
 
-  const showAppointmentsPanel =
-    effectiveKind === "appointment" &&
-    guestModes.includes("appointment") &&
-    context.appointment_hours.length > 0;
-  const showEventsPanel =
-    effectiveKind === "event" && guestModes.includes("event") && context.events.length > 0;
   const showTablesPanel = effectiveKind === "table" && context.tables.length > 0;
-  const showTableQuestions =
-    effectiveKind === "table" && sortedQuestions.length > 0;
+  const showTableQuestions = effectiveKind === "table" && sortedQuestions.length > 0;
   const upcomingActiveEvents = context.events.filter((e) => !e.cancelled);
-  const cancelledEvents = context.events.filter((e) => e.cancelled);
 
   const pickedHostedEvent = useMemo(() => {
     const key = pickedHostedEventKey.trim();
@@ -227,10 +252,30 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     if (effectiveKind !== "table") setPreferredTable("");
   }, [effectiveKind]);
 
-  const blockedHostedTableNights = useMemo(() => {
-    if (!context.booking_policies?.block_public_table_when_hosted_event_date) return new Set<string>();
-    return datesWithUpcomingHostedOccurrences(context.events, venueTz);
-  }, [context.booking_policies?.block_public_table_when_hosted_event_date, context.events, venueTz]);
+  const blockedHostedTableNights = useMemo(
+    () => datesWithUpcomingHostedOccurrences(context.events, venueTz),
+    [context.events, venueTz],
+  );
+
+  const eventsTabAvailable = guestModes.includes("event");
+
+  const tableBlockedForHostedShow = useMemo(() => {
+    if (!(effectiveKind === "table" && guestModes.includes("table"))) return false;
+    const d = requestedDate.trim();
+    if (!d) return false;
+    return blockedHostedTableNights.has(d);
+  }, [blockedHostedTableNights, effectiveKind, guestModes, requestedDate]);
+
+  const tableHostedShowBlockMessage = useMemo(() => {
+    const d = requestedDate.trim();
+    if (!tableBlockedForHostedShow || !d) return null;
+    return tableBlockedByHostedShowMessage({
+      dateYmd: d,
+      events: context.events,
+      venueTz,
+      eventsTabAvailable,
+    });
+  }, [context.events, eventsTabAvailable, requestedDate, tableBlockedForHostedShow, venueTz]);
 
   const bookingPreferredDateHardRequired =
     structuredAppointmentBooking || (effectiveKind === "table" && guestModes.includes("table"));
@@ -241,7 +286,12 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     if (!d) return null;
 
     if (blockedHostedTableNights.has(d)) {
-      return "This venue isn’t accepting table enquires here on hosted-show nights — try another calendar day or browse their Events booking path.";
+      return tableBlockedByHostedShowMessage({
+        dateYmd: d,
+        events: context.events,
+        venueTz,
+        eventsTabAvailable,
+      });
     }
 
     const bars = effectiveBarsForFloorTable(preferredTable, context);
@@ -257,6 +307,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     context,
     effectiveKind,
     guestModes,
+    eventsTabAvailable,
     preferredTable,
     requestedDate,
     venueTz,
@@ -287,18 +338,18 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl rounded-[28px] border border-[#ebe7f7]/90 bg-white/95 p-8 shadow-[0_28px_90px_-58px_rgba(124,58,237,0.32)] backdrop-blur-sm md:p-10">
-      <div className="mb-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Book on Solvio</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a] md:text-[1.65rem]">{businessName}</h1>
+    <div className="mx-auto w-full max-w-lg">
+      <div className="mb-6 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Book with {businessName}</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Request a booking</h1>
         {guestMessage ? (
-          <p className="mt-4 whitespace-pre-wrap text-left text-[15px] leading-relaxed text-[#475569]">{guestMessage}</p>
+          <p className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-[#64748b]">{guestMessage}</p>
         ) : (
-          <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">{flowHint}</p>
+          <p className="mt-2 text-[14px] leading-relaxed text-[#64748b]">{flowHint}</p>
         )}
       </div>
 
-      <form action={formAction} className="space-y-5">
+      <form action={formAction} className="space-y-4">
         <input type="hidden" name="hosted_event_id" value={pickedHostedEvent?.id ?? ""} />
         <input type="hidden" name="hosted_occurrence_starts_at" value={hostedOccurrenceSel?.starts_at ?? ""} />
         {primaryKind ? <input type="hidden" name="booking_kind" value={primaryKind} /> : null}
@@ -308,167 +359,82 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
         ) : null}
 
         {!primaryKind ? (
-          <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
+          <FormSection step={1} title="How would you like to book?" className="border-[#ddd6fe] bg-[#fafbff]">
             <input type="hidden" name="booking_kind" value={effectiveKind === "" ? guestModes[0] ?? "" : effectiveKind} required />
-            <p className="text-sm font-semibold text-[#0f172a]">Choose how you&apos;d like to book</p>
-            <p className="text-xs leading-relaxed text-[#64748b]">Tabs keep the busy page calm — only the paths this venue publishes stay visible.</p>
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Booking type">
-              {guestModes.map((m) => {
-                const chosen = effectiveKind === m;
+            <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="Booking type">
+              {MODE_PICKER.filter((m) => guestModes.includes(m.mode)).map(({ mode, label, blurb, Icon }) => {
+                const chosen = effectiveKind === mode;
                 return (
                   <button
-                    key={m}
+                    key={mode}
                     type="button"
                     role="tab"
                     aria-selected={chosen}
                     className={cn(
-                      "rounded-full border px-4 py-2 text-sm font-semibold transition-colors",
+                      "flex min-h-[5.5rem] flex-col items-start gap-2 rounded-xl border px-4 py-4 text-left transition-all",
                       chosen
-                        ? "border-[#a78bfa] bg-[#f5f3ff] text-[#5b21b6] shadow-inner shadow-[#ede9fe]/60"
-                        : "border-transparent bg-white text-[#64748b] ring-1 ring-[#ebe7f7] hover:border-[#ddd6fe] hover:text-[#0f172a]",
+                        ? "border-[#7c3aed] bg-[#f5f3ff] shadow-sm ring-2 ring-[#ddd6fe]/80"
+                        : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
                     )}
-                    onClick={() => setKind(m)}
+                    onClick={() => setKind(mode)}
                   >
-                    {BOOKING_GUEST_MODE_LABELS[m]}
+                    <span className="flex items-center gap-2 text-[#7c3aed]">
+                      <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                      <span className="text-[15px] font-semibold text-[#0f172a]">{label}</span>
+                    </span>
+                    <span className="text-[12px] leading-snug text-[#64748b]">{blurb}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </FormSection>
         ) : null}
 
-        {showAppointmentsPanel ? (
-          <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-              <Mic2 className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-              Typical availability
-            </div>
-            <p className="text-xs leading-relaxed text-[#64748b]">
-              These are your recurring weekly templates. Guests choose <strong>a date</strong>, then{' '}
-              <strong>a start time slot</strong> — times use{' '}
-              {context.venue_time_zone && context.venue_time_zone !== "UTC" ? (
-                <span className="font-medium text-[#475569]">{venueTz}</span>
-              ) : (
-                <>
-                  your venue timezone (set under <span className="font-medium text-[#475569]">Dashboard → Settings</span>)
-                </>
-              )}
-              . Booking something like <strong>a boat-party night</strong>? Use{' '}
-              <strong>{BOOKING_GUEST_MODE_LABELS.event}</strong> and pick that listing instead.
-            </p>
-            <ul className="space-y-2 text-sm text-[#475569]">
-              {[...context.appointment_hours]
-                .sort((a, b) => a.weekday - b.weekday)
-                .map((h) => (
-                  <li
-                    key={`${h.weekday}-${h.open_time}`}
-                    className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-[#ebe7f7] bg-white px-3 py-2"
-                  >
-                    <span className="font-semibold text-[#0f172a]">{BOOKING_PUBLIC_WEEKDAY_SHORT[h.weekday] ?? `Day ${h.weekday}`}</span>
-                    <span className="text-[13px] text-[#64748b]">
-                      {h.open_time}–{h.close_time}
-                      <span className="text-[#94a3b8]"> · {h.slot_minutes} min slots</span>
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          </section>
-        ) : null}
-
-        {showEventsPanel ? (
-          <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-              <PartyPopper className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-              Hosted nights & happenings
-            </div>
-            <p className="text-xs leading-relaxed text-[#64748b]">
-                Pick a hosted listing first —{' '}
-                <span className="font-semibold text-[#0f172a]">purple dates</span> on the calendar are the only nights this show runs.
-            </p>
-            <ul className="space-y-2">
+        {effectiveKind === "event" && guestModes.includes("event") && upcomingActiveEvents.length > 0 ? (
+          <FormSection step={primaryKind ? 1 : 2} title="Which show?">
+            <select
+              aria-label="Choose a hosted event"
+              value={pickedHostedEventKey}
+              required
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              onChange={(e) => {
+                const next = e.target.value;
+                setPickedHostedEventKey(next);
+                if (!next) return;
+                const evt = upcomingActiveEvents.find((x) => hostedEventPickKey(x) === next);
+                if (evt) setEventTitle(evt.title);
+              }}
+            >
+              <option value="">Select an event…</option>
               {upcomingActiveEvents.map((evt) => (
-                <li
-                  key={`${evt.title}-${evt.starts_at}`}
-                  className="rounded-xl border border-[#ebe7f7] bg-white px-3 py-2 text-sm text-[#475569]"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="font-semibold text-[#0f172a]">{evt.title}</span>
-                    <span className="text-[12px] uppercase tracking-[0.18em] text-[#94a3b8]">
-                      {formatPublicRange(evt.starts_at, evt.ends_at)}
-                    </span>
-                  </div>
-                  {evt.description ? (
-                    <p className="mt-2 text-[13px] leading-relaxed text-[#64748b]">{evt.description}</p>
-                  ) : null}
-                </li>
+                <option key={hostedEventPickKey(evt)} value={hostedEventPickKey(evt)}>
+                  {evt.title}
+                </option>
               ))}
-            </ul>
-            {cancelledEvents.length ? (
-              <details className="rounded-xl border border-dashed border-[#fbbf24]/60 bg-[#fffbeb]/70 px-3 py-2 text-[13px] text-[#92400e]">
-                <summary className="cursor-pointer font-semibold">Recently cancelled nights</summary>
-                <ul className="mt-2 space-y-1">
-                  {cancelledEvents.map((evt) => (
-                    <li key={`cancel-${evt.title}-${evt.starts_at}`}>
-                      <span className="font-medium">{evt.title}</span>
-                      {evt.cancellation_reason ? ` — ${evt.cancellation_reason}` : null}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ) : null}
-          </section>
-        ) : null}
-
-        <div className="space-y-2">
-          <label htmlFor="event_title" className="text-sm font-semibold text-[#0f172a]">
-            Occasion / event name <span className="font-normal text-[#94a3b8]">(optional)</span>
-          </label>
-          {showEventsPanel && upcomingActiveEvents.length ? (
-            <div className="space-y-2">
-              <select
-                aria-label="Match an existing hosted event"
-                value={pickedHostedEventKey}
-                required={Boolean(effectiveKind === "event" && upcomingActiveEvents.length > 0)}
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setPickedHostedEventKey(next);
-                  if (!next) return;
-                  const evt = upcomingActiveEvents.find((x) => hostedEventPickKey(x) === next);
-                  if (evt) setEventTitle(evt.title);
-                }}
-              >
-                <option value="">Match an existing hosted event…</option>
-                {upcomingActiveEvents.map((evt) => (
-                  <option key={hostedEventPickKey(evt)} value={hostedEventPickKey(evt)}>
-                    {evt.title} · {formatPublicRange(evt.starts_at, evt.ends_at)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-          <input
-            id="event_title"
-            name="event_title"
-            value={eventTitle}
-            onChange={(e) => setEventTitle(e.target.value)}
-            autoComplete="off"
-            className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            placeholder="Birthday dinner · Vinyl night · Salon colour refresh…"
-          />
-        </div>
+            </select>
+            <input type="hidden" name="event_title" value={eventTitle} />
+          </FormSection>
+        ) : effectiveKind === "event" ? (
+          <FormSection step={primaryKind ? 1 : 2} title="Which show?">
+            <input
+              id="event_title"
+              name="event_title"
+              value={eventTitle}
+              onChange={(e) => setEventTitle(e.target.value)}
+              required
+              placeholder="Event or show name"
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+            />
+          </FormSection>
+        ) : (
+          <input type="hidden" name="event_title" value={eventTitle} />
+        )}
 
         {hostedCalendarMode ? (
-          <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4" aria-labelledby="hosted-show-night-label">
-            <div className="space-y-1">
-              <p id="hosted-show-night-label" className="text-sm font-semibold text-[#0f172a]">
-                When is this showing?
-              </p>
-              <p className="text-xs leading-relaxed text-[#64748b]">
-                Only the violet cells are real performances for this act — grey days are intentionally disabled here. Tap a violet day to fix
-                the exact night below (this custom grid replaces the loose browser date field so nothing drifts across months).
-              </p>
-            </div>
+          <FormSection step={primaryKind ? 2 : 3} title="Pick your show night" className="border-[#ddd6fe] bg-[#fafbff]">
+            <p className="text-[13px] leading-relaxed text-[#64748b]">
+              Only <span className="font-semibold text-[#5b21b6]">purple dates</span> are bookable for this event. Grey days are not running this show.
+            </p>
             <input type="hidden" name="requested_date" value={hostedOccurrenceSel?.dateYmd ?? ""} required />
             <input
               type="hidden"
@@ -483,11 +449,11 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               onSelect={(o) => setHostedOccurrenceSel(o)}
             />
             {!hostedOccurrenceSel ? (
-              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
-                Tap a violet date on this calendar — that is how you chose the promoted show night (plain grey days never run this act).
+              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] text-[#92400e]">
+                Tap a purple date to continue.
               </p>
             ) : null}
-          </section>
+          </FormSection>
         ) : null}
 
         {hostedListingNoUpcomingShows ? (
@@ -518,34 +484,54 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
         ) : null}
 
         {!suppressGenericPreferredDateGuestsRow ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label htmlFor="requested_date" className="text-sm font-semibold text-[#0f172a]">
-                Preferred date
-                {bookingPreferredDateHardRequired ? (
-                  <span className="font-normal text-rose-600"> *</span>
-                ) : (
-                  <span className="font-normal text-[#94a3b8]"> (optional)</span>
-                )}
-              </label>
-              <input
-                id="requested_date"
-                name="requested_date"
-                type="date"
-                value={requestedDate}
-                required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
-                max="9999-12-31"
-                onChange={(e) => setRequestedDate(e.target.value)}
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-              />
-            </div>
-          </div>
+          <FormSection
+            step={primaryKind ? 1 : effectiveKind === "event" ? 4 : 2}
+            title={effectiveKind === "table" ? "Which evening?" : "Which date?"}
+          >
+            <label htmlFor="requested_date" className="sr-only">
+              Preferred date
+            </label>
+            <input
+              id="requested_date"
+              name="requested_date"
+              type="date"
+              value={requestedDate}
+              required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
+              max="9999-12-31"
+              onChange={(e) => setRequestedDate(e.target.value)}
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+            />
+            {tableBlockedForHostedShow && tableHostedShowBlockMessage ? (
+              <div className="space-y-3 rounded-xl border-2 border-[#a78bfa] bg-[#f5f3ff] px-4 py-4">
+                <p className="text-[14px] font-medium leading-relaxed text-[#4c1d95]">{tableHostedShowBlockMessage}</p>
+                {eventsTabAvailable && !primaryKind ? (
+                  <button
+                    type="button"
+                    className={cn(
+                      buttonVariants({ variant: "default" }),
+                      "h-11 rounded-full bg-[#7c3aed] px-6 text-sm font-semibold hover:bg-[#6d28d9]",
+                    )}
+                    onClick={() => {
+                      setKind("event");
+                      setRequestedDate("");
+                      setPreferredTable("");
+                    }}
+                  >
+                    Book via Events instead
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </FormSection>
         ) : null}
 
         {effectiveKind !== "" ? (
-          <div className="space-y-2">
-            <label htmlFor="guest_count" className="text-sm font-semibold text-[#0f172a]">
-              How many are coming? <span className="font-normal text-rose-600">*</span>
+          <FormSection
+            step={primaryKind ? 2 : effectiveKind === "event" ? 5 : 3}
+            title="How many guests?"
+          >
+            <label htmlFor="guest_count" className="sr-only">
+              How many are coming?
             </label>
             <input
               id="guest_count"
@@ -555,22 +541,16 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               min={1}
               max={999}
               required
-              placeholder="Party size · e.g. 4"
-              className="h-11 w-full max-w-sm rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              placeholder="e.g. 4"
+              className="h-12 w-full max-w-xs rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
-          </div>
+          </FormSection>
         ) : null}
 
-        {showTablesPanel ? (
-          <section className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
-              <Sparkles className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-              Table preferences
-            </div>
-            <p className="text-xs leading-relaxed text-[#64748b]">
-              Choose a favourite table if you have one — pick a preferred date above so Solvio matches your enquiry with the weekday rules for that table or the venue grid.
-            </p>
-            {tableSelectionHintMessage ? (
+        {showTablesPanel && !tableBlockedForHostedShow ? (
+          <FormSection step={primaryKind ? 3 : 4} title="Choose a table (optional)">
+            <p className="text-[13px] text-[#64748b]">Prices shown are guide rates — the venue confirms before you pay.</p>
+            {tableSelectionHintMessage && !tableBlockedForHostedShow ? (
               <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[12px] leading-relaxed text-[#92400e]">
                 {tableSelectionHintMessage}
               </p>
@@ -625,7 +605,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
                 placeholder="Quiet corner · outdoor · celebrating something…"
               />
             </div>
-          </section>
+          </FormSection>
         ) : null}
 
         {showTableQuestions ? (
@@ -743,65 +723,48 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
           )}
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="customer_name" className="text-sm font-semibold text-[#0f172a]">
-            Your name
-          </label>
-          <input
-            id="customer_name"
-            name="customer_name"
-            required
-            autoComplete="name"
-            className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            placeholder="Alex Kim"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-semibold text-[#0f172a]">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            placeholder="you@example.com"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="phone" className="text-sm font-semibold text-[#0f172a]">
-            Phone <span className="font-normal text-[#94a3b8]">(recommended)</span>
-          </label>
-          <input
-            id="phone"
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            placeholder="+1 …"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="notes" className="text-sm font-semibold text-[#0f172a]">
-            Anything else we should know?
-          </label>
-          <textarea
-            id="notes"
-            name="notes"
-            rows={3}
-            className="w-full resize-none rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            placeholder="Allergies, accessibility, kids high-chair…"
-          />
-        </div>
+        <FormSection step={primaryKind ? 4 : 5} title="Your details" className="border-[#f1eefc] bg-[#fafbff]">
+          <div className="space-y-3">
+            <input
+              id="customer_name"
+              name="customer_name"
+              required
+              autoComplete="name"
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              placeholder="Your name"
+            />
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              placeholder="Email address"
+            />
+            <input
+              id="phone"
+              name="phone"
+              type="tel"
+              autoComplete="tel"
+              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              placeholder="Phone (recommended)"
+            />
+            <textarea
+              id="notes"
+              name="notes"
+              rows={3}
+              className="w-full resize-none rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              placeholder="Notes — allergies, accessibility, special requests…"
+            />
+          </div>
+        </FormSection>
 
         <button
           type="submit"
-          disabled={pending || hostedEventSubmissionBlocked || hostedCalendarSelectionBlocked}
+          disabled={
+            pending || hostedEventSubmissionBlocked || hostedCalendarSelectionBlocked || tableBlockedForHostedShow
+          }
           className={cn(
             buttonVariants({ variant: "default" }),
             "h-12 w-full rounded-full text-base font-semibold shadow-lg shadow-[#7c3aed]/25 disabled:opacity-60",
@@ -813,7 +776,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               Sending…
             </>
           ) : (
-            "Submit booking request"
+            "Send booking request"
           )}
         </button>
       </form>

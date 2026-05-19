@@ -1,6 +1,12 @@
+import type { BookingGuestMode } from "@/lib/booking-guest-modes";
 import type { BookingPublicContextPayload, PublicBusinessEvent, PublicFloorTable } from "@/lib/booking-public-context";
+import { parseGuestModesFromRpc } from "@/lib/booking-public-context";
 import { expandHostedEventForSubmit } from "@/lib/booking-hosted-submit";
 import { dowSundayZeroInBusinessTZ } from "@/lib/booking-appointment-slots";
+
+function parseGuestModesFromContext(ctx: BookingPublicContextPayload): BookingGuestMode[] {
+  return parseGuestModesFromRpc(ctx.guest_modes_raw);
+}
 
 /** Same shape as weekday appointment rows minus slot granularity — used only for weekday open/close checks. */
 export type TableWeekdayWindow = {
@@ -15,7 +21,7 @@ function activeHostedEvents(events: PublicBusinessEvent[]): PublicBusinessEvent[
 
 /**
  * Dates (venue-local YYYY-MM-DD) where a hosted show is booked and not skipped.
- * Used only when merchants opt in to blocking public table enquiries those nights.
+ * Table enquiries must never overlap these nights — guests book via Events instead.
  */
 export function datesWithUpcomingHostedOccurrences(events: PublicBusinessEvent[], venueTz: string): Set<string> {
   const out = new Set<string>();
@@ -25,6 +31,37 @@ export function datesWithUpcomingHostedOccurrences(events: PublicBusinessEvent[]
     }
   }
   return out;
+}
+
+/** Hosted listing titles running on a given venue-local date (for guest-facing copy). */
+export function hostedEventTitlesOnDate(
+  dateYmd: string,
+  events: PublicBusinessEvent[],
+  venueTz: string,
+): string[] {
+  const want = dateYmd.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(want)) return [];
+  const titles = new Set<string>();
+  for (const ev of activeHostedEvents(events)) {
+    for (const oc of expandHostedEventForSubmit(ev, venueTz)) {
+      if (oc.dateYmd === want) titles.add(ev.title.trim());
+    }
+  }
+  return [...titles].filter(Boolean);
+}
+
+export function tableBlockedByHostedShowMessage(args: {
+  dateYmd: string;
+  events: PublicBusinessEvent[];
+  venueTz: string;
+  eventsTabAvailable: boolean;
+}): string {
+  const titles = hostedEventTitlesOnDate(args.dateYmd, args.events, args.venueTz);
+  const label = titles.length === 1 ? titles[0] : titles.length > 1 ? titles.join(", ") : "a hosted show";
+  const tail = args.eventsTabAvailable
+    ? "Switch to Events at the top of this form, pick the show, then tap a purple date on the calendar."
+    : "This date is reserved for a hosted performance — choose another evening for table seating.";
+  return `You can't book a table on this date — ${label} is on that night. ${tail}`;
 }
 
 function venueAppointmentBars(ctx: BookingPublicContextPayload): TableWeekdayWindow[] {
@@ -114,15 +151,18 @@ export function validateTableBookingSubmission(args: {
 
   const tz = ctx.venue_time_zone?.trim() || "UTC";
 
-  if (ctx.booking_policies?.block_public_table_when_hosted_event_date) {
-    const blocked = datesWithUpcomingHostedOccurrences(ctx.events, tz);
-    if (blocked.has(date)) {
-      return {
-        ok: false,
-        message:
-          "We're not accepting table enquiries on nights that overlap your hosted lineup — choose another evening or browse the Events path when it's live.",
-      };
-    }
+  const blocked = datesWithUpcomingHostedOccurrences(ctx.events, tz);
+  if (blocked.has(date)) {
+    const guestModes = parseGuestModesFromContext(ctx);
+    return {
+      ok: false,
+      message: tableBlockedByHostedShowMessage({
+        dateYmd: date,
+        events: ctx.events,
+        venueTz: tz,
+        eventsTabAvailable: guestModes.includes("event"),
+      }),
+    };
   }
 
   const bars = effectiveBarsForFloorTable(args.preferredTableLabel, ctx);
