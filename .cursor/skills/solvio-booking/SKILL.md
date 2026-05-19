@@ -76,6 +76,8 @@ Before claiming booking work is done:
 
 Deploy: see `.cursor/rules/git-commit-deploy-proactive.mdc` — commit + push + Vercel prod for guest-facing changes unless user opts out.
 
+Larger diffs: run personal **`code-review-skill`** (`~/.cursor/skills/code-review-skill/`) before merge — see `AGENTS.md`.
+
 ## When to use Superpowers alongside this skill
 
 - **New feature or behavior change** → `brainstorming` first; update spec in `docs/superpowers/specs/`

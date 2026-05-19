@@ -5,6 +5,7 @@
 1. **Booking / events / tables / public `/book`** → read `.cursor/skills/solvio-booking/SKILL.md`
 2. **Product spec** → `docs/superpowers/specs/2026-05-19-solvio-booking-domain-design.md`
 3. **Process for new features** → use [Superpowers](https://github.com/obra/superpowers): brainstorm → plan → implement → verify
+4. **Before merge / after substantial PRs** → use personal skill **`code-review-skill`** (`~/.cursor/skills/code-review-skill/SKILL.md`) — React 19 / Next.js / TypeScript / security / performance. Prompt: *“Use code-review-skill on this diff; focus on security and edge cases.”*
 
 ## Stack
 
