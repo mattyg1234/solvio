@@ -18,7 +18,7 @@ import {
 } from "@/lib/booking-public-context";
 import { coerceFloorPlanShape, normalizeFloorTableDimensions, normalizeFloorTableFillColor } from "@/lib/floor-plan-visuals";
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
-import { expandHostedEventForSubmit, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
+import { expandHostedEventOccurrences, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
 import {
   datesWithUpcomingHostedOccurrences,
   effectiveBarsForFloorTable,
@@ -213,10 +213,15 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     return upcomingActiveEvents.find((e) => hostedEventPickKey(e) === key) ?? null;
   }, [pickedHostedEventKey, upcomingActiveEvents]);
 
-  const hostedExpandedOccurrences = useMemo(() => {
+  const hostedCalendarOccurrences = useMemo(() => {
     if (!pickedHostedEvent) return [];
-    return expandHostedEventForSubmit(pickedHostedEvent, venueTz);
+    return expandHostedEventOccurrences(pickedHostedEvent, venueTz);
   }, [pickedHostedEvent, venueTz]);
+
+  const hostedBookableOccurrences = useMemo(
+    () => hostedCalendarOccurrences.filter((o) => !o.skipped),
+    [hostedCalendarOccurrences],
+  );
 
   const hostedEventSubmissionBlocked =
     effectiveKind === "event" &&
@@ -225,13 +230,13 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     !pickedHostedEventKey.trim().length;
 
   const hostedCalendarMode =
-    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length > 0;
+    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedCalendarOccurrences.length > 0;
 
   const hostedCalendarSelectionBlocked =
     hostedCalendarMode && !(hostedOccurrenceSel?.starts_at && hostedOccurrenceSel.starts_at.trim().length > 0);
 
   const hostedListingNoUpcomingShows =
-    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedExpandedOccurrences.length === 0;
+    effectiveKind === "event" && guestModes.includes("event") && Boolean(pickedHostedEvent) && hostedCalendarOccurrences.length === 0;
 
   const isEventBooking = effectiveKind === "event" && guestModes.includes("event");
   /** Never show native `<input type="date">` while a hosted listing is tied to the enquiry — use the violet calendar or a strict YYYY-MM-DD fallback instead. */
@@ -444,10 +449,15 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
             />
             <EventOccurrenceMonthCalendar
               timeZone={venueTz}
-              occurrences={hostedExpandedOccurrences}
+              occurrences={hostedCalendarOccurrences}
               selected={hostedOccurrenceSel}
               onSelect={(o) => setHostedOccurrenceSel(o)}
             />
+            {hostedBookableOccurrences.length === 0 ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] leading-relaxed text-rose-900">
+                Every upcoming show night for this listing is cancelled. Check the struck-through dates above for details, or pick another event.
+              </p>
+            ) : null}
             {!hostedOccurrenceSel ? (
               <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] text-[#92400e]">
                 Tap a purple date to continue.

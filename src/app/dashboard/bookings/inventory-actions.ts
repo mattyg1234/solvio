@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  addSkippedDate,
+  cancelEventOccurrence,
   clearInstanceOverride,
-  removeSkippedDate,
+  restoreEventOccurrence,
   setInstanceOverride,
 } from "@/lib/business-event-occurrences";
 import type { FloorPlanTableShape } from "@/lib/floor-plan-visuals";
@@ -258,12 +258,13 @@ function asRecurrenceRecord(v: unknown): Record<string, unknown> {
   return { type: "once" };
 }
 
-/** Skip or restore a single calendar night while keeping recurrence metadata. */
+/** Cancel or reinstate a single calendar night while keeping recurrence metadata. */
 export async function toggleBusinessEventOccurrenceSkipped(params: {
   businessId: string;
   eventId: string;
   dateYmd: string;
   skip: boolean;
+  reason?: string | null;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
   const { data, error: selErr } = await supabase
@@ -278,7 +279,9 @@ export async function toggleBusinessEventOccurrenceSkipped(params: {
   const ymd = params.dateYmd.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) throw new Error("Invalid date.");
 
-  const nextRec = params.skip ? addSkippedDate(base, ymd) : removeSkippedDate(base, ymd);
+  const nextRec = params.skip
+    ? cancelEventOccurrence(base, ymd, params.reason)
+    : restoreEventOccurrence(base, ymd);
 
   const { error } = await supabase
     .from("business_events")

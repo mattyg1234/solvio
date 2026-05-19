@@ -120,20 +120,20 @@ function formatStoredRecurrence(rec: unknown): string {
   const o = rec as Record<string, unknown>;
   const type = typeof o.type === "string" ? o.type : "once";
   const { skipped } = parseRecurrenceExtras(rec);
-  const skipFrag = skipped.size ? ` (${skipped.size} skipped)` : "";
-  if (type === "once") return `One-off occurrence${skipFrag}`;
-  if (type === "daily") return `Repeats daily${skipFrag}`;
+  const cancelFrag = skipped.size ? ` (${skipped.size} cancelled)` : "";
+  if (type === "once") return `One-off occurrence${cancelFrag}`;
+  if (type === "daily") return `Repeats daily${cancelFrag}`;
   if (type === "weekly") {
     const weekdays = Array.isArray(o.weekdays) ? (o.weekdays as unknown[]) : [];
     const names = weekdays
       .filter((x): x is number => typeof x === "number" && Number.isFinite(x))
       .map((n) => WEEKDAY_LABEL[Math.round(n)] ?? `Day ${n}`)
       .filter(Boolean);
-    if (!names.length) return `Weekly (no weekdays picked)${skipFrag}`;
-    return `Every ${names.join(", ")}${skipFrag}`;
+    if (!names.length) return `Weekly (no weekdays picked)${cancelFrag}`;
+    return `Every ${names.join(", ")}${cancelFrag}`;
   }
   const label = type.length ? type.charAt(0).toUpperCase() + type.slice(1) : "Custom";
-  return `${label}${skipFrag}`;
+  return `${label}${cancelFrag}`;
 }
 
 function smsVenueQuickText(phone: string, opener: string) {
@@ -883,7 +883,7 @@ function EventsPanel({
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Events & series</h2>
         <p className="mt-1 text-sm text-[#64748b]">
-          Cancellation keeps history for scripts (“sorry, Thursday is off”). Delete removes it from dashboards (recoverable via restore later).
+          Cancelling a single night keeps history for voice scripts and the public booking page. Delete removes the listing from dashboards (recoverable via restore later).
         </p>
       </header>
 

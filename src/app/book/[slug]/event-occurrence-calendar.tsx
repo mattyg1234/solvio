@@ -46,7 +46,7 @@ function parseYmFromYmd(ymd: string) {
 
 export type EventOccurrenceMonthCalendarProps = {
   timeZone: string;
-  /** Future, non-skipped occurrences (same contract as expand helpers). */
+  /** Future occurrences for this listing — includes cancelled nights (not tappable). */
   occurrences: ExpandedOccurrence[];
   selected: ExpandedOccurrence | null;
   onSelect: (o: ExpandedOccurrence) => void;
@@ -96,6 +96,13 @@ export function EventOccurrenceMonthCalendar({
       map.set(k, v);
     }
     return map;
+  }, [occurrences, cursor.year, cursor.month]);
+
+  const cancelledInMonth = useMemo(() => {
+    const pref = ymPrefix(cursor.year, cursor.month);
+    return occurrences
+      .filter((o) => o.skipped && o.dateYmd.startsWith(pref))
+      .sort((a, b) => a.dateYmd.localeCompare(b.dateYmd));
   }, [occurrences, cursor.year, cursor.month]);
 
   const lastDom = daysInMonth(cursor.year, cursor.month);
@@ -173,46 +180,58 @@ export function EventOccurrenceMonthCalendar({
 
           const list = occByCalendarDay.get(domNum);
           const hasShow = Boolean(list?.length);
+          const bookableList = list?.filter((o) => !o.skipped) ?? [];
+          const cancelledList = list?.filter((o) => o.skipped) ?? [];
+          const isCancelledOnly = hasShow && bookableList.length === 0;
 
-          const primaryOcc = list?.[0];
+          const primaryOcc = bookableList[0] ?? cancelledList[0];
           const label = domNum.toString();
 
           const isSelected = Boolean(
-            primaryOcc && selected && (sameSel(selected, primaryOcc) || (list?.some((x) => sameSel(selected, x)) ?? false)),
+            primaryOcc &&
+              !primaryOcc.skipped &&
+              selected &&
+              (sameSel(selected, primaryOcc) || (bookableList.some((x) => sameSel(selected, x)) ?? false)),
           );
           const isPendingPick = Boolean(
             pendingSameDayChoices?.length && primaryOcc && pendingSameDayChoices[0]?.dateYmd === primaryOcc.dateYmd,
           );
 
+          const cancelReason = cancelledList.find((o) => o.cancellation_reason?.trim())?.cancellation_reason?.trim();
+
           return (
             <button
               key={`${cursor.year}-${cursor.month}-${domNum}`}
               type="button"
-              disabled={!hasShow || !primaryOcc}
+              disabled={!hasShow || !bookableList.length || !primaryOcc || primaryOcc.skipped}
               aria-pressed={isSelected || isPendingPick || undefined}
               title={
                 !hasShow
                   ? `${label} — no show this day`
-                  : (list ?? []).length > 1
-                    ? `${label} — ${(list ?? []).length} performances · tap to pick a start time`
-                    : `${label} · ${primaryOcc ? formatSlotTitle(primaryOcc) : ""} (${timeZone})`
+                  : isCancelledOnly
+                    ? `${label} — cancelled${cancelReason ? `: ${cancelReason}` : ""}`
+                    : bookableList.length > 1
+                      ? `${label} — ${bookableList.length} performances · tap to pick a start time`
+                      : `${label} · ${primaryOcc ? formatSlotTitle(primaryOcc) : ""} (${timeZone})`
               }
               onClick={() => {
-                if (!list?.length) return;
-                if (list.length === 1) {
-                  onSelect(list[0]);
+                if (!bookableList.length) return;
+                if (bookableList.length === 1) {
+                  onSelect(bookableList[0]);
                   setPendingSameDayChoices(null);
                   return;
                 }
-                setPendingSameDayChoices([...list].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
+                setPendingSameDayChoices([...bookableList].sort((a, b) => a.starts_at.localeCompare(b.starts_at)));
               }}
               className={cn(
                 "aspect-square rounded-lg border text-[13px] font-semibold transition",
                 !hasShow
                   ? "cursor-not-allowed border-transparent bg-[#f1f5f9] text-[#cbd5e1]"
-                  : isSelected || isPendingPick
-                    ? "border-[#7c3aed] bg-gradient-to-br from-[#ddd6fe] via-[#ede9fe] to-[#f5f3ff] text-[#4c1d95] shadow-inner shadow-[#7c3aed]/35 ring-2 ring-[#a78bfa]"
-                    : "border-[#c4b5fd] bg-gradient-to-br from-[#ede9fe] to-[#f5f3ff] text-[#5b21b6] shadow-[0_1px_0_rgba(124,58,237,0.12)] hover:border-[#7c3aed] hover:bg-[#ddd6fe]/90 hover:shadow-md",
+                  : isCancelledOnly
+                    ? "cursor-not-allowed border-rose-200 bg-rose-50 text-rose-800 line-through decoration-rose-900/70"
+                    : isSelected || isPendingPick
+                      ? "border-[#7c3aed] bg-gradient-to-br from-[#ddd6fe] via-[#ede9fe] to-[#f5f3ff] text-[#4c1d95] shadow-inner shadow-[#7c3aed]/35 ring-2 ring-[#a78bfa]"
+                      : "border-[#c4b5fd] bg-gradient-to-br from-[#ede9fe] to-[#f5f3ff] text-[#5b21b6] shadow-[0_1px_0_rgba(124,58,237,0.12)] hover:border-[#7c3aed] hover:bg-[#ddd6fe]/90 hover:shadow-md",
               )}
             >
               {label}
@@ -252,6 +271,25 @@ export function EventOccurrenceMonthCalendar({
           </div>
         </fieldset>
       ) : null}
+      {cancelledInMonth.length > 0 ? (
+        <ul className="space-y-2 rounded-xl border border-rose-100 bg-rose-50/80 px-4 py-3 text-[12px] leading-relaxed text-rose-950">
+          {cancelledInMonth.map((o) => (
+            <li key={`${o.dateYmd}-${o.starts_at}`}>
+              <span className="font-semibold">
+                {new Date(`${o.dateYmd}T12:00:00`).toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  timeZone,
+                })}
+              </span>
+              {" — "}
+              Cancelled
+              {o.cancellation_reason?.trim() ? `: ${o.cancellation_reason.trim()}` : " (no reason provided)"}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {selected ? (
         <p className="text-[13px] leading-relaxed text-[#64748b]">
           Showing on{" "}
@@ -268,8 +306,9 @@ export function EventOccurrenceMonthCalendar({
         </p>
       ) : null}
       <p className="text-[11px] leading-relaxed text-[#94a3b8]">
-        Grey days do not run this listing —{' '}
-        <span className="font-semibold text-[#5b21b6]">purple-filled dates</span> match the promoted show nights above.
+        Grey days do not run this listing —{" "}
+        <span className="font-semibold text-[#5b21b6]">purple dates</span> are bookable show nights.{" "}
+        <span className="font-semibold text-rose-700">Struck-through rose dates</span> were cancelled by the venue.
       </p>
     </div>
   );

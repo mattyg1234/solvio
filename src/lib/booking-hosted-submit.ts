@@ -13,11 +13,16 @@ function activeHostedEvents(events: PublicBusinessEvent[]): PublicBusinessEvent[
 }
 
 export function expandHostedEventForSubmit(ev: PublicBusinessEvent, venueTz: string): ExpandedOccurrence[] {
+  return expandHostedEventOccurrences(ev, venueTz).filter((o) => !o.skipped);
+}
+
+/** Guest calendar — includes cancelled nights (with reasons) but still hides past dates. */
+export function expandHostedEventOccurrences(ev: PublicBusinessEvent, venueTz: string): ExpandedOccurrence[] {
   const now = Date.now();
   const rangeStart = new Date(now - BOOKING_HOSTED_EXPAND_SLACK_BEFORE_MS);
   const rangeEnd = new Date(now + BOOKING_HOSTED_EXPAND_RANGE_AHEAD_MS);
   return expandBusinessEventOccurrences(ev.starts_at, ev.ends_at, ev.recurrence ?? {}, venueTz, rangeStart, rangeEnd).filter(
-    (o) => !o.skipped && Date.parse(o.starts_at) >= now - 60_000,
+    (o) => Date.parse(o.starts_at) >= now - 60_000,
   );
 }
 

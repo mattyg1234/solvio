@@ -157,15 +157,18 @@ export function EventSeriesCalendarSheet({
 
   const [editStartLocal, setEditStartLocal] = useState("");
   const [editEndLocal, setEditEndLocal] = useState("");
+  const [cancelReasonDraft, setCancelReasonDraft] = useState("");
 
   useEffect(() => {
     if (!selOcc) {
       setEditStartLocal("");
       setEditEndLocal("");
+      setCancelReasonDraft("");
       return;
     }
     setEditStartLocal(isoSliceForDatetimeLocal(selOcc.starts_at));
     setEditEndLocal(isoSliceForDatetimeLocal(selOcc.ends_at));
+    setCancelReasonDraft(selOcc.skipped ? selOcc.cancellation_reason?.trim() ?? "" : "");
   }, [selOcc]);
 
   if (!event) return null;
@@ -310,7 +313,7 @@ export function EventSeriesCalendarSheet({
                 ) : null}
                 {selOcc.skipped ? (
                   <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-800">
-                    Skipped
+                    Cancelled
                   </span>
                 ) : null}
               </h3>
@@ -320,8 +323,13 @@ export function EventSeriesCalendarSheet({
                 {" → "}
                 <span className="font-mono">{new Date(selOcc.ends_at).toLocaleString()}</span>
               </p>
+              {selOcc.skipped && selOcc.cancellation_reason?.trim() ? (
+                <p className="mt-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] leading-relaxed text-rose-900">
+                  Guest-facing reason: {selOcc.cancellation_reason.trim()}
+                </p>
+              ) : null}
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 space-y-3">
                 {selOcc.skipped ? (
                   <Button
                     type="button"
@@ -340,28 +348,48 @@ export function EventSeriesCalendarSheet({
                       })
                     }
                   >
-                    Bring night back
+                    Reinstate this night
                   </Button>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={pending}
-                    className="rounded-full border-rose-200 text-rose-800"
-                    onClick={() =>
-                      run(async () => {
-                        if (!selectedYmd) return;
-                        await toggleBusinessEventOccurrenceSkipped({
-                          businessId,
-                          eventId: event.id,
-                          dateYmd: selectedYmd,
-                          skip: true,
-                        });
-                      })
-                    }
-                  >
-                    Skip this night
-                  </Button>
+                  <>
+                    <div className="space-y-2 rounded-xl border border-rose-100 bg-rose-50/70 px-4 py-3">
+                      <p className="text-[13px] font-semibold text-rose-950">Cancel this day&apos;s event</p>
+                      <p className="text-[12px] leading-relaxed text-rose-900/90">
+                        This will inform customers why it&apos;s been cancelled through your AI voice assistant and on the booking page.
+                      </p>
+                      <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-rose-900/80" htmlFor="ev-cancel-reason">
+                        Reason (optional)
+                      </label>
+                      <textarea
+                        id="ev-cancel-reason"
+                        rows={2}
+                        value={cancelReasonDraft}
+                        onChange={(e) => setCancelReasonDraft(e.target.value)}
+                        placeholder="Artist unavailable · venue refurbishment · weather…"
+                        className="w-full resize-none rounded-xl border border-rose-200 bg-white px-3 py-2 text-[13px] text-[#0f172a] outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-200/60"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={pending}
+                      className="rounded-full border-rose-300 text-rose-900"
+                      onClick={() =>
+                        run(async () => {
+                          if (!selectedYmd) return;
+                          await toggleBusinessEventOccurrenceSkipped({
+                            businessId,
+                            eventId: event.id,
+                            dateYmd: selectedYmd,
+                            skip: true,
+                            reason: cancelReasonDraft.trim() || null,
+                          });
+                        })
+                      }
+                    >
+                      Cancel this day&apos;s event
+                    </Button>
+                  </>
                 )}
               </div>
 
@@ -438,7 +466,7 @@ export function EventSeriesCalendarSheet({
             </section>
           ) : !event.cancelled_at ? (
             <section className="rounded-2xl border border-dashed border-[#ddd6fe] bg-white/80 p-6 text-[13px] text-[#64748b]">
-              Tap any highlighted tile to skip a night or set one-off timings.
+              Tap any highlighted tile to cancel a show night (with an optional reason) or set one-off timings.
             </section>
           ) : null}
 

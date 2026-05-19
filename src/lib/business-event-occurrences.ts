@@ -1,6 +1,6 @@
 /**
  * Expand `business_events` rows into occurrence chips for merchant calendar UI,
- * respecting optional `skipped_dates` and `instance_overrides` on `recurrence` JSON.
+ * respecting optional `cancelled_occurrences` / legacy `skipped_dates` and `instance_overrides` on `recurrence` JSON.
  */
 
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
@@ -12,12 +12,21 @@ export type ExpandedOccurrence = {
   dateYmd: string;
   starts_at: string;
   ends_at: string;
+  /** True when this calendar night was cancelled (not bookable). */
   skipped: boolean;
   override: boolean;
+  /** Optional merchant note — shown on the public booking page and fed to voice scripts. */
+  cancellation_reason?: string | null;
+};
+
+export type CancelledOccurrenceRow = {
+  date: string;
+  reason?: string | null;
 };
 
 export type ParsedRecurrenceExtras = {
   skipped: Set<string>;
+  cancellationReasonByDate: Map<string, string | null>;
   overrides: Map<string, { starts_at: string; ends_at: string }>;
 };
 
@@ -25,14 +34,53 @@ function isYmd(raw: unknown): raw is string {
   return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.trim());
 }
 
+function readCancelledOccurrenceRow(row: unknown): CancelledOccurrenceRow | null {
+  if (isYmd(row)) return { date: row.trim() };
+  const r = row && typeof row === "object" && !Array.isArray(row) ? (row as Record<string, unknown>) : null;
+  if (!r) return null;
+  const ds = typeof r.date === "string" ? r.date.trim() : "";
+  if (!isYmd(ds)) return null;
+  const reasonRaw = typeof r.reason === "string" ? r.reason.trim() : "";
+  return reasonRaw.length ? { date: ds, reason: reasonRaw } : { date: ds };
+}
+
+function serializeCancelledOccurrences(
+  skipped: Set<string>,
+  cancellationReasonByDate: Map<string, string | null>,
+): CancelledOccurrenceRow[] {
+  return [...skipped]
+    .sort()
+    .map((date) => {
+      const reason = cancellationReasonByDate.get(date)?.trim();
+      return reason?.length ? { date, reason } : { date };
+    });
+}
+
 export function parseRecurrenceExtras(rec: unknown): ParsedRecurrenceExtras {
   const skipped = new Set<string>();
+  const cancellationReasonByDate = new Map<string, string | null>();
   const overrides = new Map<string, { starts_at: string; ends_at: string }>();
   const o = rec && typeof rec === "object" && !Array.isArray(rec) ? (rec as Record<string, unknown>) : null;
+
+  const rawCancelled = o?.cancelled_occurrences ?? o?.cancelledOccurrences;
+  if (Array.isArray(rawCancelled)) {
+    for (const row of rawCancelled) {
+      const parsed = readCancelledOccurrenceRow(row);
+      if (!parsed) continue;
+      skipped.add(parsed.date);
+      cancellationReasonByDate.set(parsed.date, parsed.reason?.trim() || null);
+    }
+  }
+
   const rawSkipped = o?.skipped_dates ?? o?.skippedDates;
   if (Array.isArray(rawSkipped)) {
     for (const x of rawSkipped) {
-      if (isYmd(x)) skipped.add(x.trim());
+      const parsed = readCancelledOccurrenceRow(x);
+      if (!parsed) continue;
+      skipped.add(parsed.date);
+      if (!cancellationReasonByDate.has(parsed.date)) {
+        cancellationReasonByDate.set(parsed.date, parsed.reason?.trim() || null);
+      }
     }
   }
   const rawOv = o?.instance_overrides ?? o?.instanceOverrides;
@@ -49,7 +97,7 @@ export function parseRecurrenceExtras(rec: unknown): ParsedRecurrenceExtras {
       overrides.set(ds, { starts_at: new Date(s).toISOString(), ends_at: new Date(e).toISOString() });
     }
   }
-  return { skipped, overrides };
+  return { skipped, cancellationReasonByDate, overrides };
 }
 
 export function recurrenceCoreForWrite(rec: unknown): Record<string, unknown> {
@@ -58,28 +106,71 @@ export function recurrenceCoreForWrite(rec: unknown): Record<string, unknown> {
 
   delete base.skipped_dates;
   delete base.skippedDates;
+  delete base.cancelled_occurrences;
+  delete base.cancelledOccurrences;
   delete base.instance_overrides;
   delete base.instanceOverrides;
   return base;
 }
 
-export function addSkippedDate(recurrence: Record<string, unknown>, dateYmd: string): Record<string, unknown> {
-  const { skipped } = parseRecurrenceExtras(recurrence);
-  skipped.add(dateYmd.trim());
-  return { ...recurrence, skipped_dates: [...skipped].sort() };
+/** Cancel one show night — optional reason is shared with guests and voice reception. */
+export function cancelEventOccurrence(
+  recurrence: Record<string, unknown>,
+  dateYmd: string,
+  reason?: string | null,
+): Record<string, unknown> {
+  const ymd = dateYmd.trim();
+  const { skipped, cancellationReasonByDate } = parseRecurrenceExtras(recurrence);
+  skipped.add(ymd);
+  cancellationReasonByDate.set(ymd, reason?.trim() || null);
+  const cancelled_occurrences = serializeCancelledOccurrences(skipped, cancellationReasonByDate);
+  const { skipped_dates: _sd, skippedDates: _sd2, cancelled_occurrences: _co, cancelledOccurrences: _co2, ...rest } =
+    recurrence;
+  void _sd;
+  void _sd2;
+  void _co;
+  void _co2;
+  return { ...rest, cancelled_occurrences };
 }
 
-export function removeSkippedDate(recurrence: Record<string, unknown>, dateYmd: string): Record<string, unknown> {
-  const { skipped } = parseRecurrenceExtras(recurrence);
-  skipped.delete(dateYmd.trim());
-  const next = [...skipped].sort();
-  if (next.length === 0) {
-    const { skipped_dates: _sd, skippedDates: _sd2, ...rest } = recurrence;
+/** Reinstate a previously cancelled show night. */
+export function restoreEventOccurrence(recurrence: Record<string, unknown>, dateYmd: string): Record<string, unknown> {
+  const ymd = dateYmd.trim();
+  const { skipped, cancellationReasonByDate } = parseRecurrenceExtras(recurrence);
+  skipped.delete(ymd);
+  cancellationReasonByDate.delete(ymd);
+  if (skipped.size === 0) {
+    const {
+      skipped_dates: _sd,
+      skippedDates: _sd2,
+      cancelled_occurrences: _co,
+      cancelledOccurrences: _co2,
+      ...rest
+    } = recurrence;
     void _sd;
     void _sd2;
+    void _co;
+    void _co2;
     return { ...rest };
   }
-  return { ...recurrence, skipped_dates: next };
+  const cancelled_occurrences = serializeCancelledOccurrences(skipped, cancellationReasonByDate);
+  const { skipped_dates: _sd3, skippedDates: _sd4, cancelled_occurrences: _co3, cancelledOccurrences: _co4, ...rest } =
+    recurrence;
+  void _sd3;
+  void _sd4;
+  void _co3;
+  void _co4;
+  return { ...rest, cancelled_occurrences };
+}
+
+/** @deprecated Prefer cancelEventOccurrence */
+export function addSkippedDate(recurrence: Record<string, unknown>, dateYmd: string): Record<string, unknown> {
+  return cancelEventOccurrence(recurrence, dateYmd);
+}
+
+/** @deprecated Prefer restoreEventOccurrence */
+export function removeSkippedDate(recurrence: Record<string, unknown>, dateYmd: string): Record<string, unknown> {
+  return restoreEventOccurrence(recurrence, dateYmd);
 }
 
 export function setInstanceOverride(
@@ -173,7 +264,7 @@ export function expandBusinessEventOccurrences(
     recurrenceUnknown && typeof recurrenceUnknown === "object" && !Array.isArray(recurrenceUnknown)
       ? (recurrenceUnknown as Record<string, unknown>)
       : ({ type: "once" } as Record<string, unknown>);
-  const { skipped, overrides } = parseRecurrenceExtras(rec);
+  const { skipped, cancellationReasonByDate, overrides } = parseRecurrenceExtras(rec);
   const type = recurType(rec);
 
   const rs = rangeStart.getTime();
@@ -199,6 +290,7 @@ export function expandBusinessEventOccurrences(
       ends_at: new Date(eMs).toISOString(),
       skipped: skipped.has(dateYmd),
       override: Boolean(ov),
+      cancellation_reason: skipped.has(dateYmd) ? cancellationReasonByDate.get(dateYmd) ?? null : null,
     });
   };
 
