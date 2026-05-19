@@ -53,14 +53,13 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     ],
   },
   personal_voice: {
-    productLine: "Solvio Voice",
-    eyebrowAssistant: "Personalised cadence · live or preview",
-    idleBadge: "Purple mic · listen or replay",
+    productLine: "AI receptionist",
+    eyebrowAssistant: "Speak with us",
+    idleBadge: "Tap the purple microphone",
     emptyHint:
-      "Build a convincing voice receptionist with personalised accent, rhythm and tonal finishing touches so callers still swear it is someone from your podium. Beneath that polish Solvio stitches together bookings, plated dinner rotations, tastings, salons, launches and confirmations that politely nag themselves closed. Explore the story on-screen — then audition the pacing below.",
-    footer:
-      "Tap the purple microphone to replay how it sounds in motion—on your domain this becomes fully interactive so guests can steer the conversation.",
-    assistantLabel: "Solvio voice preview",
+      "Configure your Vapi assistant on this deployment to talk live. Until then, tap the microphone for a short sample of how reception sounds.",
+    footer: "Allow microphone access when your browser asks.",
+    assistantLabel: "Receptionist",
     lines: [
       {
         role: "assistant",
@@ -492,7 +491,7 @@ export function VoiceDemoPanel({
           <>
             <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
             <p className="mt-2 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
-              Sample playback from our preview stack · swap to interactive voice when your assistant is live on site
+              Set Vapi keys on this deployment for live conversation — this sample plays until then.
             </p>
           </>
         ) : (

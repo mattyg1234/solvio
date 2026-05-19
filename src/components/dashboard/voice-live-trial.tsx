@@ -21,7 +21,7 @@ type VoiceLiveTrialProps = {
   vapiAssistantName: string;
 };
 
-/** Live Vapi when deployment public key exists; otherwise scripted browser trial. */
+/** Live Vapi receptionist in dashboard setup; scripted fallback when public key is missing. */
 export function VoiceLiveTrial({
   businessName,
   agentPrompt,
@@ -36,8 +36,8 @@ export function VoiceLiveTrial({
     return (
       <div className="space-y-3">
         <p className="text-sm text-[#64748b]">
-          Rehearsing with <span className="font-semibold text-[#0f172a]">{vapiAssistantName || "your Vapi assistant"}</span>{" "}
-          — same live stack as the marketing homepage when env keys are set.
+          Same receptionist as the public homepage — powered by{" "}
+          <span className="font-semibold text-[#0f172a]">{vapiAssistantName || "your Vapi assistant"}</span>.
         </p>
         <VapiBrandAgentPanel publicKey={publicKey} assistantId={assistantId} surface="onboarding" />
       </div>
@@ -47,8 +47,8 @@ export function VoiceLiveTrial({
   return (
     <div className="space-y-3">
       <p className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        Add <code className="font-mono text-xs">NEXT_PUBLIC_VAPI_PUBLIC_KEY</code> to this deployment to trial your real
-        Vapi assistant here. Until then, use the scripted preview below.
+        Add <code className="font-mono text-xs">NEXT_PUBLIC_VAPI_PUBLIC_KEY</code> to this deployment to use your real
+        Vapi receptionist here. Until then, a short scripted sample appears below.
       </p>
       <VoiceBrowserTrial businessName={businessName} agentPrompt={agentPrompt} toneLabel={toneLabel} />
     </div>

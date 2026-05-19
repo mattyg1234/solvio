@@ -79,7 +79,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 "h-12 rounded-full border-[#ebe7f7] px-8 text-base font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
               )}
             >
-              Watch demo
+              How we help
             </Link>
             <Link
               href="#live-ai-receptionist"
@@ -88,7 +88,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 "h-12 rounded-full px-6 text-base font-semibold text-[#475569] hover:bg-[#f8fafc] hover:text-[#0f172a]",
               )}
             >
-              Test AI receptionist
+              Talk to our receptionist
             </Link>
           </div>
 
@@ -112,6 +112,9 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           transition={{ duration: 0.58, delay: reduce ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="relative scroll-mt-28 outline-none"
         >
+          <p className="mb-4 text-center text-sm font-semibold text-[#475569] lg:text-left">
+            Click the purple microphone — speak with our receptionist about how we can help.
+          </p>
           <MarketingSiteVoice vapiConfig={vapiConfig} />
         </motion.div>
       </div>

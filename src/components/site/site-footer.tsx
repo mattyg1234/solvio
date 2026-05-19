@@ -38,8 +38,8 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/#demo" className="hover:text-[#7c3aed]">
-                  Voice demo
+                <Link href="/#live-ai-receptionist" className="hover:text-[#7c3aed]">
+                  Talk to us
                 </Link>
               </li>
               <li>

@@ -18,7 +18,7 @@ export default async function Home() {
         <GrowthSection />
         <CommerceSection />
         <SocialProofSection />
-        <LiveDemoSection vapiConfig={vapiConfig} />
+        <LiveDemoSection />
       </main>
       <SiteFooter />
     </>

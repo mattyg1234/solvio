@@ -580,9 +580,9 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
             {vapiAssistantId.trim() ? (
               <section className="space-y-2 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
-                <h3 className="text-sm font-semibold text-[#4c1d95]">Homepage live demo (marketing site)</h3>
+                <h3 className="text-sm font-semibold text-[#4c1d95]">Homepage receptionist (marketing site)</h3>
                 <p className="text-[13px] leading-relaxed text-[#5b21b6]">
-                  To use this assistant on the public homepage purple mic, set these in Vercel /{" "}
+                  Visitors tap the purple microphone and talk to this assistant. Set these in Vercel /{" "}
                   <span className="font-mono text-xs">.env.local</span> and redeploy:
                 </p>
                 <ul className="list-inside list-disc space-y-1 font-mono text-[11px] text-[#4c1d95]">
@@ -597,10 +597,9 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
         {step === 5 ? (
           <div className="space-y-5">
-            <h2 className="text-xl font-semibold text-[#0f172a]">Convince yourself</h2>
+            <h2 className="text-xl font-semibold text-[#0f172a]">Talk to your receptionist</h2>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              Rehearse with your real Vapi assistant when the deployment public key is configured — otherwise a scripted
-              browser preview stands in.
+              Tap the purple microphone — the same experience guests get on your homepage when Vapi keys are configured.
             </p>
             <VoiceLiveTrial
               businessName={businessName}

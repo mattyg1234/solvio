@@ -4,14 +4,18 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
-import { MarketingSiteVoice, marketingSiteHasLiveVapi } from "@/components/home/marketing-site-voice";
 import { buttonVariants } from "@/components/ui/button";
-import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { cn } from "@/lib/utils";
 
-export function LiveDemoSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }) {
+const topics = [
+  "How AI receptionists handle calls after hours",
+  "Bookings, tables, and event nights on one page",
+  "Stripe deposits and Connect for your venue",
+  "What setup looks like for restaurants, salons, and tours",
+];
+
+export function LiveDemoSection() {
   const reduce = useReducedMotion();
-  const liveVapi = marketingSiteHasLiveVapi(vapiConfig);
 
   return (
     <section
@@ -29,30 +33,32 @@ export function LiveDemoSection({ vapiConfig }: { vapiConfig?: MarketingVapiConf
           transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-3xl text-center"
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">
-            Hands-on preview
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">How we help</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            {liveVapi
-              ? "Talk live with Solvio\u2019s brand assistant."
-              : "Hear how your personalised AI receptionist could sound."}
+            Ask our receptionist anything about Solvio.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            {liveVapi
-              ? "Use your microphone here in the browser and ask whatever you want—calls, bookings, late nights—we answer in character."
-              : "Short preview clips are generated behind the scenes. Tap the purple microphone to replay; your browser supplies audio if previews are muted."}
+            No forms, no scripted demo — tap the purple microphone at the top of the page and talk. Our Vapi receptionist
+            answers in real time about how we can help your business.
           </p>
         </motion.div>
 
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 26 }}
+        <motion.ul
+          initial={reduce ? false : { opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.25 }}
-          transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto mt-14 max-w-xl"
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.48, delay: reduce ? 0 : 0.06, ease: [0.22, 1, 0.36, 1] }}
+          className="mx-auto mt-12 grid max-w-2xl gap-3 sm:grid-cols-2"
         >
-          <MarketingSiteVoice heroAutoPlay={false} vapiConfig={vapiConfig} />
-        </motion.div>
+          {topics.map((topic) => (
+            <li
+              key={topic}
+              className="rounded-2xl border border-[#ebe7f7]/90 bg-white/80 px-5 py-4 text-left text-sm font-medium leading-relaxed text-[#475569] shadow-sm"
+            >
+              {topic}
+            </li>
+          ))}
+        </motion.ul>
 
         <motion.div
           initial={reduce ? false : { opacity: 0 }}
@@ -62,13 +68,13 @@ export function LiveDemoSection({ vapiConfig }: { vapiConfig?: MarketingVapiConf
           className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
           <Link
-            href="/#contact"
+            href="/#live-ai-receptionist"
             className={cn(
               buttonVariants({ variant: "default", size: "lg" }),
               "h-12 rounded-full px-9 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
             )}
           >
-            Book a personalised demo
+            Talk to our receptionist
           </Link>
           <Link
             href="/#growth"

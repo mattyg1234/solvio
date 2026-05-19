@@ -11,7 +11,7 @@ const nav = [
   { href: "/#growth", label: "Growth" },
   { href: "/#commerce", label: "Commerce" },
   { href: "/#proof", label: "Stories" },
-  { href: "/#demo", label: "Try AI" },
+  { href: "/#live-ai-receptionist", label: "Receptionist" },
   { href: "/#contact", label: "Contact" },
 ];
 
@@ -70,13 +70,13 @@ export function SiteHeader() {
             Sign up
           </Link>
           <Link
-            href="/#demo"
+            href="/#live-ai-receptionist"
             className={cn(
               buttonVariants({ variant: "ghost", size: "sm" }),
               "hidden rounded-full px-4 font-medium text-[#64748b] hover:text-[#0f172a] lg:inline-flex",
             )}
           >
-            Talk to AI
+            Talk to us
           </Link>
           <Link
             href="/#contact"

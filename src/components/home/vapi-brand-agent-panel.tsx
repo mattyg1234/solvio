@@ -26,18 +26,15 @@ type VapiBrandAgentPanelProps = {
 
 const copy = {
   marketing: {
-    productLine: "Solvio Voice",
-    eyebrowAssistant: "Live agent",
-    idleBadge: "Purple mic · start live conversation",
-    /** Static on-screen opener only — never sent to Vapi / not spoken. */
-    starterBubbleLabel: "Solvio voice preview",
+    productLine: "AI receptionist",
+    eyebrowAssistant: "Speak with us",
+    idleBadge: "Tap the purple microphone",
+    starterBubbleLabel: "Receptionist",
     starterBubbleIntro:
-      "This is how a tailored Solvio voice layer sounds when guests ask for dinner slots, tastings or private rooms—matching the pacing and colouring you bake into the persona.",
-    starterBubbleMicCta:
-      "Click the purple mic icon and chat to me in real time about how we can help you boost your sales and business organisation.",
-    footer:
-      "Each new purple-mic session starts with a blank transcript below. Speak after the assistant pauses—you should see streaming text for both sides once the microphone is live (allow Chrome/Safari to use the mic).",
-    assistantLabel: "Solvio",
+      "Ask how Solvio can help with bookings, events, tables, payments, and after-hours calls — we’ll walk you through it.",
+    starterBubbleMicCta: "Tap the purple microphone below and start talking.",
+    footer: "Allow microphone access when your browser asks.",
+    assistantLabel: "Receptionist",
   },
   onboarding: {
     productLine: "Try Solvio Voice",
@@ -96,7 +93,8 @@ export function VapiBrandAgentPanel({
   className,
 }: VapiBrandAgentPanelProps) {
   const meta = copy[surface];
-  const openerText = firstMessage?.trim() || meta.starterBubbleIntro;
+  const vapiGreeting = firstMessage?.trim() ?? "";
+  const openerText = vapiGreeting || meta.starterBubbleIntro;
   const reduce = useReducedMotion();
   const keysRef = useRef({ publicKey, assistantId });
   keysRef.current = { publicKey, assistantId };
@@ -321,7 +319,7 @@ export function VapiBrandAgentPanel({
             ) : listening ? (
               <motion.div key="listening" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <Badge className="rounded-full bg-[#7c3aed] px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white hover:bg-[#7c3aed]">
-                  Live…
+                  Listening
                 </Badge>
               </motion.div>
             ) : phase === "error" ? (
@@ -402,20 +400,27 @@ export function VapiBrandAgentPanel({
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-full border-[#ebe7f7] px-6 font-semibold text-[#64748b] hover:bg-[#f8fafc]"
-            disabled={listening || phase === "connecting"}
-            onClick={() => {
-              setErrorDetail(null);
-              setPhase("idle");
-              setBubbles([]);
-            }}
-          >
-            Reset transcript
-          </Button>
+        <div
+          className={cn(
+            "flex flex-col items-center gap-4",
+            surface === "marketing" && bubbles.length === 0 ? "justify-center" : "sm:flex-row sm:justify-between",
+          )}
+        >
+          {surface !== "marketing" || bubbles.length > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full border-[#ebe7f7] px-6 font-semibold text-[#64748b] hover:bg-[#f8fafc]"
+              disabled={listening || phase === "connecting"}
+              onClick={() => {
+                setErrorDetail(null);
+                setPhase("idle");
+                setBubbles([]);
+              }}
+            >
+              Clear chat
+            </Button>
+          ) : null}
 
           <motion.div whileTap={{ scale: reduce ? 1 : 0.96 }} className="relative">
             <motion.button
@@ -484,12 +489,16 @@ export function VapiBrandAgentPanel({
           ) : null}
         </div>
 
-        <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
-        <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
-          {surface === "marketing"
-            ? "Each session resets the bubbles · transcript comes from live Vapi data (mic permission required)"
-            : "Purple mic cleanly ends capture · summaries reset every fresh connect"}
-        </p>
+        {surface === "marketing" ? (
+          <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
+        ) : (
+          <>
+            <p className="text-center text-[12px] font-medium leading-relaxed text-[#64748b]">{meta.footer}</p>
+            <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.26em] text-[#94a3b8]">
+              Purple mic cleanly ends capture · summaries reset every fresh connect
+            </p>
+          </>
+        )}
       </div>
     </Card>
   );
