@@ -6,8 +6,14 @@ import { redirect } from "next/navigation";
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import { composeVoiceAgentPrompt } from "@/lib/compose-voice-agent-prompt";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
+import {
+  appendBookingContextToPrompt,
+  bookingFlowKindLabel,
+  type ReceptionistBookingContext,
+} from "@/lib/receptionist-booking-context";
 import type { VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 import { createMerchantVapiAssistant, syncVapiAssistantConfig } from "@/lib/vapi-assistant-sync";
 
 export type ReceptionistStudioSaveInput = VoiceReceptionistSaveInput & {
@@ -23,6 +29,34 @@ function vapiAssistantLabel(businessName: string, receptionistName: string): str
   const biz = businessName.trim() || "Venue";
   const name = receptionistName.trim();
   return name ? `${biz} — ${name}` : `${biz} receptionist`;
+}
+
+function parseGuestBookingModes(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const modes = (raw as Record<string, unknown>).guest_booking_modes;
+  if (!Array.isArray(modes)) return [];
+  return modes.filter((m): m is string => typeof m === "string");
+}
+
+async function loadBookingContext(businessId: string): Promise<ReceptionistBookingContext> {
+  const supabase = await createSupabaseServerClient();
+  const { data: biz } = await supabase
+    .from("businesses")
+    .select("booking_slug,booking_flow_kind,booking_flow_details")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  const slug = typeof biz?.booking_slug === "string" ? biz.booking_slug.trim() : "";
+  const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
+  const publicBookingUrl = slug ? `${siteUrl}/book/${encodeURIComponent(slug)}` : null;
+
+  return {
+    publicBookingUrl,
+    bookingFlowLabel: bookingFlowKindLabel(
+      typeof biz?.booking_flow_kind === "string" ? biz.booking_flow_kind : null,
+    ),
+    guestBookingModes: parseGuestBookingModes(biz?.booking_flow_details),
+  };
 }
 
 /** Save merchant receptionist to Supabase and create or update their Vapi assistant. */
@@ -62,7 +96,9 @@ export async function saveReceptionistStudioAction(
     };
   }
 
-  const systemPrompt =
+  const bookingContext = await loadBookingContext(businessId);
+
+  const basePrompt =
     details.agent_prompt_custom?.trim() ||
     composeVoiceAgentPrompt({
       businessName,
@@ -77,6 +113,8 @@ export async function saveReceptionistStudioAction(
       languagesNote: details.languages_note,
       agentFirstMessage: firstMessage,
     });
+
+  const systemPrompt = appendBookingContextToPrompt(basePrompt, bookingContext);
 
   const assistantLabel = vapiAssistantLabel(businessName, receptionistName);
   let assistantId = details.vapi_assistant_id?.trim() ?? "";
@@ -122,6 +160,8 @@ export async function saveReceptionistStudioAction(
   return {
     ok: true,
     assistantId,
-    message: "Your AI receptionist is saved and live in Vapi.",
+    message: bookingContext.publicBookingUrl
+      ? "Saved — tap the purple mic and pretend to book a table. Real bookings land on your public page or in Dashboard → Bookings after guests submit."
+      : "Saved — tap the purple mic to role-play a call. Publish a booking link under Bookings to connect voice with your live table page.",
   };
 }

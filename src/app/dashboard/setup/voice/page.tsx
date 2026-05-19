@@ -5,7 +5,12 @@ import { ReceptionistStudio } from "@/components/dashboard/receptionist-studio";
 import type { VoiceReceptionistDetails } from "@/lib/voice-receptionist";
 import { voiceDetailsToClient } from "@/lib/voice-receptionist";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
+import {
+  bookingFlowKindLabel,
+  labelGuestBookingModes,
+} from "@/lib/receptionist-booking-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
   title: "Your AI receptionist · Dashboard · Solvio",
@@ -42,6 +47,13 @@ function parseStoredVoiceDetails(raw: unknown): VoiceReceptionistDetails {
   };
 }
 
+function parseGuestBookingModes(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const modes = (raw as Record<string, unknown>).guest_booking_modes;
+  if (!Array.isArray(modes)) return [];
+  return modes.filter((m): m is string => typeof m === "string");
+}
+
 export default async function VoiceSetupPage() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -54,7 +66,9 @@ export default async function VoiceSetupPage() {
 
   const { data: biz } = await supabase
     .from("businesses")
-    .select("id,name,voice_receptionist_details,voice_receptionist_completed_at")
+    .select(
+      "id,name,booking_slug,booking_flow_kind,booking_flow_details,voice_receptionist_details,voice_receptionist_completed_at",
+    )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -66,6 +80,10 @@ export default async function VoiceSetupPage() {
 
   const stored = parseStoredVoiceDetails(biz.voice_receptionist_details);
   const platformVoice = await resolvePlatformElevenLabsVoice();
+  const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
+  const slug = typeof biz.booking_slug === "string" ? biz.booking_slug.trim() : "";
+  const guestModes = parseGuestBookingModes(biz.booking_flow_details);
+  const flowKind = typeof biz.booking_flow_kind === "string" ? biz.booking_flow_kind : null;
 
   return (
     <ReceptionistStudio
@@ -75,6 +93,9 @@ export default async function VoiceSetupPage() {
       voiceComplete={Boolean(biz.voice_receptionist_completed_at)}
       platformVoiceId={platformVoice.voiceId}
       platformVoiceSource={platformVoice.source}
+      publicBookingUrl={slug ? `${siteUrl}/book/${encodeURIComponent(slug)}` : null}
+      bookingFlowSummary={bookingFlowKindLabel(flowKind)}
+      guestBookingModesLabel={guestModes.length ? labelGuestBookingModes(guestModes) : null}
     />
   );
 }

@@ -26,6 +26,9 @@ type ReceptionistStudioProps = {
   voiceComplete: boolean;
   platformVoiceId: string;
   platformVoiceSource: "env" | "marketing_vapi" | "none";
+  publicBookingUrl: string | null;
+  bookingFlowSummary: string;
+  guestBookingModesLabel: string | null;
 };
 
 export function ReceptionistStudio({
@@ -35,6 +38,9 @@ export function ReceptionistStudio({
   voiceComplete,
   platformVoiceId,
   platformVoiceSource,
+  publicBookingUrl,
+  bookingFlowSummary,
+  guestBookingModesLabel,
 }: ReceptionistStudioProps) {
   const [receptionistName, setReceptionistName] = useState(
     initialDetails.receptionist_name ?? initialDetails.vapi_assistant_name?.split(" — ").pop() ?? "",
@@ -323,22 +329,56 @@ export function ReceptionistStudio({
         </section>
 
         <section className="rounded-[24px] border border-[#ddd6fe] bg-[#faf7ff]/80 p-6 shadow-sm md:p-8">
-          <h2 className="text-lg font-semibold text-[#0f172a]">Try {trialName}</h2>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Test as a guest</h2>
           <p className="mt-1 text-sm text-[#64748b]">
-            Save first to push changes to Vapi, then tap the purple mic — same live experience as your homepage.
+            Save first, then use the purple mic below. Pretend you&apos;re a customer calling to book — your
+            receptionist uses your personalised prompt plus your {bookingFlowSummary} setup.
           </p>
-          <div className="mt-6">
-            <VoiceLiveTrial
-              vapiAssistantId={vapiAssistantId}
-              vapiAssistantName={trialName}
-              firstMessage={agentFirstMessage}
-            />
-          </div>
-          {vapiAssistantId ? (
-            <p className="mt-4 text-[11px] font-mono text-[#64748b]">
-              Vapi assistant: {vapiAssistantId}
+
+          <ul className="mt-4 space-y-2 text-sm text-[#475569]">
+            <li className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
+              Try saying: &ldquo;Hi, I&apos;d like a table for four this Friday around eight.&rdquo;
+            </li>
+            <li className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
+              Or: &ldquo;Do you have anything Saturday lunch? It&apos;s a birthday.&rdquo;
+            </li>
+            {guestBookingModesLabel ? (
+              <li className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
+                Your public page accepts: {guestBookingModesLabel}.
+              </li>
+            ) : null}
+          </ul>
+
+          {publicBookingUrl ? (
+            <p className="mt-4 text-sm text-[#64748b]">
+              After the call, guests can also book online at{" "}
+              <a href={publicBookingUrl} className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+                {publicBookingUrl.replace(/^https?:\/\//, "")}
+              </a>
+              . Submit there to see the enquiry in Dashboard → Bookings.
             </p>
-          ) : null}
+          ) : (
+            <p className="mt-4 text-sm text-amber-900">
+              Publish a booking link under Dashboard → Bookings so guests can complete table requests online after your
+              receptionist captures details on a call.
+            </p>
+          )}
+
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-[#0f172a]">Live voice — {trialName}</h3>
+            <div className="mt-4">
+              <VoiceLiveTrial
+                vapiAssistantId={vapiAssistantId}
+                vapiAssistantName={trialName}
+                firstMessage={agentFirstMessage}
+              />
+            </div>
+            {vapiAssistantId ? (
+              <p className="mt-4 text-[11px] font-mono text-[#64748b]">Vapi assistant: {vapiAssistantId}</p>
+            ) : (
+              <p className="mt-4 text-sm text-[#64748b]">Save once to create your Vapi assistant, then the mic goes live.</p>
+            )}
+          </div>
         </section>
       </div>
 
