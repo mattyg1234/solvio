@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Mic, Sparkles, Waves } from "lucide-react";
 
+import {
+  syncMerchantVapiAssistantAction,
+  syncSolvioMarketingAssistantAction,
+} from "@/app/dashboard/setup/marketing-voice-actions";
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import type { VoiceReceptionistClientDetails, VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import {
@@ -67,6 +71,10 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
   const [callsVerifyMsg, setCallsVerifyMsg] = useState<string | null>(null);
   const [vapiCheckPending, setVapiCheckPending] = useState(false);
+  const [marketingSyncMsg, setMarketingSyncMsg] = useState<string | null>(null);
+  const [marketingSyncPending, setMarketingSyncPending] = useState(false);
+  const [merchantSyncMsg, setMerchantSyncMsg] = useState<string | null>(null);
+  const [merchantSyncPending, setMerchantSyncPending] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -166,6 +174,52 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
     }
   }
 
+  async function handleSyncMarketingAssistant() {
+    setMarketingSyncMsg(null);
+    setMarketingSyncPending(true);
+    try {
+      const res = await syncSolvioMarketingAssistantAction(vapiAssistantId.trim() || undefined);
+      if (res.ok) {
+        setMarketingSyncMsg(`Homepage receptionist synced to Vapi assistant ${res.assistantId.slice(0, 8)}…`);
+      } else {
+        setMarketingSyncMsg(res.message);
+      }
+    } finally {
+      setMarketingSyncPending(false);
+    }
+  }
+
+  async function handleSyncMerchantAssistant() {
+    setMerchantSyncMsg(null);
+    setMerchantSyncPending(true);
+    try {
+      const payload: VoiceReceptionistSaveInput = {
+        greeting_style: tone,
+        languages_note: languagesNote.trim() || undefined,
+        escalation_phone: escalationPhone.trim() || undefined,
+        reception_identity: receptionIdentity.trim() || undefined,
+        reception_scope: receptionScope.trim() || undefined,
+        caller_intake_priorities: intakePriorities.trim() || undefined,
+        agent_goal: agentGoal.trim() || undefined,
+        conversation_feel: conversationFeel.trim() || undefined,
+        outbound_number_note: outboundNumberNote.trim() || undefined,
+        agent_first_message: agentFirstMessage.trim() || undefined,
+        agent_prompt_custom: agentPromptCustom.trim() || undefined,
+        elevenlabs_voice_id: "",
+        elevenlabs_voice_name: "",
+        vapi_assistant_id: vapiAssistantId.trim(),
+        vapi_assistant_name: vapiAssistantName.trim(),
+      };
+      await saveVoiceReceptionistSetup(businessId, payload);
+      const res = await syncMerchantVapiAssistantAction(businessId);
+      setMerchantSyncMsg(res.ok ? "Venue briefing pushed to your Vapi assistant." : res.message);
+    } catch (e) {
+      setMerchantSyncMsg(e instanceof Error ? e.message : "Could not sync.");
+    } finally {
+      setMerchantSyncPending(false);
+    }
+  }
+
   function submit() {
     setError(null);
     startTransition(() => {
@@ -190,6 +244,9 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
           };
 
           await saveVoiceReceptionistSetup(businessId, payload);
+          if (payload.vapi_assistant_id && (payload.agent_prompt_custom || payload.agent_first_message)) {
+            await syncMerchantVapiAssistantAction(businessId);
+          }
           router.push("/dashboard");
           router.refresh();
         } catch (e) {
@@ -571,25 +628,70 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                   </p>
                 ) : null}
                 <p className="text-[11px] leading-relaxed text-[#64748b]">
-                  The briefing you drafted above is stored with your Solvio profile for your team — it doesn&apos;t
-                  overwrite Vapi automatically yet. Updating the assistant in Vapi is done from Solvio ops or directly
-                  in the Vapi console.
+                  Save stores your briefing in Solvio. Use &quot;Push venue briefing to Vapi&quot; below to update the
+                  live assistant, or it syncs automatically when you finish the wizard.
                 </p>
               </div>
+
+              {vapiAssistantId.trim() && (agentPromptCustom.trim() || agentFirstMessage.trim()) ? (
+                <div className="space-y-2 border-t border-[#ebe7f7] pt-4">
+                  <button
+                    type="button"
+                    disabled={merchantSyncPending}
+                    className={cn(buttonVariants({ variant: "default", size: "sm" }), "rounded-full px-4 font-semibold")}
+                    onClick={() => void handleSyncMerchantAssistant()}
+                  >
+                    {merchantSyncPending ? (
+                      <>
+                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
+                        Syncing venue briefing…
+                      </>
+                    ) : (
+                      "Push venue briefing to Vapi"
+                    )}
+                  </button>
+                  {merchantSyncMsg ? (
+                    <p className="text-xs font-medium text-[#475569]" role="status">
+                      {merchantSyncMsg}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             {vapiAssistantId.trim() ? (
-              <section className="space-y-2 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
+              <section className="space-y-3 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
                 <h3 className="text-sm font-semibold text-[#4c1d95]">Homepage receptionist (marketing site)</h3>
                 <p className="text-[13px] leading-relaxed text-[#5b21b6]">
-                  Visitors tap the purple microphone and talk to this assistant. Set these in Vercel /{" "}
-                  <span className="font-mono text-xs">.env.local</span> and redeploy:
+                  Website visitors tap the purple microphone and talk to your Vapi agent. Solvio injects a company pitch
+                  on every homepage session — sync below so the assistant in Vapi Dashboard matches too. Env vars for
+                  this deployment:
                 </p>
                 <ul className="list-inside list-disc space-y-1 font-mono text-[11px] text-[#4c1d95]">
                   <li>NEXT_PUBLIC_VAPI_PUBLIC_KEY=your Vapi public key</li>
                   <li>NEXT_PUBLIC_VAPI_ASSISTANT_ID={vapiAssistantId.trim()}</li>
-                  <li>SOLVIO_VAPI_API_KEY=your private key (lists assistants + firstMessage sync)</li>
+                  <li>SOLVIO_VAPI_API_KEY=your private key</li>
                 </ul>
+                <button
+                  type="button"
+                  disabled={marketingSyncPending}
+                  className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "rounded-full px-4 font-semibold")}
+                  onClick={() => void handleSyncMarketingAssistant()}
+                >
+                  {marketingSyncPending ? (
+                    <>
+                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
+                      Syncing homepage pitch…
+                    </>
+                  ) : (
+                    "Sync Solvio homepage pitch to Vapi"
+                  )}
+                </button>
+                {marketingSyncMsg ? (
+                  <p className="text-xs font-medium text-[#475569]" role="status">
+                    {marketingSyncMsg}
+                  </p>
+                ) : null}
               </section>
             ) : null}
           </div>

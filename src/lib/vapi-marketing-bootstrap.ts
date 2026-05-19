@@ -102,3 +102,9 @@ export async function getVapiMarketingBootstrap(
   cachedAssistantId = assistantId;
   return mapped;
 }
+
+/** Call after PATCH so SSR picks up new firstMessage from Vapi. */
+export function invalidateVapiMarketingBootstrapCache(): void {
+  cacheSlot = null;
+  cachedAssistantId = "";
+}

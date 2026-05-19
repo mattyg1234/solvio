@@ -57,23 +57,23 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     eyebrowAssistant: "Speak with us",
     idleBadge: "Tap the purple microphone",
     emptyHint:
-      "Configure your Vapi assistant on this deployment to talk live. Until then, tap the microphone for a short sample of how reception sounds.",
+      "Configure Vapi keys on this deployment to talk live with our receptionist. Until then, tap the microphone for a short sample.",
     footer: "Allow microphone access when your browser asks.",
     assistantLabel: "Receptionist",
     lines: [
       {
         role: "assistant",
         text:
-          "This is how a tailored Solvio voice layer sounds when guests ask for dinner slots, tastings or private rooms—matching the pacing and colouring you bake into the persona.",
+          "Hi — welcome to Solvio. I'm the receptionist on our website. Ask me anything about AI phone coverage, online bookings, events, table reservations, and Stripe payments for your venue.",
       },
       {
         role: "user",
-        text: "What will you automate while I coach the floor?",
+        text: "What does Solvio do for a restaurant like mine?",
       },
       {
         role: "assistant",
         text:
-          "Reminders chase themselves, itineraries stay tidy, confirmations flow by SMS or email, and transcripts land in Solvio instead of voicemail chaos—even when you are juggling multiple venues.",
+          "We answer calls 24/7, run your public booking page for tables and show nights, send confirmations guests actually open, and collect deposits through Stripe Connect — all from one calm dashboard.",
       },
     ],
   },

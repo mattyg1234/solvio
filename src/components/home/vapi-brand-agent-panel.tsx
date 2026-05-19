@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AssistantOverrides } from "@vapi-ai/web/api";
 import { Mic, Sparkles } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -8,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { VoiceSessionWaveform } from "@/components/home/voice-session-waveform";
+import {
+  buildMarketingVapiSessionOverrides,
+  SOLVIO_MARKETING_FIRST_MESSAGE,
+} from "@/lib/solvio-marketing-receptionist";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "connecting" | "live" | "error";
@@ -31,7 +36,7 @@ const copy = {
     idleBadge: "Tap the purple microphone",
     starterBubbleLabel: "Receptionist",
     starterBubbleIntro:
-      "Ask how Solvio can help with bookings, events, tables, payments, and after-hours calls — we’ll walk you through it.",
+      "Ask how Solvio helps with AI phone coverage, online bookings, events, table reservations, Stripe deposits, and one calm dashboard for your venue.",
     starterBubbleMicCta: "Tap the purple microphone below and start talking.",
     footer: "Allow microphone access when your browser asks.",
     assistantLabel: "Receptionist",
@@ -93,7 +98,7 @@ export function VapiBrandAgentPanel({
   className,
 }: VapiBrandAgentPanelProps) {
   const meta = copy[surface];
-  const vapiGreeting = firstMessage?.trim() ?? "";
+  const vapiGreeting = firstMessage?.trim() || (surface === "marketing" ? SOLVIO_MARKETING_FIRST_MESSAGE : "");
   const openerText = vapiGreeting || meta.starterBubbleIntro;
   const reduce = useReducedMotion();
   const keysRef = useRef({ publicKey, assistantId });
@@ -230,7 +235,11 @@ export function VapiBrandAgentPanel({
 
       vapiRef.current = vapi;
 
-      const call = await vapi.start(aid);
+      const overrides: AssistantOverrides | undefined =
+        surface === "marketing"
+          ? (buildMarketingVapiSessionOverrides() as AssistantOverrides)
+          : undefined;
+      const call = await vapi.start(aid, overrides);
 
       if (sessionCtlRef.current !== ctl || ctl.cancelled) {
         await cleanupClient().catch(() => {});
@@ -260,7 +269,7 @@ export function VapiBrandAgentPanel({
       await cleanupClient().catch(() => {});
       buildingRef.current = false;
     }
-  }, [cleanupClient]);
+  }, [cleanupClient, surface]);
 
   const stopSession = useCallback(async () => {
     sessionCtlRef.current.cancelled = true;

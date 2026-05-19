@@ -1,24 +1,23 @@
 import { NextResponse } from "next/server";
 
+import { SOLVIO_MARKETING_FIRST_MESSAGE } from "@/lib/solvio-marketing-receptionist";
 import { getVapiMarketingBootstrap } from "@/lib/vapi-marketing-bootstrap";
 
 type Line = { role: "user" | "assistant"; text: string };
 
-/** Mirrors `voice-demo-panel` `personal_voice` — first assistant bubble can be swapped for Vapi `firstMessage`. */
 const DEFAULT_LINES_PERSONAL_VOICE: Line[] = [
   {
     role: "assistant",
-    text:
-      "This is how a tailored Solvio voice layer sounds when guests ask for dinner slots, tastings or private rooms—matching the pacing and colouring you bake into the persona.",
+    text: SOLVIO_MARKETING_FIRST_MESSAGE,
   },
   {
     role: "user",
-    text: "What will you automate while I coach the floor?",
+    text: "What does Solvio actually do for a busy restaurant?",
   },
   {
     role: "assistant",
     text:
-      "Reminders chase themselves, itineraries stay tidy, confirmations flow by SMS or email, and transcripts land in Solvio instead of voicemail chaos—even when you are juggling multiple venues.",
+      "We answer calls and take bookings around the clock, run your public booking page for tables and events, chase confirmations, and collect Stripe deposits — all in one calm dashboard.",
   },
 ];
 
@@ -27,17 +26,13 @@ const DEFAULT_LINES_PERSONAL_VOICE: Line[] = [
 export async function GET() {
   const boot = await getVapiMarketingBootstrap();
 
-  const lines: Line[] = DEFAULT_LINES_PERSONAL_VOICE.map((l, i) =>
-    i === 0 && boot?.firstMessage?.trim()
-      ? { role: "assistant", text: boot.firstMessage.trim() }
-      : l,
-  );
+  const lines: Line[] = DEFAULT_LINES_PERSONAL_VOICE;
 
-  const openingFromVapi = Boolean(boot?.firstMessage?.trim());
+  const openingFromVapi = Boolean(boot?.elevenlabsVoiceId);
 
   return NextResponse.json(
     {
-      source: openingFromVapi ? "vapi_opening" : "default",
+      source: openingFromVapi ? "vapi_voice" : "default",
       syncedVoiceId: Boolean(boot?.elevenlabsVoiceId),
       lines,
     },
