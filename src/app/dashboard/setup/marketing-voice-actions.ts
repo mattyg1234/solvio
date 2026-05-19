@@ -3,47 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  SOLVIO_MARKETING_FIRST_MESSAGE,
-  SOLVIO_MARKETING_SYSTEM_PROMPT,
-} from "@/lib/solvio-marketing-receptionist";
 import { syncVapiAssistantPrompt } from "@/lib/vapi-assistant-sync";
-import { invalidateVapiMarketingBootstrapCache } from "@/lib/vapi-marketing-bootstrap";
-import { resolveMarketingVapiAssistantId } from "@/lib/marketing-vapi-config";
-
-async function assertAuthenticatedUser() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  return user;
-}
-
-/** Push Solvio homepage receptionist script to the marketing Vapi assistant in Vapi Dashboard. */
-export async function syncSolvioMarketingAssistantAction(
-  assistantIdOverride?: string,
-): Promise<{ ok: true; assistantId: string } | { ok: false; message: string }> {
-  await assertAuthenticatedUser();
-
-  const assistantId = (assistantIdOverride?.trim() || resolveMarketingVapiAssistantId()).trim();
-  if (!assistantId) {
-    return {
-      ok: false,
-      message: "Set NEXT_PUBLIC_VAPI_ASSISTANT_ID (or pick an assistant) before syncing the homepage receptionist.",
-    };
-  }
-
-  const result = await syncVapiAssistantPrompt(assistantId, {
-    firstMessage: SOLVIO_MARKETING_FIRST_MESSAGE,
-    systemPrompt: SOLVIO_MARKETING_SYSTEM_PROMPT,
-  });
-
-  if (!result.ok) return result;
-
-  invalidateVapiMarketingBootstrapCache();
-  return { ok: true, assistantId };
-}
 
 /** Push a merchant's saved briefing to their selected Vapi assistant. */
 export async function syncMerchantVapiAssistantAction(

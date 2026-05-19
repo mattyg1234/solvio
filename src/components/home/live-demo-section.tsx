@@ -38,8 +38,8 @@ export function LiveDemoSection() {
             Ask our receptionist anything about Solvio.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            No forms, no scripted demo — tap the purple microphone at the top of the page and talk. Our Vapi receptionist
-            answers in real time about how we can help your business.
+            Tap the purple microphone at the top of the page. You&apos;ll talk live to the receptionist you configured
+            in Vapi — same first message, same instructions, no scripted demo.
           </p>
         </motion.div>
 

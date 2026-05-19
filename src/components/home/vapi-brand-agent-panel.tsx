@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AssistantOverrides } from "@vapi-ai/web/api";
 import { Mic, Sparkles } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -9,10 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { VoiceSessionWaveform } from "@/components/home/voice-session-waveform";
-import {
-  buildMarketingVapiSessionOverrides,
-  SOLVIO_MARKETING_FIRST_MESSAGE,
-} from "@/lib/solvio-marketing-receptionist";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "connecting" | "live" | "error";
@@ -34,10 +29,9 @@ const copy = {
     productLine: "AI receptionist",
     eyebrowAssistant: "Speak with us",
     idleBadge: "Tap the purple microphone",
-    starterBubbleLabel: "Receptionist",
-    starterBubbleIntro:
-      "Ask how Solvio helps with AI phone coverage, online bookings, events, table reservations, Stripe deposits, and one calm dashboard for your venue.",
-    starterBubbleMicCta: "Tap the purple microphone below and start talking.",
+    starterBubbleLabel: "Your Vapi assistant",
+    starterBubbleIntro: "",
+    starterBubbleMicCta: "Tap the purple microphone to start talking.",
     footer: "Allow microphone access when your browser asks.",
     assistantLabel: "Receptionist",
   },
@@ -98,8 +92,9 @@ export function VapiBrandAgentPanel({
   className,
 }: VapiBrandAgentPanelProps) {
   const meta = copy[surface];
-  const vapiGreeting = firstMessage?.trim() || (surface === "marketing" ? SOLVIO_MARKETING_FIRST_MESSAGE : "");
-  const openerText = vapiGreeting || meta.starterBubbleIntro;
+  const vapiGreeting = firstMessage?.trim() ?? "";
+  const openerText = vapiGreeting || meta.starterBubbleMicCta;
+  const showOpenerLabel = Boolean(vapiGreeting);
   const reduce = useReducedMotion();
   const keysRef = useRef({ publicKey, assistantId });
   keysRef.current = { publicKey, assistantId };
@@ -235,11 +230,7 @@ export function VapiBrandAgentPanel({
 
       vapiRef.current = vapi;
 
-      const overrides: AssistantOverrides | undefined =
-        surface === "marketing"
-          ? (buildMarketingVapiSessionOverrides() as AssistantOverrides)
-          : undefined;
-      const call = await vapi.start(aid, overrides);
+      const call = await vapi.start(aid);
 
       if (sessionCtlRef.current !== ctl || ctl.cancelled) {
         await cleanupClient().catch(() => {});
@@ -269,7 +260,7 @@ export function VapiBrandAgentPanel({
       await cleanupClient().catch(() => {});
       buildingRef.current = false;
     }
-  }, [cleanupClient, surface]);
+  }, [cleanupClient]);
 
   const stopSession = useCallback(async () => {
     sessionCtlRef.current.cancelled = true;
@@ -374,11 +365,15 @@ export function VapiBrandAgentPanel({
                   transition={{ duration: reduce ? 0.18 : 0.38, ease: [0.22, 1, 0.36, 1] }}
                   className="mr-auto max-w-[92%] rounded-3xl bg-gradient-to-br from-[#7c3aed] via-[#6d28d9] to-[#5b21b6] px-4 py-3 text-[15px] leading-relaxed text-white shadow-sm ring-1 ring-white/25"
                 >
-                  <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.26em] text-white/80">
-                    {meta.starterBubbleLabel}
-                  </span>
+                  {showOpenerLabel ? (
+                    <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.26em] text-white/80">
+                      {meta.starterBubbleLabel}
+                    </span>
+                  ) : null}
                   <p className="text-[14px] leading-relaxed">{openerText}</p>
-                  <p className="mt-3 text-[14px] font-medium leading-relaxed">{meta.starterBubbleMicCta}</p>
+                  {showOpenerLabel ? (
+                    <p className="mt-3 text-[14px] font-medium leading-relaxed">{meta.starterBubbleMicCta}</p>
+                  ) : null}
                 </motion.div>
               )}
               {bubbles.map((b, idx) => (

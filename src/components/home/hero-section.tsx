@@ -113,7 +113,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="relative scroll-mt-28 outline-none"
         >
           <p className="mb-4 text-center text-sm font-semibold text-[#475569] lg:text-left">
-            Click the purple microphone — speak with our receptionist about how we can help.
+            Click the purple microphone — you&apos;ll speak directly to our Vapi receptionist.
           </p>
           <MarketingSiteVoice vapiConfig={vapiConfig} />
         </motion.div>

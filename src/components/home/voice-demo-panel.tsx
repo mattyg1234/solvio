@@ -56,24 +56,21 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     productLine: "AI receptionist",
     eyebrowAssistant: "Speak with us",
     idleBadge: "Tap the purple microphone",
-    emptyHint:
-      "Configure Vapi keys on this deployment to talk live with our receptionist. Until then, tap the microphone for a short sample.",
+    emptyHint: "Tap the purple microphone to talk live once Vapi keys are set on this deployment.",
     footer: "Allow microphone access when your browser asks.",
     assistantLabel: "Receptionist",
     lines: [
       {
         role: "assistant",
-        text:
-          "Hi — welcome to Solvio. I'm the receptionist on our website. Ask me anything about AI phone coverage, online bookings, events, table reservations, and Stripe payments for your venue.",
+        text: "Tap the purple microphone when live Vapi is configured — your assistant speaks from the prompt you set in Vapi.",
       },
       {
         role: "user",
-        text: "What does Solvio do for a restaurant like mine?",
+        text: "What can you help me with?",
       },
       {
         role: "assistant",
-        text:
-          "We answer calls 24/7, run your public booking page for tables and show nights, send confirmations guests actually open, and collect deposits through Stripe Connect — all from one calm dashboard.",
+        text: "Configure your assistant in the Vapi dashboard; this site connects to it directly when keys are set.",
       },
     ],
   },

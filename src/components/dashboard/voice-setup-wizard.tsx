@@ -5,10 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight, Loader2, Mic, Sparkles, Waves } from "lucide-react";
 
-import {
-  syncMerchantVapiAssistantAction,
-  syncSolvioMarketingAssistantAction,
-} from "@/app/dashboard/setup/marketing-voice-actions";
+import { syncMerchantVapiAssistantAction } from "@/app/dashboard/setup/marketing-voice-actions";
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import type { VoiceReceptionistClientDetails, VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import {
@@ -71,8 +68,6 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
   const [callsVerifyMsg, setCallsVerifyMsg] = useState<string | null>(null);
   const [vapiCheckPending, setVapiCheckPending] = useState(false);
-  const [marketingSyncMsg, setMarketingSyncMsg] = useState<string | null>(null);
-  const [marketingSyncPending, setMarketingSyncPending] = useState(false);
   const [merchantSyncMsg, setMerchantSyncMsg] = useState<string | null>(null);
   const [merchantSyncPending, setMerchantSyncPending] = useState(false);
 
@@ -171,21 +166,6 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
       }
     } finally {
       setAiPromptPending(false);
-    }
-  }
-
-  async function handleSyncMarketingAssistant() {
-    setMarketingSyncMsg(null);
-    setMarketingSyncPending(true);
-    try {
-      const res = await syncSolvioMarketingAssistantAction(vapiAssistantId.trim() || undefined);
-      if (res.ok) {
-        setMarketingSyncMsg(`Homepage receptionist synced to Vapi assistant ${res.assistantId.slice(0, 8)}…`);
-      } else {
-        setMarketingSyncMsg(res.message);
-      }
-    } finally {
-      setMarketingSyncPending(false);
     }
   }
 
@@ -660,38 +640,17 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
             </section>
 
             {vapiAssistantId.trim() ? (
-              <section className="space-y-3 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
+              <section className="space-y-2 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
                 <h3 className="text-sm font-semibold text-[#4c1d95]">Homepage receptionist (marketing site)</h3>
                 <p className="text-[13px] leading-relaxed text-[#5b21b6]">
-                  Website visitors tap the purple microphone and talk to your Vapi agent. Solvio injects a company pitch
-                  on every homepage session — sync below so the assistant in Vapi Dashboard matches too. Env vars for
-                  this deployment:
+                  Website visitors tap the purple microphone and speak directly to this Vapi assistant — using the
+                  first message and system prompt you configured in Vapi. Set these env vars and redeploy:
                 </p>
                 <ul className="list-inside list-disc space-y-1 font-mono text-[11px] text-[#4c1d95]">
                   <li>NEXT_PUBLIC_VAPI_PUBLIC_KEY=your Vapi public key</li>
                   <li>NEXT_PUBLIC_VAPI_ASSISTANT_ID={vapiAssistantId.trim()}</li>
-                  <li>SOLVIO_VAPI_API_KEY=your private key</li>
+                  <li>SOLVIO_VAPI_API_KEY=your private key (loads first message preview on site)</li>
                 </ul>
-                <button
-                  type="button"
-                  disabled={marketingSyncPending}
-                  className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "rounded-full px-4 font-semibold")}
-                  onClick={() => void handleSyncMarketingAssistant()}
-                >
-                  {marketingSyncPending ? (
-                    <>
-                      <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                      Syncing homepage pitch…
-                    </>
-                  ) : (
-                    "Sync Solvio homepage pitch to Vapi"
-                  )}
-                </button>
-                {marketingSyncMsg ? (
-                  <p className="text-xs font-medium text-[#475569]" role="status">
-                    {marketingSyncMsg}
-                  </p>
-                ) : null}
               </section>
             ) : null}
           </div>
