@@ -16,7 +16,7 @@ import {
   composeVoiceAgentPromptAction,
   generateVoiceAgentPromptOpenAIAction,
 } from "@/app/dashboard/setup/voice-prompt-actions";
-import { VoiceBrowserTrial } from "@/components/dashboard/voice-browser-trial";
+import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -577,6 +577,21 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                 </p>
               </div>
             </section>
+
+            {vapiAssistantId.trim() ? (
+              <section className="space-y-2 rounded-2xl border border-[#ddd6fe] bg-[#f5f3ff]/60 p-5">
+                <h3 className="text-sm font-semibold text-[#4c1d95]">Homepage live demo (marketing site)</h3>
+                <p className="text-[13px] leading-relaxed text-[#5b21b6]">
+                  To use this assistant on the public homepage purple mic, set these in Vercel /{" "}
+                  <span className="font-mono text-xs">.env.local</span> and redeploy:
+                </p>
+                <ul className="list-inside list-disc space-y-1 font-mono text-[11px] text-[#4c1d95]">
+                  <li>NEXT_PUBLIC_VAPI_PUBLIC_KEY=your Vapi public key</li>
+                  <li>NEXT_PUBLIC_VAPI_ASSISTANT_ID={vapiAssistantId.trim()}</li>
+                  <li>SOLVIO_VAPI_API_KEY=your private key (lists assistants + firstMessage sync)</li>
+                </ul>
+              </section>
+            ) : null}
           </div>
         ) : null}
 
@@ -584,12 +599,15 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
           <div className="space-y-5">
             <h2 className="text-xl font-semibold text-[#0f172a]">Convince yourself</h2>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              Walk through a lightweight browser rehearsal — swap for streamed audio once telephony goes live.
+              Rehearse with your real Vapi assistant when the deployment public key is configured — otherwise a scripted
+              browser preview stands in.
             </p>
-            <VoiceBrowserTrial
+            <VoiceLiveTrial
               businessName={businessName}
               agentPrompt={agentPromptCustom}
               toneLabel={tones.find((x) => x.id === tone)?.label ?? "Warm professional"}
+              vapiAssistantId={vapiAssistantId}
+              vapiAssistantName={vapiAssistantName}
             />
           </div>
         ) : null}

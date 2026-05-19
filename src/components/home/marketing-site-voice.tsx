@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 
+import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { VoiceDemoPanel } from "@/components/home/voice-demo-panel";
 
 const VapiBrandAgentPanel = dynamic(
@@ -28,14 +29,17 @@ export function MarketingSiteVoice({
   className,
   heroAutoPlay = false,
   surface = "marketing",
+  vapiConfig,
 }: {
   className?: string;
   /** Only used when the scripted preview is showing instead of interactive voice. */
   heroAutoPlay?: boolean;
   surface?: "marketing" | "onboarding";
+  /** When provided from SSR, avoids relying on client-only env for assistant id. */
+  vapiConfig?: Pick<MarketingVapiConfig, "publicKey" | "assistantId" | "firstMessage" | "live">;
 }) {
-  const publicKey = trimmedPublicEnv("NEXT_PUBLIC_VAPI_PUBLIC_KEY");
-  const assistantId = trimmedPublicEnv("NEXT_PUBLIC_VAPI_ASSISTANT_ID");
+  const publicKey = vapiConfig?.publicKey?.trim() || trimmedPublicEnv("NEXT_PUBLIC_VAPI_PUBLIC_KEY");
+  const assistantId = vapiConfig?.assistantId?.trim() || trimmedPublicEnv("NEXT_PUBLIC_VAPI_ASSISTANT_ID");
 
   if (publicKey && assistantId) {
     return (
@@ -43,6 +47,7 @@ export function MarketingSiteVoice({
         surface={surface}
         publicKey={publicKey}
         assistantId={assistantId}
+        firstMessage={vapiConfig?.firstMessage ?? undefined}
         className={className}
       />
     );
@@ -51,6 +56,9 @@ export function MarketingSiteVoice({
   return <VoiceDemoPanel scenario="personal_voice" autoPlay={heroAutoPlay} className={className} />;
 }
 
-export function marketingSiteHasLiveVapi(): boolean {
+export function marketingSiteHasLiveVapi(
+  vapiConfig?: Pick<MarketingVapiConfig, "live" | "publicKey" | "assistantId">,
+): boolean {
+  if (vapiConfig?.live) return true;
   return Boolean(trimmedPublicEnv("NEXT_PUBLIC_VAPI_PUBLIC_KEY") && trimmedPublicEnv("NEXT_PUBLIC_VAPI_ASSISTANT_ID"));
 }

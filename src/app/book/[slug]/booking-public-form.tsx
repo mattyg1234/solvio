@@ -318,11 +318,27 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
     venueTz,
   ]);
 
+  useEffect(() => {
+    if (state?.ok && "depositCheckoutUrl" in state && state.depositCheckoutUrl) {
+      window.location.assign(state.depositCheckoutUrl);
+    }
+  }, [state]);
+
   const flowHint =
     (bookingFlowKind && FLOW_KIND_HINT[bookingFlowKind]) ||
     "Choose the booking type that fits — your details go straight to the team.";
 
-  if (state?.ok) {
+  if (state?.ok && "depositCheckoutUrl" in state && state.depositCheckoutUrl) {
+    return (
+      <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center md:p-10">
+        <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#7c3aed]" aria-hidden />
+        <h2 className="mt-6 text-xl font-semibold text-[#0f172a]">Redirecting to secure payment…</h2>
+        <p className="mt-3 text-[15px] text-[#64748b]">Your enquiry is saved. Complete the deposit on Stripe to hold your table.</p>
+      </div>
+    );
+  }
+
+  if (state?.ok && !("depositCheckoutUrl" in state && state.depositCheckoutUrl)) {
     return (
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ecfdf5] text-emerald-600 ring-1 ring-emerald-100">

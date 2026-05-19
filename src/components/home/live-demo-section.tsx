@@ -6,11 +6,12 @@ import { motion, useReducedMotion } from "framer-motion";
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
 import { MarketingSiteVoice, marketingSiteHasLiveVapi } from "@/components/home/marketing-site-voice";
 import { buttonVariants } from "@/components/ui/button";
+import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { cn } from "@/lib/utils";
 
-export function LiveDemoSection() {
+export function LiveDemoSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }) {
   const reduce = useReducedMotion();
-  const liveVapi = marketingSiteHasLiveVapi();
+  const liveVapi = marketingSiteHasLiveVapi(vapiConfig);
 
   return (
     <section
@@ -50,7 +51,7 @@ export function LiveDemoSection() {
           transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto mt-14 max-w-xl"
         >
-          <MarketingSiteVoice heroAutoPlay={false} />
+          <MarketingSiteVoice heroAutoPlay={false} vapiConfig={vapiConfig} />
         </motion.div>
 
         <motion.div

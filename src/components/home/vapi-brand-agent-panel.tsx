@@ -18,6 +18,8 @@ type VapiBrandAgentPanelProps = {
   /** Vapi Dashboard → API keys → Public key — safe for the browser bundle. */
   publicKey: string;
   assistantId: string;
+  /** When set, replaces static starter copy with your Vapi assistant opening line. */
+  firstMessage?: string;
   surface?: "marketing" | "onboarding";
   className?: string;
 };
@@ -89,10 +91,12 @@ function transcriptBubblePatch(raw: unknown): TranscriptBubblePatch | null {
 export function VapiBrandAgentPanel({
   publicKey,
   assistantId,
+  firstMessage,
   surface = "marketing",
   className,
 }: VapiBrandAgentPanelProps) {
   const meta = copy[surface];
+  const openerText = firstMessage?.trim() || meta.starterBubbleIntro;
   const reduce = useReducedMotion();
   const keysRef = useRef({ publicKey, assistantId });
   keysRef.current = { publicKey, assistantId };
@@ -366,7 +370,7 @@ export function VapiBrandAgentPanel({
                   <span className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.26em] text-white/80">
                     {meta.starterBubbleLabel}
                   </span>
-                  <p className="text-[14px] leading-relaxed">{meta.starterBubbleIntro}</p>
+                  <p className="text-[14px] leading-relaxed">{openerText}</p>
                   <p className="mt-3 text-[14px] font-medium leading-relaxed">{meta.starterBubbleMicCta}</p>
                 </motion.div>
               )}

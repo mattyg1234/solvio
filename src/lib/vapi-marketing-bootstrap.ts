@@ -69,10 +69,16 @@ function mapPayload(payload: Record<string, unknown>): VapiMarketingBootstrap {
   };
 }
 
-/** Reads server env `NEXT_PUBLIC_VAPI_ASSISTANT_ID` plus `SOLVIO_VAPI_API_KEY`. Safe for SSR routes. */
+/** Reads server env assistant id plus `SOLVIO_VAPI_API_KEY`. Safe for SSR routes. */
 
-export async function getVapiMarketingBootstrap(): Promise<VapiMarketingBootstrap | null> {
-  const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim() ?? "";
+export async function getVapiMarketingBootstrap(
+  assistantIdOverride?: string,
+): Promise<VapiMarketingBootstrap | null> {
+  const assistantId =
+    assistantIdOverride?.trim() ||
+    process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID?.trim() ||
+    process.env.SOLVIO_MARKETING_VAPI_ASSISTANT_ID?.trim() ||
+    "";
   if (!assistantId) return null;
 
   const now = Date.now();

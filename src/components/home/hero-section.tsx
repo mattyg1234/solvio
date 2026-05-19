@@ -7,9 +7,10 @@ import { motion, useReducedMotion } from "framer-motion";
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
 import { MarketingSiteVoice } from "@/components/home/marketing-site-voice";
 import { buttonVariants } from "@/components/ui/button";
+import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { cn } from "@/lib/utils";
 
-export function HeroSection() {
+export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }) {
   const reduce = useReducedMotion();
 
   return (
@@ -111,7 +112,7 @@ export function HeroSection() {
           transition={{ duration: 0.58, delay: reduce ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
           className="relative scroll-mt-28 outline-none"
         >
-          <MarketingSiteVoice />
+          <MarketingSiteVoice vapiConfig={vapiConfig} />
         </motion.div>
       </div>
     </section>

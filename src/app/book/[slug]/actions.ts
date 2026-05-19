@@ -1,15 +1,19 @@
 "use server";
 
+import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
 import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprint";
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
 import { isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
 import { sendBookingRequestReceivedEmail } from "@/lib/notifications/booking-emails";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 
-export type SubmitBookingState = { ok: true } | { ok: false; message: string };
+export type SubmitBookingState =
+  | { ok: true; depositCheckoutUrl?: string }
+  | { ok: false; message: string };
 
 function mergeGuestIntakeNotes(base: string, lines: string[]): string {
   const cleaned = lines.map((l) => l.trim()).filter(Boolean);
@@ -136,7 +140,7 @@ export async function submitBookingRequestAction(
     return { ok: false, message: tableBookingCheck.message };
   }
 
-  const { error } = await supabase.rpc("submit_booking_request", {
+  const { data: bookingId, error } = await supabase.rpc("submit_booking_request", {
     p_slug: slug.trim(),
     p_customer_name: customerName,
     p_email: email,
@@ -165,6 +169,58 @@ export async function submitBookingRequestAction(
     return { ok: false, message: msg };
   }
 
+  let depositCheckoutUrl: string | undefined;
+
+  if (
+    parsedCtx &&
+    bookingId &&
+    typeof bookingId === "string" &&
+    bkLower === "table" &&
+    allowedKinds.includes("table")
+  ) {
+    const depositCents = computeTableDepositCents({
+      ctx: parsedCtx,
+      preferredTableLabel: preferredTable,
+      guestCount: gc,
+    });
+
+    if (depositCents && depositCents > 0) {
+      try {
+        const admin = createSupabaseServiceRoleClient();
+        const { data: bookingRow } = await admin
+          .from("booking_requests")
+          .select("business_id")
+          .eq("id", bookingId)
+          .maybeSingle();
+
+        if (bookingRow?.business_id) {
+          const { data: biz } = await admin
+            .from("businesses")
+            .select("id, stripe_connect_account_id, stripe_connect_charges_enabled")
+            .eq("id", bookingRow.business_id)
+            .maybeSingle();
+
+          const connectId = biz?.stripe_connect_account_id?.trim();
+          if (connectId && biz?.stripe_connect_charges_enabled && biz.id) {
+            const label = preferredTable.trim() || "Table deposit";
+            const url = await createBookingDepositCheckoutSession({
+              bookingRequestId: bookingId,
+              businessId: biz.id,
+              connectAccountId: connectId,
+              amountCents: depositCents,
+              guestEmail: email,
+              description: `${parsedCtx.business_name} · ${label}`,
+              slug: slug.trim(),
+            });
+            if (url) depositCheckoutUrl = url;
+          }
+        }
+      } catch {
+        /* deposit is additive — enquiry already saved */
+      }
+    }
+  }
+
   try {
     const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
     const merchantName = parsedCtx?.business_name?.trim();
@@ -180,5 +236,5 @@ export async function submitBookingRequestAction(
     /* email is additive */
   }
 
-  return { ok: true };
+  return { ok: true, ...(depositCheckoutUrl ? { depositCheckoutUrl } : {}) };
 }
