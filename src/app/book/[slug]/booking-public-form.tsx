@@ -499,6 +499,7 @@ export function BookingPublicForm({ slug, context, guestModes }: BookingPublicFo
               required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
               max="9999-12-31"
               onChange={(e) => setRequestedDate(e.target.value)}
+              onBlur={(e) => setRequestedDate(e.target.value)}
               className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
             {tableBlockedForHostedShow && tableHostedShowBlockMessage ? (
