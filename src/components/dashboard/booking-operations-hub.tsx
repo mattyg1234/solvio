@@ -22,6 +22,7 @@ import {
   deleteAppointmentWeekdayHour,
   deleteFloorPlanTable,
   deleteTableBookingQuestion,
+  renameFloorPlanTableLabel,
   restoreBusinessEvent,
   saveFloorPlanLayout,
   softDeleteBusinessEvent,
@@ -1101,7 +1102,6 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
   const snapshotKey = `${table.id}|${table.label}|${table.capacity}|${coerceFloorPlanShape(table.shape)}|${normalizeFloorTableFillColor(table.fill_color) ?? ""}|${Math.round(table.width)}|${Math.round(table.height)}|${table.pricing_mode}|${table.price_cents}|${JSON.stringify(table.group_pricing ?? null)}`;
 
   const [pending, startTransition] = useTransition();
-  const [label, setLabel] = useState(table.label);
   const [capacity, setCapacity] = useState(table.capacity);
   const [shape, setShape] = useState<FloorPlanTableShape>(() => coerceFloorPlanShape(table.shape));
   const [widthPx, setWidthPx] = useState(Math.round(table.width));
@@ -1121,7 +1121,6 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
   const [belowEuro, setBelowEuro] = useState(teInit.belowEuro);
 
   useEffect(() => {
-    setLabel(table.label);
     setCapacity(table.capacity);
     setShape(coerceFloorPlanShape(table.shape));
     setWidthPx(Math.round(table.width));
@@ -1163,12 +1162,8 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
 
   return (
     <div className="mt-4 space-y-4 rounded-xl border border-dashed border-[#dcd6fb] bg-[#fcfbff]/80 px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Edit table details</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Edit capacity, shape & pricing</p>
       <div className="grid gap-3 md:grid-cols-6 md:items-end">
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Name</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
-        </div>
         <div className="space-y-2 md:col-span-1">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Capacity</label>
           <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
@@ -1251,11 +1246,10 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
       </div>
       <Button
         type="button"
-        disabled={pending || !label.trim()}
+        disabled={pending}
         className="rounded-full font-semibold"
         onClick={() =>
           runSave(async () => {
-            const trimmed = label.trim();
             const price_cents =
               pricingMode === "group_tier" ? euroToCentsScratch(belowEuro) : euroToCentsScratch(priceEuro);
             const group_pricing =
@@ -1269,7 +1263,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
             await upsertFloorPlanTable({
               businessId,
               id: table.id,
-              label: trimmed,
+              label: table.label,
               capacity,
               positionX: table.position_x,
               positionY: table.position_y,
@@ -1291,6 +1285,89 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
         Square/circle footprints normalize to equal width/height on save. Use “Save layout positions” below the canvas after dragging.
       </p>
     </div>
+  );
+}
+
+function SavedFloorTableRow({
+  businessId,
+  table,
+  schedules,
+  pending,
+  run,
+}: {
+  businessId: string;
+  table: FloorPlanTableRow;
+  schedules: AppointmentWeekRow[];
+  pending: boolean;
+  run: (fn: () => Promise<void>) => void;
+}) {
+  const [labelDraft, setLabelDraft] = useState(table.label);
+  const labelDirty = labelDraft.trim() !== table.label;
+
+  useEffect(() => {
+    setLabelDraft(table.label);
+  }, [table.label]);
+
+  function saveLabel() {
+    const trimmed = labelDraft.trim();
+    if (!trimmed) return;
+    run(async () => {
+      await renameFloorPlanTableLabel(businessId, table.id, trimmed);
+    });
+  }
+
+  return (
+    <li className="rounded-xl border border-[#f1eefc] px-3 py-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-[12rem] flex-1 flex-wrap items-end gap-2">
+          <div className="min-w-[10rem] flex-1 space-y-1">
+            <label htmlFor={`table-name-${table.id}`} className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+              Table name
+            </label>
+            <input
+              id={`table-name-${table.id}`}
+              value={labelDraft}
+              onChange={(e) => setLabelDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  saveLabel();
+                }
+              }}
+              className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-semibold text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={pending || !labelDirty || !labelDraft.trim()}
+            className="rounded-full font-semibold"
+            onClick={() => saveLabel()}
+          >
+            Save name
+          </Button>
+        </div>
+        <button
+          type="button"
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
+          disabled={pending}
+          onClick={() =>
+            run(async () => {
+              await deleteFloorPlanTable(businessId, table.id);
+            })
+          }
+        >
+          Remove
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-[#64748b]">
+        {coerceFloorPlanShape(table.shape)} · cap {table.capacity} · {(table.price_cents / 100).toFixed(2)} € ·{" "}
+        {String(table.pricing_mode ?? "").replace(/_/g, " ")}
+      </p>
+      <FloorTableWeekHoursStrip businessId={businessId} table={table} venueSchedules={schedules} />
+      <SavedFloorTableDetailForm businessId={businessId} table={table} />
+    </li>
   );
 }
 
@@ -1359,7 +1436,7 @@ function TablesPanel({
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Tables & layout</h2>
         <p className="mt-1 text-sm text-[#64748b]">
-          Drag tables on the canvas to mirror your room. Add optional weekday windows under each listing to override venue appointment grids for guests on that specific table only.
+          Drag tables on the canvas to mirror your room. Rename any saved table below — the floor preview updates after you save. Add optional weekday windows under each listing to override venue appointment grids for guests on that specific table only.
         </p>
       </header>
 
@@ -1532,28 +1609,7 @@ function TablesPanel({
         <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#64748b]">Saved tables</h3>
         <ul className="space-y-4 text-sm">
           {tables.map((t) => (
-            <li key={t.id} className="rounded-xl border border-[#f1eefc] px-3 py-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[#0f172a]">
-                  {t.label} · {coerceFloorPlanShape(t.shape)} · cap {t.capacity} · {(t.price_cents / 100).toFixed(2)} € ·{" "}
-                  {String(t.pricing_mode ?? "").replace(/_/g, " ")}
-                </span>
-                <button
-                  type="button"
-                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
-                  disabled={pending}
-                  onClick={() =>
-                    run(async () => {
-                      await deleteFloorPlanTable(businessId, t.id);
-                    })
-                  }
-                >
-                  Remove
-                </button>
-              </div>
-              <FloorTableWeekHoursStrip businessId={businessId} table={t} venueSchedules={schedules} />
-              <SavedFloorTableDetailForm businessId={businessId} table={t} />
-            </li>
+            <SavedFloorTableRow key={t.id} businessId={businessId} table={t} schedules={schedules} pending={pending} run={run} />
           ))}
           {tables.length === 0 ? <li className="text-[#94a3b8]">No tables saved.</li> : null}
         </ul>

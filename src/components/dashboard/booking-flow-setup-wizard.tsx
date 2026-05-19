@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Layers, LayoutGrid, Loader2, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, CalendarDays, Layers, LayoutGrid, Loader2 } from "lucide-react";
 
 import { saveBookingFlowSetup, type BookingFlowDetails } from "@/app/dashboard/setup/actions";
 import { buttonVariants } from "@/components/ui/button";
@@ -14,7 +14,12 @@ import {
 } from "@/lib/booking-guest-modes";
 import { cn } from "@/lib/utils";
 
-export type BookingFlowKind = "restaurant_tables" | "salon_appointments" | "walk_in_waitlist" | "mixed";
+export type BookingFlowKind =
+  | "restaurant_tables"
+  | "hosted_events"
+  | "salon_appointments"
+  | "mixed"
+  | "walk_in_waitlist";
 
 const MODE_ORDER: BookingGuestMode[] = ["appointment", "event", "table", "walk_in"];
 
@@ -24,6 +29,8 @@ function bookingsHubPostSetupPath(kind: BookingFlowKind): string {
       return "/dashboard/bookings?tab=offerings&view=tables";
     case "salon_appointments":
       return "/dashboard/bookings?tab=offerings&view=appointments";
+    case "hosted_events":
+      return "/dashboard/bookings?tab=offerings&view=events";
     case "walk_in_waitlist":
       return "/dashboard/bookings?tab=guests&view=inbox";
     case "mixed":
@@ -43,6 +50,8 @@ function defaultModesForKind(k: BookingFlowKind): BookingGuestMode[] {
       return ["table"];
     case "salon_appointments":
       return ["appointment"];
+    case "hosted_events":
+      return ["event"];
     case "walk_in_waitlist":
       return ["walk_in"];
     case "mixed":
@@ -74,22 +83,23 @@ const kinds: {
     icon: LayoutGrid,
   },
   {
+    id: "hosted_events",
+    title: "Events",
+    description:
+      "Ticketed or hosted happenings — comedy nights, supper clubs, workshops, or any dated listing guests pick from your events calendar.",
+    icon: CalendarDays,
+  },
+  {
     id: "salon_appointments",
     title: "Appointments",
     description: "Timed slots with start times and durations — consultations, sessions, visits, or any calendar-style booking.",
     icon: CalendarClock,
   },
   {
-    id: "walk_in_waitlist",
-    title: "Customer waitlists",
-    description: "Queue arrivals, estimate waits, and keep walk-in traffic moving when you cannot pre-book everyone.",
-    icon: Users,
-  },
-  {
     id: "mixed",
     title: "Mixed operations",
     description:
-      "Combine table bookings, appointments, hosted events, and waitlists — for teams that operate more than one guest flow.",
+      "Combine table bookings, appointments, and hosted events — for teams that operate more than one guest flow.",
     icon: Layers,
   },
 ];
@@ -109,7 +119,10 @@ export function BookingFlowSetupWizard({
 }: BookingFlowSetupWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [kind, setKind] = useState<BookingFlowKind>(initialKind ?? "restaurant_tables");
+  const [kind, setKind] = useState<BookingFlowKind>(() => {
+    if (initialKind === "walk_in_waitlist") return "hosted_events";
+    return initialKind ?? "restaurant_tables";
+  });
   const [typicalPartySize, setTypicalPartySize] = useState(initialDetails?.typical_party_size ?? "2–4 guests");
   const [appointmentSlotMinutes, setAppointmentSlotMinutes] = useState(initialDetails?.appointment_slot_minutes ?? 30);
   const [peakHoursNote, setPeakHoursNote] = useState(initialDetails?.peak_hours_note ?? "");
@@ -160,6 +173,9 @@ export function BookingFlowSetupWizard({
     }
     if (kind === "salon_appointments") {
       base.appointment_slot_minutes = appointmentSlotMinutes;
+      base.peak_hours_note = peakHoursNote.trim() || undefined;
+    }
+    if (kind === "hosted_events") {
       base.peak_hours_note = peakHoursNote.trim() || undefined;
     }
     if (kind === "walk_in_waitlist") {
@@ -339,7 +355,11 @@ export function BookingFlowSetupWizard({
               </div>
             )}
 
-            {(kind === "restaurant_tables" || kind === "salon_appointments" || kind === "walk_in_waitlist" || kind === "mixed") && (
+            {(kind === "restaurant_tables" ||
+              kind === "hosted_events" ||
+              kind === "salon_appointments" ||
+              kind === "walk_in_waitlist" ||
+              kind === "mixed") && (
               <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff]/80 px-4 py-4">
                 <p className="text-[13px] leading-relaxed text-[#475569]">
                   <strong className="font-semibold text-[#0f172a]">Availability & blackout dates</strong> are managed inside{' '}
@@ -430,7 +450,7 @@ export function BookingFlowSetupWizard({
                   <dd className="mt-1 text-[#475569]">{appointmentSlotMinutes} minutes</dd>
                 </div>
               )}
-              {(peakHoursNote.trim() || kind === "walk_in_waitlist") && (
+              {(peakHoursNote.trim() || kind === "hosted_events" || kind === "walk_in_waitlist") && (
                 <div>
                   <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Guest-visible note</dt>
                   <dd className="mt-1 text-[#475569]">{peakHoursNote.trim() || "—"}</dd>

@@ -116,7 +116,7 @@ export function BookingsCommandCenter({
     {
       href: "/dashboard/bookings?tab=offerings&view=tables#bookings-workspace",
       label: "Tables & floor plan",
-      hint: "Add tables, shapes, colours, and seating questions for table enquiries.",
+      hint: "Add tables, rename them anytime, set shapes, colours, and seating questions for table enquiries.",
       Icon: Armchair,
       active: activePrimary === "offerings" && activeOfferingsSub === "tables",
       disabled: !bookingFlowComplete,

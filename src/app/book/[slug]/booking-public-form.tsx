@@ -43,6 +43,7 @@ function hostedEventPickKey(evt: PublicBusinessEvent): string {
 
 const FLOW_KIND_HINT: Record<string, string> = {
   restaurant_tables: "Pick a date and table — or switch to Events for hosted show nights.",
+  hosted_events: "Browse upcoming hosted events and pick the date that works for you.",
   salon_appointments: "Choose a date and time slot from the venue calendar.",
   walk_in_waitlist: "Tell us when you plan to arrive and how many are in your party.",
   mixed: "Start by choosing how you want to book below.",

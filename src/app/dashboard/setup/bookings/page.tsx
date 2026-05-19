@@ -8,10 +8,11 @@ export const metadata: Metadata = {
   title: "Booking setup · Dashboard · Solvio",
 };
 
-const bookingKinds: BookingFlowKind[] = ["restaurant_tables", "salon_appointments", "walk_in_waitlist", "mixed"];
+const bookingKinds: BookingFlowKind[] = ["restaurant_tables", "hosted_events", "salon_appointments", "mixed"];
 
 function parseBookingKind(raw: string | null): BookingFlowKind | null {
   if (!raw) return null;
+  if (raw === "walk_in_waitlist") return "walk_in_waitlist";
   return bookingKinds.includes(raw as BookingFlowKind) ? (raw as BookingFlowKind) : null;
 }
 

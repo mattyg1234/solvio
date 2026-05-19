@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const flowLabels: Record<string, string> = {
   restaurant_tables: "Table bookings",
+  hosted_events: "Events",
   salon_appointments: "Appointments",
   walk_in_waitlist: "Customer waitlists",
   mixed: "Mixed operations",

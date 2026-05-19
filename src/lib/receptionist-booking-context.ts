@@ -23,6 +23,8 @@ export function bookingFlowKindLabel(kind: string | null | undefined): string {
       return "restaurant table bookings";
     case "salon_appointments":
       return "salon-style appointments";
+    case "hosted_events":
+      return "hosted events and ticketed listings";
     case "walk_in_waitlist":
       return "walk-in waitlist";
     case "mixed":

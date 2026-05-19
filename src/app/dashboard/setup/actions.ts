@@ -73,7 +73,7 @@ export async function saveVoiceReceptionistSetup(businessId: string, details: Vo
 
 export async function saveBookingFlowSetup(
   businessId: string,
-  kind: "restaurant_tables" | "salon_appointments" | "walk_in_waitlist" | "mixed",
+  kind: "restaurant_tables" | "hosted_events" | "salon_appointments" | "walk_in_waitlist" | "mixed",
   details: BookingFlowDetails,
 ) {
   await assertOwnBusiness(businessId);

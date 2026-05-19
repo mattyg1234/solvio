@@ -364,6 +364,19 @@ export async function clearBusinessEventInstanceOverride(params: {
   revBookings();
 }
 
+export async function renameFloorPlanTableLabel(businessId: string, tableId: string, label: string) {
+  const trimmed = label.trim();
+  if (!trimmed) throw new Error("Table name is required.");
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("floor_plan_tables")
+    .update({ label: trimmed, updated_at: new Date().toISOString() })
+    .eq("id", tableId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
 export async function upsertFloorPlanTable(params: {
   businessId: string;
   id?: string | null;
