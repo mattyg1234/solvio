@@ -3,9 +3,9 @@ import Link from "next/link";
 import { ArrowLeft, Check, Minus } from "lucide-react";
 
 import {
-  checkoutGrowthAction,
+  checkoutBusinessAction,
+  checkoutProAction,
   checkoutScaleAction,
-  checkoutStarterAction,
 } from "@/app/dashboard/pricing/checkout-actions";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,65 +16,95 @@ export const metadata: Metadata = {
 
 const tiers = [
   {
-    name: "Starter",
-    price: "€50",
+    name: "Pro",
+    price: "€79",
     cadence: "/month",
-    blurb: "Solo venues testing AI reception + hosted bookings.",
-    bullets: ["1 location", "Booking link + inbox", "Voice rehearsal sandbox"],
+    blurb: "Solo venues — barbers, small salons, cafés.",
+    bullets: [
+      "1 location",
+      "300 AI receptionist minutes",
+      "2.5% on guest deposits",
+      "Booking link + inbox",
+      "Voice rehearsal sandbox",
+    ],
   },
   {
-    name: "Growth",
-    price: "€150",
+    name: "Business",
+    price: "€199",
     cadence: "/month",
-    blurb: "Busy floors coordinating appointments, tables, and events.",
-    bullets: ["Everything in Starter", "Operational grids & floor planner", "Cancellation-aware scripts"],
+    blurb: "Restaurants, mid-sized salons, gyms with real call volume.",
+    bullets: [
+      "Up to 3 locations",
+      "1,000 AI receptionist minutes",
+      "1.5% on guest deposits",
+      "Floor plan + tiered pricing",
+      "Lead pipeline insights",
+    ],
     featured: true,
   },
   {
     name: "Scale",
-    price: "€250",
+    price: "€399",
     cadence: "/month",
-    blurb: "Groups needing pooled dialers, integrations, and bespoke clones.",
-    bullets: ["Everything in Growth", "Priority provisioning", "Solution engineering blocks"],
+    blurb: "Groups, event venues, multi-location operators.",
+    bullets: [
+      "Unlimited locations",
+      "3,000 AI receptionist minutes",
+      "1% on guest deposits",
+      "Priority provisioning",
+      "Solution engineering blocks",
+    ],
   },
 ];
 
-const stripeCheckoutTierActions = [checkoutStarterAction, checkoutGrowthAction, checkoutScaleAction] as const;
+const stripeCheckoutTierActions = [checkoutProAction, checkoutBusinessAction, checkoutScaleAction] as const;
 
-type ComparisonCell = boolean | "light" | "basic";
+type ComparisonCell = boolean | string;
 
 type ComparisonRow = {
   feature: string;
-  starter: ComparisonCell;
-  growth: ComparisonCell;
+  pro: ComparisonCell;
+  business: ComparisonCell;
   scale: ComparisonCell;
 };
 
 const comparison: ComparisonRow[] = [
-  { feature: "Public booking microsite", starter: true, growth: true, scale: true },
-  { feature: "AI voice rehearsal + scripting", starter: true, growth: true, scale: true },
-  { feature: "Operations hub (appointments / events / tables)", starter: "light", growth: true, scale: true },
-  { feature: "Floor plan + tiered pricing modes", starter: false, growth: true, scale: true },
-  { feature: "Lead pipeline insights", starter: "basic", growth: true, scale: true },
-  { feature: "Priority support + solution design", starter: false, growth: false, scale: true },
+  { feature: "Public booking microsite", pro: true, business: true, scale: true },
+  { feature: "AI receptionist minutes / month", pro: "300", business: "1,000", scale: "3,000" },
+  { feature: "Overage rate (per extra minute)", pro: "€0.40", business: "€0.40", scale: "€0.30" },
+  { feature: "Platform fee on guest deposits", pro: "2.5%", business: "1.5%", scale: "1%" },
+  { feature: "Locations included", pro: "1", business: "3", scale: "Unlimited" },
+  { feature: "Operations hub (appointments / events / tables)", pro: "Light", business: true, scale: true },
+  { feature: "Floor plan + tiered pricing modes", pro: false, business: true, scale: true },
+  { feature: "Lead pipeline insights", pro: "Basic", business: true, scale: true },
+  { feature: "Custom branding (logo, colour)", pro: false, business: true, scale: true },
+  { feature: "Priority support + solution design", pro: false, business: false, scale: true },
 ];
 
 const faqs = [
   {
+    q: "What happens if I exceed my monthly AI minutes?",
+    a: "You're charged the overage rate per minute (€0.40 on Pro/Business, €0.30 on Scale). You'll see usage live in the dashboard and we'll alert you at 80% of cap so there are no surprises.",
+  },
+  {
     q: "Can I change tiers later?",
-    a: "Yes. Stripe Customer Portal subscriptions can roll up/down once your price IDs map to Starter / Growth / Scale in environment configuration.",
+    a: "Yes. Upgrade or downgrade anytime from the Stripe Customer Portal. Changes prorate to the day, and your platform fee % updates immediately on the next guest deposit.",
+  },
+  {
+    q: "Is there a free trial?",
+    a: "Every new account gets 14 days with 50 AI minutes — no card required. Convert anytime to keep your data and skip the rebuild.",
   },
   {
     q: "Do guests need an account?",
-    a: "No. Public `/book/<slug>` pages are anonymous-friendly. Only your team authenticates into the dashboard.",
+    a: "No. Public /book/<slug> pages are anonymous-friendly. Only your team authenticates into the dashboard.",
   },
   {
-    q: "Where do API keys live?",
-    a: "Solvio hosts billing (Stripe secrets), transactional mail (`SOLVIO_RESEND_*`), optional SMS Twilio envs, voice (`SOLVIO_VAPI_*` / ElevenLabs), and Supabase. Merchants do not paste provider secrets into Solvio screens.",
+    q: "What about enterprise / multi-location chains?",
+    a: "Custom fees, dedicated minutes, white-label deployments, and per-region SIP routing are available — reply to your onboarding email or contact us from the dashboard.",
   },
 ];
 
-function Cell({ value }: { value: boolean | "light" | "basic" }) {
+function Cell({ value }: { value: ComparisonCell }) {
   if (value === true) {
     return (
       <span className="inline-flex items-center justify-center text-[#7c3aed]">
@@ -107,14 +137,13 @@ export default function DashboardPricingPage() {
       </Link>
 
       <header className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Pricing preview</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Pricing</p>
         <h1 className="text-[clamp(1.6rem,3vw,2.15rem)] font-semibold tracking-tight text-[#0f172a]">
-          Plans sized for €50 – €250 / month pilots
+          AI receptionist + bookings, priced like a part-time team member
         </h1>
         <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-          Configure <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 text-[13px]">STRIPE_PRICE_*</code> price IDs plus{" "}
-          <code className="rounded bg-[#f1f5f9] px-1.5 py-0.5 text-[13px]">STRIPE_SECRET_KEY</code>{" "}
-          to enable Stripe Checkout redirects from each card below. Guests still subscribe through Solvio-hosted checkout while you iterate on product entitlement mapping.
+          Each plan includes AI minutes, hosted booking links, and a tier-based platform fee on guest deposits.
+          Start with a 14-day trial — no card needed.
         </p>
       </header>
 
@@ -131,7 +160,7 @@ export default function DashboardPricingPage() {
             >
               {t.featured ? (
                 <span className="mb-4 inline-flex w-fit rounded-full bg-[#ede9fe] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b21b6]">
-                  Popular
+                  Most popular
                 </span>
               ) : (
                 <span className="mb-4 block h-6" aria-hidden />
@@ -158,7 +187,7 @@ export default function DashboardPricingPage() {
                     "h-11 w-full rounded-full px-6 font-semibold shadow-md shadow-[#7c3aed]/15",
                   )}
                 >
-                  Subscribe · Stripe checkout
+                  Start 14-day trial
                 </button>
               </form>
               <Link
@@ -177,16 +206,16 @@ export default function DashboardPricingPage() {
 
       <section className="overflow-hidden rounded-[26px] border border-[#ebe7f7] bg-white shadow-sm">
         <div className="border-b border-[#f1eefc] px-6 py-5">
-          <h2 className="text-lg font-semibold text-[#0f172a]">Feature snapshot</h2>
-          <p className="mt-2 text-sm text-[#64748b]">Quick glance before proposals — detailed SLAs ship with contracts.</p>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Plan comparison</h2>
+          <p className="mt-2 text-sm text-[#64748b]">Everything at a glance — pick the tier that matches your call volume.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[720px] w-full divide-y divide-[#f1eefc] text-sm">
             <thead className="bg-[#fafbff] text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8]">
               <tr>
                 <th className="px-6 py-4">Capability</th>
-                <th className="px-4 py-4 text-center">Starter</th>
-                <th className="px-4 py-4 text-center">Growth</th>
+                <th className="px-4 py-4 text-center">Pro</th>
+                <th className="px-4 py-4 text-center">Business</th>
                 <th className="px-4 py-4 text-center">Scale</th>
               </tr>
             </thead>
@@ -194,15 +223,9 @@ export default function DashboardPricingPage() {
               {comparison.map((row) => (
                 <tr key={row.feature}>
                   <td className="px-6 py-4 font-medium text-[#0f172a]">{row.feature}</td>
-                  <td className="px-4 py-4 text-center">
-                    <Cell value={row.starter} />
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <Cell value={row.growth} />
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <Cell value={row.scale} />
-                  </td>
+                  <td className="px-4 py-4 text-center"><Cell value={row.pro} /></td>
+                  <td className="px-4 py-4 text-center"><Cell value={row.business} /></td>
+                  <td className="px-4 py-4 text-center"><Cell value={row.scale} /></td>
                 </tr>
               ))}
             </tbody>

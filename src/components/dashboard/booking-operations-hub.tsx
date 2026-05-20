@@ -25,6 +25,7 @@ import {
   renameFloorPlanTableLabel,
   restoreBusinessEvent,
   saveFloorPlanLayout,
+  saveStaffMembers,
   softDeleteBusinessEvent,
   uncancelBusinessEvent,
   upsertAppointmentWeekdayHour,
@@ -50,6 +51,7 @@ import {
 } from "@/lib/floor-plan-visuals";
 
 import type { BookingGuestsSub, BookingHubPrimary, BookingOfferingsSub } from "@/lib/bookings-hub-query";
+import { newStaffMember, type StaffMember } from "@/lib/staff-members";
 
 export type BusinessEventRow = {
   id: string;
@@ -165,6 +167,7 @@ type BookingOperationsHubProps = {
   initialOfferingsSub?: BookingOfferingsSub;
   bookingRequestHighlight?: string | null;
   stripeReadyByBizId?: Record<string, boolean>;
+  staffMembers?: StaffMember[];
 };
 
 export function BookingOperationsHub({
@@ -185,6 +188,7 @@ export function BookingOperationsHub({
   initialOfferingsSub,
   bookingRequestHighlight,
   stripeReadyByBizId,
+  staffMembers = [],
 }: BookingOperationsHubProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -327,6 +331,7 @@ export function BookingOperationsHub({
             events={events}
             tables={tables}
             questions={questions}
+            staffMembers={staffMembers}
           />
         )}
       </div>
@@ -398,6 +403,7 @@ function OfferingsHubPanel(props: {
   events: BusinessEventRow[];
   tables: FloorPlanTableRow[];
   questions: TableQuestionRow[];
+  staffMembers: StaffMember[];
 }) {
   return (
     <div className="space-y-6">
@@ -429,6 +435,7 @@ function OfferingsHubPanel(props: {
           schedules={props.schedules}
           exceptions={props.exceptions}
           venueTimeZone={props.venueTimeZone}
+          staffMembers={props.staffMembers}
         />
       ) : null}
 
@@ -659,20 +666,29 @@ function AppointmentsPanel({
   schedules,
   exceptions,
   venueTimeZone,
+  staffMembers,
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
   exceptions: SlotExceptionRow[];
   venueTimeZone: string;
+  staffMembers: StaffMember[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [weekday, setWeekday] = useState(1);
   const [openTime, setOpenTime] = useState("09:00");
   const [closeTime, setCloseTime] = useState("17:00");
   const [slotMin, setSlotMin] = useState(30);
   const [error, setError] = useState<string | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>(staffMembers);
+  const [newStaffName, setNewStaffName] = useState("");
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
+
+  useEffect(() => {
+    setStaff(staffMembers);
+  }, [staffMembers]);
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -804,6 +820,70 @@ function AppointmentsPanel({
         exceptions={exceptions}
         venueTimeZone={venueTimeZone}
       />
+
+      <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
+        <header>
+          <h3 className="text-base font-semibold text-[#0f172a]">Staff on public form</h3>
+          <p className="mt-1 text-sm text-[#64748b]">
+            Guests booking appointments can pick a preferred team member — optional if the list is empty.
+          </p>
+        </header>
+        <ul className="space-y-2">
+          {staff.map((member) => (
+            <li
+              key={member.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] bg-white px-3 py-2 text-sm"
+            >
+              <span className="font-semibold text-[#0f172a]">{member.name}</span>
+              <button
+                type="button"
+                disabled={pending}
+                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
+                onClick={() =>
+                  run(async () => {
+                    const next = staff.filter((s) => s.id !== member.id);
+                    await saveStaffMembers(businessId, next);
+                    setStaff(next);
+                    router.refresh();
+                  })
+                }
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+          {staff.length === 0 ? <li className="text-sm text-[#94a3b8]">No staff saved yet.</li> : null}
+        </ul>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="block flex-1 space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+            Add name
+            <input
+              value={newStaffName}
+              onChange={(e) => setNewStaffName(e.target.value)}
+              placeholder="Sarah, front desk…"
+              className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal normal-case tracking-normal text-[#0f172a]"
+            />
+          </label>
+          <Button
+            type="button"
+            disabled={pending || newStaffName.trim().length < 2}
+            className="h-11 rounded-full font-semibold shadow-md shadow-[#7c3aed]/20"
+            onClick={() =>
+              run(async () => {
+                const member = newStaffMember(newStaffName);
+                const next = [...staff, member];
+                await saveStaffMembers(businessId, next);
+                setStaff(next);
+                setNewStaffName("");
+                router.refresh();
+              })
+            }
+          >
+            <Plus className="mr-2 inline h-4 w-4" aria-hidden />
+            Add staff
+          </Button>
+        </div>
+      </div>
 
       <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-white p-5">
         <div className="flex flex-wrap items-center gap-2">

@@ -1,6 +1,7 @@
 import type { BookingGuestMode } from "@/lib/booking-guest-modes";
 import { isBookingGuestMode, parseGuestModesJson } from "@/lib/booking-guest-modes";
 import { coerceFloorPlanShape, normalizeFloorTableFillColor, type FloorPlanTableShape } from "@/lib/floor-plan-visuals";
+import { parseStaffMembers, type StaffMember } from "@/lib/staff-members";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 
 /** Matches Postgres `extract(dow)` convention used in dashboards: 0 = Sunday … 6 = Saturday */
@@ -75,6 +76,7 @@ export type BookingPublicContextPayload = {
   tables: PublicFloorTable[];
   table_questions: PublicTableQuestion[];
   booking_policies: BookingPublicPolicies;
+  staff_members: StaffMember[];
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -297,6 +299,7 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     tables: parseTables(root.tables),
     table_questions: parseQuestions(root.table_questions),
     booking_policies: parseBookingPolicies(root.booking_policies),
+    staff_members: parseStaffMembers(root.staff_members),
   };
 }
 

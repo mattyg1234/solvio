@@ -4,7 +4,7 @@ export const BOOKING_GUEST_MODE_LABELS: Record<BookingGuestMode, string> = {
   appointment: "Appointments",
   event: "Events",
   table: "Tables",
-  walk_in: "Walk-in / waitlist",
+  walk_in: "Walk-in enquiries",
 };
 
 export function isBookingGuestMode(v: string): v is BookingGuestMode {

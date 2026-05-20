@@ -228,7 +228,8 @@ export function BookingFlowSetupWizard({
             <div className="space-y-2">
               <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">How does {businessName} take bookings?</h1>
               <p className="text-[15px] leading-relaxed text-[#64748b]">
-                Pick the closest fit — Solvio adjusts intake questions on your hosted booking link and prepares deposits once Stripe is ready.
+                Pick the closest fit — Solvio adjusts intake on your hosted booking link. To collect table deposits, connect
+                Stripe and publish your link from the dashboard launch checklist after you save.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -269,7 +270,7 @@ export function BookingFlowSetupWizard({
             <div className="rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 px-4 py-4">
               <p className="text-sm font-semibold text-[#0f172a]">What can guests book on your link?</p>
               <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
-                Toggle paths guests see on your link — appointments, events, tables, or a waitlist (pick any combo).
+                Toggle paths guests see on your link — appointments, events, tables, or walk-in enquiries (pick any combo).
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {MODE_ORDER.map((m) => {
@@ -477,6 +478,24 @@ export function BookingFlowSetupWizard({
                 <dd className="mt-1 whitespace-pre-wrap text-[#475569]">{guestMessage.trim() || "—"}</dd>
               </div>
             </dl>
+            <div className="rounded-2xl border border-[#ede9fe] bg-[#faf5ff]/90 px-5 py-4 text-sm leading-relaxed text-[#475569]">
+              <p className="font-semibold text-[#0f172a]">After you save</p>
+              <ol className="mt-2 list-decimal space-y-1.5 pl-5">
+                <li>
+                  <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                    Connect Stripe
+                  </Link>{" "}
+                  so guests can pay table deposits
+                </li>
+                <li>
+                  Publish your booking slug under{" "}
+                  <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                    Bookings
+                  </Link>
+                </li>
+                <li>Add at least one table, event, or appointment slot for guests to choose</li>
+              </ol>
+            </div>
             {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}
           </div>
         ) : null}

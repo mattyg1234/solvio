@@ -6,8 +6,11 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+
+import { BusinessProfileForm } from "./business-profile-form";
 
 export const metadata: Metadata = {
   title: "Settings · Dashboard · Solvio",
@@ -24,7 +27,13 @@ export default async function DashboardSettingsPage() {
   }
 
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-  const { data: businesses } = await supabase.from("businesses").select("*").eq("owner_id", user.id);
+  const { data: businesses } = await supabase
+    .from("businesses")
+    .select("id,name,website_url,logo_url,time_zone,booking_slug,stripe_connect_account_id")
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: true });
+
+  const primaryBusiness = businesses?.[0] ?? null;
 
   return (
     <div className="space-y-8">
@@ -63,30 +72,28 @@ export default async function DashboardSettingsPage() {
 
       <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg text-[#0f172a]">Businesses</CardTitle>
+          <CardTitle className="text-lg text-[#0f172a]">Business profile</CardTitle>
           <CardDescription className="text-[#64748b]">
-            Created from your signup — Stripe Connect IDs land here as you onboard payments.
+            Name and timezone feed your public booking page and AI receptionist scripts. Stripe Connect lives under Payments.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {!businesses?.length ? (
+        <CardContent>
+          {!primaryBusiness ? (
             <p className="text-[15px] text-[#64748b]">No business rows yet.</p>
           ) : (
-            <ul className="space-y-2">
-              {businesses.map((b) => (
-                <li
-                  key={b.id}
-                  className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a]"
-                >
-                  {b.name}
-                  {b.stripe_connect_account_id ? (
-                    <span className="mt-1 block text-xs font-medium uppercase tracking-[0.18em] text-[#64748b]">
-                      Stripe connected
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <>
+              <BusinessProfileForm
+                businessId={primaryBusiness.id}
+                initialName={primaryBusiness.name}
+                initialWebsiteUrl={(primaryBusiness.website_url as string | null) ?? ""}
+                initialLogoUrl={(primaryBusiness.logo_url as string | null) ?? ""}
+                initialTimeZone={coerceValidIanaTimeZone(primaryBusiness.time_zone)}
+                bookingSlug={(primaryBusiness.booking_slug as string | null) ?? null}
+              />
+              {primaryBusiness.stripe_connect_account_id ? (
+                <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-[#64748b]">Stripe connected</p>
+              ) : null}
+            </>
           )}
         </CardContent>
       </Card>

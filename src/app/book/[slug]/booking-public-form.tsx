@@ -58,7 +58,7 @@ const MODE_PICKER: {
   { mode: "event", label: "Events", blurb: "Hosted shows — pick the act, then a purple calendar date", Icon: PartyPopper },
   { mode: "table", label: "Tables", blurb: "Reserve seating for a regular visit", Icon: UtensilsCrossed },
   { mode: "appointment", label: "Appointments", blurb: "Timed slots from the weekly schedule", Icon: Mic2 },
-  { mode: "walk_in", label: "Walk-in", blurb: "Join the waitlist or ask about availability", Icon: Sparkles },
+  { mode: "walk_in", label: "Walk-in", blurb: "Ask about availability or send a walk-in enquiry", Icon: Sparkles },
 ];
 
 function FormSection({
@@ -688,6 +688,26 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         ) : null}
 
         <div className="space-y-3">
+          {structuredAppointmentBooking && context.staff_members.length > 0 ? (
+            <div className="space-y-2">
+              <label htmlFor="preferred_staff" className="text-sm font-semibold text-[#0f172a]">
+                Preferred staff <span className="font-normal text-[#94a3b8]">(optional)</span>
+              </label>
+              <select
+                id="preferred_staff"
+                name="preferred_staff"
+                defaultValue=""
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              >
+                <option value="">No preference</option>
+                {context.staff_members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {structuredAppointmentBooking ? (
             <>
               <label htmlFor="preferred_time" className="text-sm font-semibold text-[#0f172a]">

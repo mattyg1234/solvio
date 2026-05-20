@@ -317,35 +317,44 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl text-[#0f172a]">Booking setup</CardTitle>
             <CardDescription>
-              Wire hours, layouts and guest modes in one hub — progressive, not noisy.
+              Required before your first guest booking — choose tables, events, or appointments for your public link.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pb-8">
+            <div className="rounded-2xl border border-[#ede9fe] bg-[#faf5ff]/80 px-4 py-4 text-sm leading-relaxed text-[#475569]">
+              <p className="font-semibold text-[#0f172a]">What happens next</p>
+              <p className="mt-2">
+                Solvio walks you through guest modes, intake copy, and your hosted <strong>/book/your-venue</strong> link. To
+                collect table deposits on that link, you&apos;ll also connect Stripe — we cover that in step&nbsp;4.
+              </p>
+            </div>
             <ul className="space-y-3 text-[15px] leading-relaxed text-[#475569]">
               <li className="flex gap-2">
                 <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
-                Appointment grids, events, and tables all live beside your inbound inbox — nothing hidden.
+                ~4&nbsp;minutes — pick your flow, tune defaults, save.
               </li>
               <li className="flex gap-2">
                 <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
-                Toggle only the modules you turned on ({CAP_DEFS.filter((c) => caps[c.key]).map((c) => c.label).join(", ")
-                  || "—"}).
+                After saving, add at least one table, event, or appointment slot in Bookings.
               </li>
             </ul>
             <Link
-              href="/dashboard/bookings"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-11 items-center justify-center rounded-full border border-[#ebe7f7] px-6 text-sm font-semibold text-[#0f172a] hover:bg-[#f8fafc]"
+              href="/dashboard/setup/bookings"
+              className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#7c3aed] px-6 text-sm font-semibold text-white shadow-lg shadow-[#7c3aed]/25 hover:bg-[#6d28d9]"
             >
-              Open bookings workspace (new tab)
+              Start booking setup
             </Link>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(0)}>
                 Back
               </Button>
-              <Button type="button" className="h-11 rounded-full px-8 font-semibold shadow-lg shadow-[#7c3aed]/25" onClick={() => setStepIdx(2)}>
-                Continue in wizard
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 rounded-full px-6 font-semibold text-[#64748b]"
+                onClick={() => setStepIdx(2)}
+              >
+                Skip for now
               </Button>
             </div>
           </CardContent>
@@ -420,24 +429,33 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             <CardDescription>Stripe routes deposits into your merchant account once connected.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pb-8">
+            <div className="rounded-2xl border border-[#ede9fe] bg-[#faf5ff]/80 px-4 py-4 text-sm leading-relaxed text-[#475569]">
+              <p className="font-semibold text-[#0f172a]">Needed for paid bookings</p>
+              <p className="mt-2">
+                Guests can submit enquiries without Stripe, but <strong>table deposit checkout</strong> only works after you connect
+                a Stripe account. Solvio routes payouts to you — we take a small platform fee on processed deposits.
+              </p>
+            </div>
             <p className="text-[15px] leading-relaxed text-[#64748b]">
-              Apple&nbsp;Pay & Google&nbsp;Pay ride on standard Stripe Checkout when you flip it on inside the Payments page.
-              Deposits and cancellation penalties stay optional — switch them live without another migration.
+              Apple&nbsp;Pay and Google&nbsp;Pay are included via Stripe Checkout once connected.
             </p>
             <Link
               href="/dashboard/payments"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-11 items-center justify-center rounded-full border border-[#ebe7f7] px-6 text-sm font-semibold text-[#0f172a] hover:bg-[#f8fafc]"
+              className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#7c3aed] px-6 text-sm font-semibold text-white shadow-lg shadow-[#7c3aed]/25 hover:bg-[#6d28d9]"
             >
-              Open payments workspace (new tab)
+              Connect Stripe
             </Link>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(2)}>
                 Back
               </Button>
-              <Button type="button" className="h-11 rounded-full px-8 font-semibold shadow-lg shadow-[#7c3aed]/25" onClick={() => setStepIdx(4)}>
-                Continue
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 rounded-full px-6 font-semibold text-[#64748b]"
+                onClick={() => setStepIdx(4)}
+              >
+                Skip for now
               </Button>
             </div>
           </CardContent>
@@ -451,28 +469,32 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             <CardDescription>Ship the essentials now — deepen automations anytime.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pb-8">
+            <div className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-5 py-4 text-sm leading-relaxed text-[#475569]">
+              <p className="font-semibold text-[#0f172a]">After you open the dashboard</p>
+              <ol className="mt-3 list-decimal space-y-2 pl-5">
+                <li>Finish booking setup and publish your /book link</li>
+                <li>Connect Stripe if you want deposit checkout</li>
+                <li>Add tables, events, or slots so guests have something to book</li>
+              </ol>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Link
-                href="/dashboard/bookings"
+                href="/dashboard/setup/bookings"
                 className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
               >
-                View bookings hub →
+                Start booking setup →
+              </Link>
+              <Link
+                href="/dashboard/payments"
+                className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
+              >
+                Connect Stripe →
               </Link>
               <Link
                 href="/dashboard/setup/voice"
                 className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
               >
-                Open AI receptionist →
-              </Link>
-              <Link
-                href="/dashboard/calls"
-                className={cn(
-                  "flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm",
-                  !caps.ai_receptionist && "opacity-50 pointer-events-none",
-                )}
-                aria-disabled={!caps.ai_receptionist}
-              >
-                Calls lab →
+                Train AI receptionist →
               </Link>
               <Link
                 href="/dashboard"

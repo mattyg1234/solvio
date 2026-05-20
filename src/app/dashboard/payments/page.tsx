@@ -86,8 +86,9 @@ export default async function DashboardPaymentsPage({
               Guest payments on your Stripe account
             </h1>
             <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-              Connect once — guest payments land in your Stripe balance (Solvio takes a 5% platform fee on each booking
-              payment). Set prices per table under{" "}
+              Connect once — guest payments land in your Stripe balance. Solvio's platform fee depends on your plan
+              (1–2.5% — see <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">Plans</Link>).
+              Set prices per table under{" "}
               <Link href="/dashboard/bookings?tab=offerings&view=tables" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
                 Bookings → Tables
               </Link>
@@ -121,8 +122,8 @@ export default async function DashboardPaymentsPage({
           <CardTitle className="text-base text-[#0f172a]">Connect your Stripe account</CardTitle>
           <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
             Express onboarding opens Stripe in a new tab. When charges are enabled, table bookings with guide pricing can
-            offer a deposit checkout step. Solvio automatically retains a 5% fee on each guest payment; the rest settles to
-            your Connect balance.
+            offer a deposit checkout step. Solvio automatically retains your plan's platform fee (1–2.5% based on tier)
+            on each guest payment; the rest settles to your Connect balance.
           </CardDescription>
         </CardHeader>
         <CardContent className="pb-6">
@@ -168,7 +169,7 @@ export default async function DashboardPaymentsPage({
           <CardHeader>
             <CardTitle className="text-base text-[#0f172a]">Solvio subscription</CardTitle>
             <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              Platform plans (Starter / Growth / Scale) bill separately via{" "}
+              Platform plans (Pro / Business / Scale) bill separately via{" "}
               <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
                 Plans
               </Link>
@@ -177,8 +178,8 @@ export default async function DashboardPaymentsPage({
           </CardHeader>
           <CardContent className="pb-6">
             <p className="text-sm text-[#64748b]">
-              Guest deposits use your Connect account with a 5% Solvio platform fee per booking payment. Solvio SaaS plans
-              bill separately via the platform Stripe account configured in env.
+              Guest deposits use your Connect account with a tier-based platform fee (1–2.5% — lower fees on higher plans).
+              Solvio SaaS subscriptions bill separately via the platform Stripe account configured in env.
             </p>
           </CardContent>
         </Card>

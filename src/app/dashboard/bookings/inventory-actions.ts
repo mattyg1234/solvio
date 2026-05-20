@@ -11,6 +11,7 @@ import {
 } from "@/lib/business-event-occurrences";
 import type { FloorPlanTableShape } from "@/lib/floor-plan-visuals";
 import { normalizeFloorTableDimensions, normalizeFloorTableFillColor } from "@/lib/floor-plan-visuals";
+import { parseStaffMembers, type StaffMember } from "@/lib/staff-members";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function getOwnedSupabase(businessId: string) {
@@ -60,6 +61,35 @@ export async function upsertAppointmentWeekdayHour(params: {
     slot_minutes: params.slotMinutes,
     updated_at: new Date().toISOString(),
   });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Replace staff roster stored in booking_flow_details.staff_members. */
+export async function saveStaffMembers(businessId: string, members: StaffMember[]) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { data, error: selErr } = await supabase
+    .from("businesses")
+    .select("booking_flow_details")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+
+  const prev =
+    data?.booking_flow_details && typeof data.booking_flow_details === "object" && !Array.isArray(data.booking_flow_details)
+      ? (data.booking_flow_details as Record<string, unknown>)
+      : {};
+
+  const sanitized = parseStaffMembers(members);
+  const next = {
+    ...prev,
+    staff_members: sanitized,
+  };
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({ booking_flow_details: next, updated_at: new Date().toISOString() })
+    .eq("id", businessId);
   if (error) throw new Error(error.message);
   revBookings();
 }

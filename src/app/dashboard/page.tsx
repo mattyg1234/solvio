@@ -3,11 +3,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, CalendarClock, Coins, Layers, PhoneForwarded, Radar, TrendingUp } from "lucide-react";
 
-import { OverviewSetupTabs } from "@/components/dashboard/overview-setup-tabs";
+import { LaunchChecklist } from "@/components/dashboard/launch-checklist";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
+import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -27,26 +29,34 @@ export default async function DashboardOverviewPage() {
   const { data: businesses } = await supabase
     .from("businesses")
     .select(
-      "id,name,stripe_connect_account_id,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind",
+      "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind",
     )
     .eq("owner_id", user.id);
 
+  const siteUrl = await getSiteUrl();
   const stripeConnected = businesses?.some((b) => Boolean(b.stripe_connect_account_id)) ?? false;
+  const stripeChargesEnabled =
+    businesses?.some((b) => Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled)) ?? false;
   const primaryBiz = businesses?.[0];
   const primaryBusinessName = primaryBiz?.name ?? null;
+  const bookingSlug = (primaryBiz?.booking_slug as string | null | undefined)?.trim() || null;
+  const publicBookingUrl = bookingSlug ? `${siteUrl}/book/${encodeURIComponent(bookingSlug)}` : null;
   const voiceComplete = Boolean(primaryBiz?.voice_receptionist_completed_at);
   const bookingFlowComplete = Boolean(primaryBiz?.booking_flow_completed_at);
   const bookingFlowKind = (primaryBiz?.booking_flow_kind as string | null | undefined) ?? null;
 
-  const flowLabels: Record<string, string> = {
-    restaurant_tables: "Table bookings",
-    hosted_events: "Events",
-    salon_appointments: "Appointments",
-    walk_in_waitlist: "Customer waitlists",
-    mixed: "Mixed operations",
-  };
-  const bookingFlowShortLabel =
-    bookingFlowKind && flowLabels[bookingFlowKind] ? flowLabels[bookingFlowKind] : bookingFlowKind;
+  let hasInventory = false;
+  if (primaryBiz?.id) {
+    const bizId = primaryBiz.id;
+    const [{ count: tableCount }, { count: eventCount }, { count: hourCount }] = await Promise.all([
+      supabase.from("floor_plan_tables").select("*", { count: "exact", head: true }).eq("business_id", bizId),
+      supabase.from("business_events").select("*", { count: "exact", head: true }).eq("business_id", bizId),
+      supabase.from("appointment_weekday_hours").select("*", { count: "exact", head: true }).eq("business_id", bizId),
+    ]);
+    hasInventory = (tableCount ?? 0) + (eventCount ?? 0) + (hourCount ?? 0) > 0;
+  }
+
+  const bookingFlowShortLabel = bookingFlowKindLabel(bookingFlowKind);
 
   const businessIds = businesses?.map((b) => b.id) ?? [];
   let inboundBookingCount = 0;
@@ -85,7 +95,7 @@ export default async function DashboardOverviewPage() {
   const todayRevenueLabel =
     todayDepositRevenueCents > 0
       ? new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" }).format(todayDepositRevenueCents / 100)
-      : stripeConnected
+      : stripeChargesEnabled
         ? "€0"
         : "—";
 
@@ -169,12 +179,16 @@ export default async function DashboardOverviewPage() {
         </div>
       </section>
 
-      <OverviewSetupTabs
-        key={`${voiceComplete}-${bookingFlowComplete}`}
+      <LaunchChecklist
         hasBusiness={Boolean(businesses?.length)}
-        voiceComplete={voiceComplete}
-        bookingComplete={bookingFlowComplete}
+        businessName={primaryBusinessName}
+        bookingFlowComplete={bookingFlowComplete}
         bookingFlowKind={bookingFlowKind}
+        stripeChargesEnabled={stripeChargesEnabled}
+        bookingSlug={bookingSlug}
+        publicBookingUrl={publicBookingUrl}
+        hasInventory={hasInventory}
+        voiceComplete={voiceComplete}
       />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -196,9 +210,9 @@ export default async function DashboardOverviewPage() {
           <CardContent className="pb-5 pt-1 space-y-1">
             <p className="text-3xl font-semibold text-[#0f172a]">{todayRevenueLabel}</p>
             <p className="text-[13px] text-[#64748b]">
-              {stripeConnected
+              {stripeChargesEnabled
                 ? "Table deposits marked paid today (UTC)."
-                : "Connect Stripe below to unlock payouts."}
+                : "Connect Stripe in the launch checklist to unlock deposit checkout."}
             </p>
           </CardContent>
         </Card>
@@ -365,15 +379,15 @@ export default async function DashboardOverviewPage() {
           </CardHeader>
           <CardContent className="space-y-4 pb-6">
             <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${stripeConnected ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.18)]" : "bg-amber-400 shadow-[0_0_0_6px_rgba(251,191,36,0.22)]"}`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${stripeChargesEnabled ? "bg-emerald-500 shadow-[0_0_0_6px_rgba(16,185,129,0.18)]" : "bg-amber-400 shadow-[0_0_0_6px_rgba(251,191,36,0.22)]"}`} />
               <p className="text-lg font-semibold text-[#0f172a]">
-                {stripeConnected ? "Stripe linked" : "Finish Stripe onboarding"}
+                {stripeChargesEnabled ? "Deposits enabled" : stripeConnected ? "Finish Stripe setup" : "Connect Stripe"}
               </p>
             </div>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              {stripeConnected
-                ? "You’re ready to collect deposits — payouts route straight to your connected account."
-                : "Connect Stripe so Solvio can send hosted invoices & deposits without touching your checkout manually."}
+              {stripeChargesEnabled
+                ? "You're ready to collect deposits — payouts route straight to your connected account."
+                : "Connect Stripe so guests can pay table deposits on your booking link — enquiries still arrive without it."}
             </p>
             <Link
               href="/dashboard/payments"
@@ -382,7 +396,7 @@ export default async function DashboardOverviewPage() {
                 "inline-flex h-11 w-full items-center justify-center rounded-full border-[#ebe7f7] font-semibold",
               )}
             >
-              {stripeConnected ? "View payout settings" : "Open payments workspace"}
+              {stripeChargesEnabled ? "View payout settings" : "Connect Stripe"}
             </Link>
           </CardContent>
         </Card>
@@ -391,21 +405,21 @@ export default async function DashboardOverviewPage() {
       <section className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/80 px-6 py-8 md:px-10">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Next milestones</p>
-            <h3 className="text-lg font-semibold text-[#0f172a]">Automations queued for launch</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">After launch</p>
+            <h3 className="text-lg font-semibold text-[#0f172a]">Test voice, then pitch live</h3>
             <p className="max-w-xl text-sm leading-relaxed text-[#64748b]">
-              Automatic confirmations, bilingual greetings for tourists and cancellation flows stay orchestrated here once voice +
-              booking APIs wire through Supabase.
+              Once your booking link is live, share it with a friend or submit a test request yourself. Train the AI
+              receptionist when you&apos;re ready to demo phone coverage.
             </p>
           </div>
           <Link
-            href="/dashboard/calls"
+            href={voiceComplete ? "/dashboard/calls" : "/dashboard/setup/voice"}
             className={cn(
               buttonVariants({ variant: "ghost" }),
               "inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-4 font-semibold text-[#7c3aed]",
             )}
           >
-            Preview voice workspace
+            {voiceComplete ? "Open calls workspace" : "Set up AI receptionist"}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
         </div>

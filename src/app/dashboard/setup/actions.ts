@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { suggestBookingSlug } from "@/lib/booking-slug";
 import { mergeVoiceReceptionistDetails, type VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -16,6 +17,8 @@ export type BookingFlowDetails = {
   guest_booking_modes?: string[];
   /** When Tables + Hosted events are both enabled, hides free-form table enquires any night a show occurrence runs */
   block_public_table_when_hosted_event_date?: boolean;
+  /** Optional staff roster shown on public appointment bookings */
+  staff_members?: { id: string; name: string }[];
 };
 
 async function assertOwnBusiness(businessId: string) {
@@ -76,18 +79,36 @@ export async function saveBookingFlowSetup(
   kind: "restaurant_tables" | "hosted_events" | "salon_appointments" | "walk_in_waitlist" | "mixed",
   details: BookingFlowDetails,
 ) {
-  await assertOwnBusiness(businessId);
-  const supabase = await createSupabaseServerClient();
-  const now = new Date().toISOString();
-  const { error } = await supabase
+  const { supabase } = await assertOwnBusiness(businessId);
+  const { data: biz } = await supabase
     .from("businesses")
-    .update({
-      booking_flow_kind: kind,
-      booking_flow_completed_at: now,
-      booking_flow_details: details as unknown as Record<string, unknown>,
-      updated_at: now,
-    })
-    .eq("id", businessId);
+    .select("name,booking_slug,booking_flow_details")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  const prevDetails =
+    biz?.booking_flow_details && typeof biz.booking_flow_details === "object" && !Array.isArray(biz.booking_flow_details)
+      ? (biz.booking_flow_details as Record<string, unknown>)
+      : {};
+
+  const mergedDetails = {
+    ...prevDetails,
+    ...(details as unknown as Record<string, unknown>),
+  };
+
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    booking_flow_kind: kind,
+    booking_flow_completed_at: now,
+    booking_flow_details: mergedDetails,
+    updated_at: now,
+  };
+
+  if (!biz?.booking_slug?.trim()) {
+    patch.booking_slug = suggestBookingSlug(biz?.name ?? "book", businessId);
+  }
+
+  const { error } = await supabase.from("businesses").update(patch).eq("id", businessId);
 
   if (error) {
     throw new Error(error.message);
@@ -95,4 +116,5 @@ export async function saveBookingFlowSetup(
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/setup/bookings");
   revalidatePath("/dashboard/bookings");
+  revalidatePath("/dashboard/settings");
 }

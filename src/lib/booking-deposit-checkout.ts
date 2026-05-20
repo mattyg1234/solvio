@@ -1,5 +1,5 @@
 import { stripeClient } from "@/lib/stripe-client";
-import { computeSolvioPlatformFeeCents } from "@/lib/solvio-platform-fee";
+import { computeSolvioPlatformFeeCents, DEFAULT_PLATFORM_FEE_BPS } from "@/lib/solvio-platform-fee";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -17,7 +17,20 @@ export async function createBookingDepositCheckoutSession(args: {
 
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
   const amount = Math.max(50, Math.floor(args.amountCents));
-  const platformFeeCents = computeSolvioPlatformFeeCents(amount);
+
+  // Read the per-tenant fee bps. Falls back to default if column missing (pre-migration).
+  const supabaseForLookup = createSupabaseServiceRoleClient();
+  const { data: businessRow } = await supabaseForLookup
+    .from("businesses")
+    .select("platform_fee_bps")
+    .eq("id", args.businessId)
+    .maybeSingle();
+  const feeBps =
+    typeof businessRow?.platform_fee_bps === "number"
+      ? businessRow.platform_fee_bps
+      : DEFAULT_PLATFORM_FEE_BPS;
+
+  const platformFeeCents = computeSolvioPlatformFeeCents(amount, feeBps);
 
   const session = await stripe.checkout.sessions.create(
     {

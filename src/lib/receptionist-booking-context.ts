@@ -7,7 +7,7 @@ export type ReceptionistBookingContext = {
 const MODE_LABELS: Record<string, string> = {
   table: "table reservations",
   appointment: "appointments",
-  walk_in: "walk-in waitlist",
+  walk_in: "walk-in enquiries",
   event: "hosted events",
 };
 
@@ -26,7 +26,7 @@ export function bookingFlowKindLabel(kind: string | null | undefined): string {
     case "hosted_events":
       return "hosted events and ticketed listings";
     case "walk_in_waitlist":
-      return "walk-in waitlist";
+      return "walk-in enquiries";
     case "mixed":
       return "mixed bookings (tables, appointments, events)";
     default:

@@ -73,15 +73,15 @@ export function BookingsInventoryRail() {
           <div className="max-w-2xl space-y-3">
             <span className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">
               <ListOrdered className="h-5 w-5 text-[#7c3aed]" aria-hidden />
-              Waitlists & walk-ins
+              Walk-in enquiries
             </span>
             <p className="text-[15px] font-semibold text-[#0f172a]">Not shown above — configured in Booking setup</p>
             <p className="text-[14px] leading-relaxed text-[#475569]">
-              Queue wording lives under{" "}
+              Walk-in wording lives under{" "}
               <Link href="/dashboard/setup/bookings" className="font-semibold text-[#5b21b6] underline decoration-[#ddd6fe] underline-offset-2">
                 booking setup
               </Link>
-              . When guests join a waitlist, their requests arrive under{" "}
+              . When guests send walk-in requests, they arrive under{" "}
               <strong className="font-semibold text-[#0f172a]">Guests &amp; replies → Inbox requests</strong> so you can message them back.
             </p>
           </div>

@@ -74,13 +74,27 @@ export async function submitBookingRequestAction(
     intakeLines.push(`Seating notes: ${seatingNotes}`);
   }
 
-  notes = mergeGuestIntakeNotes(notes, intakeLines);
+  const preferredStaffId = String(formData.get("preferred_staff") ?? "").trim();
 
   if (!slug.trim()) {
     return { ok: false, message: "Invalid booking link." };
   }
 
-  const rateKeyHash = await getBookingSubmitRateFingerprint(slug.trim());
+  const supabase = await createSupabaseServerClient();
+  const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
+  const parsedCtx = parseBookingPublicContext(ctxRaw);
+
+  if (preferredStaffId) {
+    const staffMatch = parsedCtx?.staff_members.find((s) => s.id === preferredStaffId);
+    if (staffMatch) {
+      intakeExtras.preferred_staff = staffMatch.name;
+      intakeExtras.preferred_staff_id = staffMatch.id;
+      intakeLines.push(`Preferred staff: ${staffMatch.name}`);
+    }
+  }
+
+  notes = mergeGuestIntakeNotes(notes, intakeLines);
+
   let intakeJson = "{}";
   try {
     intakeJson =
@@ -90,10 +104,6 @@ export async function submitBookingRequestAction(
   } catch {
     intakeJson = "{}";
   }
-
-  const supabase = await createSupabaseServerClient();
-  const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
-  const parsedCtx = parseBookingPublicContext(ctxRaw);
 
   const bkLower = bookingKind.trim().toLowerCase();
   if (!guestCount.trim()) {
@@ -139,6 +149,8 @@ export async function submitBookingRequestAction(
   if (!tableBookingCheck.ok) {
     return { ok: false, message: tableBookingCheck.message };
   }
+
+  const rateKeyHash = await getBookingSubmitRateFingerprint(slug.trim());
 
   const { data: bookingId, error } = await supabase.rpc("submit_booking_request", {
     p_slug: slug.trim(),

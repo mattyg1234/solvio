@@ -20,6 +20,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { suggestBookingSlug } from "@/lib/booking-slug";
 import { parseBookingsHubQuery } from "@/lib/bookings-hub-query";
+import { parseStaffMembers } from "@/lib/staff-members";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
@@ -72,7 +73,9 @@ export default async function DashboardBookingsPage({
 
   const { data: businessesRaw } = await supabase
     .from("businesses")
-    .select("id,name,booking_slug,time_zone,booking_flow_completed_at,stripe_connect_account_id,stripe_connect_charges_enabled")
+    .select(
+      "id,name,booking_slug,time_zone,booking_flow_completed_at,booking_flow_details,stripe_connect_account_id,stripe_connect_charges_enabled",
+    )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
@@ -97,6 +100,12 @@ export default async function DashboardBookingsPage({
   const primaryVenueTz = coerceValidIanaTimeZone(businessesRaw?.[0]?.time_zone ?? "");
 
   const primaryBookingFlowComplete = Boolean(businessesRaw?.[0]?.booking_flow_completed_at);
+  const flowDetailsRaw = businessesRaw?.[0]?.booking_flow_details;
+  const staffMembers = parseStaffMembers(
+    flowDetailsRaw && typeof flowDetailsRaw === "object" && !Array.isArray(flowDetailsRaw)
+      ? (flowDetailsRaw as Record<string, unknown>).staff_members
+      : undefined,
+  );
   type BookingRow = {
     id: string;
     business_id: string;
@@ -257,6 +266,7 @@ export default async function DashboardBookingsPage({
           initialOfferingsSub={hub.offeringsSub}
           bookingRequestHighlight={hub.bookingHighlight}
           stripeReadyByBizId={stripeReadyByBizId}
+          staffMembers={staffMembers}
         />
       </div>
 

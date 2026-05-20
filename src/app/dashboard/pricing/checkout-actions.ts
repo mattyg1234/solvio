@@ -6,11 +6,12 @@ import { stripeClient } from "@/lib/stripe-client";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export type StripePlanTier = "starter" | "growth" | "scale";
+export type StripePlanTier = "pro" | "business" | "scale";
 
 const PRICE_IDS: Record<StripePlanTier, string | undefined> = {
-  starter: process.env.STRIPE_PRICE_STARTER?.trim(),
-  growth: process.env.STRIPE_PRICE_GROWTH?.trim(),
+  // Prefer new env names; fall back to legacy names if not set yet.
+  pro: (process.env.STRIPE_PRICE_PRO ?? process.env.STRIPE_PRICE_STARTER)?.trim(),
+  business: (process.env.STRIPE_PRICE_BUSINESS ?? process.env.STRIPE_PRICE_GROWTH)?.trim(),
   scale: process.env.STRIPE_PRICE_SCALE?.trim(),
 };
 
@@ -23,7 +24,7 @@ export async function startStripeCheckout(plan: StripePlanTier) {
   } = await supabase.auth.getUser();
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || (await getSiteUrl())).replace(/\/$/, "");
-  const successUrl = `${siteUrl}/dashboard/pricing?checkout=success`;
+  const successUrl = `${siteUrl}/dashboard/pricing?checkout=success&tier=${plan}`;
   const cancelUrl = `${siteUrl}/dashboard/pricing?checkout=cancel`;
 
   if (!stripe || !priceId) {
@@ -56,12 +57,12 @@ export async function startStripeCheckout(plan: StripePlanTier) {
   redirect(session.url);
 }
 
-export async function checkoutStarterAction() {
-  await startStripeCheckout("starter");
+export async function checkoutProAction() {
+  await startStripeCheckout("pro");
 }
 
-export async function checkoutGrowthAction() {
-  await startStripeCheckout("growth");
+export async function checkoutBusinessAction() {
+  await startStripeCheckout("business");
 }
 
 export async function checkoutScaleAction() {
