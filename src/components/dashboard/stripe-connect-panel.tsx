@@ -75,7 +75,13 @@ export function StripeConnectPanel({ businesses }: { businesses: StripeConnectBu
                   <p className="mt-2 text-xs text-[#64748b]">
                     Connected account ···{acctTail} — stays linked until you disconnect below.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="mt-2 max-w-md text-xs leading-relaxed text-[#64748b]">
+                    Click <span className="font-semibold text-[#5b21b6]">Connect Stripe</span> to either{" "}
+                    <span className="font-semibold text-[#0f172a]">link your existing Stripe account</span> (Stripe asks you to sign in) or{" "}
+                    <span className="font-semibold text-[#0f172a]">create a new one</span> on the spot — both paths take ~2 minutes and finish in a single window.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button

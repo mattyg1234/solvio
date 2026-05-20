@@ -65,6 +65,44 @@ export async function upsertAppointmentWeekdayHour(params: {
   revBookings();
 }
 
+/** Replace venue-wide appointment intake questions stored in booking_flow_details.appointment_questions. */
+export async function saveAppointmentQuestions(
+  businessId: string,
+  questions: { label: string; required: boolean }[],
+) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { data, error: selErr } = await supabase
+    .from("businesses")
+    .select("booking_flow_details")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+
+  const prev =
+    data?.booking_flow_details && typeof data.booking_flow_details === "object" && !Array.isArray(data.booking_flow_details)
+      ? (data.booking_flow_details as Record<string, unknown>)
+      : {};
+
+  const sanitized: { label: string; required: boolean }[] = [];
+  for (const q of (Array.isArray(questions) ? questions : []).slice(0, 20)) {
+    const label = q?.label?.trim();
+    if (!label || label.length > 240) continue;
+    sanitized.push({ label, required: Boolean(q.required) });
+  }
+
+  const next = {
+    ...prev,
+    appointment_questions: sanitized,
+  };
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({ booking_flow_details: next, updated_at: new Date().toISOString() })
+    .eq("id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
 /** Replace staff roster stored in booking_flow_details.staff_members. */
 export async function saveStaffMembers(businessId: string, members: StaffMember[]) {
   const supabase = await getOwnedSupabase(businessId);
@@ -191,8 +229,37 @@ export async function upsertBusinessEvent(params: {
   startsAt: string;
   endsAt: string;
   recurrence: Record<string, unknown>;
+  /** null = unlimited; positive integer = max attendees. */
+  capacity?: number | null;
+  /** Custom intake questions guests must answer when booking this event. */
+  customQuestions?: { label: string; required: boolean }[];
+  /** Ticket price in cents. null/0 = free (will not block table bookings on this date). */
+  ticketPriceCents?: number | null;
+  /** When false, hide the "X seats left" badge from the public form (capacity still enforced). */
+  showRemainingSeats?: boolean;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
+
+  const capacityClean: number | null =
+    typeof params.capacity === "number" && Number.isFinite(params.capacity) && params.capacity > 0
+      ? Math.floor(params.capacity)
+      : null;
+
+  const ticketPriceClean: number | null =
+    typeof params.ticketPriceCents === "number" && Number.isFinite(params.ticketPriceCents) && params.ticketPriceCents > 0
+      ? Math.floor(params.ticketPriceCents)
+      : null;
+
+  const showRemainingSeats = typeof params.showRemainingSeats === "boolean" ? params.showRemainingSeats : true;
+
+  const customQuestionsClean: { label: string; required: boolean }[] = [];
+  if (Array.isArray(params.customQuestions)) {
+    for (const q of params.customQuestions.slice(0, 20)) {
+      const label = q?.label?.trim();
+      if (!label || label.length > 240) continue;
+      customQuestionsClean.push({ label, required: Boolean(q.required) });
+    }
+  }
 
   if (params.id) {
     const { error } = await supabase
@@ -203,6 +270,10 @@ export async function upsertBusinessEvent(params: {
         starts_at: params.startsAt,
         ends_at: params.endsAt,
         recurrence: params.recurrence,
+        capacity: capacityClean,
+        custom_questions: customQuestionsClean,
+        ticket_price_cents: ticketPriceClean,
+        show_remaining_seats: showRemainingSeats,
         updated_at: new Date().toISOString(),
       })
       .eq("id", params.id)
@@ -219,6 +290,10 @@ export async function upsertBusinessEvent(params: {
     starts_at: params.startsAt,
     ends_at: params.endsAt,
     recurrence: params.recurrence,
+    capacity: capacityClean,
+    custom_questions: customQuestionsClean,
+    ticket_price_cents: ticketPriceClean,
+    show_remaining_seats: showRemainingSeats,
     cancelled_at: null,
     cancellation_reason: null,
     deleted_at: null,

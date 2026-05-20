@@ -19,13 +19,21 @@ function activeHostedEvents(events: PublicBusinessEvent[]): PublicBusinessEvent[
   return events.filter((e) => !e.cancelled);
 }
 
+/** Paid events block free table bookings on the same date — free events do not. */
+function activePaidHostedEvents(events: PublicBusinessEvent[]): PublicBusinessEvent[] {
+  return activeHostedEvents(events).filter(
+    (e) => typeof e.ticket_price_cents === "number" && e.ticket_price_cents > 0,
+  );
+}
+
 /**
- * Dates (venue-local YYYY-MM-DD) where a hosted show is booked and not skipped.
+ * Dates (venue-local YYYY-MM-DD) where a PAID hosted show is booked and not skipped.
  * Table enquiries must never overlap these nights — guests book via Events instead.
+ * Free events (RSVP-only) are intentionally excluded so tables remain bookable.
  */
 export function datesWithUpcomingHostedOccurrences(events: PublicBusinessEvent[], venueTz: string): Set<string> {
   const out = new Set<string>();
-  for (const ev of activeHostedEvents(events)) {
+  for (const ev of activePaidHostedEvents(events)) {
     for (const oc of expandHostedEventForSubmit(ev, venueTz)) {
       out.add(oc.dateYmd);
     }
@@ -33,7 +41,7 @@ export function datesWithUpcomingHostedOccurrences(events: PublicBusinessEvent[]
   return out;
 }
 
-/** Hosted listing titles running on a given venue-local date (for guest-facing copy). */
+/** Hosted PAID listing titles running on a given venue-local date (for guest-facing copy). */
 export function hostedEventTitlesOnDate(
   dateYmd: string,
   events: PublicBusinessEvent[],
@@ -42,7 +50,7 @@ export function hostedEventTitlesOnDate(
   const want = dateYmd.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(want)) return [];
   const titles = new Set<string>();
-  for (const ev of activeHostedEvents(events)) {
+  for (const ev of activePaidHostedEvents(events)) {
     for (const oc of expandHostedEventForSubmit(ev, venueTz)) {
       if (oc.dateYmd === want) titles.add(ev.title.trim());
     }

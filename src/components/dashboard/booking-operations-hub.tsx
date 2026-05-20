@@ -24,6 +24,7 @@ import {
   deleteTableBookingQuestion,
   renameFloorPlanTableLabel,
   restoreBusinessEvent,
+  saveAppointmentQuestions,
   saveFloorPlanLayout,
   saveStaffMembers,
   softDeleteBusinessEvent,
@@ -35,6 +36,8 @@ import {
 } from "@/app/dashboard/bookings/inventory-actions";
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
+import { ManualBookingDialog } from "@/components/dashboard/manual-booking-dialog";
+import { EditBookingDialog } from "@/components/dashboard/edit-booking-dialog";
 import { EventSeriesCalendarSheet, type SheetBusinessEventRow } from "@/components/dashboard/event-series-calendar-sheet";
 import { FloorTableWeekHoursStrip } from "@/components/dashboard/floor-table-week-hours-strip";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -63,6 +66,10 @@ export type BusinessEventRow = {
   cancelled_at: string | null;
   cancellation_reason: string | null;
   deleted_at: string | null;
+  capacity?: number | null;
+  booked_count?: number;
+  ticket_price_cents?: number | null;
+  show_remaining_seats?: boolean;
 };
 
 export type FloorPlanTableWeekHourRow = {
@@ -168,6 +175,7 @@ type BookingOperationsHubProps = {
   bookingRequestHighlight?: string | null;
   stripeReadyByBizId?: Record<string, boolean>;
   staffMembers?: StaffMember[];
+  appointmentQuestions?: { label: string; required: boolean }[];
 };
 
 export function BookingOperationsHub({
@@ -189,6 +197,7 @@ export function BookingOperationsHub({
   bookingRequestHighlight,
   stripeReadyByBizId,
   staffMembers = [],
+  appointmentQuestions = [],
 }: BookingOperationsHubProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -307,7 +316,10 @@ export function BookingOperationsHub({
             requests={requests}
             bizNameById={bizNameById}
             confirmedBookings={confirmedBookings}
+            businessId={businessId}
             businessName={businessName}
+            tables={tables}
+            events={events}
             inventoryLinks={{
               tables: tables.map((t) => ({ id: t.id, label: t.label })),
               events: events
@@ -332,6 +344,7 @@ export function BookingOperationsHub({
             tables={tables}
             questions={questions}
             staffMembers={staffMembers}
+            appointmentQuestions={appointmentQuestions}
           />
         )}
       </div>
@@ -350,7 +363,10 @@ function GuestsHubPanel(props: {
   };
   bookingRequestHighlight?: string | null;
   confirmedBookings: VenueCalendarBookingRow[];
+  businessId: string | null;
   businessName: string;
+  tables: FloorPlanTableRow[];
+  events: BusinessEventRow[];
   stripeReadyByBizId?: Record<string, boolean>;
 }) {
   return (
@@ -387,7 +403,13 @@ function GuestsHubPanel(props: {
           highlightBookingRequestId={props.bookingRequestHighlight ?? undefined}
         />
       ) : (
-        <ConfirmedBookingsPanelWithContacts businessName={props.businessName} bookings={props.confirmedBookings} />
+        <ConfirmedBookingsPanelWithContacts
+          businessId={props.businessId}
+          businessName={props.businessName}
+          bookings={props.confirmedBookings}
+          tables={props.tables}
+          events={props.events}
+        />
       )}
     </div>
   );
@@ -404,6 +426,7 @@ function OfferingsHubPanel(props: {
   tables: FloorPlanTableRow[];
   questions: TableQuestionRow[];
   staffMembers: StaffMember[];
+  appointmentQuestions?: { label: string; required: boolean }[];
 }) {
   return (
     <div className="space-y-6">
@@ -436,6 +459,7 @@ function OfferingsHubPanel(props: {
           exceptions={props.exceptions}
           venueTimeZone={props.venueTimeZone}
           staffMembers={props.staffMembers}
+          appointmentQuestions={props.appointmentQuestions}
         />
       ) : null}
 
@@ -456,21 +480,44 @@ function confirmedKindLabel(kind: string | null | undefined) {
 }
 
 function ConfirmedBookingsPanelWithContacts({
+  businessId,
   businessName,
   bookings,
+  tables,
+  events,
 }: {
+  businessId: string | null;
   businessName: string;
   bookings: VenueCalendarBookingRow[];
+  tables: FloorPlanTableRow[];
+  events: BusinessEventRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showCancelled, setShowCancelled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const rows = useMemo(() => {
-    const base = showCancelled ? bookings : bookings.filter((b) => b.status !== "cancelled");
+    const q = searchQuery.trim().toLowerCase();
+    let base = showCancelled ? bookings : bookings.filter((b) => b.status !== "cancelled");
+    if (q) {
+      base = base.filter((b) => {
+        const haystack = [
+          b.guest_name,
+          b.guest_email,
+          b.guest_phone ?? "",
+          b.title ?? "",
+          b.booking_kind ?? "",
+          b.internal_notes ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
     return [...base].sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
-  }, [bookings, showCancelled]);
+  }, [bookings, showCancelled, searchQuery]);
 
   function runCancel(id: string) {
     setError(null);
@@ -498,16 +545,56 @@ function ConfirmedBookingsPanelWithContacts({
             <span className="font-semibold text-[#0f172a]">Calls</span>.
           </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]">
-          <input
-            type="checkbox"
-            checked={showCancelled}
-            onChange={(e) => setShowCancelled(e.target.checked)}
-            className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
-          />
-          Show cancelled
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          {businessId ? (
+            <ManualBookingDialog
+              businessId={businessId}
+              tables={tables.map((t) => ({ id: t.id, label: t.label }))}
+              events={events
+                .filter((e) => !e.cancelled_at && !e.deleted_at)
+                .map((e) => ({ id: e.id, title: e.title }))}
+            />
+          ) : null}
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[#475569]">
+            <input
+              type="checkbox"
+              checked={showCancelled}
+              onChange={(e) => setShowCancelled(e.target.checked)}
+              className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
+            />
+            Show cancelled
+          </label>
+        </div>
       </header>
+
+      {bookings.length > 0 ? (
+        <div className="relative">
+          <svg
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94a3b8]"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" />
+          </svg>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search confirmed guests by name, email, phone, or notes…"
+            className="h-11 w-full rounded-full border border-[#ebe7f7] bg-[#fafbff] pl-10 pr-4 text-[14px] outline-none placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+          />
+          {searchQuery ? (
+            <p className="mt-2 text-xs text-[#64748b]">
+              Showing <span className="font-semibold text-[#0f172a]">{rows.length}</span> of{" "}
+              {showCancelled ? bookings.length : bookings.filter((b) => b.status !== "cancelled").length} bookings
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-[#f1eefc]">
         <table className="w-full min-w-[1040px] text-left text-sm">
@@ -639,14 +726,23 @@ function ConfirmedBookingsPanelWithContacts({
                   </td>
                   <td className="px-4 py-3 text-right align-top">
                     {row.status === "confirmed" ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "font-semibold text-rose-700")}
-                        onClick={() => runCancel(row.id)}
-                      >
-                        Cancel slot
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <EditBookingDialog
+                          booking={row}
+                          tables={tables.map((t) => ({ id: t.id, label: t.label }))}
+                          events={events
+                            .filter((e) => !e.cancelled_at && !e.deleted_at)
+                            .map((e) => ({ id: e.id, title: e.title }))}
+                        />
+                        <button
+                          type="button"
+                          disabled={pending}
+                          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 rounded-full px-3 text-[11px] font-semibold text-rose-700")}
+                          onClick={() => runCancel(row.id)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-xs text-[#94a3b8]">—</span>
                     )}
@@ -667,12 +763,14 @@ function AppointmentsPanel({
   exceptions,
   venueTimeZone,
   staffMembers,
+  appointmentQuestions = [],
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
   exceptions: SlotExceptionRow[];
   venueTimeZone: string;
   staffMembers: StaffMember[];
+  appointmentQuestions?: { label: string; required: boolean }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -683,12 +781,17 @@ function AppointmentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffMember[]>(staffMembers);
   const [newStaffName, setNewStaffName] = useState("");
+  const [questions, setQuestions] = useState<{ label: string; required: boolean }[]>(appointmentQuestions);
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
 
   useEffect(() => {
     setStaff(staffMembers);
   }, [staffMembers]);
+
+  useEffect(() => {
+    setQuestions(appointmentQuestions);
+  }, [appointmentQuestions]);
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -885,6 +988,80 @@ function AppointmentsPanel({
         </div>
       </div>
 
+      <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-[#0f172a]">Custom appointment questions</h3>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Asked on the public form when a guest books an appointment. Answers appear in Incoming requests + Confirmed diary.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            className="h-9 rounded-full text-xs font-semibold"
+            onClick={() => setQuestions((prev) => [...prev, { label: "", required: false }])}
+          >
+            <Plus className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+            Add question
+          </Button>
+        </header>
+        {questions.length === 0 ? (
+          <p className="text-sm text-[#94a3b8]">No appointment questions yet — add one above (optional).</p>
+        ) : (
+          <ul className="space-y-2">
+            {questions.map((q, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f1eefc] bg-white px-3 py-2">
+                <input
+                  value={q.label}
+                  onChange={(e) =>
+                    setQuestions((prev) => prev.map((x, j) => (i === j ? { ...x, label: e.target.value } : x)))
+                  }
+                  placeholder="e.g. Any allergies?"
+                  className="h-9 flex-1 min-w-[200px] rounded-lg border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                />
+                <label className="flex items-center gap-1.5 text-[12px] font-medium text-[#475569]">
+                  <input
+                    type="checkbox"
+                    checked={q.required}
+                    onChange={(e) =>
+                      setQuestions((prev) => prev.map((x, j) => (i === j ? { ...x, required: e.target.checked } : x)))
+                    }
+                    className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
+                  />
+                  Required
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setQuestions((prev) => prev.filter((_, j) => j !== i))}
+                  className="rounded-full p-1.5 text-rose-700 hover:bg-rose-50"
+                  aria-label="Remove question"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button
+          type="button"
+          disabled={pending}
+          className="h-10 rounded-full font-semibold shadow-md shadow-[#7c3aed]/20"
+          onClick={() =>
+            run(async () => {
+              await saveAppointmentQuestions(
+                businessId,
+                questions.filter((q) => q.label.trim().length > 0),
+              );
+              router.refresh();
+            })
+          }
+        >
+          Save appointment questions
+        </Button>
+      </div>
+
       <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-white p-5">
         <div className="flex flex-wrap items-center gap-2">
           <CalendarOff className="h-5 w-5 text-[#7c3aed]" aria-hidden />
@@ -939,6 +1116,10 @@ function EventsPanel({
   const [ends, setEnds] = useState("");
   const [recPreset, setRecPreset] = useState<"once" | "daily" | "weekly">("once");
   const [weekBits, setWeekBits] = useState<number[]>([1, 3]);
+  const [capacity, setCapacity] = useState<string>("");
+  const [ticketPriceEur, setTicketPriceEur] = useState<string>("");
+  const [showRemainingSeats, setShowRemainingSeats] = useState<boolean>(true);
+  const [customQuestions, setCustomQuestions] = useState<{ label: string; required: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const visible = events.filter((e) => !e.deleted_at);
@@ -1000,6 +1181,108 @@ function EventsPanel({
           <input type="datetime-local" value={ends} onChange={(e) => setEnds(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+            Capacity <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(leave blank = unlimited)</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={10000}
+            value={capacity}
+            onChange={(e) => setCapacity(e.target.value)}
+            placeholder="e.g. 100"
+            className="h-11 w-40 rounded-xl border border-[#ebe7f7] px-3"
+          />
+          <p className="text-[12px] text-[#64748b]">
+            Once the booked count reaches this number, the public form blocks new bookings and tells guests how many seats are left.
+          </p>
+          <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-[12px] text-[#475569]">
+            <input
+              type="checkbox"
+              checked={showRemainingSeats}
+              onChange={(e) => setShowRemainingSeats(e.target.checked)}
+              className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
+            />
+            Show <span className="font-semibold">&ldquo;X seats left&rdquo;</span> on the public form (capacity is still enforced if off)
+          </label>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+            Ticket price <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(€ — leave blank for free / RSVP)</span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={ticketPriceEur}
+            onChange={(e) => setTicketPriceEur(e.target.value)}
+            placeholder="e.g. 25"
+            className="h-11 w-40 rounded-xl border border-[#ebe7f7] px-3"
+          />
+          <p className="text-[12px] text-[#64748b]">
+            Paid events <span className="font-semibold">block free table bookings</span> on the same date — guests must buy a ticket
+            instead. Free / RSVP events leave tables bookable.
+          </p>
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+                Custom questions <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(optional)</span>
+              </label>
+              <p className="mt-1 text-[12px] text-[#64748b]">
+                Ask guests anything extra when they book this event — e.g. &ldquo;How many children?&rdquo;, &ldquo;Dietary needs?&rdquo;
+                Answers show in Incoming requests and Confirmed diary.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCustomQuestions((prev) => [...prev, { label: "", required: false }])}
+              className={cn(buttonVariants({ variant: "outline" }), "h-9 shrink-0 rounded-full text-xs font-semibold")}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
+              Add question
+            </button>
+          </div>
+          {customQuestions.length > 0 ? (
+            <ul className="space-y-2">
+              {customQuestions.map((q, i) => (
+                <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f1eefc] bg-white px-3 py-2">
+                  <input
+                    value={q.label}
+                    onChange={(e) =>
+                      setCustomQuestions((prev) => prev.map((x, j) => (i === j ? { ...x, label: e.target.value } : x)))
+                    }
+                    placeholder="e.g. How many children?"
+                    className="h-9 flex-1 min-w-[200px] rounded-lg border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                  />
+                  <label className="flex items-center gap-1.5 text-[12px] font-medium text-[#475569]">
+                    <input
+                      type="checkbox"
+                      checked={q.required}
+                      onChange={(e) =>
+                        setCustomQuestions((prev) =>
+                          prev.map((x, j) => (i === j ? { ...x, required: e.target.checked } : x)),
+                        )
+                      }
+                      className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
+                    />
+                    Required
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCustomQuestions((prev) => prev.filter((_, j) => j !== i))}
+                    className="rounded-full p-1.5 text-rose-700 hover:bg-rose-50"
+                    aria-label="Remove question"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+        <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Recurrence</label>
           <select value={recPreset} onChange={(e) => setRecPreset(e.target.value as typeof recPreset)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3 md:w-auto">
             <option value="once">One-off</option>
@@ -1035,6 +1318,10 @@ function EventsPanel({
             className="rounded-full font-semibold shadow-md shadow-[#7c3aed]/20"
             onClick={() =>
               run(async () => {
+                const capParsed = parseInt(capacity, 10);
+                const ticketParsed = parseFloat(ticketPriceEur);
+                const ticketCents =
+                  Number.isFinite(ticketParsed) && ticketParsed > 0 ? Math.round(ticketParsed * 100) : null;
                 await upsertBusinessEvent({
                   businessId,
                   title,
@@ -1042,11 +1329,19 @@ function EventsPanel({
                   startsAt: new Date(starts).toISOString(),
                   endsAt: new Date(ends).toISOString(),
                   recurrence: recurrenceJson(),
+                  capacity: Number.isFinite(capParsed) && capParsed > 0 ? capParsed : null,
+                  customQuestions: customQuestions.filter((q) => q.label.trim().length > 0),
+                  ticketPriceCents: ticketCents,
+                  showRemainingSeats,
                 });
                 setTitle("");
                 setDescription("");
                 setStarts("");
                 setEnds("");
+                setCapacity("");
+                setTicketPriceEur("");
+                setShowRemainingSeats(true);
+                setCustomQuestions([]);
               })
             }
           >
@@ -1075,6 +1370,28 @@ function EventsPanel({
                   {ev.cancelled_at ? (
                     <span className="ml-2 inline-flex shrink-0 flex-wrap align-middle rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-700">
                       Cancelled
+                    </span>
+                  ) : null}
+                  {typeof ev.capacity === "number" && ev.capacity > 0 ? (
+                    (() => {
+                      const booked = ev.booked_count ?? 0;
+                      const remaining = Math.max(0, ev.capacity - booked);
+                      const tone =
+                        remaining === 0
+                          ? "bg-rose-50 text-rose-800 ring-rose-100"
+                          : remaining <= Math.max(1, Math.floor(ev.capacity * 0.1))
+                            ? "bg-amber-50 text-amber-900 ring-amber-100"
+                            : "bg-emerald-50 text-emerald-800 ring-emerald-100";
+                      return (
+                        <span className={cn("ml-2 inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ring-1", tone)}>
+                          {remaining === 0 ? "Sold out" : `${booked}/${ev.capacity} booked`}
+                        </span>
+                      );
+                    })()
+                  ) : null}
+                  {typeof ev.ticket_price_cents === "number" && ev.ticket_price_cents > 0 ? (
+                    <span className="ml-2 inline-flex shrink-0 rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b21b6] ring-1 ring-[#ddd6fe]">
+                      €{(ev.ticket_price_cents / 100).toFixed(ev.ticket_price_cents % 100 === 0 ? 0 : 2)} ticket
                     </span>
                   ) : null}
                 </p>

@@ -32,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { data: primaryBiz } = await supabase
     .from("businesses")
-    .select("platform_capabilities,onboarding_completed_at")
+    .select("platform_capabilities,onboarding_completed_at,campaigns_enabled")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -40,20 +40,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const capabilities = resolvePlatformCapabilities(primaryBiz?.platform_capabilities);
   const needsOnboarding = businessNeedsOnboarding(primaryBiz ?? null);
+  const campaignsEnabled = Boolean((primaryBiz as { campaigns_enabled?: boolean } | null)?.campaigns_enabled);
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
       <OnboardingGate needsOnboarding={needsOnboarding} />
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-[17rem] shrink-0 overflow-hidden border-r border-[#ebe7f7]/90 md:block">
-          <DashboardSidebar capabilities={capabilities} />
+          <DashboardSidebar capabilities={capabilities} campaignsEnabled={campaignsEnabled} />
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col pb-[5.75rem] md:pb-0">
           <DashboardHeader email={user.email ?? ""} greetingName={greetingName} />
           <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-10">{children}</main>
 
-          <DashboardMobileNav capabilities={capabilities} />
+          <DashboardMobileNav capabilities={capabilities} campaignsEnabled={campaignsEnabled} />
         </div>
       </div>
     </div>

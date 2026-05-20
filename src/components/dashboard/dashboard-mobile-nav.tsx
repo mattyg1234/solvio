@@ -3,12 +3,12 @@
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, Mic2, PhoneCall, Settings2 } from "lucide-react";
+import { CalendarDays, ClipboardList, CreditCard, LayoutDashboard, Megaphone, Mic2, PhoneCall, Settings2 } from "lucide-react";
 
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { cn } from "@/lib/utils";
 
-function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string }[] {
+function buildMobileNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: boolean): { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string }[] {
   const items: {
     href: string;
     label: string;
@@ -26,7 +26,11 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; labe
 
   if (cap.ai_receptionist) {
     items.push({ href: "/dashboard/setup/voice", label: "Voice", icon: Mic2, key: "voice" });
-    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls", badge: "Soon" });
+    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
+  }
+
+  if (campaignsEnabled) {
+    items.push({ href: "/dashboard/campaigns", label: "Campaigns", icon: Megaphone, key: "campaigns" });
   }
 
   items.push({ href: "/dashboard/settings", label: "More", icon: Settings2, key: "settings" });
@@ -36,11 +40,12 @@ function buildMobileNav(cap: ResolvedPlatformCapabilities): { href: string; labe
 
 export type DashboardMobileNavProps = {
   capabilities: ResolvedPlatformCapabilities;
+  campaignsEnabled?: boolean;
 };
 
-export function DashboardMobileNav({ capabilities }: DashboardMobileNavProps) {
+export function DashboardMobileNav({ capabilities, campaignsEnabled = false }: DashboardMobileNavProps) {
   const pathname = usePathname();
-  const items = buildMobileNav(capabilities);
+  const items = buildMobileNav(capabilities, campaignsEnabled);
 
   function navActive(href: string, exact?: boolean) {
     const pathOnly = href.split("#")[0] ?? href;

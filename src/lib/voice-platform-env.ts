@@ -22,3 +22,13 @@ export function getVapiAgentOpenAiModel(): string {
 export function getSolvioVapiAgentAnthropicModel(): string {
   return process.env.SOLVIO_VAPI_AGENT_ANTHROPIC_MODEL?.trim() || "claude-3-5-haiku-20241022";
 }
+
+/** Shared Vapi phone number id for outbound campaigns. Each Solvio merchant calls from this number until per-merchant numbers are provisioned. */
+export function getSolvioOutboundPhoneNumberId(): string {
+  return process.env.SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID?.trim() ?? "";
+}
+
+/** Shared secret Vapi posts on call.* webhooks (set in Vapi Dashboard → Server URL → Auth). */
+export function getSolvioVapiWebhookSecret(): string {
+  return process.env.SOLVIO_VAPI_WEBHOOK_SECRET?.trim() ?? "";
+}

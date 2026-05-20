@@ -455,12 +455,100 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               }}
             >
               <option value="">Select an event…</option>
-              {upcomingActiveEvents.map((evt) => (
-                <option key={hostedEventPickKey(evt)} value={hostedEventPickKey(evt)}>
-                  {evt.title}
-                </option>
-              ))}
+              {upcomingActiveEvents.map((evt) => {
+                const remaining =
+                  typeof evt.capacity === "number" && evt.capacity > 0
+                    ? Math.max(0, evt.capacity - evt.booked_count)
+                    : null;
+                const showSeats = evt.show_remaining_seats !== false;
+                const priceLabel =
+                  typeof evt.ticket_price_cents === "number" && evt.ticket_price_cents > 0
+                    ? ` · €${(evt.ticket_price_cents / 100).toFixed(evt.ticket_price_cents % 100 === 0 ? 0 : 2)}`
+                    : "";
+                const seatLabel =
+                  remaining === null
+                    ? ""
+                    : remaining === 0
+                      ? " · SOLD OUT"
+                      : showSeats
+                        ? ` · ${remaining} seat${remaining === 1 ? "" : "s"} left`
+                        : "";
+                return (
+                  <option key={hostedEventPickKey(evt)} value={hostedEventPickKey(evt)} disabled={remaining === 0}>
+                    {evt.title}{priceLabel}{seatLabel}
+                  </option>
+                );
+              })}
             </select>
+            {(() => {
+              const selected = upcomingActiveEvents.find((x) => hostedEventPickKey(x) === pickedHostedEventKey);
+              if (!selected) return null;
+              const priceCents = selected.ticket_price_cents;
+              const isPaid = typeof priceCents === "number" && priceCents > 0;
+              const priceStr = isPaid
+                ? `€${(priceCents! / 100).toFixed(priceCents! % 100 === 0 ? 0 : 2)}`
+                : null;
+              const remaining =
+                typeof selected.capacity === "number" && selected.capacity > 0
+                  ? Math.max(0, selected.capacity - selected.booked_count)
+                  : null;
+              const showSeats = selected.show_remaining_seats !== false;
+
+              if (remaining === 0) {
+                return (
+                  <p className="mt-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[13px] font-medium text-rose-900">
+                    Sold out — please pick another date or event.
+                  </p>
+                );
+              }
+              return (
+                <div className="mt-2 space-y-2">
+                  {isPaid ? (
+                    <p className="rounded-xl border border-[#ddd6fe] bg-[#f5f3ff] px-3 py-2 text-[13px] font-medium text-[#5b21b6]">
+                      🎟️ Ticket: <span className="font-semibold">{priceStr}</span> per person
+                    </p>
+                  ) : null}
+                  {remaining !== null && showSeats ? (
+                    (() => {
+                      const tone =
+                        remaining <= Math.max(1, Math.floor(selected.capacity! * 0.1))
+                          ? "border-amber-100 bg-amber-50 text-amber-900"
+                          : "border-emerald-100 bg-emerald-50 text-emerald-800";
+                      return (
+                        <p className={cn("rounded-xl border px-3 py-2 text-[13px] font-medium", tone)}>
+                          {remaining} {remaining === 1 ? "seat" : "seats"} left — max party size: {remaining}.
+                        </p>
+                      );
+                    })()
+                  ) : null}
+                </div>
+              );
+            })()}
+            {(() => {
+              const selected = upcomingActiveEvents.find((x) => hostedEventPickKey(x) === pickedHostedEventKey);
+              const qs = selected?.custom_questions ?? [];
+              if (!qs.length) return null;
+              return (
+                <div className="mt-4 space-y-3 border-t border-[#f1eefc] pt-4">
+                  <p className="text-[13px] font-semibold text-[#0f172a]">A few quick questions</p>
+                  <input type="hidden" name="event_q_count" value={qs.length} />
+                  {qs.map((q, i) => (
+                    <label key={`${q.label}-${i}`} className="block space-y-1">
+                      <span className="text-[13px] font-medium text-[#0f172a]">
+                        {q.label}
+                        {q.required ? <span className="ml-1 text-rose-600">*</span> : null}
+                      </span>
+                      <input type="hidden" name={`eq_${i}`} value={q.label} />
+                      <input
+                        name={`ea_${i}`}
+                        required={q.required}
+                        className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                      />
+                    </label>
+                  ))}
+                </div>
+              );
+            })()}
             <input type="hidden" name="event_title" value={eventTitle} />
           </FormSection>
         ) : effectiveKind === "event" ? (
@@ -706,6 +794,26 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
                   </option>
                 ))}
               </select>
+            </div>
+          ) : null}
+          {structuredAppointmentBooking && context.appointment_questions.length > 0 ? (
+            <div className="space-y-3 border-t border-[#f1eefc] pt-3">
+              <p className="text-sm font-semibold text-[#0f172a]">A few quick questions</p>
+              <input type="hidden" name="appt_q_count" value={context.appointment_questions.length} />
+              {context.appointment_questions.map((q, i) => (
+                <label key={`${q.label}-${i}`} className="block space-y-1">
+                  <span className="text-[13px] font-medium text-[#0f172a]">
+                    {q.label}
+                    {q.required ? <span className="ml-1 text-rose-600">*</span> : null}
+                  </span>
+                  <input type="hidden" name={`aq_${i}`} value={q.label} />
+                  <input
+                    name={`aa_${i}`}
+                    required={q.required}
+                    className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                  />
+                </label>
+              ))}
             </div>
           ) : null}
           {structuredAppointmentBooking ? (

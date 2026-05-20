@@ -106,6 +106,22 @@ export default async function DashboardBookingsPage({
       ? (flowDetailsRaw as Record<string, unknown>).staff_members
       : undefined,
   );
+  const appointmentQuestions: { label: string; required: boolean }[] = (() => {
+    const raw =
+      flowDetailsRaw && typeof flowDetailsRaw === "object" && !Array.isArray(flowDetailsRaw)
+        ? (flowDetailsRaw as Record<string, unknown>).appointment_questions
+        : null;
+    if (!Array.isArray(raw)) return [];
+    const out: { label: string; required: boolean }[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const o = item as Record<string, unknown>;
+      const label = typeof o.label === "string" ? o.label.trim() : "";
+      if (!label || label.length > 240) continue;
+      out.push({ label, required: Boolean(o.required) });
+    }
+    return out;
+  })();
   type BookingRow = {
     id: string;
     business_id: string;
@@ -200,6 +216,17 @@ export default async function DashboardBookingsPage({
         : r.intake_extras,
   })) as BookingRequestRow[];
 
+  // Compute booked_count per event from confirmed venue bookings already loaded above.
+  const bookedCountByEventId = new Map<string, number>();
+  for (const row of confirmedBookings) {
+    if (!row.business_event_id || row.status === "cancelled") continue;
+    const prev = bookedCountByEventId.get(row.business_event_id) ?? 0;
+    bookedCountByEventId.set(
+      row.business_event_id,
+      prev + (typeof row.guest_count === "number" && row.guest_count > 0 ? row.guest_count : 1),
+    );
+  }
+
   const hostedEventsForClient = hostedEvents.map((ev) => {
     let recurrence: unknown = ev.recurrence;
     if (recurrence != null && typeof recurrence === "object") {
@@ -209,7 +236,11 @@ export default async function DashboardBookingsPage({
         recurrence = { type: "once" };
       }
     }
-    return { ...ev, recurrence };
+    return {
+      ...ev,
+      recurrence,
+      booked_count: bookedCountByEventId.get(ev.id) ?? 0,
+    };
   });
 
   const bookingTips =
@@ -267,6 +298,7 @@ export default async function DashboardBookingsPage({
           bookingRequestHighlight={hub.bookingHighlight}
           stripeReadyByBizId={stripeReadyByBizId}
           staffMembers={staffMembers}
+          appointmentQuestions={appointmentQuestions}
         />
       </div>
 

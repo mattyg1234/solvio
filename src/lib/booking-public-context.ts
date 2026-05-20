@@ -20,6 +20,11 @@ export type PublicAppointmentSlotException = {
   kind: "removed" | "cancelled";
 };
 
+export type EventCustomQuestion = {
+  label: string;
+  required: boolean;
+};
+
 export type PublicBusinessEvent = {
   id?: string;
   title: string;
@@ -30,6 +35,16 @@ export type PublicBusinessEvent = {
   recurrence?: unknown | null;
   cancelled: boolean;
   cancellation_reason: string;
+  /** Max attendees for this event. null = unlimited. */
+  capacity: number | null;
+  /** Sum of guest_count across confirmed venue_calendar_bookings for this event. */
+  booked_count: number;
+  /** Optional intake questions per event (e.g. "How many children?"). */
+  custom_questions: EventCustomQuestion[];
+  /** Per-ticket price in cents. null/0 = free RSVP. >0 = paid (blocks free table bookings on same date). */
+  ticket_price_cents: number | null;
+  /** When false, hide the "X seats left" badge on the public form (still server-enforced). */
+  show_remaining_seats: boolean;
 };
 
 export type PublicTableWeekdayBar = {
@@ -77,6 +92,8 @@ export type BookingPublicContextPayload = {
   table_questions: PublicTableQuestion[];
   booking_policies: BookingPublicPolicies;
   staff_members: StaffMember[];
+  /** Venue-wide intake questions shown when guests book appointments. */
+  appointment_questions: EventCustomQuestion[];
 };
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -155,6 +172,32 @@ function parseEvents(raw: unknown): PublicBusinessEvent[] {
         : undefined;
     const recurrence = o.recurrence ?? null;
 
+    const capacity =
+      typeof o.capacity === "number" && Number.isFinite(o.capacity) && o.capacity > 0
+        ? Math.floor(o.capacity)
+        : null;
+    const bookedCount =
+      typeof o.booked_count === "number" && Number.isFinite(o.booked_count) && o.booked_count >= 0
+        ? Math.floor(o.booked_count)
+        : 0;
+
+    const customQuestions: EventCustomQuestion[] = [];
+    if (Array.isArray(o.custom_questions)) {
+      for (const q of o.custom_questions) {
+        if (!q || typeof q !== "object" || Array.isArray(q)) continue;
+        const qr = q as Record<string, unknown>;
+        const label = typeof qr.label === "string" ? qr.label.trim() : "";
+        if (!label || label.length > 240) continue;
+        customQuestions.push({ label, required: Boolean(qr.required) });
+      }
+    }
+
+    const ticketPriceCents =
+      typeof o.ticket_price_cents === "number" && Number.isFinite(o.ticket_price_cents) && o.ticket_price_cents > 0
+        ? Math.floor(o.ticket_price_cents)
+        : null;
+    const showRemainingSeats = typeof o.show_remaining_seats === "boolean" ? o.show_remaining_seats : true;
+
     const evt: PublicBusinessEvent = {
       ...(id ? { id } : {}),
       title,
@@ -165,6 +208,11 @@ function parseEvents(raw: unknown): PublicBusinessEvent[] {
       cancelled: Boolean(o.cancelled),
       cancellation_reason:
         typeof o.cancellation_reason === "string" ? o.cancellation_reason : "",
+      capacity,
+      booked_count: bookedCount,
+      custom_questions: customQuestions,
+      ticket_price_cents: ticketPriceCents,
+      show_remaining_seats: showRemainingSeats,
     };
     out.push(evt);
   }
@@ -300,7 +348,21 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     table_questions: parseQuestions(root.table_questions),
     booking_policies: parseBookingPolicies(root.booking_policies),
     staff_members: parseStaffMembers(root.staff_members),
+    appointment_questions: parseEventQuestionsList(root.appointment_questions),
   };
+}
+
+function parseEventQuestionsList(raw: unknown): EventCustomQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const out: EventCustomQuestion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    if (!label || label.length > 240) continue;
+    out.push({ label, required: Boolean(o.required) });
+  }
+  return out;
 }
 
 export function formatPublicTablePriceEUR(priceCents: number, pricingMode: string): string {

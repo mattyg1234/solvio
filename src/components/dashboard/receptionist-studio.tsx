@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Mic2, Save, Sparkles } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Loader2, Mic2, Save, Sparkles, X } from "lucide-react";
 
 import { saveReceptionistStudioAction } from "@/app/dashboard/setup/receptionist-actions";
 import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
@@ -61,6 +62,7 @@ export function ReceptionistStudio({
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<boolean | null>(null);
   const [pending, startTransition] = useTransition();
+  const [showLiveDemo, setShowLiveDemo] = useState(false);
 
   async function handleBuildPrompt() {
     setGenPromptPending(true);
@@ -106,6 +108,10 @@ export function ReceptionistStudio({
         setSaveMsg(res.message);
         if (res.ok && "assistantId" in res) {
           setVapiAssistantId(res.assistantId);
+        }
+        if (res.ok) {
+          // Auto-open the live demo so the merchant immediately tests their config.
+          setTimeout(() => setShowLiveDemo(true), 300);
         }
       })();
     });
@@ -416,6 +422,81 @@ export function ReceptionistStudio({
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showLiveDemo ? (
+          <motion.div
+            key="live-demo-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            onClick={() => setShowLiveDemo(false)}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-gradient-to-b from-[#0f172a]/40 via-[#0f172a]/60 to-[#0f172a]/80 px-4 pb-8 pt-12 backdrop-blur-md md:items-center md:p-8"
+          >
+            <motion.div
+              key="live-demo-card"
+              initial={{ y: 80, opacity: 0, scale: 0.96 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 60, opacity: 0, scale: 0.97 }}
+              transition={{ type: "spring", damping: 22, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-[#ebe7f7]/90 bg-white shadow-[0_40px_120px_-30px_rgba(124,58,237,0.5)]"
+            >
+              <button
+                type="button"
+                onClick={() => setShowLiveDemo(false)}
+                aria-label="Close live demo"
+                className="absolute right-4 top-4 z-10 rounded-full bg-white/90 p-2 text-[#64748b] shadow-sm ring-1 ring-[#ebe7f7] backdrop-blur-sm hover:text-[#0f172a]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <div className="bg-gradient-to-br from-[#faf7ff] via-white to-[#fafbff] px-6 py-6 md:px-10 md:py-8">
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15, duration: 0.35 }}
+                  className="space-y-2"
+                >
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#ede9fe] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b21b6]">
+                    <Sparkles className="h-3 w-3" aria-hidden />
+                    Receptionist saved
+                  </span>
+                  <h2 className="text-xl font-semibold tracking-tight text-[#0f172a] md:text-2xl">
+                    Test {trialName} live
+                  </h2>
+                  <p className="max-w-md text-sm leading-relaxed text-[#64748b]">
+                    Tap the purple mic and speak — your new prompt is already pushed to Vapi. You&apos;ll see speech
+                    bubbles appear as you talk back and forth.
+                  </p>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3, duration: 0.4 }}
+                  className="mt-6"
+                >
+                  <VoiceLiveTrial
+                    vapiAssistantId={vapiAssistantId}
+                    vapiAssistantName={trialName}
+                    firstMessage={agentFirstMessage}
+                  />
+                </motion.div>
+
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.55, duration: 0.3 }}
+                  className="mt-5 text-[12px] text-[#64748b]"
+                >
+                  Close this when you&apos;re ready — the form below stays editable for tweaks.
+                </motion.p>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

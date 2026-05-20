@@ -11,8 +11,10 @@ import {
   Mail,
   MessageSquare,
   Phone,
+  Search,
   Send,
   Voicemail,
+  X,
 } from "lucide-react";
 
 import {
@@ -99,6 +101,42 @@ function fmtRequestedDate(iso: string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
+/**
+ * Best-effort parse of a guest's preferred_time text ("7:30pm", "19:30", "8 PM") + requested_date
+ * into a datetime-local string suitable for <input type="datetime-local">.
+ * Defaults to 19:00 if the time can't be parsed.
+ */
+function suggestStartLocal(req: BookingRequestRow): string {
+  if (!req.requested_date?.trim()) return "";
+  let hh = 19;
+  let mm = 0;
+  if (req.preferred_time?.trim()) {
+    const m = req.preferred_time.trim().match(/(\d{1,2})\s*[:.\s]?\s*(\d{0,2})\s*(am|pm)?/i);
+    if (m) {
+      const ampm = m[3]?.toLowerCase();
+      let h = parseInt(m[1] ?? "0", 10);
+      const mins = m[2] ? parseInt(m[2], 10) : 0;
+      if (ampm === "pm" && h < 12) h += 12;
+      if (ampm === "am" && h === 12) h = 0;
+      if (Number.isFinite(h) && h >= 0 && h < 24 && Number.isFinite(mins) && mins >= 0 && mins < 60) {
+        hh = h;
+        mm = mins;
+      }
+    }
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${req.requested_date}T${pad(hh)}:${pad(mm)}`;
+}
+
+function addMinutesToLocal(local: string, minutes: number): string {
+  const m = local.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return "";
+  const d = new Date(parseInt(m[1]!), parseInt(m[2]!) - 1, parseInt(m[3]!), parseInt(m[4]!), parseInt(m[5]!));
+  d.setMinutes(d.getMinutes() + minutes);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function intakeSummaryLine(r: BookingRequestRow): string | null {
   const parts: string[] = [];
   if (r.event_title?.trim()) parts.push(r.event_title.trim());
@@ -120,8 +158,10 @@ function ConfirmBookingSlotSection({
   onScheduled: () => void;
   links: { tables: { id: string; label: string }[]; events: { id: string; title: string }[] };
 }) {
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const suggestedStart = suggestStartLocal(request);
+  const suggestedEnd = suggestedStart ? addMinutesToLocal(suggestedStart, 60) : "";
+  const [start, setStart] = useState(suggestedStart);
+  const [end, setEnd] = useState(suggestedEnd);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [linkedTableId, setLinkedTableId] = useState("");
@@ -472,8 +512,27 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
   const [error, setError] = useState<string | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const selectedIds = useMemo(() => [...selected], [selected]);
+
+  const filteredRequests = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return requests;
+    return requests.filter((r) => {
+      const haystack = [
+        r.customer_name,
+        r.email,
+        r.phone ?? "",
+        r.event_title ?? "",
+        r.booking_kind ?? "",
+        r.notes ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [requests, searchQuery]);
 
   useEffect(() => {
     setSingleBody("");
@@ -524,9 +583,9 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
   }
 
   function selectAllToggle() {
-    if (!requests.length) return;
-    const allOn = requests.every((r) => selected.has(r.id));
-    setSelected(allOn ? new Set() : new Set(requests.map((r) => r.id)));
+    if (!filteredRequests.length) return;
+    const allOn = filteredRequests.every((r) => selected.has(r.id));
+    setSelected(allOn ? new Set() : new Set(filteredRequests.map((r) => r.id)));
   }
 
   function refreshThread(id: string) {
@@ -630,13 +689,42 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
           </CardDescription>
         </div>
         <Badge variant="outline" className="w-fit rounded-full border-[#ebe7f7] text-[11px] font-semibold uppercase tracking-[0.2em] text-[#64748b]">
-          {requests.length} shown · {selectedIds.length} selected
+          {filteredRequests.length === requests.length
+            ? `${requests.length} shown`
+            : `${filteredRequests.length} of ${requests.length} shown`}
+          {selectedIds.length > 0 ? ` · ${selectedIds.length} selected` : ""}
         </Badge>
       </CardHeader>
       <CardContent className="space-y-6 pb-6">
+        {requests.length > 0 ? (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94a3b8]" aria-hidden />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search guests by name, email, phone, or event…"
+              className="h-11 w-full rounded-full border border-[#ebe7f7] bg-[#fafbff] pl-10 pr-10 text-[14px] outline-none placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#94a3b8] hover:bg-[#f5f3ff] hover:text-[#0f172a]"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {!requests.length ? (
           <p className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-8 text-center text-sm text-[#64748b]">
             No submissions yet — drop your published link into Instagram, QR menus or SMS footers so diners land here first.
+          </p>
+        ) : !filteredRequests.length ? (
+          <p className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-8 text-center text-sm text-[#64748b]">
+            No guests match <span className="font-semibold text-[#0f172a]">&ldquo;{searchQuery}&rdquo;</span> — try a different name, phone, or email.
           </p>
         ) : (
           <>
@@ -714,7 +802,7 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                       <span className="sr-only">Select</span>
                       <input
                         type="checkbox"
-                        checked={requests.length > 0 && requests.every((r) => selected.has(r.id))}
+                        checked={filteredRequests.length > 0 && filteredRequests.every((r) => selected.has(r.id))}
                         onChange={selectAllToggle}
                         className="h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed] focus:ring-[#7c3aed]"
                         aria-label="Select all bookings on this page"
@@ -728,7 +816,7 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.map((r) => {
+                  {filteredRequests.map((r) => {
                     const venue = bizNameById[r.business_id] ?? "—";
                     const intake = intakeSummaryLine(r);
                     const whenBits =

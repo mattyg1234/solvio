@@ -68,6 +68,38 @@ export async function submitBookingRequestAction(
     intakeExtras.table_question_answers = tableAnswers;
   }
 
+  // Custom event questions (parallel pattern: eq_/ea_ + event_q_count)
+  const eventAnswers: { question: string; answer: string }[] = [];
+  const eqCountRaw = Number(formData.get("event_q_count") ?? 0);
+  const eqCount = Number.isFinite(eqCountRaw) ? Math.min(20, Math.max(0, Math.floor(eqCountRaw))) : 0;
+  for (let i = 0; i < eqCount; i++) {
+    const label = String(formData.get(`eq_${i}`) ?? "").trim();
+    const answer = String(formData.get(`ea_${i}`) ?? "").trim();
+    if (!label || label.length > 240) continue;
+    if (!answer) continue;
+    eventAnswers.push({ question: label, answer });
+    intakeLines.push(`${label}: ${answer}`);
+  }
+  if (eventAnswers.length) {
+    intakeExtras.event_question_answers = eventAnswers;
+  }
+
+  // Custom appointment questions (parallel pattern: aq_/aa_ + appt_q_count)
+  const appointmentAnswers: { question: string; answer: string }[] = [];
+  const aqCountRaw = Number(formData.get("appt_q_count") ?? 0);
+  const aqCount = Number.isFinite(aqCountRaw) ? Math.min(20, Math.max(0, Math.floor(aqCountRaw))) : 0;
+  for (let i = 0; i < aqCount; i++) {
+    const label = String(formData.get(`aq_${i}`) ?? "").trim();
+    const answer = String(formData.get(`aa_${i}`) ?? "").trim();
+    if (!label || label.length > 240) continue;
+    if (!answer) continue;
+    appointmentAnswers.push({ question: label, answer });
+    intakeLines.push(`${label}: ${answer}`);
+  }
+  if (appointmentAnswers.length) {
+    intakeExtras.appointment_question_answers = appointmentAnswers;
+  }
+
   const seatingNotes = String(formData.get("seating_notes") ?? "").trim();
   if (seatingNotes) {
     intakeExtras.seating_notes = seatingNotes;
@@ -148,6 +180,25 @@ export async function submitBookingRequestAction(
   });
   if (!tableBookingCheck.ok) {
     return { ok: false, message: tableBookingCheck.message };
+  }
+
+  // Event capacity guard: stop overbooking when the chosen event has a cap.
+  if (bookingKind === "event" && parsedCtx && hostedEventId) {
+    const evt = parsedCtx.events.find((e) => e.id === hostedEventId);
+    if (evt && typeof evt.capacity === "number" && evt.capacity > 0) {
+      const remaining = Math.max(0, evt.capacity - evt.booked_count);
+      const wantedParsed = parseInt(guestCount, 10);
+      const wanted = Number.isFinite(wantedParsed) && wantedParsed > 0 ? wantedParsed : 1;
+      if (remaining <= 0) {
+        return { ok: false, message: `${evt.title} is sold out — no seats remaining.` };
+      }
+      if (wanted > remaining) {
+        return {
+          ok: false,
+          message: `${evt.title} only has ${remaining} seat${remaining === 1 ? "" : "s"} left — adjust party size to ${remaining} or fewer.`,
+        };
+      }
+    }
   }
 
   const rateKeyHash = await getBookingSubmitRateFingerprint(slug.trim());

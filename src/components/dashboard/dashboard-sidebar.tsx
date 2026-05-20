@@ -10,6 +10,7 @@ import {
   Euro,
   Inbox,
   LayoutDashboard,
+  Megaphone,
   Mic2,
   PhoneCall,
   Radar,
@@ -23,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string };
 
-function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
+function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: boolean): NavItem[] {
   const items: NavItem[] = [];
 
   items.push({
@@ -56,11 +57,21 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
       icon: Mic2,
       key: "voice",
     });
-    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls", badge: "Soon" });
+    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
   }
 
   if (cap.lead_generation) {
     items.push({ href: "/dashboard/leads", label: "Leads", icon: Radar, key: "leads" });
+  }
+
+  if (campaignsEnabled) {
+    items.push({
+      href: "/dashboard/campaigns",
+      label: "Campaigns",
+      icon: Megaphone,
+      key: "campaigns",
+      badge: "Beta",
+    });
   }
 
   items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
@@ -73,11 +84,12 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities): NavItem[] {
 
 export type DashboardSidebarProps = {
   capabilities: ResolvedPlatformCapabilities;
+  campaignsEnabled?: boolean;
 };
 
-export function DashboardSidebar({ capabilities }: DashboardSidebarProps) {
+export function DashboardSidebar({ capabilities, campaignsEnabled = false }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const nav = buildSidebarNav(capabilities);
+  const nav = buildSidebarNav(capabilities, campaignsEnabled);
 
   function active(href: string, exact?: boolean) {
     if (exact) return pathname === href;
