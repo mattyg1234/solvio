@@ -40,13 +40,19 @@ async function loadOwnedBusiness(businessId: string): Promise<
 
   const { data, error } = await supabase
     .from("businesses")
-    .select("id,name,vapi_assistant_id,vapi_phone_number_id,phone_number_e164,phone_number_country")
+    .select("id,name,voice_receptionist_details,vapi_phone_number_id,phone_number_e164,phone_number_country")
     .eq("id", businessId)
     .eq("owner_id", user.id)
     .maybeSingle();
 
   if (error) return { ok: false, message: error.message };
   if (!data) return { ok: false, message: "Business not found." };
+
+  const details = data.voice_receptionist_details as Record<string, unknown> | null;
+  const assistantId =
+    details && typeof details.vapi_assistant_id === "string" && details.vapi_assistant_id.trim()
+      ? details.vapi_assistant_id.trim()
+      : null;
 
   return {
     ok: true,
@@ -55,7 +61,7 @@ async function loadOwnedBusiness(businessId: string): Promise<
       business: {
         id: data.id as string,
         name: (data.name as string) ?? "",
-        vapi_assistant_id: (data.vapi_assistant_id as string | null) ?? null,
+        vapi_assistant_id: assistantId,
         vapi_phone_number_id: (data.vapi_phone_number_id as string | null) ?? null,
         phone_number_e164: (data.phone_number_e164 as string | null) ?? null,
         phone_number_country: (data.phone_number_country as string | null) ?? null,

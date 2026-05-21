@@ -30,12 +30,18 @@ export default async function PhoneNumbersPage() {
 
   const full = await supabase
     .from("businesses")
-    .select("id,name,vapi_assistant_id,vapi_phone_number_id,phone_number_e164,phone_number_country")
+    .select("id,name,voice_receptionist_details,vapi_phone_number_id,phone_number_e164,phone_number_country")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
+  const extractAssistantId = (details: unknown): string | null => {
+    if (!details || typeof details !== "object") return null;
+    const id = (details as Record<string, unknown>).vapi_assistant_id;
+    return typeof id === "string" && id.trim() ? id.trim() : null;
+  };
+
   if (full.error) {
-    // Column missing → fall back. Anything else → surface the error.
+    // Column missing → fall back to a select without the new phone-number columns.
     if (/vapi_phone_number_id|phone_number_e164|phone_number_country|does not exist|undefined column/i.test(full.error.message)) {
       migrationPending = true;
     } else {
@@ -44,7 +50,7 @@ export default async function PhoneNumbersPage() {
 
     const basic = await supabase
       .from("businesses")
-      .select("id,name,vapi_assistant_id")
+      .select("id,name,voice_receptionist_details")
       .eq("owner_id", user.id)
       .order("created_at", { ascending: true });
 
@@ -52,7 +58,7 @@ export default async function PhoneNumbersPage() {
       rows = basic.data.map((b) => ({
         id: b.id as string,
         name: (b.name as string) ?? "",
-        hasAssistant: Boolean(b.vapi_assistant_id),
+        hasAssistant: Boolean(extractAssistantId(b.voice_receptionist_details)),
         phoneNumberId: null,
         phoneNumberE164: null,
         country: null,
@@ -64,7 +70,7 @@ export default async function PhoneNumbersPage() {
     rows = full.data.map((b) => ({
       id: b.id as string,
       name: (b.name as string) ?? "",
-      hasAssistant: Boolean(b.vapi_assistant_id),
+      hasAssistant: Boolean(extractAssistantId(b.voice_receptionist_details)),
       phoneNumberId: (b.vapi_phone_number_id as string | null) ?? null,
       phoneNumberE164: (b.phone_number_e164 as string | null) ?? null,
       country: (b.phone_number_country as string | null) ?? null,
