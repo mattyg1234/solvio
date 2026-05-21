@@ -6,6 +6,7 @@ import { ArrowLeft, PhoneForwarded, Phone, PhoneOff, Voicemail, MessageSquare } 
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CallLogRow } from "@/components/dashboard/call-log-row";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -25,8 +26,19 @@ type VoiceCallLog = {
   duration_minutes_billable: string | number;
   outcome: string | null;
   transcript_summary: string | null;
+  raw_transcript: unknown | null;
   cost_cents: number;
 };
+
+function extractTranscriptText(raw: unknown): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw.trim() || null;
+  if (typeof raw === "object" && raw !== null) {
+    const text = (raw as { text?: unknown }).text;
+    if (typeof text === "string" && text.trim()) return text.trim();
+  }
+  return null;
+}
 
 type UsageRow = {
   business_id: string;
@@ -207,41 +219,24 @@ export default async function DashboardCallsPage() {
                 </thead>
                 <tbody>
                   {logs.map((c) => (
-                    <tr key={c.id} className="border-b border-[#f8fafc]">
-                      <td className="px-4 py-3 align-top text-[#475569]">
-                        <p className="font-medium text-[#0f172a]">
-                          {new Date(c.started_at).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {c.caller_name?.trim() ? (
-                          <p className="font-medium text-[#0f172a]">{c.caller_name}</p>
-                        ) : null}
-                        {c.caller_phone?.trim() ? (
-                          <p className="font-mono text-[12px] text-[#64748b]">{c.caller_phone}</p>
-                        ) : (
-                          <p className="text-[11px] text-[#94a3b8]">Unknown caller</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top font-mono text-[12px] text-[#475569]">
-                        {formatDuration(c.duration_seconds)}
-                      </td>
-                      <td className="px-4 py-3 align-top text-right font-mono text-[12px] text-[#475569]">
-                        {c.cost_cents > 0 ? `$${(c.cost_cents / 100).toFixed(2)}` : <span className="text-[#cbd5e1]">—</span>}
-                      </td>
-                      <td className="px-4 py-3 align-top">{outcomeBadge(c.outcome)}</td>
-                      <td className="max-w-[320px] px-4 py-3 align-top text-[#475569]">
-                        <p className="line-clamp-2 text-[13px]">{c.transcript_summary || "—"}</p>
-                      </td>
-                      <td className="px-4 py-3 align-top text-xs text-[#64748b]">
-                        {bizNameById.get(c.business_id) ?? "—"}
-                      </td>
-                    </tr>
+                    <CallLogRow
+                      key={c.id}
+                      id={c.id}
+                      whenLabel={new Date(c.started_at).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                      callerName={c.caller_name}
+                      callerPhone={c.caller_phone}
+                      durationLabel={formatDuration(c.duration_seconds)}
+                      costLabel={c.cost_cents > 0 ? `$${(c.cost_cents / 100).toFixed(2)}` : "—"}
+                      outcomeBadge={outcomeBadge(c.outcome)}
+                      summary={c.transcript_summary}
+                      rawTranscript={extractTranscriptText(c.raw_transcript)}
+                      venueName={bizNameById.get(c.business_id) ?? "—"}
+                    />
                   ))}
                 </tbody>
               </table>
