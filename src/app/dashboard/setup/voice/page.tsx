@@ -5,6 +5,7 @@ import { ReceptionistStudio } from "@/components/dashboard/receptionist-studio";
 import type { VoiceReceptionistDetails } from "@/lib/voice-receptionist";
 import { voiceDetailsToClient } from "@/lib/voice-receptionist";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
+import { resolveMarketingVapiPublicKey } from "@/lib/marketing-vapi-config";
 import {
   bookingFlowKindLabel,
   labelGuestBookingModes,
@@ -96,6 +97,7 @@ export default async function VoiceSetupPage() {
       publicBookingUrl={slug ? `${siteUrl}/book/${encodeURIComponent(slug)}` : null}
       bookingFlowSummary={bookingFlowKindLabel(flowKind)}
       guestBookingModesLabel={guestModes.length ? labelGuestBookingModes(guestModes) : null}
+      vapiPublicKey={resolveMarketingVapiPublicKey()}
     />
   );
 }

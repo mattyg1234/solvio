@@ -15,6 +15,8 @@ const VapiBrandAgentPanel = dynamic(
 type VoiceLiveTrialProps = {
   vapiAssistantId: string;
   vapiAssistantName: string;
+  /** From SSR when set — avoids client-only NEXT_PUBLIC env gaps in dashboard bundles. */
+  vapiPublicKey?: string;
   firstMessage?: string;
   onBubblesChange?: (bubbles: { role: "user" | "assistant"; text: string }[]) => void;
   onCallEnded?: (transcript: string) => void;
@@ -24,11 +26,12 @@ type VoiceLiveTrialProps = {
 export function VoiceLiveTrial({
   vapiAssistantId,
   vapiAssistantName,
+  vapiPublicKey,
   firstMessage,
   onBubblesChange,
   onCallEnded,
 }: VoiceLiveTrialProps) {
-  const publicKey = resolveMarketingVapiPublicKey();
+  const publicKey = vapiPublicKey?.trim() || resolveMarketingVapiPublicKey();
   const assistantId = vapiAssistantId.trim();
 
   if (publicKey && assistantId) {

@@ -33,6 +33,7 @@ type ReceptionistStudioProps = {
   publicBookingUrl: string | null;
   bookingFlowSummary: string;
   guestBookingModesLabel: string | null;
+  vapiPublicKey: string;
 };
 
 export function ReceptionistStudio({
@@ -45,6 +46,7 @@ export function ReceptionistStudio({
   publicBookingUrl,
   bookingFlowSummary,
   guestBookingModesLabel,
+  vapiPublicKey,
 }: ReceptionistStudioProps) {
   const [receptionistName, setReceptionistName] = useState(
     initialDetails.receptionist_name ?? initialDetails.vapi_assistant_name?.split(" — ").pop() ?? "",
@@ -389,6 +391,7 @@ export function ReceptionistStudio({
               <VoiceLiveTrial
                 vapiAssistantId={vapiAssistantId}
                 vapiAssistantName={trialName}
+                vapiPublicKey={vapiPublicKey}
                 firstMessage={agentFirstMessage}
               />
             </div>
@@ -493,6 +496,7 @@ export function ReceptionistStudio({
                   <VoiceLiveTrial
                     vapiAssistantId={vapiAssistantId}
                     vapiAssistantName={trialName}
+                    vapiPublicKey={vapiPublicKey}
                     firstMessage={agentFirstMessage}
                     onBubblesChange={(bs) => setTestBubbleCount(bs.length)}
                     onCallEnded={(transcript) => {
