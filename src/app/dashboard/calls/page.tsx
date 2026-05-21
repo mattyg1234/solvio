@@ -199,6 +199,7 @@ export default async function DashboardCallsPage() {
                     <th className="px-4 py-3">When</th>
                     <th className="px-4 py-3">Caller</th>
                     <th className="px-4 py-3">Duration</th>
+                    <th className="px-4 py-3 text-right">Cost</th>
                     <th className="px-4 py-3">Outcome</th>
                     <th className="px-4 py-3">Summary</th>
                     <th className="px-4 py-3">Venue</th>
@@ -229,6 +230,9 @@ export default async function DashboardCallsPage() {
                       </td>
                       <td className="px-4 py-3 align-top font-mono text-[12px] text-[#475569]">
                         {formatDuration(c.duration_seconds)}
+                      </td>
+                      <td className="px-4 py-3 align-top text-right font-mono text-[12px] text-[#475569]">
+                        {c.cost_cents > 0 ? `$${(c.cost_cents / 100).toFixed(2)}` : <span className="text-[#cbd5e1]">—</span>}
                       </td>
                       <td className="px-4 py-3 align-top">{outcomeBadge(c.outcome)}</td>
                       <td className="max-w-[320px] px-4 py-3 align-top text-[#475569]">

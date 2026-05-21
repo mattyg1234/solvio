@@ -1,4 +1,5 @@
 import { PLATFORM_ELEVENLABS_VOICE_MODEL } from "@/lib/platform-voice-config";
+import { buildDepositPaymentLinkTool } from "@/lib/booking-guest-call-tools";
 import {
   getSolvioVapiAgentAnthropicModel,
   getSolvioVapiApiKey,
@@ -10,6 +11,8 @@ export type VapiAssistantSyncPatch = {
   systemPrompt?: string;
   elevenlabsVoiceId?: string;
   elevenlabsVoiceModel?: string;
+  /** Attach live deposit-link tool for inbound receptionist calls. */
+  includeDepositTool?: boolean;
 };
 
 type VapiModelPayload = {
@@ -111,12 +114,16 @@ async function vapiFetchWithRetry(
   return last;
 }
 
-function defaultMerchantModel(systemPrompt: string): VapiModelPayload {
-  return {
+function defaultMerchantModel(systemPrompt: string, includeDepositTool = false): VapiModelPayload {
+  const model: VapiModelPayload = {
     provider: "anthropic",
     model: getSolvioVapiAgentAnthropicModel(),
     messages: [{ role: "system", content: systemPrompt }],
   };
+  if (includeDepositTool) {
+    model.tools = [buildDepositPaymentLinkTool()];
+  }
+  return model;
 }
 
 function defaultMerchantVoice(voiceId: string, model = PLATFORM_ELEVENLABS_VOICE_MODEL): VapiVoicePayload {
@@ -140,7 +147,7 @@ export async function createMerchantVapiAssistant(
   patch: Required<
     Pick<VapiAssistantSyncPatch, "assistantName" | "firstMessage" | "systemPrompt" | "elevenlabsVoiceId">
   > &
-    Pick<VapiAssistantSyncPatch, "elevenlabsVoiceModel">,
+    Pick<VapiAssistantSyncPatch, "elevenlabsVoiceModel" | "includeDepositTool">,
 ): Promise<{ ok: true; assistantId: string } | { ok: false; message: string }> {
   const apiKey = getSolvioVapiApiKey().trim();
   if (!apiKey) {
@@ -151,12 +158,20 @@ export async function createMerchantVapiAssistant(
     name: patch.assistantName.trim(),
     firstMessage: patch.firstMessage.trim(),
     firstMessageMode: "assistant-speaks-first",
-    model: defaultMerchantModel(patch.systemPrompt.trim()),
+    model: defaultMerchantModel(patch.systemPrompt.trim(), patch.includeDepositTool === true),
     voice: defaultMerchantVoice(
       patch.elevenlabsVoiceId.trim(),
       patch.elevenlabsVoiceModel?.trim() || PLATFORM_ELEVENLABS_VOICE_MODEL,
     ),
     transcriber: defaultMerchantTranscriber(),
+    // Let the AI hang up cleanly when the conversation has naturally wrapped, with
+    // a friendly closer; keep a silence + duration safety net so a stuck call
+    // doesn't burn minutes.
+    endCallFunctionEnabled: true,
+    endCallMessage: "Thanks for calling — have a great day, bye now!",
+    endCallPhrases: ["goodbye", "good bye", "bye now", "have a great day"],
+    silenceTimeoutSeconds: 30,
+    maxDurationSeconds: 600,
   };
 
   const { ok, status, json } = await vapiFetch(apiKey, "/assistant", {
@@ -203,7 +218,7 @@ export async function syncVapiAssistantConfig(
   if (patch.firstMessage?.trim()) body.firstMessage = patch.firstMessage.trim();
 
   if (patch.systemPrompt?.trim()) {
-    body.model = defaultMerchantModel(patch.systemPrompt.trim());
+    body.model = defaultMerchantModel(patch.systemPrompt.trim(), patch.includeDepositTool === true);
   }
 
   if (patch.elevenlabsVoiceId?.trim()) {
