@@ -89,12 +89,12 @@ function formatVapiError(action: string, status: number, json: Record<string, un
   const detail = summarizeVapiError(json);
   const suffix = detail ? `: ${detail}` : "";
   if (isTransientVapiStatus(status)) {
-    return `Vapi returned ${status} ${action}${suffix}. Usually temporary — wait a minute and save again. Check status.vapi.ai if it keeps happening.`;
+    return `Voice service is temporarily unavailable (${status}) while ${action}${suffix}. Wait a moment and save again.`;
   }
   if (status === 401 || status === 403) {
-    return `Vapi rejected SOLVIO_VAPI_API_KEY (${status}) while ${action}${suffix}. Confirm the private key on Vercel matches dashboard.vapi.ai.`;
+    return `Voice service authentication failed (${status}) while ${action}${suffix}. Contact Solvio support if this persists.`;
   }
-  return `Vapi returned ${status || "error"} ${action}${suffix}.`;
+  return `Voice service returned ${status || "error"} while ${action}${suffix}.`;
 }
 
 async function vapiFetchWithRetry(
@@ -169,7 +169,7 @@ export async function createMerchantVapiAssistant(
   }
 
   const id = typeof json.id === "string" ? json.id.trim() : "";
-  if (!id) return { ok: false, message: "Vapi created an assistant but no id was returned." };
+  if (!id) return { ok: false, message: "Assistant was created but no id was returned. Try saving again." };
   return { ok: true, assistantId: id };
 }
 
@@ -192,8 +192,8 @@ export async function syncVapiAssistantConfig(
     return {
       ok: false,
       message: hint
-        ? `Could not load assistant from Vapi (${existingRes.status}): ${hint}`
-        : "Could not load assistant from Vapi — check the assistant id and API key.",
+        ? `Couldn't load your assistant (${existingRes.status}): ${hint}`
+        : "Couldn't load your assistant. Try saving again — contact Solvio support if it persists.",
     };
   }
 

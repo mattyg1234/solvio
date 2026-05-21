@@ -17,14 +17,14 @@ export type StartOutboundCallResult =
 
 export async function startOutboundCall(params: StartOutboundCallParams): Promise<StartOutboundCallResult> {
   const apiKey = getSolvioVapiApiKey();
-  if (!apiKey) return { ok: false, message: "SOLVIO_VAPI_API_KEY not configured." };
+  if (!apiKey) return { ok: false, message: "Voice service isn't configured for this deployment." };
 
   const phoneNumberId = getSolvioOutboundPhoneNumberId();
   if (!phoneNumberId) {
     return {
       ok: false,
       message:
-        "No outbound phone number configured. Set SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID after buying / importing a number in Vapi Dashboard → Phone Numbers.",
+        "Outbound dialing isn't configured for this account yet. Contact Solvio support to enable campaign calls.",
     };
   }
 
@@ -53,7 +53,7 @@ export async function startOutboundCall(params: StartOutboundCallParams): Promis
       cache: "no-store",
     });
   } catch {
-    return { ok: false, message: "Could not reach Vapi — try again shortly." };
+    return { ok: false, message: "Couldn't reach the call service — try again shortly." };
   }
 
   if (!res.ok) {
@@ -62,7 +62,7 @@ export async function startOutboundCall(params: StartOutboundCallParams): Promis
       const raw = await res.json();
       detail = typeof raw?.message === "string" ? raw.message : JSON.stringify(raw).slice(0, 200);
     } catch {}
-    return { ok: false, message: `Vapi rejected the call (${res.status})${detail ? ": " + detail : ""}.` };
+    return { ok: false, message: `Call service rejected the call (${res.status})${detail ? ": " + detail : ""}.` };
   }
 
   let json: Record<string, unknown> | null = null;
@@ -72,6 +72,6 @@ export async function startOutboundCall(params: StartOutboundCallParams): Promis
   } catch {}
 
   const callId = typeof json?.id === "string" ? json.id.trim() : "";
-  if (!callId) return { ok: false, message: "Vapi returned no call id." };
+  if (!callId) return { ok: false, message: "Call service didn't return a call id." };
   return { ok: true, callId };
 }

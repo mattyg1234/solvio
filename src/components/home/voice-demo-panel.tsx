@@ -56,13 +56,13 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
     productLine: "AI receptionist",
     eyebrowAssistant: "Speak with us",
     idleBadge: "Tap the purple microphone",
-    emptyHint: "Tap the purple microphone to talk live once Vapi keys are set on this deployment.",
+    emptyHint: "Tap the purple microphone to talk live once voice keys are set on this deployment.",
     footer: "Allow microphone access when your browser asks.",
     assistantLabel: "Receptionist",
     lines: [
       {
         role: "assistant",
-        text: "Tap the purple microphone when live Vapi is configured — your assistant speaks from the prompt you set in Vapi.",
+        text: "Tap the purple microphone once live voice is configured — your assistant speaks from the prompt you've saved.",
       },
       {
         role: "user",
@@ -70,7 +70,7 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
       },
       {
         role: "assistant",
-        text: "Configure your assistant in the Vapi dashboard; this site connects to it directly when keys are set.",
+        text: "Configure your assistant in Solvio; this site connects to it directly when keys are set.",
       },
     ],
   },
@@ -194,7 +194,7 @@ export function VoiceDemoPanel({
     lines: scriptLines,
     footer:
       openingFromVapi && scenario === "personal_voice"
-        ? `${baseMeta.footer} The opening line mirrors the Vapi “first message” for this deployment; replay audio uses the same ElevenLabs voice Id when SOLVIO_VAPI_API_KEY can fetch your assistant profile.`
+        ? `${baseMeta.footer} The opening line mirrors your live assistant’s greeting; replay audio uses the same voice when this deployment can fetch the assistant profile.`
         : baseMeta.footer,
   };
 

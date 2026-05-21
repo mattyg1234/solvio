@@ -33,7 +33,7 @@ const copy = {
     productLine: "AI receptionist",
     eyebrowAssistant: "Speak with us",
     idleBadge: "Tap the purple microphone",
-    starterBubbleLabel: "Your Vapi assistant",
+    starterBubbleLabel: "Your AI receptionist",
     starterBubbleIntro: "",
     starterBubbleMicCta: "Tap the purple microphone to start talking.",
     footer: "Allow microphone access when your browser asks.",

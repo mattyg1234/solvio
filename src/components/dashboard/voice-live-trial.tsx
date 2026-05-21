@@ -50,7 +50,7 @@ export function VoiceLiveTrial({
         <p className="font-semibold text-[#0f172a]">Save before testing live</p>
         <p className="mt-1">
           You changed settings since the last save. Tap <span className="font-semibold">Save receptionist</span> to
-          push {voiceLabel} and your latest instructions to Vapi, then test again.
+          push {voiceLabel} and your latest instructions, then test again.
         </p>
         {onRequestTest ? (
           <button
@@ -71,7 +71,7 @@ export function VoiceLiveTrial({
         <p className="text-sm text-[#64748b]">
           Talking to{" "}
           <span className="font-semibold text-[#0f172a]">{vapiAssistantName || "your receptionist"}</span> — voice{" "}
-          <span className="font-semibold text-[#0f172a]">{voiceLabel}</span> via Vapi. Save again after any edits.
+          <span className="font-semibold text-[#0f172a]">{voiceLabel}</span>. Save again after any edits.
         </p>
         <VapiBrandAgentPanel
           publicKey={publicKey}
@@ -104,7 +104,7 @@ export function VoiceLiveTrial({
       </p>
       {!assistantId ? (
         <p className="mt-2 text-xs">
-          Save your receptionist once — we create your Vapi assistant and store the id so you can test and edit anytime.
+          Save your receptionist once — we&apos;ll provision the assistant and link it to your account so you can test and edit anytime.
         </p>
       ) : null}
     </div>

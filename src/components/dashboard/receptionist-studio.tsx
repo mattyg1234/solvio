@@ -451,7 +451,7 @@ export function ReceptionistStudio({
             {showAdvancedPrompt ? (
               <div className="space-y-2">
                 <label htmlFor="custom-prompt" className="text-sm font-semibold text-[#0f172a]">
-                  System prompt (sent to Vapi)
+                  System prompt
                 </label>
                 <textarea
                   id="custom-prompt"
@@ -477,7 +477,7 @@ export function ReceptionistStudio({
                   ? isDirty
                     ? "Save your edits first, then speak to your receptionist with the purple mic."
                     : `Your saved receptionist is ready — uses your ${bookingFlowSummary} setup. Tap Test live above or the mic below.`
-                  : "Save once to create your Vapi assistant, then you can speak to them here."}
+                  : "Save once to create your receptionist, then you can speak to them here."}
               </p>
             </div>
             {liveReady ? (
@@ -544,11 +544,9 @@ export function ReceptionistStudio({
                 onRequestTest={openLiveDemo}
               />
             </div>
-            {vapiAssistantId ? (
-              <p className="mt-4 text-[11px] font-mono text-[#64748b]">Vapi assistant: {vapiAssistantId}</p>
-            ) : (
-              <p className="mt-4 text-sm text-[#64748b]">Save once to create your Vapi assistant, then the mic goes live.</p>
-            )}
+            {!vapiAssistantId ? (
+              <p className="mt-4 text-sm text-[#64748b]">Save once to create your receptionist, then the mic goes live.</p>
+            ) : null}
           </div>
         </section>
       </div>
@@ -561,7 +559,7 @@ export function ReceptionistStudio({
                 {saveMsg}
               </p>
             ) : (
-              <p className="text-[#64748b]">Changes apply to Vapi when you save.</p>
+              <p className="text-[#64748b]">Changes go live when you save.</p>
             )}
           </div>
           <button
@@ -631,7 +629,7 @@ export function ReceptionistStudio({
                     Test {trialName} live
                   </h2>
                   <p className="max-w-md text-sm leading-relaxed text-[#64748b]">
-                    Tap the purple mic and speak — your saved prompt and {selectedVoiceName} voice are already on Vapi.
+                    Tap the purple mic and speak — your saved prompt and {selectedVoiceName} voice are already live.
                     Close anytime to edit settings above, then save and test again.
                   </p>
                 </motion.div>

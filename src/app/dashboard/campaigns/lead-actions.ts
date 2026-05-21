@@ -174,7 +174,7 @@ export async function dialLeadNowAction(params: {
   const c = await assertOwnsCampaign(supabase, user.id, params.campaignId);
 
   if (!c.vapi_assistant_id) {
-    return { ok: false, message: "Save the campaign first to provision the Vapi assistant." };
+    return { ok: false, message: "Save the campaign first to provision the assistant." };
   }
 
   const { data: lead } = await supabase
