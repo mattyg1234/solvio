@@ -79,51 +79,46 @@ export async function ensureBookingSlugAction(businessId: string): Promise<Ensur
   if (!auth.ok) return auth;
 
   const existing = auth.row.booking_slug?.trim().toLowerCase() ?? "";
+  // Already has a valid permanent slug — return it unchanged. Immutability gate.
   if (existing && isValidBookingSlug(existing)) return { ok: true, slug: existing };
 
+  const writeSlug = async (candidate: string) => {
+    return auth.supabase
+      .from("businesses")
+      .update({ booking_slug: candidate, updated_at: new Date().toISOString() })
+      .eq("id", businessId)
+      .select("id, booking_slug");
+  };
+
   const next = await pickUniqueBookingSlug(auth.supabase, auth.row.name, businessId);
+  const first = await writeSlug(next);
 
-  const { data, error } = await auth.supabase
-    .from("businesses")
-    .update({ booking_slug: next, updated_at: new Date().toISOString() })
-    .eq("id", businessId)
-    .is("booking_slug", null)
-    .select("id, booking_slug");
-
-  if (error) {
-    if (/duplicate|unique/i.test(error.message)) {
-      const retry = await pickUniqueBookingSlug(auth.supabase, auth.row.name, businessId);
-      const second = await auth.supabase
-        .from("businesses")
-        .update({ booking_slug: retry, updated_at: new Date().toISOString() })
-        .eq("id", businessId)
-        .is("booking_slug", null)
-        .select("id, booking_slug");
-      if (second.error || !second.data?.length) {
-        return { ok: false, message: "Couldn't reserve your booking link. Refresh and try again." };
-      }
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/bookings");
-      revalidatePath(`/book/${encodeURIComponent(retry)}`);
-      return { ok: true, slug: retry };
+  let written = "";
+  if (!first.error && first.data?.length) {
+    written = next;
+  } else if (first.error && /duplicate|unique/i.test(first.error.message)) {
+    const retry = await pickUniqueBookingSlug(auth.supabase, auth.row.name, businessId);
+    const second = await writeSlug(retry);
+    if (second.error || !second.data?.length) {
+      return { ok: false, message: "Couldn't reserve your booking link. Refresh and try again." };
     }
-    return { ok: false, message: error.message };
-  }
-
-  // Row missing means another tab already populated booking_slug — re-read.
-  if (!data?.length) {
+    written = retry;
+  } else if (first.error) {
+    return { ok: false, message: first.error.message };
+  } else {
+    // Row updated 0 rows (typically RLS narrowing or stale auth) — re-read to recover.
     const { data: refreshed } = await auth.supabase
       .from("businesses")
       .select("booking_slug")
       .eq("id", businessId)
       .maybeSingle();
     const slug = refreshed?.booking_slug?.trim() ?? "";
-    if (slug) return { ok: true, slug };
+    if (slug && isValidBookingSlug(slug)) return { ok: true, slug };
     return { ok: false, message: "Couldn't reserve your booking link. Refresh and try again." };
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/bookings");
-  revalidatePath(`/book/${encodeURIComponent(next)}`);
-  return { ok: true, slug: next };
+  revalidatePath(`/book/${encodeURIComponent(written)}`);
+  return { ok: true, slug: written };
 }
