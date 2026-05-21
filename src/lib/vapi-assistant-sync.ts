@@ -169,7 +169,7 @@ export async function createMerchantVapiAssistant(
     // doesn't burn minutes.
     endCallFunctionEnabled: true,
     endCallMessage: "Thanks for calling — have a great day, bye now!",
-    endCallPhrases: ["goodbye", "good bye", "bye now", "have a great day"],
+    endCallPhrases: ["bye", "goodbye", "good bye", "bye now", "bye bye", "have a great day", "speak soon", "take care"],
     silenceTimeoutSeconds: 30,
     maxDurationSeconds: 600,
   };
