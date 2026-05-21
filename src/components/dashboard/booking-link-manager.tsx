@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { Check, Copy, Link2, Loader2 } from "lucide-react";
 
+import { publishBookingSlugAction } from "@/app/dashboard/settings/actions";
 import { suggestBookingSlug, isValidBookingSlug } from "@/lib/booking-slug";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -51,17 +51,13 @@ function BookingLinkCard({ business, siteUrl }: { business: BusinessRow; siteUrl
     }
     setSaving(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: upErr } = await supabase.from("businesses").update({ booking_slug: next }).eq("id", business.id);
-      if (upErr) {
-        if (/duplicate|unique/i.test(upErr.message)) {
-          setError("That link is already taken on Solvio — try another ending.");
-        } else {
-          setError(upErr.message);
-        }
+      const res = await publishBookingSlugAction(business.id, next);
+      if (!res.ok) {
+        setError(res.message);
+        setSavedOk(false);
         return;
       }
-      setSlug(next);
+      setSlug(res.slug);
       setSavedOk(true);
     } finally {
       setSaving(false);

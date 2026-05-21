@@ -79,3 +79,54 @@ export async function ensureBookingSlugAction(businessId: string): Promise<Setti
   revalidatePath("/dashboard/bookings");
   return { ok: true };
 }
+
+export type PublishBookingSlugResult =
+  | { ok: true; slug: string }
+  | { ok: false; message: string };
+
+/**
+ * Persist a chosen booking_slug for a business owned by the caller.
+ * Verifies the row was actually updated (RLS could silently filter the row out
+ * if ownership doesn't match — the browser client used to swallow that as success).
+ */
+export async function publishBookingSlugAction(
+  businessId: string,
+  rawSlug: string,
+): Promise<PublishBookingSlugResult> {
+  const next = rawSlug.trim().toLowerCase();
+  if (!isValidBookingSlug(next)) {
+    return {
+      ok: false,
+      message: "Use 3–48 characters: lowercase letters, numbers, single hyphens between words.",
+    };
+  }
+
+  const auth = await ownedBusiness(businessId);
+  if (!auth.ok) return auth;
+
+  const { data, error } = await auth.supabase
+    .from("businesses")
+    .update({ booking_slug: next, updated_at: new Date().toISOString() })
+    .eq("id", businessId)
+    .select("id, booking_slug");
+
+  if (error) {
+    if (/duplicate|unique/i.test(error.message)) {
+      return { ok: false, message: "That link is already taken on Solvio — try another ending." };
+    }
+    return { ok: false, message: error.message };
+  }
+
+  if (!data?.length) {
+    return {
+      ok: false,
+      message:
+        "Update was rejected — your session may have expired. Refresh the page and sign in again, then try once more.",
+    };
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/bookings");
+  revalidatePath(`/book/${encodeURIComponent(next)}`);
+  return { ok: true, slug: next };
+}
