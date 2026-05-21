@@ -293,6 +293,51 @@ export async function submitBookingRequestAction(
     }
   }
 
+  // Same pattern for appointment bookings — if the merchant set a flat
+  // appointment_deposit_cents on their business row, route through checkout.
+  if (
+    parsedCtx &&
+    bookingId &&
+    typeof bookingId === "string" &&
+    bkLower === "appointment" &&
+    allowedKinds.includes("appointment") &&
+    !depositCheckoutUrl
+  ) {
+    try {
+      const admin = createSupabaseServiceRoleClient();
+      const { data: bookingRow } = await admin
+        .from("booking_requests")
+        .select("business_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+
+      if (bookingRow?.business_id) {
+        const { data: biz } = await admin
+          .from("businesses")
+          .select("id, appointment_deposit_cents, stripe_connect_account_id, stripe_connect_charges_enabled")
+          .eq("id", bookingRow.business_id)
+          .maybeSingle();
+
+        const depositCents = Number(biz?.appointment_deposit_cents ?? 0);
+        const connectId = biz?.stripe_connect_account_id?.trim();
+        if (depositCents > 0 && connectId && biz?.stripe_connect_charges_enabled && biz.id) {
+          const url = await createBookingDepositCheckoutSession({
+            bookingRequestId: bookingId,
+            businessId: biz.id,
+            connectAccountId: connectId,
+            amountCents: depositCents,
+            guestEmail: email,
+            description: `${parsedCtx.business_name} · Appointment deposit`,
+            slug: slug.trim(),
+          });
+          if (url) depositCheckoutUrl = url;
+        }
+      }
+    } catch {
+      /* additive — booking request is already saved as pending */
+    }
+  }
+
   try {
     const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
     const merchantName = parsedCtx?.business_name?.trim();
