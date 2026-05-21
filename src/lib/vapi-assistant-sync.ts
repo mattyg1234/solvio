@@ -26,7 +26,7 @@ type VapiVoicePayload = {
   [key: string]: unknown;
 };
 
-async function vapiFetch(
+async function vapiFetchOnce(
   apiKey: string,
   path: string,
   init?: RequestInit,
@@ -54,13 +54,61 @@ async function vapiFetch(
   }
 }
 
-function mergeSystemMessage(model: VapiModelPayload, systemPrompt: string): VapiModelPayload {
-  const messages = Array.isArray(model.messages) ? [...model.messages] : [];
-  const sysIdx = messages.findIndex((m) => m && typeof m === "object" && m.role === "system");
-  const next = { role: "system" as const, content: systemPrompt };
-  if (sysIdx >= 0) messages[sysIdx] = next;
-  else messages.unshift(next);
-  return { ...model, messages };
+/** One retry on 5xx / network error — Vapi 503s are typically transient. */
+async function vapiFetch(
+  apiKey: string,
+  path: string,
+  init?: RequestInit,
+): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null }> {
+  const first = await vapiFetchOnce(apiKey, path, init);
+  if (first.ok) return first;
+  if (first.status !== 0 && first.status < 500) return first;
+  await new Promise((r) => setTimeout(r, 600));
+  return vapiFetchOnce(apiKey, path, init);
+}
+
+/** Short, human-readable reason from a Vapi error body — best-effort. */
+function summarizeVapiError(json: Record<string, unknown> | null): string {
+  if (!json) return "";
+  const msg = (json as { message?: unknown }).message;
+  if (typeof msg === "string" && msg.trim()) return msg.trim().slice(0, 200);
+  if (Array.isArray(msg)) {
+    const joined = msg.filter((m) => typeof m === "string").join("; ");
+    if (joined) return joined.slice(0, 200);
+  }
+  const err = (json as { error?: unknown }).error;
+  if (typeof err === "string" && err.trim()) return err.trim().slice(0, 200);
+  return "";
+}
+
+function isTransientVapiStatus(status: number): boolean {
+  return status === 503 || status === 502 || status === 504 || status === 429;
+}
+
+function formatVapiError(action: string, status: number, json: Record<string, unknown> | null): string {
+  const detail = summarizeVapiError(json);
+  const suffix = detail ? `: ${detail}` : "";
+  if (isTransientVapiStatus(status)) {
+    return `Vapi returned ${status} ${action}${suffix}. Usually temporary — wait a minute and save again. Check status.vapi.ai if it keeps happening.`;
+  }
+  if (status === 401 || status === 403) {
+    return `Vapi rejected SOLVIO_VAPI_API_KEY (${status}) while ${action}${suffix}. Confirm the private key on Vercel matches dashboard.vapi.ai.`;
+  }
+  return `Vapi returned ${status || "error"} ${action}${suffix}.`;
+}
+
+async function vapiFetchWithRetry(
+  apiKey: string,
+  path: string,
+  init?: RequestInit,
+  attempts = 3,
+): Promise<{ ok: boolean; status: number; json: Record<string, unknown> | null }> {
+  let last = await vapiFetch(apiKey, path, init);
+  for (let i = 1; i < attempts && !last.ok && isTransientVapiStatus(last.status); i++) {
+    await new Promise((r) => setTimeout(r, 1200 * i));
+    last = await vapiFetch(apiKey, path, init);
+  }
+  return last;
 }
 
 function defaultMerchantModel(systemPrompt: string): VapiModelPayload {
@@ -117,7 +165,7 @@ export async function createMerchantVapiAssistant(
   });
 
   if (!ok || !json) {
-    return { ok: false, message: `Vapi returned ${status || "error"} creating your assistant.` };
+    return { ok: false, message: formatVapiError("creating your assistant", status, json) };
   }
 
   const id = typeof json.id === "string" ? json.id.trim() : "";
@@ -140,22 +188,22 @@ export async function syncVapiAssistantConfig(
 
   const existingRes = await vapiFetch(apiKey, `/assistant/${encodeURIComponent(id)}`, { method: "GET" });
   if (!existingRes.ok || !existingRes.json) {
-    return { ok: false, message: "Could not load assistant from Vapi — check the assistant id and API key." };
+    const hint = summarizeVapiError(existingRes.json);
+    return {
+      ok: false,
+      message: hint
+        ? `Could not load assistant from Vapi (${existingRes.status}): ${hint}`
+        : "Could not load assistant from Vapi — check the assistant id and API key.",
+    };
   }
 
-  const existing = existingRes.json;
   const body: Record<string, unknown> = {};
 
   if (patch.assistantName?.trim()) body.name = patch.assistantName.trim();
   if (patch.firstMessage?.trim()) body.firstMessage = patch.firstMessage.trim();
 
   if (patch.systemPrompt?.trim()) {
-    const rawModel = existing.model;
-    const model =
-      rawModel !== null && typeof rawModel === "object" ? (rawModel as VapiModelPayload) : ({} as VapiModelPayload);
-    if (!model.provider) model.provider = "anthropic";
-    if (!model.model) model.model = getSolvioVapiAgentAnthropicModel();
-    body.model = mergeSystemMessage(model, patch.systemPrompt.trim());
+    body.model = defaultMerchantModel(patch.systemPrompt.trim());
   }
 
   if (patch.elevenlabsVoiceId?.trim()) {
@@ -167,13 +215,32 @@ export async function syncVapiAssistantConfig(
     return { ok: false, message: "Nothing to sync — add a name, voice, greeting, or instructions." };
   }
 
-  const { ok, status } = await vapiFetch(apiKey, `/assistant/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+  const patchAssistant = async (payload: Record<string, unknown>) => {
+    return vapiFetchWithRetry(apiKey, `/assistant/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  };
+
+  let { ok, status, json } = await patchAssistant(body);
+
+  // If voice block triggers upstream 503, retry prompt-only so merchants can still save.
+  if (!ok && isTransientVapiStatus(status) && body.voice) {
+    const withoutVoice = { ...body };
+    delete withoutVoice.voice;
+    if (Object.keys(withoutVoice).length) {
+      const retry = await patchAssistant(withoutVoice);
+      ok = retry.ok;
+      status = retry.status;
+      json = retry.json;
+      if (ok) {
+        return { ok: true };
+      }
+    }
+  }
 
   if (!ok) {
-    return { ok: false, message: `Vapi returned ${status} updating the assistant.` };
+    return { ok: false, message: formatVapiError("updating the assistant", status, json) };
   }
 
   return { ok: true };
