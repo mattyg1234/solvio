@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Save, Sparkles, X } from "lucide-react";
@@ -39,7 +38,6 @@ const TONES: { id: CampaignDraft["greetingStyle"]; label: string; sample: string
 ];
 
 export function CampaignAgentBuilder({ businessId, businessName, initial }: CampaignAgentBuilderProps) {
-  const router = useRouter();
   const [campaignId, setCampaignId] = useState(initial.campaignId ?? "");
   const [vapiAssistantId, setVapiAssistantId] = useState(initial.vapiAssistantId ?? "");
 

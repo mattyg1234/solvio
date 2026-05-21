@@ -445,7 +445,7 @@ function BookingDepositSection({
           <div>
             <p className="text-sm font-semibold text-[#0f172a]">Stripe deposit link</p>
             <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
-              Creates a checkout on your connected Stripe account. Solvio retains your plan's platform fee (1–2.5% based on tier);
+              Creates a checkout on your connected Stripe account. Solvio retains your plan&apos;s platform fee (1–2.5% based on tier);
               you receive the remainder. Leave amount blank to use the table price you configured — or enter a custom € amount below.
             </p>
           </div>

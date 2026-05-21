@@ -86,7 +86,7 @@ export default async function DashboardPaymentsPage({
               Guest payments on your Stripe account
             </h1>
             <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-              Connect once — guest payments land in your Stripe balance. Solvio's platform fee depends on your plan
+              Connect once — guest payments land in your Stripe balance. Solvio&apos;s platform fee depends on your plan
               (1–2.5% — see <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">Plans</Link>).
               Set prices per table under{" "}
               <Link href="/dashboard/bookings?tab=offerings&view=tables" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
@@ -122,7 +122,7 @@ export default async function DashboardPaymentsPage({
           <CardTitle className="text-base text-[#0f172a]">Connect your Stripe account</CardTitle>
           <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
             Express onboarding opens Stripe in a new tab. When charges are enabled, table bookings with guide pricing can
-            offer a deposit checkout step. Solvio automatically retains your plan's platform fee (1–2.5% based on tier)
+            offer a deposit checkout step. Solvio automatically retains your plan&apos;s platform fee (1–2.5% based on tier)
             on each guest payment; the rest settles to your Connect balance.
           </CardDescription>
         </CardHeader>
