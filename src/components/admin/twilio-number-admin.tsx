@@ -5,6 +5,7 @@ import { Check, Loader2, Phone, PhoneOutgoing, Search } from "lucide-react";
 
 import {
   buyTwilioNumberAction,
+  listVapiPhoneNumbersAction,
   registerSolvioOutboundNumberAction,
   searchTwilioNumbersAction,
 } from "@/app/admin/twilio/actions";
@@ -36,6 +37,22 @@ export function TwilioNumberAdmin({ countries }: { countries: readonly string[] 
         }
       })
       .finally(() => setRegisteringOutbound(false));
+  }
+
+  const [vapiNumbers, setVapiNumbers] = useState<
+    Array<{ id: string; number: string | null; provider: string | null; name: string | null }> | null
+  >(null);
+  const [listingNumbers, setListingNumbers] = useState(false);
+
+  function handleListNumbers() {
+    setError(null);
+    setListingNumbers(true);
+    void listVapiPhoneNumbersAction()
+      .then((res) => {
+        if (res.ok) setVapiNumbers(res.numbers);
+        else setError(res.message);
+      })
+      .finally(() => setListingNumbers(false));
   }
 
   function handleSearch() {
@@ -123,6 +140,44 @@ export function TwilioNumberAdmin({ countries }: { countries: readonly string[] 
 {`SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID=${outboundRegistered.id}`}
             </pre>
           </div>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#ebe7f7] pt-4">
+          <button
+            type="button"
+            disabled={listingNumbers}
+            onClick={handleListNumbers}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full border-[#ebe7f7] font-semibold")}
+          >
+            {listingNumbers ? (
+              <>
+                <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" aria-hidden />
+                Loading…
+              </>
+            ) : (
+              "List Vapi numbers"
+            )}
+          </button>
+          <p className="text-xs text-[#64748b]">Diagnose what&apos;s actually registered on Vapi.</p>
+        </div>
+        {vapiNumbers ? (
+          vapiNumbers.length ? (
+            <ul className="mt-3 space-y-2 text-[12px]">
+              {vapiNumbers.map((n) => (
+                <li key={n.id} className="rounded-lg border border-[#ebe7f7] bg-white px-3 py-2">
+                  <p className="font-mono font-semibold text-[#0f172a]">{n.number ?? "(no number)"}</p>
+                  <p className="font-mono text-[#64748b]">{n.id}</p>
+                  <p className="text-[#94a3b8]">
+                    provider: {n.provider ?? "—"} · name: {n.name ?? "—"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              No phone numbers registered on this Vapi workspace yet. Click &ldquo;Register outbound&rdquo; above first.
+            </p>
+          )
         ) : null}
       </div>
 

@@ -70,6 +70,45 @@ export async function buyTwilioNumberAction(input: {
   });
 }
 
+export type ListVapiPhoneNumbersResult =
+  | { ok: true; numbers: Array<{ id: string; number: string | null; provider: string | null; name: string | null }> }
+  | { ok: false; message: string };
+
+/** GET /phone-number — list all Vapi phone-number resources on Solvio's workspace, so we can verify what's actually registered. */
+export async function listVapiPhoneNumbersAction(): Promise<ListVapiPhoneNumbersResult> {
+  await requireAdmin();
+  const vapiKey = getSolvioVapiApiKey().trim();
+  if (!vapiKey) return { ok: false, message: "SOLVIO_VAPI_API_KEY isn't configured." };
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.vapi.ai/phone-number", {
+      headers: { Authorization: `Bearer ${vapiKey}` },
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, message: "Couldn't reach Vapi." };
+  }
+  if (!res.ok) return { ok: false, message: `Vapi returned ${res.status}.` };
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty */
+  }
+  if (!Array.isArray(json)) return { ok: false, message: "Vapi returned an unexpected shape." };
+  const numbers = json
+    .filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === "object")
+    .map((r) => ({
+      id: typeof r.id === "string" ? r.id : "",
+      number: typeof r.number === "string" ? r.number : null,
+      provider: typeof r.provider === "string" ? r.provider : null,
+      name: typeof r.name === "string" ? r.name : null,
+    }))
+    .filter((r) => r.id);
+  return { ok: true, numbers };
+}
+
 export type RegisterSolvioOutboundResult =
   | { ok: true; vapiPhoneNumberId: string; phoneE164: string }
   | { ok: false; message: string };
