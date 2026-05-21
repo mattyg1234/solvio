@@ -11,6 +11,7 @@ import {
   Inbox,
   LayoutDashboard,
   Megaphone,
+  MessageCircleQuestion,
   Mic2,
   PhoneCall,
   Radar,
@@ -75,6 +76,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
     });
   }
 
+  items.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: MessageCircleQuestion, key: "ask" });
   items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
   items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics", badge: "Soon" });
   items.push({ href: "/dashboard/pricing", label: "Plans", icon: Euro, key: "plans" });
