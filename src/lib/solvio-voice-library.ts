@@ -92,7 +92,7 @@ function parsePersonalisedVoicesFromEnv(): SolvioVoiceEntry[] {
     const name = typeof row.name === "string" ? row.name.trim() : "";
     if (!id || !name) continue;
 
-    const minTierRaw = typeof row.minTier === "string" ? row.minTier.trim() : "pro";
+    const minTierRaw = typeof row.minTier === "string" ? row.minTier.trim() : "trial";
     const minTier: SubscriptionTier =
       minTierRaw === "trial" ||
       minTierRaw === "pro" ||
@@ -100,7 +100,7 @@ function parsePersonalisedVoicesFromEnv(): SolvioVoiceEntry[] {
       minTierRaw === "scale" ||
       minTierRaw === "enterprise"
         ? minTierRaw
-        : "pro";
+        : "trial";
 
     out.push({
       id,
@@ -124,7 +124,7 @@ function platformVoiceAsSolvioEntry(platformVoiceId: string): SolvioVoiceEntry |
     name: "Solvio default",
     description: "Same voice as the Solvio homepage receptionist.",
     category: "solvio",
-    minTier: "pro",
+    minTier: "trial",
   };
 }
 
