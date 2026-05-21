@@ -9,8 +9,6 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
 
-export type { VoicePromptComposeFields };
-
 /** Deterministic starter prompt — replaces manual drafting when merchants click Generate from brief. */
 export async function composeVoiceAgentPromptAction(fields: VoicePromptComposeFields): Promise<string> {
   const supabase = await createSupabaseServerClient();

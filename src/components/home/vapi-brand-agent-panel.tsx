@@ -22,6 +22,10 @@ type VapiBrandAgentPanelProps = {
   firstMessage?: string;
   surface?: "marketing" | "onboarding";
   className?: string;
+  /** Fired on every transcript bubble update. Use for live-tracking transcripts in parent. */
+  onBubblesChange?: (bubbles: { role: "user" | "assistant"; text: string }[]) => void;
+  /** Fired when the call ends, with the final concatenated transcript text. */
+  onCallEnded?: (transcript: string) => void;
 };
 
 const copy = {
@@ -90,6 +94,8 @@ export function VapiBrandAgentPanel({
   firstMessage,
   surface = "marketing",
   className,
+  onBubblesChange,
+  onCallEnded,
 }: VapiBrandAgentPanelProps) {
   const meta = copy[surface];
   const vapiGreeting = firstMessage?.trim() ?? "";
@@ -102,6 +108,18 @@ export function VapiBrandAgentPanel({
   const [phase, setPhase] = useState<Phase>("idle");
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
+  const bubblesRef = useRef<Bubble[]>([]);
+  useEffect(() => {
+    bubblesRef.current = bubbles;
+    if (onBubblesChange) {
+      onBubblesChange(
+        bubbles
+          .filter((b) => b.id !== PARTIAL_USER_BUBBLE_ID)
+          .map((b) => ({ role: b.role, text: b.text })),
+      );
+    }
+  }, [bubbles, onBubblesChange]);
 
   type VapiInstance = InstanceType<(typeof import("@vapi-ai/web"))["default"]>;
   const vapiRef = useRef<VapiInstance | null>(null);
@@ -189,6 +207,13 @@ export function VapiBrandAgentPanel({
         ctl.cancelled = true;
         buildingRef.current = false;
         setPhase("idle");
+        if (onCallEnded) {
+          const transcript = bubblesRef.current
+            .filter((b) => b.id !== PARTIAL_USER_BUBBLE_ID && b.text.trim())
+            .map((b) => `${b.role === "assistant" ? "AI" : "Caller"}: ${b.text.trim()}`)
+            .join("\n");
+          if (transcript) onCallEnded(transcript);
+        }
         void cleanupClient().catch(() => {});
       };
 
@@ -260,7 +285,7 @@ export function VapiBrandAgentPanel({
       await cleanupClient().catch(() => {});
       buildingRef.current = false;
     }
-  }, [cleanupClient]);
+  }, [cleanupClient, onCallEnded]);
 
   const stopSession = useCallback(async () => {
     sessionCtlRef.current.cancelled = true;

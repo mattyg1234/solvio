@@ -16,6 +16,8 @@ type VoiceLiveTrialProps = {
   vapiAssistantId: string;
   vapiAssistantName: string;
   firstMessage?: string;
+  onBubblesChange?: (bubbles: { role: "user" | "assistant"; text: string }[]) => void;
+  onCallEnded?: (transcript: string) => void;
 };
 
 /** Live Vapi only — same stack as the homepage; no browser speech fallback. */
@@ -23,6 +25,8 @@ export function VoiceLiveTrial({
   vapiAssistantId,
   vapiAssistantName,
   firstMessage,
+  onBubblesChange,
+  onCallEnded,
 }: VoiceLiveTrialProps) {
   const publicKey = resolveMarketingVapiPublicKey();
   const assistantId = vapiAssistantId.trim();
@@ -40,6 +44,8 @@ export function VoiceLiveTrial({
           assistantId={assistantId}
           firstMessage={firstMessage}
           surface="onboarding"
+          onBubblesChange={onBubblesChange}
+          onCallEnded={onCallEnded}
         />
       </div>
     );

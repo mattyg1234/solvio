@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
+import { judgeCallAgainstCriteria, type JudgeVerdict } from "@/lib/call-success-judge";
 import { composeVoiceAgentPrompt } from "@/lib/compose-voice-agent-prompt";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import {
@@ -164,4 +165,56 @@ export async function saveReceptionistStudioAction(
       ? "Saved — tap the purple mic and pretend to book a table. Real bookings land on your public page or in Dashboard → Bookings after guests submit."
       : "Saved — tap the purple mic to role-play a call. Publish a booking link under Bookings to connect voice with your live table page.",
   };
+}
+
+/** Score a receptionist test-call transcript against the merchant's "what they should do" config. */
+export async function judgeReceptionistTestCallAction(input: {
+  businessId: string;
+  transcript: string;
+}): Promise<
+  | { ok: true; verdict: JudgeVerdict; reasoning: string }
+  | { ok: false; message: string }
+> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: biz } = await supabase
+    .from("businesses")
+    .select("id, voice_receptionist_details")
+    .eq("id", input.businessId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!biz) return { ok: false, message: "Business not found." };
+
+  const details =
+    biz.voice_receptionist_details && typeof biz.voice_receptionist_details === "object"
+      ? (biz.voice_receptionist_details as Record<string, unknown>)
+      : {};
+
+  const scope = typeof details.reception_scope === "string" ? details.reception_scope.trim() : "";
+  const intake = typeof details.caller_intake_priorities === "string" ? details.caller_intake_priorities.trim() : "";
+  const goal = typeof details.agent_goal === "string" ? details.agent_goal.trim() : "";
+
+  const successCriteria = [
+    scope ? `Receptionist should: ${scope}` : null,
+    intake ? `Must capture: ${intake}` : null,
+    goal ? `Goal each call: ${goal}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const transcript = input.transcript.trim();
+  if (transcript.length < 20) {
+    return { ok: false, message: "Transcript too short — chat with the agent a bit longer then end the call." };
+  }
+
+  const judge = await judgeCallAgainstCriteria({
+    successCriteria: successCriteria || "(no explicit criteria — judge if the receptionist sounded professional, handled the request, and ended the call cleanly)",
+    transcript,
+  });
+  if (!judge.ok) return { ok: false, message: judge.message };
+  return { ok: true, verdict: judge.verdict, reasoning: judge.reasoning };
 }

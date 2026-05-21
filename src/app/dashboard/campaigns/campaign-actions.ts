@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { judgeCallAgainstCriteria, type JudgeVerdict } from "@/lib/call-success-judge";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -177,6 +178,36 @@ export async function upsertCampaignAction(input: CampaignSaveInput): Promise<Ca
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not save campaign." };
   }
+}
+
+/** Score a test-call transcript against the campaign's success criteria — purely advisory, no credits touched. */
+export async function judgeTestCallAction(input: {
+  campaignId: string;
+  transcript: string;
+}): Promise<
+  | { ok: true; verdict: JudgeVerdict; reasoning: string }
+  | { ok: false; message: string }
+> {
+  const { supabase, user } = await requireUser();
+  const { data: c } = await supabase
+    .from("voice_campaigns")
+    .select("id, business_id, success_criteria")
+    .eq("id", input.campaignId)
+    .maybeSingle();
+  if (!c) return { ok: false, message: "Campaign not found." };
+  await assertOwnedBusiness(supabase, c.business_id, user.id);
+
+  const transcript = input.transcript.trim();
+  if (transcript.length < 20) {
+    return { ok: false, message: "Transcript too short to judge — speak with the agent for a bit, then end the call." };
+  }
+
+  const judge = await judgeCallAgainstCriteria({
+    successCriteria: c.success_criteria ?? "",
+    transcript,
+  });
+  if (!judge.ok) return { ok: false, message: judge.message };
+  return { ok: true, verdict: judge.verdict, reasoning: judge.reasoning };
 }
 
 export async function deleteCampaignAction(businessId: string, campaignId: string) {

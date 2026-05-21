@@ -4,10 +4,13 @@ import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Mic2, Save, Sparkles, X } from "lucide-react";
 
-import { saveReceptionistStudioAction } from "@/app/dashboard/setup/receptionist-actions";
+import {
+  judgeReceptionistTestCallAction,
+  saveReceptionistStudioAction,
+} from "@/app/dashboard/setup/receptionist-actions";
 import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { VoiceReceptionistClientDetails } from "@/lib/voice-receptionist";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +66,13 @@ export function ReceptionistStudio({
   const [saveOk, setSaveOk] = useState<boolean | null>(null);
   const [pending, startTransition] = useTransition();
   const [showLiveDemo, setShowLiveDemo] = useState(false);
+  const [testTranscript, setTestTranscript] = useState<string>("");
+  const [testBubbleCount, setTestBubbleCount] = useState(0);
+  const [judgePending, setJudgePending] = useState(false);
+  const [testVerdict, setTestVerdict] = useState<{
+    verdict: "success" | "fail" | "ambiguous" | "voicemail" | "no_answer";
+    reasoning: string;
+  } | null>(null);
 
   async function handleBuildPrompt() {
     setGenPromptPending(true);
@@ -111,6 +121,9 @@ export function ReceptionistStudio({
         }
         if (res.ok) {
           // Auto-open the live demo so the merchant immediately tests their config.
+          setTestTranscript("");
+          setTestBubbleCount(0);
+          setTestVerdict(null);
           setTimeout(() => setShowLiveDemo(true), 300);
         }
       })();
@@ -481,8 +494,93 @@ export function ReceptionistStudio({
                     vapiAssistantId={vapiAssistantId}
                     vapiAssistantName={trialName}
                     firstMessage={agentFirstMessage}
+                    onBubblesChange={(bs) => setTestBubbleCount(bs.length)}
+                    onCallEnded={(transcript) => {
+                      setTestTranscript(transcript);
+                      setTestVerdict(null);
+                    }}
                   />
                 </motion.div>
+
+                {testTranscript && !testVerdict ? (
+                  <div className="mt-4 rounded-2xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3">
+                    <p className="text-sm font-semibold text-[#0f172a]">
+                      Call ended — want me to check it did what you asked?
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748b]">
+                      Solvio reads the transcript against your &ldquo;What they should do&rdquo; + intake checklist + goal, then tells
+                      you if your receptionist sounded right.
+                    </p>
+                    <Button
+                      type="button"
+                      disabled={judgePending}
+                      onClick={() => {
+                        setJudgePending(true);
+                        void judgeReceptionistTestCallAction({ businessId, transcript: testTranscript })
+                          .then((res) => {
+                            if (res.ok) {
+                              setTestVerdict({ verdict: res.verdict, reasoning: res.reasoning });
+                            } else {
+                              setTestVerdict({ verdict: "ambiguous", reasoning: res.message });
+                            }
+                          })
+                          .finally(() => setJudgePending(false));
+                      }}
+                      className="mt-3 rounded-full font-semibold"
+                    >
+                      {judgePending ? (
+                        <>
+                          <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
+                          Judging…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 inline h-4 w-4" aria-hidden />
+                          Score this test
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {testVerdict ? (
+                  (() => {
+                    const tone =
+                      testVerdict.verdict === "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        : testVerdict.verdict === "fail"
+                          ? "border-rose-200 bg-rose-50 text-rose-900"
+                          : "border-amber-200 bg-amber-50 text-amber-900";
+                    const label =
+                      testVerdict.verdict === "success"
+                        ? "✅ Receptionist handled it well"
+                        : testVerdict.verdict === "fail"
+                          ? "❌ Missed the goal"
+                          : testVerdict.verdict === "ambiguous"
+                            ? "🤔 Not sure"
+                            : testVerdict.verdict === "voicemail"
+                              ? "📭 Voicemail"
+                              : "📵 No answer";
+                    return (
+                      <div className={cn("mt-4 rounded-2xl border px-4 py-3", tone)}>
+                        <p className="text-sm font-semibold">{label}</p>
+                        <p className="mt-1 text-sm">{testVerdict.reasoning}</p>
+                        <p className="mt-2 text-[12px]">
+                          {testVerdict.verdict === "success"
+                            ? "Your receptionist is ready for real callers."
+                            : "Refine the &ldquo;What they should do&rdquo;, intake checklist or goal below, save again, and re-test."}
+                        </p>
+                      </div>
+                    );
+                  })()
+                ) : null}
+
+                {testBubbleCount > 0 && !testTranscript ? (
+                  <p className="mt-4 text-[12px] text-[#5b21b6]">
+                    Live transcript captured — {testBubbleCount} bubble{testBubbleCount === 1 ? "" : "s"}. End the call
+                    to score it.
+                  </p>
+                ) : null}
 
                 <motion.p
                   initial={{ opacity: 0 }}

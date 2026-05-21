@@ -7,6 +7,7 @@ import { Loader2, Save, Sparkles, X } from "lucide-react";
 
 import {
   improveCampaignPromptAction,
+  judgeTestCallAction,
   upsertCampaignAction,
   type CampaignSaveInput,
 } from "@/app/dashboard/campaigns/campaign-actions";
@@ -54,6 +55,13 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<boolean | null>(null);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [testTranscript, setTestTranscript] = useState<string>("");
+  const [testBubbleCount, setTestBubbleCount] = useState(0);
+  const [judgePending, setJudgePending] = useState(false);
+  const [testVerdict, setTestVerdict] = useState<{
+    verdict: "success" | "fail" | "ambiguous" | "voicemail" | "no_answer";
+    reasoning: string;
+  } | null>(null);
 
   async function handleImprovePrompt() {
     setImprovePending(true);
@@ -98,6 +106,9 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
         if (res.ok) {
           setCampaignId(res.campaignId);
           setVapiAssistantId(res.assistantId);
+          setTestTranscript("");
+          setTestBubbleCount(0);
+          setTestVerdict(null);
           setTimeout(() => setShowTestModal(true), 300);
         }
       })();
@@ -325,8 +336,93 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
                     vapiAssistantId={vapiAssistantId}
                     vapiAssistantName={testName}
                     firstMessage={firstMessage}
+                    onBubblesChange={(bs) => setTestBubbleCount(bs.length)}
+                    onCallEnded={(transcript) => {
+                      setTestTranscript(transcript);
+                      setTestVerdict(null);
+                    }}
                   />
                 </div>
+
+                {testTranscript && !testVerdict ? (
+                  <div className="mt-4 rounded-2xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3">
+                    <p className="text-sm font-semibold text-[#0f172a]">
+                      Call ended — want me to score it against your success criteria?
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748b]">
+                      I&apos;ll judge the transcript with GPT and tell you if the agent did what you told it to.
+                    </p>
+                    <Button
+                      type="button"
+                      disabled={judgePending}
+                      onClick={() => {
+                        setJudgePending(true);
+                        void judgeTestCallAction({ campaignId, transcript: testTranscript })
+                          .then((res) => {
+                            if (res.ok) {
+                              setTestVerdict({ verdict: res.verdict, reasoning: res.reasoning });
+                            } else {
+                              setTestVerdict({ verdict: "ambiguous", reasoning: res.message });
+                            }
+                          })
+                          .finally(() => setJudgePending(false));
+                      }}
+                      className="mt-3 rounded-full font-semibold"
+                    >
+                      {judgePending ? (
+                        <>
+                          <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
+                          Judging…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 inline h-4 w-4" aria-hidden />
+                          Score this test
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {testVerdict ? (
+                  (() => {
+                    const tone =
+                      testVerdict.verdict === "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        : testVerdict.verdict === "fail"
+                          ? "border-rose-200 bg-rose-50 text-rose-900"
+                          : "border-amber-200 bg-amber-50 text-amber-900";
+                    const label =
+                      testVerdict.verdict === "success"
+                        ? "✅ Success"
+                        : testVerdict.verdict === "fail"
+                          ? "❌ Fail"
+                          : testVerdict.verdict === "ambiguous"
+                            ? "🤔 Ambiguous"
+                            : testVerdict.verdict === "voicemail"
+                              ? "📭 Voicemail"
+                              : "📵 No answer";
+                    return (
+                      <div className={cn("mt-4 rounded-2xl border px-4 py-3", tone)}>
+                        <p className="text-sm font-semibold">{label}</p>
+                        <p className="mt-1 text-sm">{testVerdict.reasoning}</p>
+                        <p className="mt-2 text-[12px]">
+                          {testVerdict.verdict === "success"
+                            ? "Looks good — you're ready to add real leads."
+                            : "Refine the system prompt or success criteria above, save again, and re-test."}
+                        </p>
+                      </div>
+                    );
+                  })()
+                ) : null}
+
+                {testBubbleCount > 0 && !testTranscript ? (
+                  <p className="mt-4 text-[12px] text-[#5b21b6]">
+                    Live transcript captured — {testBubbleCount} bubble{testBubbleCount === 1 ? "" : "s"}. End the call
+                    to score it.
+                  </p>
+                ) : null}
+
                 <p className="mt-5 text-[12px] text-[#64748b]">
                   This is a test only — no credits deducted, no leads dialled. Real outbound starts once you add leads in
                   the next step.
