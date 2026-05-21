@@ -510,13 +510,16 @@ export function ReceptionistStudio({
         <section id="test-live" className="rounded-[24px] border border-[#ddd6fe] bg-[#faf7ff]/80 p-6 shadow-sm md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-[#0f172a]">Test as a guest</h2>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Test your AI receptionist</h2>
               <p className="mt-1 text-sm text-[#64748b]">
                 {liveReady
                   ? isDirty
                     ? "Save your edits first, then speak to your receptionist with the purple mic."
                     : `Your saved receptionist is ready — uses your ${bookingFlowSummary} setup. Tap Test live above or the mic below.`
                   : "Save once to create your receptionist, then you can speak to them here."}
+              </p>
+              <p className="mt-2 text-sm font-medium text-[#5b21b6]">
+                Not perfect? Tweak the prompt above and save again — keep testing until every call goes the way you want.
               </p>
             </div>
             {liveReady ? (
