@@ -1,4 +1,16 @@
+import {
+  hasTwilioCredentials,
+  purchaseTwilioNumber,
+  releaseTwilioNumber,
+  searchAvailableNumbers,
+  type TwilioCountryCode,
+} from "@/lib/twilio-phone-numbers";
 import { getSolvioVapiApiKey } from "@/lib/voice-platform-env";
+
+function trimEnv(name: string): string {
+  const v = process.env[name];
+  return typeof v === "string" ? v.trim() : "";
+}
 
 /** Countries Solvio currently offers for inbound numbers. */
 export const SUPPORTED_PHONE_COUNTRIES = [
@@ -83,47 +95,86 @@ export async function purchaseInboundNumber(opts: {
   | { ok: true; record: VapiPhoneNumberRecord }
   | { ok: false; message: string }
 > {
-  const body: Record<string, unknown> = {
-    provider: "vapi",
-    numberDesiredAreaCode: undefined,
-    country: opts.country,
-    assistantId: opts.assistantId,
-  };
-  if (opts.name?.trim()) body.name = opts.name.trim().slice(0, 60);
+  // Vapi's own pool is US-only; every other country needs Twilio under the hood
+  // (we search Twilio, buy a number on Solvio's account, then import it to Vapi
+  // and attach to the merchant's assistant).
+  return purchaseViaTwilioThenImport(opts);
+}
 
-  const { ok, status, json } = await vapiFetch("/phone-number", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-
-  if (!ok || !json) {
-    const detail = summarizeError(json);
-    if (status === 400 || status === 404) {
-      return {
-        ok: false,
-        message: detail
-          ? `That country isn't available in the number pool right now: ${detail}`
-          : "That country isn't available in the number pool right now. Try a different one or contact Solvio support.",
-      };
-    }
-    if (status === 401 || status === 403) {
-      return { ok: false, message: "Voice service authentication failed. Contact Solvio support." };
-    }
-    if (status >= 500) {
-      return {
-        ok: false,
-        message: "Voice service is temporarily unavailable. Wait a moment and try again.",
-      };
-    }
+async function purchaseViaTwilioThenImport(opts: {
+  country: PhoneCountryCode;
+  assistantId: string;
+  name?: string;
+}): Promise<{ ok: true; record: VapiPhoneNumberRecord } | { ok: false; message: string }> {
+  if (!hasTwilioCredentials()) {
     return {
       ok: false,
-      message: detail || `Couldn't reserve a number (${status || "error"}). Try again or contact support.`,
+      message:
+        "Phone number provisioning isn't enabled for this country yet — Solvio needs to finish Twilio setup. Contact support.",
     };
   }
 
-  const record = pickRecord(json);
-  if (!record) return { ok: false, message: "Number was provisioned but no id was returned. Contact Solvio support." };
-  return { ok: true, record: { ...record, country: opts.country } };
+  const search = await searchAvailableNumbers({
+    country: opts.country as TwilioCountryCode,
+    smsEnabled: true,
+    voiceEnabled: true,
+    limit: 5,
+  });
+  if (!search.ok) return { ok: false, message: search.message };
+  if (!search.numbers.length) {
+    return { ok: false, message: `No ${opts.country} numbers available right now. Try again in a minute.` };
+  }
+
+  const candidate = search.numbers[0]!;
+  const buy = await purchaseTwilioNumber({
+    phoneNumber: candidate.phoneNumber,
+    friendlyName: opts.name,
+  });
+  if (!buy.ok) return { ok: false, message: buy.message };
+
+  const sid = trimEnv("SOLVIO_TWILIO_ACCOUNT_SID") || trimEnv("TWILIO_ACCOUNT_SID");
+  const token = trimEnv("SOLVIO_TWILIO_AUTH_TOKEN") || trimEnv("TWILIO_AUTH_TOKEN");
+
+  const importBody: Record<string, unknown> = {
+    provider: "twilio",
+    number: buy.number.phoneNumber,
+    twilioAccountSid: sid,
+    twilioAuthToken: token,
+    assistantId: opts.assistantId,
+  };
+  if (opts.name?.trim()) importBody.name = opts.name.trim().slice(0, 60);
+
+  const imported = await vapiFetch("/phone-number", {
+    method: "POST",
+    body: JSON.stringify(importBody),
+  });
+
+  if (!imported.ok || !imported.json) {
+    // Couldn't link to Vapi — release the Twilio number so we don't bill for a ghost.
+    await releaseTwilioNumber(buy.number.sid).catch(() => {});
+    const detail = summarizeError(imported.json);
+    return {
+      ok: false,
+      message: detail
+        ? `Bought the number but couldn't link it to your receptionist: ${detail}. The number was released.`
+        : "Bought the number but couldn't link it to your receptionist. The number was released — try again or contact support.",
+    };
+  }
+
+  const record = pickRecord(imported.json);
+  if (!record) {
+    await releaseTwilioNumber(buy.number.sid).catch(() => {});
+    return { ok: false, message: "Number was provisioned but no id was returned. The number was released." };
+  }
+
+  return {
+    ok: true,
+    record: {
+      ...record,
+      number: buy.number.phoneNumber,
+      country: opts.country,
+    },
+  };
 }
 
 /** Release a previously-purchased number — frees it from Vapi (and stops the monthly carry charge). */

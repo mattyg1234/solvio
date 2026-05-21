@@ -202,6 +202,25 @@ export async function purchaseTwilioNumber(opts: {
   };
 }
 
+/**
+ * DELETE /IncomingPhoneNumbers/{sid}.json — release a number we previously
+ * claimed so it stops billing. Used by the per-merchant purchase flow when
+ * the Vapi-import step fails, so we don't pay for a ghost number.
+ */
+export async function releaseTwilioNumber(sid: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = sid.trim();
+  if (!id) return { ok: false, message: "Missing IncomingPhoneNumber SID." };
+
+  const { ok, status, json } = await twilioFetch(`/IncomingPhoneNumbers/${encodeURIComponent(id)}.json`, {
+    method: "DELETE",
+  });
+  if (!ok && status !== 404) {
+    const detail = summarizeTwilioError(json);
+    return { ok: false, message: detail || `Twilio release failed (${status || "network"}).` };
+  }
+  return { ok: true };
+}
+
 /** Quick check: do we have Twilio creds at all on this deployment? */
 export function hasTwilioCredentials(): boolean {
   return getTwilioCreds() !== null;
