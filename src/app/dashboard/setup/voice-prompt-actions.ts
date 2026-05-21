@@ -6,6 +6,7 @@ import {
   composeVoiceAgentPrompt,
   type VoicePromptComposeFields,
 } from "@/lib/compose-voice-agent-prompt";
+import { logLlmUsage } from "@/lib/llm-usage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
 
@@ -113,6 +114,11 @@ export async function generateVoiceAgentPromptOpenAIAction(
       ? (body as { choices: { message?: { content?: string } }[] }).choices
       : [];
   const content = typeof choices[0]?.message?.content === "string" ? choices[0].message.content.trim() : "";
+  logLlmUsage({
+    feature: "voice_prompt_generate",
+    model: "gpt-4o-mini",
+    usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
+  });
   if (!content) {
     return { ok: false, message: "OpenAI returned an empty draft — tweak your brief and retry." };
   }
@@ -219,6 +225,11 @@ export async function extractReceptionistFromBriefAction(input: {
       ? (body as { choices: { message?: { content?: string } }[] }).choices
       : [];
   const content = typeof choices[0]?.message?.content === "string" ? choices[0].message.content.trim() : "";
+  logLlmUsage({
+    feature: "brief_extract",
+    model: "gpt-4o-mini",
+    usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
+  });
   if (!content) return { ok: false, message: "AI returned an empty draft — add more detail and retry." };
 
   let parsed: unknown;

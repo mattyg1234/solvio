@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { logLlmUsage } from "@/lib/llm-usage";
 import {
   countBookingsForDate,
   findBooking,
@@ -181,6 +182,13 @@ export async function askSolvioAction(input: {
     } catch {
       return { ok: false, message: "Unexpected AI response." };
     }
+
+    logLlmUsage({
+      feature: "ask_solvio",
+      model: "gpt-4o-mini",
+      businessId: businessIds[0] ?? null,
+      usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
+    });
 
     const choice = (body as { choices?: { message?: ChatMessage }[] }).choices?.[0]?.message;
     if (!choice) return { ok: false, message: "AI returned an empty reply." };

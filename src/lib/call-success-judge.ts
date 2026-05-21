@@ -1,5 +1,6 @@
 /** LLM-as-judge: score whether an outbound call met its success criteria. */
 
+import { logLlmUsage } from "@/lib/llm-usage";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
 
 export type JudgeVerdict = "success" | "fail" | "ambiguous" | "voicemail" | "no_answer";
@@ -91,8 +92,12 @@ export async function judgeCallAgainstCriteria(input: CallJudgeInput): Promise<C
   }
 
   if (!res.ok) return { ok: false, message: `Judge LLM returned ${res.status}.` };
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const body = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  };
   const raw = body.choices?.[0]?.message?.content?.trim() ?? "";
+  logLlmUsage({ feature: "judge_call", model: "gpt-4o-mini", usage: body.usage });
   if (!raw) return { ok: false, message: "Judge LLM empty response." };
 
   try {

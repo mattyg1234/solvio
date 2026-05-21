@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { judgeCallAgainstCriteria, type JudgeVerdict } from "@/lib/call-success-judge";
+import { logLlmUsage } from "@/lib/llm-usage";
 import {
   buildCampaignFirstMessage,
   buildCampaignSystemPrompt,
@@ -298,8 +299,12 @@ export async function improveCampaignPromptAction(input: {
   if (!res.ok) {
     return { ok: false, message: `OpenAI returned ${res.status}.` };
   }
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const body = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  };
   const raw = body.choices?.[0]?.message?.content?.trim() ?? "";
+  logLlmUsage({ feature: "campaign_prompt_improve", model: "gpt-4o-mini", usage: body.usage });
   if (!raw) return { ok: false, message: "OpenAI returned an empty draft." };
 
   // Wrap the GPT-generated core with our standardised intake + boundary section

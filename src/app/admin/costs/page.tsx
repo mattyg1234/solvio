@@ -36,7 +36,15 @@ export default async function AdminCostsPage() {
   const monthStartIso = monthStart.toISOString();
 
   // Voice call costs (Vapi-reported total per call — includes LLM + TTS + STT + Vapi fee + Twilio per-min).
-  const [{ data: monthRows }, { data: allRows }, { data: tierRows }, { data: bundleRows }, { data: topBizRows }] = await Promise.all([
+  const [
+    { data: monthRows },
+    { data: allRows },
+    { data: tierRows },
+    { data: bundleRows },
+    { data: topBizRows },
+    { data: llmMonthRows },
+    { data: llmAllRows },
+  ] = await Promise.all([
     supabase
       .from("voice_call_logs")
       .select("cost_cents, duration_seconds")
@@ -48,6 +56,11 @@ export default async function AdminCostsPage() {
       .from("voice_call_logs")
       .select("business_id, cost_cents, duration_seconds")
       .gte("started_at", monthStartIso),
+    supabase
+      .from("solvio_llm_usage")
+      .select("feature, total_tokens, cost_cents_estimated")
+      .gte("created_at", monthStartIso),
+    supabase.from("solvio_llm_usage").select("cost_cents_estimated"),
   ]);
 
   const monthVoiceCents = (monthRows ?? []).reduce((s, r) => s + Number(r.cost_cents ?? 0), 0);
@@ -106,11 +119,26 @@ export default async function AdminCostsPage() {
     : { data: [] };
   const nameById = new Map((venueNames ?? []).map((b) => [b.id as string, b.name as string]));
 
+  // OpenAI usage this month, grouped by feature
+  const llmByFeature = new Map<string, { tokens: number; cents: number; calls: number }>();
+  for (const row of llmMonthRows ?? []) {
+    const f = (row.feature as string) ?? "other";
+    const e = llmByFeature.get(f) ?? { tokens: 0, cents: 0, calls: 0 };
+    e.tokens += Number(row.total_tokens ?? 0);
+    e.cents += Number(row.cost_cents_estimated ?? 0);
+    e.calls += 1;
+    llmByFeature.set(f, e);
+  }
+  const monthLlmCents = (llmMonthRows ?? []).reduce((s, r) => s + Number(r.cost_cents_estimated ?? 0), 0);
+  const monthLlmCalls = llmMonthRows?.length ?? 0;
+  const lifetimeLlmCents = (llmAllRows ?? []).reduce((s, r) => s + Number(r.cost_cents_estimated ?? 0), 0);
+
   // Gross-margin estimate: MRR (EUR) → roughly £ at 0.85
   const mrrGBP = mrrEUR * 0.85;
   const monthVoiceGBP = (monthVoiceCents / 100) * 0.79; // USD → GBP rough
+  const monthLlmGBP = (monthLlmCents / 100) * 0.79;
   const grossMonthlyGBP = mrrGBP + (bundleRevenueGBP / 12); // amortise bundles over 12 mo as a soft indicator
-  const netMonthlyGBP = grossMonthlyGBP - monthVoiceGBP;
+  const netMonthlyGBP = grossMonthlyGBP - monthVoiceGBP - monthLlmGBP;
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6 md:p-10">
@@ -152,9 +180,47 @@ export default async function AdminCostsPage() {
             £{netMonthlyGBP.toFixed(0)}
           </p>
           <p className="mt-1 text-xs text-[#475569]">
-            Revenue {fmtEUR(mrrEUR)} MRR · Costs {fmtUSD(monthVoiceCents)}
+            Rev {fmtEUR(mrrEUR)} MRR · Voice {fmtUSD(monthVoiceCents)} · LLM {fmtUSD(monthLlmCents)}
           </p>
         </div>
+      </section>
+
+      {/* OpenAI usage */}
+      <section className="rounded-2xl border border-[#ebe7f7] bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-base font-semibold text-[#0f172a]">OpenAI usage this month</h2>
+          <span className="text-xs text-[#64748b]">
+            Total this month {fmtUSD(monthLlmCents)} · lifetime {fmtUSD(lifetimeLlmCents)} · {monthLlmCalls} calls
+          </span>
+        </div>
+        {llmByFeature.size === 0 ? (
+          <p className="mt-3 text-sm text-[#64748b]">No LLM calls logged yet this month.</p>
+        ) : (
+          <table className="mt-4 w-full text-sm">
+            <thead className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
+              <tr>
+                <th className="pb-2 text-left">Feature</th>
+                <th className="pb-2 text-right">Calls</th>
+                <th className="pb-2 text-right">Tokens</th>
+                <th className="pb-2 text-right">Cost (est.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...llmByFeature.entries()]
+                .sort((a, b) => b[1].cents - a[1].cents)
+                .map(([feature, v]) => (
+                  <tr key={feature} className="border-t border-[#f1eefc]">
+                    <td className="py-2 text-[#0f172a]">{feature.replace(/_/g, " ")}</td>
+                    <td className="py-2 text-right font-mono text-[#475569]">{v.calls}</td>
+                    <td className="py-2 text-right font-mono text-[#475569]">
+                      {v.tokens.toLocaleString()}
+                    </td>
+                    <td className="py-2 text-right font-mono font-semibold text-[#0f172a]">{fmtUSD(v.cents)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       {/* Revenue breakdown */}

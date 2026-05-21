@@ -6,6 +6,7 @@
  * level) plus a short notes summary.  Results are written back to the lead row.
  */
 
+import { logLlmUsage } from "@/lib/llm-usage";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
 
 export type LeadInterestLevel = "hot" | "warm" | "cold" | "not_interested";
@@ -100,6 +101,11 @@ export async function extractLeadIntakeFromTranscript(params: {
 
   const raw =
     (body as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content?.trim() ?? "";
+  logLlmUsage({
+    feature: "campaign_lead_extract",
+    model: "gpt-4o-mini",
+    usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
+  });
   if (!raw) return null;
 
   try {
