@@ -12,6 +12,12 @@ import {
   type TwilioCountryCode,
   type TwilioOwnedNumber,
 } from "@/lib/twilio-phone-numbers";
+import { getSolvioVapiApiKey } from "@/lib/voice-platform-env";
+
+function trimEnv(name: string): string {
+  const v = process.env[name];
+  return typeof v === "string" ? v.trim() : "";
+}
 
 async function requireAdmin() {
   const supabase = await createSupabaseServerClient();
@@ -62,4 +68,82 @@ export async function buyTwilioNumberAction(input: {
     phoneNumber: input.phoneNumber,
     friendlyName: input.friendlyName,
   });
+}
+
+export type RegisterSolvioOutboundResult =
+  | { ok: true; vapiPhoneNumberId: string; phoneE164: string }
+  | { ok: false; message: string };
+
+/**
+ * Take the shared Solvio outbound Twilio number (SOLVIO_TWILIO_FROM_NUMBER) and
+ * register it with Vapi as a non-assistant-bound phone number. The resulting
+ * Vapi phone-number resource id is what SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID
+ * needs to be set to so AI-dialled campaign calls can use it.
+ */
+export async function registerSolvioOutboundNumberAction(): Promise<RegisterSolvioOutboundResult> {
+  await requireAdmin();
+
+  const fromNumber = trimEnv("SOLVIO_TWILIO_FROM_NUMBER");
+  if (!fromNumber) {
+    return {
+      ok: false,
+      message:
+        "SOLVIO_TWILIO_FROM_NUMBER isn't set on this deployment. Claim a number first, set the env var, redeploy, then try again.",
+    };
+  }
+
+  const sid = trimEnv("SOLVIO_TWILIO_ACCOUNT_SID") || trimEnv("TWILIO_ACCOUNT_SID");
+  const token = trimEnv("SOLVIO_TWILIO_AUTH_TOKEN") || trimEnv("TWILIO_AUTH_TOKEN");
+  if (!sid || !token) {
+    return { ok: false, message: "Twilio credentials aren't configured on this deployment." };
+  }
+
+  const vapiKey = getSolvioVapiApiKey().trim();
+  if (!vapiKey) return { ok: false, message: "SOLVIO_VAPI_API_KEY isn't configured." };
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.vapi.ai/phone-number", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${vapiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        provider: "twilio",
+        number: fromNumber,
+        twilioAccountSid: sid,
+        twilioAuthToken: token,
+        name: "Solvio shared outbound",
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, message: "Couldn't reach Vapi to register the number — try again." };
+  }
+
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty */
+  }
+
+  if (!res.ok || !json || typeof json !== "object") {
+    const detail =
+      json && typeof json === "object" && "message" in json && typeof (json as { message?: unknown }).message === "string"
+        ? (json as { message: string }).message
+        : "";
+    return {
+      ok: false,
+      message: detail
+        ? `Vapi rejected the import (${res.status}): ${detail}`
+        : `Vapi rejected the import (${res.status || "network"}). Common cause: the number is already imported under another Vapi workspace.`,
+    };
+  }
+
+  const id = typeof (json as { id?: unknown }).id === "string" ? (json as { id: string }).id.trim() : "";
+  if (!id) return { ok: false, message: "Vapi imported the number but returned no id." };
+
+  return { ok: true, vapiPhoneNumberId: id, phoneE164: fromNumber };
 }

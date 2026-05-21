@@ -1,9 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Loader2, Phone, Search } from "lucide-react";
+import { Check, Loader2, Phone, PhoneOutgoing, Search } from "lucide-react";
 
-import { buyTwilioNumberAction, searchTwilioNumbersAction } from "@/app/admin/twilio/actions";
+import {
+  buyTwilioNumberAction,
+  registerSolvioOutboundNumberAction,
+  searchTwilioNumbersAction,
+} from "@/app/admin/twilio/actions";
 import { buttonVariants } from "@/components/ui/button";
 import type { TwilioAvailableNumber, TwilioOwnedNumber } from "@/lib/twilio-phone-numbers";
 import { cn } from "@/lib/utils";
@@ -17,6 +21,22 @@ export function TwilioNumberAdmin({ countries }: { countries: readonly string[] 
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
+  const [outboundRegistered, setOutboundRegistered] = useState<{ id: string; e164: string } | null>(null);
+  const [registeringOutbound, setRegisteringOutbound] = useState(false);
+
+  function handleRegisterOutbound() {
+    setError(null);
+    setRegisteringOutbound(true);
+    void registerSolvioOutboundNumberAction()
+      .then((res) => {
+        if (res.ok) {
+          setOutboundRegistered({ id: res.vapiPhoneNumberId, e164: res.phoneE164 });
+        } else {
+          setError(res.message);
+        }
+      })
+      .finally(() => setRegisteringOutbound(false));
+  }
 
   function handleSearch() {
     setError(null);
@@ -57,6 +77,55 @@ export function TwilioNumberAdmin({ countries }: { countries: readonly string[] 
 
   return (
     <div className="space-y-6">
+      <div className="rounded-[22px] border border-[#7c3aed]/30 bg-gradient-to-br from-[#faf7ff] to-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c3aed]">Shared outbound line</p>
+            <h2 className="text-base font-semibold text-[#0f172a]">Register the Solvio outbound number with Vapi</h2>
+            <p className="max-w-xl text-sm text-[#64748b]">
+              Imports <code className="font-mono text-xs">SOLVIO_TWILIO_FROM_NUMBER</code> into Vapi as a non-assistant
+              phone-number resource — required for AI-dialled campaign calls to use it. One-time setup.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={registeringOutbound || Boolean(outboundRegistered)}
+            onClick={handleRegisterOutbound}
+            className={cn(buttonVariants({ variant: "default", size: "sm" }), "rounded-full font-semibold")}
+          >
+            {registeringOutbound ? (
+              <>
+                <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" aria-hidden />
+                Registering…
+              </>
+            ) : outboundRegistered ? (
+              <>
+                <Check className="mr-1.5 inline h-4 w-4" aria-hidden />
+                Registered
+              </>
+            ) : (
+              <>
+                <PhoneOutgoing className="mr-1.5 inline h-4 w-4" aria-hidden />
+                Register outbound
+              </>
+            )}
+          </button>
+        </div>
+        {outboundRegistered ? (
+          <div className="mt-4 space-y-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+            <p>
+              Registered <span className="font-mono font-semibold">{outboundRegistered.e164}</span> with Vapi.
+            </p>
+            <p>
+              Now set this env var on Vercel, then redeploy:
+            </p>
+            <pre className="overflow-x-auto rounded-lg bg-white/70 px-3 py-2 font-mono text-[12px] text-emerald-950">
+{`SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID=${outboundRegistered.id}`}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+
       <div className="rounded-[22px] border border-[#ebe7f7] bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
