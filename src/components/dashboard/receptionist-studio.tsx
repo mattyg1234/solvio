@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Mic2, Save, Sparkles, X } from "lucide-react";
 
@@ -9,8 +9,10 @@ import {
   saveReceptionistStudioAction,
 } from "@/app/dashboard/setup/receptionist-actions";
 import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
+import { ReceptionistVoicePicker } from "@/components/dashboard/receptionist-voice-picker";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { Button, buttonVariants } from "@/components/ui/button";
+import type { SolvioVoiceEntry, SubscriptionTier } from "@/lib/solvio-voice-library";
 import type { VoiceReceptionistClientDetails } from "@/lib/voice-receptionist";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,14 @@ type ReceptionistStudioProps = {
   voiceComplete: boolean;
   platformVoiceId: string;
   platformVoiceSource: "env" | "marketing_vapi" | "none";
+  voiceLibrary: {
+    demoSentence: string;
+    voices: SolvioVoiceEntry[];
+    voiceModel: string;
+  };
+  subscriptionTier: SubscriptionTier;
+  defaultVoiceId: string;
+  defaultVoiceName: string;
   publicBookingUrl: string | null;
   bookingFlowSummary: string;
   guestBookingModesLabel: string | null;
@@ -43,6 +53,10 @@ export function ReceptionistStudio({
   voiceComplete,
   platformVoiceId,
   platformVoiceSource,
+  voiceLibrary,
+  subscriptionTier,
+  defaultVoiceId,
+  defaultVoiceName,
   publicBookingUrl,
   bookingFlowSummary,
   guestBookingModesLabel,
@@ -60,13 +74,25 @@ export function ReceptionistStudio({
   const [tone, setTone] = useState(initialDetails.greeting_style);
   const [agentPromptCustom, setAgentPromptCustom] = useState(initialDetails.agent_prompt_custom ?? "");
   const [showAdvancedPrompt, setShowAdvancedPrompt] = useState(Boolean(initialDetails.agent_prompt_custom?.trim()));
+  const [selectedVoiceId, setSelectedVoiceId] = useState(
+    initialDetails.elevenlabs_voice_id?.trim() || defaultVoiceId,
+  );
+  const [selectedVoiceName, setSelectedVoiceName] = useState(
+    initialDetails.elevenlabs_voice_name?.trim() || defaultVoiceName,
+  );
   const [vapiAssistantId, setVapiAssistantId] = useState(initialDetails.vapi_assistant_id ?? "");
   const [vapiAssistantName] = useState(initialDetails.vapi_assistant_name ?? "");
+  const [isDirty, setIsDirty] = useState(false);
+  const [savedAtLeastOnce, setSavedAtLeastOnce] = useState(voiceComplete);
+  const [liveTrialRevision, setLiveTrialRevision] = useState(0);
+
+  const markDirty = () => {
+    setIsDirty(true);
+  };
 
   const [genPromptPending, setGenPromptPending] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<boolean | null>(null);
-  const [pending, startTransition] = useTransition();
   const [showLiveDemo, setShowLiveDemo] = useState(false);
   const [testTranscript, setTestTranscript] = useState<string>("");
   const [testBubbleCount, setTestBubbleCount] = useState(0);
@@ -75,6 +101,28 @@ export function ReceptionistStudio({
     verdict: "success" | "fail" | "ambiguous" | "voicemail" | "no_answer";
     reasoning: string;
   } | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const liveReady = Boolean(vapiAssistantId.trim() && vapiPublicKey.trim());
+  const showSavedBadge = savedAtLeastOnce || voiceComplete;
+
+  function openLiveDemo() {
+    if (!liveReady) return;
+    setTestTranscript("");
+    setTestBubbleCount(0);
+    setTestVerdict(null);
+    setShowLiveDemo(true);
+  }
+
+  function scrollToEditor() {
+    setShowLiveDemo(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const liveTrialKey = useMemo(
+    () => `${vapiAssistantId}:${liveTrialRevision}:${selectedVoiceId}`,
+    [liveTrialRevision, selectedVoiceId, vapiAssistantId],
+  );
 
   async function handleBuildPrompt() {
     setGenPromptPending(true);
@@ -91,6 +139,7 @@ export function ReceptionistStudio({
       });
       setAgentPromptCustom(text);
       setShowAdvancedPrompt(true);
+      markDirty();
     } finally {
       setGenPromptPending(false);
     }
@@ -115,6 +164,9 @@ export function ReceptionistStudio({
           agent_prompt_custom: showAdvancedPrompt ? agentPromptCustom.trim() || undefined : undefined,
           vapi_assistant_id: vapiAssistantId.trim() || undefined,
           vapi_assistant_name: vapiAssistantName.trim() || undefined,
+          selectedVoiceId,
+          elevenlabs_voice_id: selectedVoiceId,
+          elevenlabs_voice_name: selectedVoiceName,
         });
         setSaveOk(res.ok);
         setSaveMsg(res.message);
@@ -122,7 +174,9 @@ export function ReceptionistStudio({
           setVapiAssistantId(res.assistantId);
         }
         if (res.ok) {
-          // Auto-open the live demo so the merchant immediately tests their config.
+          setIsDirty(false);
+          setSavedAtLeastOnce(true);
+          setLiveTrialRevision((n) => n + 1);
           setTestTranscript("");
           setTestBubbleCount(0);
           setTestVerdict(null);
@@ -144,11 +198,11 @@ export function ReceptionistStudio({
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">Your AI receptionist</h1>
             <p className="text-sm text-[#64748b]">
-              Name them, say what they should do, then save. Every receptionist uses the same Solvio voice as the
-              homepage — live purple mic, no browser fallback.
+              Name them, pick a voice, say what they should do, then save. Come back any time to edit — save again
+              before testing if you change anything.
             </p>
           </div>
-          {voiceComplete ? (
+          {showSavedBadge ? (
             <span className="ml-auto rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800 ring-1 ring-emerald-100">
               Saved
             </span>
@@ -157,7 +211,32 @@ export function ReceptionistStudio({
               Draft
             </span>
           )}
+          {liveReady ? (
+            <button
+              type="button"
+              onClick={openLiveDemo}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "ml-0 rounded-full border-[#ddd6fe] bg-white px-4 font-semibold text-[#7c3aed] hover:bg-[#faf7ff] sm:ml-auto",
+              )}
+            >
+              <Mic2 className="mr-2 inline h-4 w-4" aria-hidden />
+              Test live
+            </button>
+          ) : null}
         </div>
+        {isDirty && liveReady ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            You have unsaved edits. Save receptionist to push voice, instructions, and first line to your live agent
+            before testing.
+          </p>
+        ) : null}
+        {liveReady && !isDirty ? (
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+            Your receptionist is saved — tap <span className="font-semibold">Test live</span> to speak with{" "}
+            {trialName} using voice <span className="font-semibold">{selectedVoiceName}</span>.
+          </p>
+        ) : null}
       </header>
 
       <div className="space-y-6">
@@ -173,26 +252,42 @@ export function ReceptionistStudio({
               <input
                 id="recv-name"
                 value={receptionistName}
-                onChange={(e) => setReceptionistName(e.target.value)}
+                onChange={(e) => {
+                  setReceptionistName(e.target.value);
+                  markDirty();
+                }}
                 placeholder='e.g. "Riley" or "Front desk"'
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               />
             </div>
 
-            <div className="rounded-xl border border-[#ede9fe] bg-[#faf7ff] px-4 py-4">
-              <p className="text-sm font-semibold text-[#0f172a]">Voice</p>
-              <p className="mt-1 text-sm text-[#64748b]">
-                Locked to the Solvio platform voice — identical to your homepage receptionist (
-                {platformVoiceSource === "env" ? "from env" : "from marketing Vapi agent"}).
-              </p>
-              {platformVoiceId ? (
-                <p className="mt-2 font-mono text-[11px] text-[#5b21b6]">{platformVoiceId}</p>
-              ) : (
-                <p className="mt-2 text-sm text-rose-700">
-                  Platform voice not configured. Set{" "}
-                  <code className="font-mono text-xs">SOLVIO_PLATFORM_ELEVENLABS_VOICE_ID</code> on this deployment.
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-[#0f172a]">Voice</p>
+                <p className="mt-1 text-sm text-[#64748b]">
+                  Play a preview, then select who speaks for {businessName}. Saved voice:{" "}
+                  <span className="font-semibold text-[#0f172a]">{selectedVoiceName}</span>.
                 </p>
-              )}
+              </div>
+              <ReceptionistVoicePicker
+                businessId={businessId}
+                demoSentence={voiceLibrary.demoSentence}
+                voices={voiceLibrary.voices}
+                subscriptionTier={subscriptionTier}
+                selectedVoiceId={selectedVoiceId}
+                onSelectVoice={(voice) => {
+                  setSelectedVoiceId(voice.id);
+                  setSelectedVoiceName(voice.name);
+                  markDirty();
+                }}
+              />
+              {!platformVoiceId ? (
+                <p className="text-sm text-amber-800">
+                  Tip: set <code className="font-mono text-xs">SOLVIO_PLATFORM_ELEVENLABS_VOICE_ID</code> to add your
+                  homepage voice under Solvio voices (
+                  {platformVoiceSource === "none" ? "not detected yet" : platformVoiceSource}).
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -203,7 +298,10 @@ export function ReceptionistStudio({
               <textarea
                 id="first-line"
                 value={agentFirstMessage}
-                onChange={(e) => setAgentFirstMessage(e.target.value)}
+                onChange={(e) => {
+                  setAgentFirstMessage(e.target.value);
+                  markDirty();
+                }}
                 rows={2}
                 placeholder={`Hi — thanks for calling ${businessName}. How can I help you today?`}
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
@@ -217,7 +315,10 @@ export function ReceptionistStudio({
               <select
                 id="tone-pick"
                 value={tone}
-                onChange={(e) => setTone(e.target.value as VoiceReceptionistClientDetails["greeting_style"])}
+                onChange={(e) => {
+                  setTone(e.target.value as VoiceReceptionistClientDetails["greeting_style"]);
+                  markDirty();
+                }}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               >
                 {tones.map((t) => (
@@ -242,7 +343,10 @@ export function ReceptionistStudio({
               <textarea
                 id="scope"
                 value={receptionScope}
-                onChange={(e) => setReceptionScope(e.target.value)}
+                onChange={(e) => {
+                  setReceptionScope(e.target.value);
+                  markDirty();
+                }}
                 rows={4}
                 placeholder="Book tables, quote wait times, explain hours, take event enquiries…"
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
@@ -256,7 +360,10 @@ export function ReceptionistStudio({
               <textarea
                 id="intake"
                 value={intakePriorities}
-                onChange={(e) => setIntakePriorities(e.target.value)}
+                onChange={(e) => {
+                  setIntakePriorities(e.target.value);
+                  markDirty();
+                }}
                 rows={3}
                 placeholder="Party size, date/time, name, phone, dietary notes…"
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
@@ -270,7 +377,10 @@ export function ReceptionistStudio({
               <textarea
                 id="goal"
                 value={agentGoal}
-                onChange={(e) => setAgentGoal(e.target.value)}
+                onChange={(e) => {
+                  setAgentGoal(e.target.value);
+                  markDirty();
+                }}
                 rows={2}
                 placeholder="Book the table, capture the lead, or warm-transfer to a human…"
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
@@ -285,7 +395,10 @@ export function ReceptionistStudio({
                 <input
                   id="langs"
                   value={languagesNote}
-                  onChange={(e) => setLanguagesNote(e.target.value)}
+                  onChange={(e) => {
+                    setLanguagesNote(e.target.value);
+                    markDirty();
+                  }}
                   placeholder="English, Spanish…"
                   className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
@@ -297,7 +410,10 @@ export function ReceptionistStudio({
                 <input
                   id="escalation"
                   value={escalationPhone}
-                  onChange={(e) => setEscalationPhone(e.target.value)}
+                  onChange={(e) => {
+                    setEscalationPhone(e.target.value);
+                    markDirty();
+                  }}
                   placeholder="+34 …"
                   className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
@@ -340,7 +456,10 @@ export function ReceptionistStudio({
                 <textarea
                   id="custom-prompt"
                   value={agentPromptCustom}
-                  onChange={(e) => setAgentPromptCustom(e.target.value)}
+                  onChange={(e) => {
+                    setAgentPromptCustom(e.target.value);
+                    markDirty();
+                  }}
                   rows={10}
                   className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 font-mono text-[13px] leading-relaxed text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
@@ -349,12 +468,33 @@ export function ReceptionistStudio({
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-[#ddd6fe] bg-[#faf7ff]/80 p-6 shadow-sm md:p-8">
-          <h2 className="text-lg font-semibold text-[#0f172a]">Test as a guest</h2>
-          <p className="mt-1 text-sm text-[#64748b]">
-            Save first, then use the purple mic below. Pretend you&apos;re a customer calling to book — your
-            receptionist uses your personalised prompt plus your {bookingFlowSummary} setup.
-          </p>
+        <section id="test-live" className="rounded-[24px] border border-[#ddd6fe] bg-[#faf7ff]/80 p-6 shadow-sm md:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0f172a]">Test as a guest</h2>
+              <p className="mt-1 text-sm text-[#64748b]">
+                {liveReady
+                  ? isDirty
+                    ? "Save your edits first, then speak to your receptionist with the purple mic."
+                    : `Your saved receptionist is ready — uses your ${bookingFlowSummary} setup. Tap Test live above or the mic below.`
+                  : "Save once to create your Vapi assistant, then you can speak to them here."}
+              </p>
+            </div>
+            {liveReady ? (
+              <button
+                type="button"
+                disabled={isDirty}
+                onClick={openLiveDemo}
+                className={cn(
+                  buttonVariants({ variant: "default", size: "sm" }),
+                  "rounded-full px-4 font-semibold shadow-md shadow-[#7c3aed]/15 disabled:opacity-50",
+                )}
+              >
+                <Mic2 className="mr-2 inline h-4 w-4" aria-hidden />
+                Test live
+              </button>
+            ) : null}
+          </div>
 
           <ul className="mt-4 space-y-2 text-sm text-[#475569]">
             <li className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
@@ -387,12 +527,21 @@ export function ReceptionistStudio({
 
           <div className="mt-6">
             <h3 className="text-sm font-semibold text-[#0f172a]">Live voice — {trialName}</h3>
+            {isDirty && liveReady ? (
+              <p className="mt-2 text-sm text-amber-900">
+                Mic uses your last saved settings. Save again to apply voice and instruction changes.
+              </p>
+            ) : null}
             <div className="mt-4">
               <VoiceLiveTrial
+                key={liveTrialKey}
                 vapiAssistantId={vapiAssistantId}
                 vapiAssistantName={trialName}
                 vapiPublicKey={vapiPublicKey}
                 firstMessage={agentFirstMessage}
+                voiceName={selectedVoiceName}
+                disabled={isDirty}
+                onRequestTest={openLiveDemo}
               />
             </div>
             {vapiAssistantId ? (
@@ -482,8 +631,8 @@ export function ReceptionistStudio({
                     Test {trialName} live
                   </h2>
                   <p className="max-w-md text-sm leading-relaxed text-[#64748b]">
-                    Tap the purple mic and speak — your new prompt is already pushed to Vapi. You&apos;ll see speech
-                    bubbles appear as you talk back and forth.
+                    Tap the purple mic and speak — your saved prompt and {selectedVoiceName} voice are already on Vapi.
+                    Close anytime to edit settings above, then save and test again.
                   </p>
                 </motion.div>
 
@@ -494,10 +643,12 @@ export function ReceptionistStudio({
                   className="mt-6"
                 >
                   <VoiceLiveTrial
+                    key={`modal-${liveTrialKey}`}
                     vapiAssistantId={vapiAssistantId}
                     vapiAssistantName={trialName}
                     vapiPublicKey={vapiPublicKey}
                     firstMessage={agentFirstMessage}
+                    voiceName={selectedVoiceName}
                     onBubblesChange={(bs) => setTestBubbleCount(bs.length)}
                     onCallEnded={(transcript) => {
                       setTestTranscript(transcript);
@@ -590,9 +741,16 @@ export function ReceptionistStudio({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.55, duration: 0.3 }}
-                  className="mt-5 text-[12px] text-[#64748b]"
+                  className="mt-5 flex flex-wrap items-center gap-3 text-[12px] text-[#64748b]"
                 >
-                  Close this when you&apos;re ready — the form below stays editable for tweaks.
+                  <span>Need to tweak name, voice, or instructions?</span>
+                  <button
+                    type="button"
+                    onClick={scrollToEditor}
+                    className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline"
+                  >
+                    Keep editing
+                  </button>
                 </motion.p>
               </div>
             </motion.div>

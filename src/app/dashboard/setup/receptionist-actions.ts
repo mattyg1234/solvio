@@ -6,7 +6,12 @@ import { redirect } from "next/navigation";
 import { saveVoiceReceptionistSetup } from "@/app/dashboard/setup/actions";
 import { judgeCallAgainstCriteria, type JudgeVerdict } from "@/lib/call-success-judge";
 import { composeVoiceAgentPrompt } from "@/lib/compose-voice-agent-prompt";
-import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
+import { PLATFORM_ELEVENLABS_VOICE_MODEL, resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
+import {
+  findVoiceInLibrary,
+  isVoiceAllowedForTier,
+  type SubscriptionTier,
+} from "@/lib/solvio-voice-library";
 import {
   appendBookingContextToPrompt,
   bookingFlowKindLabel,
@@ -20,7 +25,14 @@ import { createMerchantVapiAssistant, syncVapiAssistantConfig } from "@/lib/vapi
 export type ReceptionistStudioSaveInput = VoiceReceptionistSaveInput & {
   businessId: string;
   businessName: string;
+  /** ElevenLabs voice id from the curated Solvio voice library. */
+  selectedVoiceId?: string;
 };
+
+function parseSubscriptionTier(raw: unknown): SubscriptionTier {
+  if (raw === "pro" || raw === "business" || raw === "scale" || raw === "enterprise") return raw;
+  return "trial";
+}
 
 export type ReceptionistStudioSaveResult =
   | { ok: true; assistantId: string; message: string }
@@ -70,17 +82,37 @@ export async function saveReceptionistStudioAction(
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { businessId, businessName, ...details } = input;
+  const { businessId, businessName, selectedVoiceId, ...details } = input;
 
   const receptionistName = details.receptionist_name?.trim() ?? "";
   const firstMessage = details.agent_first_message?.trim() ?? "";
 
+  const { data: bizRow } = await supabase
+    .from("businesses")
+    .select("subscription_tier")
+    .eq("id", businessId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  if (!bizRow) {
+    return { ok: false, message: "Business not found." };
+  }
+
+  const subscriptionTier = parseSubscriptionTier(bizRow.subscription_tier);
   const platformVoice = await resolvePlatformElevenLabsVoice();
-  if (!platformVoice.voiceId) {
+  const voiceIdCandidate = selectedVoiceId?.trim() || details.elevenlabs_voice_id?.trim() || "";
+  const chosenVoice = voiceIdCandidate
+    ? findVoiceInLibrary(voiceIdCandidate, platformVoice.voiceId)
+    : null;
+
+  if (!chosenVoice) {
+    return { ok: false, message: "Pick a voice from the library before saving." };
+  }
+
+  if (!isVoiceAllowedForTier(chosenVoice, subscriptionTier)) {
     return {
       ok: false,
-      message:
-        "Platform voice is not configured. Set SOLVIO_PLATFORM_ELEVENLABS_VOICE_ID to the same ElevenLabs voice as your homepage agent, then redeploy.",
+      message: `That voice needs a ${chosenVoice.minTier === "pro" ? "Pro" : chosenVoice.minTier} plan or above.`,
     };
   }
 
@@ -121,8 +153,8 @@ export async function saveReceptionistStudioAction(
   let assistantId = details.vapi_assistant_id?.trim() ?? "";
 
   const voicePatch = {
-    elevenlabsVoiceId: platformVoice.voiceId,
-    elevenlabsVoiceModel: platformVoice.model,
+    elevenlabsVoiceId: chosenVoice.id,
+    elevenlabsVoiceModel: PLATFORM_ELEVENLABS_VOICE_MODEL,
   };
 
   if (!assistantId) {
@@ -149,8 +181,8 @@ export async function saveReceptionistStudioAction(
     agent_prompt_custom: systemPrompt,
     vapi_assistant_id: assistantId,
     vapi_assistant_name: assistantLabel,
-    elevenlabs_voice_id: platformVoice.voiceId,
-    elevenlabs_voice_name: "Solvio platform voice",
+    elevenlabs_voice_id: chosenVoice.id,
+    elevenlabs_voice_name: chosenVoice.name,
   };
 
   await saveVoiceReceptionistSetup(businessId, payload);

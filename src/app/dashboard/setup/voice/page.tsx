@@ -7,6 +7,11 @@ import { voiceDetailsToClient } from "@/lib/voice-receptionist";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import { resolveMarketingVapiPublicKey } from "@/lib/marketing-vapi-config";
 import {
+  getSolvioVoiceLibraryForClient,
+  resolveDefaultVoiceSelection,
+  type SubscriptionTier,
+} from "@/lib/solvio-voice-library";
+import {
   bookingFlowKindLabel,
   labelGuestBookingModes,
 } from "@/lib/receptionist-booking-context";
@@ -68,7 +73,7 @@ export default async function VoiceSetupPage() {
   const { data: biz } = await supabase
     .from("businesses")
     .select(
-      "id,name,booking_slug,booking_flow_kind,booking_flow_details,voice_receptionist_details,voice_receptionist_completed_at",
+      "id,name,subscription_tier,booking_slug,booking_flow_kind,booking_flow_details,voice_receptionist_details,voice_receptionist_completed_at",
     )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
@@ -81,6 +86,19 @@ export default async function VoiceSetupPage() {
 
   const stored = parseStoredVoiceDetails(biz.voice_receptionist_details);
   const platformVoice = await resolvePlatformElevenLabsVoice();
+  const voiceLibrary = getSolvioVoiceLibraryForClient(platformVoice.voiceId);
+  const subscriptionTier: SubscriptionTier =
+    biz.subscription_tier === "pro" ||
+    biz.subscription_tier === "business" ||
+    biz.subscription_tier === "scale" ||
+    biz.subscription_tier === "enterprise"
+      ? biz.subscription_tier
+      : "trial";
+  const defaultVoice = resolveDefaultVoiceSelection(
+    subscriptionTier,
+    stored.elevenlabs_voice_id,
+    platformVoice.voiceId,
+  );
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
   const slug = typeof biz.booking_slug === "string" ? biz.booking_slug.trim() : "";
   const guestModes = parseGuestBookingModes(biz.booking_flow_details);
@@ -94,6 +112,10 @@ export default async function VoiceSetupPage() {
       voiceComplete={Boolean(biz.voice_receptionist_completed_at)}
       platformVoiceId={platformVoice.voiceId}
       platformVoiceSource={platformVoice.source}
+      voiceLibrary={voiceLibrary}
+      subscriptionTier={subscriptionTier}
+      defaultVoiceId={defaultVoice.id}
+      defaultVoiceName={defaultVoice.name}
       publicBookingUrl={slug ? `${siteUrl}/book/${encodeURIComponent(slug)}` : null}
       bookingFlowSummary={bookingFlowKindLabel(flowKind)}
       guestBookingModesLabel={guestModes.length ? labelGuestBookingModes(guestModes) : null}
