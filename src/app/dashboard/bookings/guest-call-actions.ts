@@ -9,7 +9,8 @@ import {
   formatBookingWhen,
   type BookingGuestCallPurpose,
 } from "@/lib/booking-guest-call";
-import { normalizePhoneE164 } from "@/lib/normalize-phone";
+import type { GuestCallPaymentContext } from "@/lib/booking-guest-call-tools";
+import { normalizePhoneE164WithFallbacks, type BookingPhoneDialCode } from "@/lib/normalize-phone";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { startOutboundCall } from "@/lib/vapi-outbound";
 import { getSolvioOutboundPhoneNumberId } from "@/lib/voice-platform-env";
@@ -20,9 +21,36 @@ type BusinessVoiceRow = {
   id: string;
   name: string;
   time_zone: string | null;
+  phone_number_country: string | null;
   vapi_phone_number_id: string | null;
   voice_receptionist_details: unknown;
+  booking_slug: string | null;
+  stripe_connect_account_id: string | null;
+  stripe_connect_charges_enabled: boolean | null;
 };
+
+function defaultDialForBusinessCountry(country: string | null | undefined): BookingPhoneDialCode {
+  switch (country?.trim().toUpperCase()) {
+    case "US":
+    case "CA":
+      return "+1";
+    case "ES":
+      return "+34";
+    case "IE":
+      return "+353";
+    case "FR":
+      return "+33";
+    case "DE":
+      return "+49";
+    case "IT":
+      return "+39";
+    case "AU":
+      return "+61";
+    case "GB":
+    default:
+      return "+44";
+  }
+}
 
 function parseReceptionist(details: unknown): { assistantId: string; name: string } {
   if (!details || typeof details !== "object") return { assistantId: "", name: "" };
@@ -49,11 +77,22 @@ async function loadOwnedBusiness(
 ): Promise<BusinessVoiceRow | null> {
   const { data } = await supabase
     .from("businesses")
-    .select("id,name,time_zone,vapi_phone_number_id,voice_receptionist_details")
+    .select(
+      "id,name,time_zone,phone_number_country,vapi_phone_number_id,voice_receptionist_details,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled",
+    )
     .eq("id", businessId)
     .eq("owner_id", userId)
     .maybeSingle();
   return (data as BusinessVoiceRow | null) ?? null;
+}
+
+function paymentContextForCall(business: BusinessVoiceRow, purpose: BookingGuestCallPurpose): GuestCallPaymentContext | undefined {
+  if (purpose === "booking_cancelled") return undefined;
+  const connectId = business.stripe_connect_account_id?.trim();
+  if (!connectId || !business.stripe_connect_charges_enabled || !business.booking_slug?.trim()) {
+    return undefined;
+  }
+  return { businessName: business.name };
 }
 
 async function placeGuestCall(params: {
@@ -69,9 +108,16 @@ async function placeGuestCall(params: {
   venueCalendarBookingId?: string;
   bookingRequestId?: string;
 }): Promise<GuestCallActionResult> {
-  const phone = normalizePhoneE164(params.guestPhone);
+  const phone = normalizePhoneE164WithFallbacks(
+    params.guestPhone,
+    defaultDialForBusinessCountry(params.business.phone_number_country),
+  );
   if (!phone) {
-    return { ok: false, message: "Guest phone isn't valid — use a mobile number with country code (e.g. +447…)." };
+    return {
+      ok: false,
+      message:
+        "Guest phone isn't valid for calling — edit the booking and save a mobile with country code (e.g. +44 7700 900123).",
+    };
   }
 
   const { assistantId, name: receptionistName } = parseReceptionist(params.business.voice_receptionist_details);
@@ -103,6 +149,8 @@ async function placeGuestCall(params: {
     receptionistName,
   });
 
+  const payment = paymentContextForCall(params.business, params.purpose);
+
   const callRes = await startOutboundCall({
     assistantId,
     toPhoneE164: phone,
@@ -110,10 +158,11 @@ async function placeGuestCall(params: {
     metadata: {
       solvio_business_id: params.business.id,
       solvio_call_purpose: params.purpose,
+      solvio_guest_phone: phone,
       ...(params.venueCalendarBookingId ? { solvio_venue_calendar_booking_id: params.venueCalendarBookingId } : {}),
       ...(params.bookingRequestId ? { solvio_booking_request_id: params.bookingRequestId } : {}),
     },
-    assistantOverrides: buildBookingGuestAssistantOverrides(script),
+    assistantOverrides: buildBookingGuestAssistantOverrides(script, payment),
   });
 
   if (!callRes.ok) return callRes;
@@ -161,7 +210,9 @@ async function placeGuestCall(params: {
   return {
     ok: true,
     callId: callRes.callId,
-    message: `Calling ${params.guestName} now — your receptionist will share the update.`,
+    message: payment
+      ? `Calling ${params.guestName} now — your receptionist can create the booking and text a secure deposit link during the call.`
+      : `Calling ${params.guestName} now — your receptionist will share the update.`,
   };
 }
 

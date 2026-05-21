@@ -1,5 +1,11 @@
 import { getSolvioVapiAgentAnthropicModel } from "@/lib/voice-platform-env";
 
+import {
+  appendPaymentCollectionPrompt,
+  buildDepositPaymentLinkTool,
+  type GuestCallPaymentContext,
+} from "@/lib/booking-guest-call-tools";
+
 export type BookingGuestCallPurpose =
   | "booking_updated"
   | "booking_cancelled"
@@ -109,15 +115,28 @@ export function composeBookingGuestCallScript(params: {
 }
 
 /** Vapi outbound override payload — mirrors merchant assistant stack. */
-export function buildBookingGuestAssistantOverrides(script: BookingGuestCallScript): Record<string, unknown> {
+export function buildBookingGuestAssistantOverrides(
+  script: BookingGuestCallScript,
+  payment?: GuestCallPaymentContext,
+): Record<string, unknown> {
+  const systemPrompt = payment
+    ? appendPaymentCollectionPrompt(script.systemPrompt, payment)
+    : script.systemPrompt;
+
+  const model: Record<string, unknown> = {
+    provider: "anthropic",
+    model: getSolvioVapiAgentAnthropicModel(),
+    messages: [{ role: "system", content: systemPrompt }],
+  };
+
+  if (payment) {
+    model.tools = [buildDepositPaymentLinkTool()];
+  }
+
   return {
     firstMessage: script.firstMessage,
     firstMessageMode: "assistant-speaks-first",
-    model: {
-      provider: "anthropic",
-      model: getSolvioVapiAgentAnthropicModel(),
-      messages: [{ role: "system", content: script.systemPrompt }],
-    },
+    model,
   };
 }
 

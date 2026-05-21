@@ -1,6 +1,7 @@
 "use server";
 
 import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { validateBookingPhone } from "@/lib/normalize-phone";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
 import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprint";
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
@@ -30,7 +31,9 @@ export async function submitBookingRequestAction(
 ): Promise<SubmitBookingState> {
   const customerName = String(formData.get("customer_name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
-  const phone = String(formData.get("phone") ?? "").trim();
+  const phoneDial = String(formData.get("phone_country_dial") ?? "+44").trim();
+  const phoneLocal = String(formData.get("phone_local") ?? "").trim();
+  const phoneLegacy = String(formData.get("phone") ?? "").trim();
   const preferredTimeRaw = String(formData.get("preferred_time") ?? "").trim();
   let notes = String(formData.get("notes") ?? "").trim();
   const eventTitle = String(formData.get("event_title") ?? "").trim();
@@ -111,6 +114,12 @@ export async function submitBookingRequestAction(
   if (!slug.trim()) {
     return { ok: false, message: "Invalid booking link." };
   }
+
+  const phoneCheck = validateBookingPhone(phoneDial, phoneLocal || phoneLegacy);
+  if (!phoneCheck.ok) {
+    return { ok: false, message: phoneCheck.message };
+  }
+  const phone = phoneCheck.e164;
 
   const supabase = await createSupabaseServerClient();
   const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });

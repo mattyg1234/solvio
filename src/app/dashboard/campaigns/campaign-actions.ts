@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { judgeCallAgainstCriteria, type JudgeVerdict } from "@/lib/call-success-judge";
+import {
+  buildCampaignFirstMessage,
+  buildCampaignSystemPrompt,
+  type CampaignIntakeFields,
+} from "@/lib/campaign-prompt-builder";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -22,7 +27,11 @@ export type CampaignSaveInput = {
   firstMessage?: string;
   systemPrompt?: string;
   successCriteria?: string;
+  /** Which fields the agent should actively try to capture on each call. */
+  intakeFields?: CampaignIntakeFields;
 };
+
+export type { CampaignIntakeFields };
 
 export type CampaignSaveResult =
   | { ok: true; campaignId: string; assistantId: string; message: string }
@@ -77,12 +86,22 @@ export async function upsertCampaignAction(input: CampaignSaveInput): Promise<Ca
       };
     }
 
-    const systemPrompt =
+    const basePrompt =
       input.systemPrompt?.trim() ||
       "You are a friendly outbound agent. Introduce yourself politely, state who you are calling on behalf of, ask the questions in the success criteria, and thank them for their time.";
+    const systemPrompt = buildCampaignSystemPrompt({
+      basePrompt,
+      businessName: input.businessName,
+      agentName: input.agentName,
+      intakeFields: input.intakeFields,
+    });
     const firstMessage =
       input.firstMessage?.trim() ||
-      `Hi, this is ${input.agentName?.trim() || "your AI assistant"} calling from ${input.businessName}. Have you got a minute?`;
+      buildCampaignFirstMessage({
+        agentName: input.agentName,
+        businessName: input.businessName,
+        goal: input.successCriteria,
+      });
     const assistantLabel = vapiCampaignLabel(input.businessName, name, input.agentName);
 
     let campaignId = input.campaignId?.trim() || "";
@@ -230,6 +249,7 @@ export async function improveCampaignPromptAction(input: {
   draftPrompt?: string;
   successCriteria?: string;
   goal?: string;
+  intakeFields?: CampaignIntakeFields;
 }): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   await requireUser();
   const apiKey = getSolvioOpenAiApiKey();
@@ -248,7 +268,7 @@ export async function improveCampaignPromptAction(input: {
     input.goal?.trim() ? `Bigger campaign goal: ${input.goal.trim()}` : null,
     input.draftPrompt?.trim() ? `\nCURRENT DRAFT (refine this):\n${input.draftPrompt.trim()}` : null,
     "",
-    "Write a complete system prompt for an outbound voice agent. Structure with headings: Role, Personality & tone, Conversation flow, Required information capture, Boundaries (no aggressive selling, hang up if they ask to stop), Closing. Keep sentences short and conversational. Do not invent business specifics not given above.",
+    "Write the CORE system prompt for an outbound voice agent (Role, Personality & tone, Conversation flow, Closing). Do NOT include intake capture or boundary sections — those are appended automatically. Keep sentences short and conversational. Do not invent business specifics not given above.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -279,7 +299,15 @@ export async function improveCampaignPromptAction(input: {
     return { ok: false, message: `OpenAI returned ${res.status}.` };
   }
   const body = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const text = body.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!text) return { ok: false, message: "OpenAI returned an empty draft." };
+  const raw = body.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!raw) return { ok: false, message: "OpenAI returned an empty draft." };
+
+  // Wrap the GPT-generated core with our standardised intake + boundary section
+  const text = buildCampaignSystemPrompt({
+    basePrompt: raw,
+    businessName: input.businessName,
+    agentName: input.agentName,
+    intakeFields: input.intakeFields,
+  });
   return { ok: true, text };
 }

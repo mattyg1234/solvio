@@ -55,13 +55,17 @@ async function loadBookingContext(businessId: string): Promise<ReceptionistBooki
   const supabase = await createSupabaseServerClient();
   const { data: biz } = await supabase
     .from("businesses")
-    .select("booking_slug,booking_flow_kind,booking_flow_details")
+    .select(
+      "booking_slug,booking_flow_kind,booking_flow_details,stripe_connect_account_id,stripe_connect_charges_enabled",
+    )
     .eq("id", businessId)
     .maybeSingle();
 
   const slug = typeof biz?.booking_slug === "string" ? biz.booking_slug.trim() : "";
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
   const publicBookingUrl = slug ? `${siteUrl}/book/${encodeURIComponent(slug)}` : null;
+  const connectId = typeof biz?.stripe_connect_account_id === "string" ? biz.stripe_connect_account_id.trim() : "";
+  const depositSmsEnabled = Boolean(connectId && biz?.stripe_connect_charges_enabled && slug);
 
   return {
     publicBookingUrl,
@@ -69,6 +73,7 @@ async function loadBookingContext(businessId: string): Promise<ReceptionistBooki
       typeof biz?.booking_flow_kind === "string" ? biz.booking_flow_kind : null,
     ),
     guestBookingModes: parseGuestBookingModes(biz?.booking_flow_details),
+    depositSmsEnabled,
   };
 }
 
@@ -162,6 +167,7 @@ export async function saveReceptionistStudioAction(
       assistantName: assistantLabel,
       firstMessage,
       systemPrompt,
+      includeDepositTool: bookingContext.depositSmsEnabled,
       ...voicePatch,
     });
     if (!created.ok) return { ok: false, message: created.message };
@@ -171,6 +177,7 @@ export async function saveReceptionistStudioAction(
       assistantName: assistantLabel,
       firstMessage,
       systemPrompt,
+      includeDepositTool: bookingContext.depositSmsEnabled,
       ...voicePatch,
     });
     if (!synced.ok) return { ok: false, message: synced.message };
@@ -193,9 +200,11 @@ export async function saveReceptionistStudioAction(
   return {
     ok: true,
     assistantId,
-    message: bookingContext.publicBookingUrl
-      ? "Saved — tap the purple mic and pretend to book a table. Real bookings land on your public page or in Dashboard → Bookings after guests submit."
-      : "Saved — tap the purple mic to role-play a call. Publish a booking link under Bookings to connect voice with your live table page.",
+    message: bookingContext.depositSmsEnabled
+      ? "Saved — callers can book on the phone and get a deposit link by text. Tap the purple mic to role-play a booking."
+      : bookingContext.publicBookingUrl
+        ? "Saved — tap the purple mic and pretend to book a table. Connect Stripe under Payments to text deposit links on calls."
+        : "Saved — tap the purple mic to role-play a call. Publish a booking link under Bookings to connect voice with your live table page.",
   };
 }
 

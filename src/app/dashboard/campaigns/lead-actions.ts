@@ -165,6 +165,46 @@ export async function deleteLeadAction(leadId: string, campaignId: string) {
   revalidatePath(`/dashboard/campaigns/${campaignId}`);
 }
 
+/** Export all leads for a campaign as a CSV string. */
+export async function exportLeadsCSVAction(campaignId: string): Promise<
+  { ok: true; csv: string; filename: string } | { ok: false; message: string }
+> {
+  const { supabase, user } = await requireUser();
+  const c = await assertOwnsCampaign(supabase, user.id, campaignId);
+
+  const { data: leads, error } = await supabase
+    .from("voice_outbound_leads")
+    .select(
+      "phone,name,business_name,email,address_line1,city,postcode,country,interest_level,intake_notes,status,attempts,notes,created_at"
+    )
+    .eq("campaign_id", campaignId)
+    .eq("business_id", c.business_id)
+    .order("interest_level", { ascending: true, nullsFirst: false })
+    .order("created_at");
+
+  if (error) return { ok: false, message: error.message };
+  if (!leads || leads.length === 0) return { ok: false, message: "No leads to export." };
+
+  const cols = [
+    "phone", "name", "business_name", "email",
+    "address_line1", "city", "postcode", "country",
+    "interest_level", "intake_notes", "status", "attempts",
+    "notes", "created_at",
+  ];
+
+  const esc = (v: unknown): string => {
+    const s = v == null ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const rows = leads.map((l) => cols.map((col) => esc((l as Record<string, unknown>)[col])).join(","));
+  const csv = [cols.join(","), ...rows].join("\n");
+
+  const slug = c.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40);
+  const date = new Date().toISOString().slice(0, 10);
+  return { ok: true, csv, filename: `leads-${slug}-${date}.csv` };
+}
+
 /** Dial a single lead now (deducts 1 credit). */
 export async function dialLeadNowAction(params: {
   leadId: string;

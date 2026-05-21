@@ -26,6 +26,7 @@ import {
   tableBlockedByHostedShowMessage,
 } from "@/lib/booking-table-rules";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
+import { PhoneWithCountryCode } from "@/components/booking/phone-with-country-code";
 import {
   type AppointmentSlotChoice,
   buildAppointmentSlotChoices,
@@ -925,14 +926,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               placeholder="Email address"
             />
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              autoComplete="tel"
-              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-              placeholder="Phone (recommended)"
-            />
+            <PhoneWithCountryCode required localPlaceholder="7700 900123" />
             <textarea
               id="notes"
               name="notes"

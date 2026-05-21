@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 
+import { getDeploymentSiteUrl as getDeploymentSiteUrlSync } from "@/lib/deployment-site-url";
+
 /** Absolute origin for building public links (booking URLs, emails). Server-only. */
 export async function getSiteUrl(): Promise<string> {
   const h = await headers();
@@ -13,4 +15,9 @@ export async function getSiteUrl(): Promise<string> {
     return `${proto}://${host}`;
   }
   return env ?? "http://localhost:3000";
+}
+
+/** Sync site origin for webhooks / background jobs without request headers. */
+export function getDeploymentSiteUrl(): string {
+  return getDeploymentSiteUrlSync();
 }

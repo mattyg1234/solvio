@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { judgeCallAgainstCriteria } from "@/lib/call-success-judge";
+import { extractLeadIntakeFromTranscript } from "@/lib/campaign-lead-extraction";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getSolvioVapiWebhookSecret } from "@/lib/voice-platform-env";
 
@@ -237,7 +238,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // Update lead status
+  // Update lead status + run post-call intake extraction
   if (leadId) {
     const leadStatus =
       verdict === "voicemail" || verdict === "no_answer"
@@ -247,6 +248,47 @@ export async function POST(req: Request) {
       .from("voice_outbound_leads")
       .update({ status: leadStatus })
       .eq("id", leadId);
+
+    // Enrich lead with structured intake extracted from transcript (fire-and-forget)
+    if (transcript.length > 60) {
+      try {
+        // Fetch campaign success_criteria to guide extraction
+        let intakeCriteria: string | undefined;
+        let campaignGoal: string | undefined;
+        if (campaignId || existing?.campaign_id) {
+          const { data: camp } = await admin
+            .from("voice_campaigns")
+            .select("success_criteria, name")
+            .eq("id", campaignId || existing?.campaign_id || "")
+            .maybeSingle();
+          intakeCriteria = camp?.success_criteria ?? undefined;
+          campaignGoal = camp?.name ?? undefined;
+        }
+
+        const intake = await extractLeadIntakeFromTranscript({ transcript, successCriteria: intakeCriteria, campaignGoal });
+        if (intake) {
+          const patch: Record<string, unknown> = {
+            intake_json: intake.extra && Object.keys(intake.extra).length ? intake.extra : {},
+            extracted_at: new Date().toISOString(),
+          };
+          if (intake.name) patch.name = intake.name;
+          if (intake.email) patch.email = intake.email;
+          if (intake.address_line1) patch.address_line1 = intake.address_line1;
+          if (intake.city) patch.city = intake.city;
+          if (intake.postcode) patch.postcode = intake.postcode;
+          if (intake.country) patch.country = intake.country;
+          if (intake.interest_level) patch.interest_level = intake.interest_level;
+          if (intake.intake_notes) patch.intake_notes = intake.intake_notes;
+
+          await admin
+            .from("voice_outbound_leads")
+            .update(patch)
+            .eq("id", leadId);
+        }
+      } catch {
+        // Extraction is best-effort — never fail the webhook
+      }
+    }
   }
 
   // Bump campaign counters

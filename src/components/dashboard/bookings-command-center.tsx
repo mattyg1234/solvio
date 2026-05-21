@@ -3,6 +3,7 @@ import {
   Armchair,
   CalendarCheck,
   CalendarDays,
+  CalendarRange,
   Inbox,
   Link2,
   PartyPopper,
@@ -78,6 +79,13 @@ export function BookingsCommandCenter({
   bookingFlowComplete,
 }: BookingsCommandCenterProps) {
   const findTiles: TileDef[] = [
+    {
+      href: "/dashboard/bookings#booking-calendar",
+      label: "Booking calendar",
+      hint: "Month view with guest headcount — tap a day to manage bookings and call guests.",
+      Icon: CalendarRange,
+      active: false,
+    },
     {
       href: "/dashboard/bookings?tab=guests&view=inbox#bookings-workspace",
       label: "Incoming requests",

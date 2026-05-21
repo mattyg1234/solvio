@@ -4,7 +4,8 @@ import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export async function createBookingDepositCheckoutSession(args: {
-  bookingRequestId: string;
+  bookingRequestId?: string;
+  venueCalendarBookingId?: string;
   businessId: string;
   connectAccountId: string;
   amountCents: number;
@@ -14,6 +15,10 @@ export async function createBookingDepositCheckoutSession(args: {
 }): Promise<string | null> {
   const stripe = stripeClient();
   if (!stripe) return null;
+
+  const bookingRequestId = args.bookingRequestId?.trim() || "";
+  const venueCalendarBookingId = args.venueCalendarBookingId?.trim() || "";
+  if (!bookingRequestId && !venueCalendarBookingId) return null;
 
   const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
   const amount = Math.max(50, Math.floor(args.amountCents));
@@ -55,7 +60,8 @@ export async function createBookingDepositCheckoutSession(args: {
             }
           : undefined,
       metadata: {
-        solvio_booking_request_id: args.bookingRequestId,
+        ...(bookingRequestId ? { solvio_booking_request_id: bookingRequestId } : {}),
+        ...(venueCalendarBookingId ? { solvio_venue_calendar_booking_id: venueCalendarBookingId } : {}),
         solvio_business_id: args.businessId,
         solvio_booking_slug: args.slug,
         solvio_platform_fee_cents: String(platformFeeCents),
@@ -69,15 +75,17 @@ export async function createBookingDepositCheckoutSession(args: {
   if (!session.url) return null;
 
   const supabase = createSupabaseServiceRoleClient();
-  await supabase
-    .from("booking_requests")
-    .update({
-      payment_status: "pending",
-      stripe_checkout_session_id: session.id,
-      deposit_amount_cents: amount,
-    })
-    .eq("id", args.bookingRequestId)
-    .eq("business_id", args.businessId);
+  if (bookingRequestId) {
+    await supabase
+      .from("booking_requests")
+      .update({
+        payment_status: "pending",
+        stripe_checkout_session_id: session.id,
+        deposit_amount_cents: amount,
+      })
+      .eq("id", bookingRequestId)
+      .eq("business_id", args.businessId);
+  }
 
   return session.url;
 }

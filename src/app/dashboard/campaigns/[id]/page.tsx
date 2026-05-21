@@ -56,8 +56,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const { data: leadsData } = await supabase
     .from("voice_outbound_leads")
-    .select("id, phone, name, business_name, status, attempts, last_attempted_at, source")
+    .select(
+      "id, phone, name, business_name, email, address_line1, city, postcode, interest_level, intake_notes, status, attempts, last_attempted_at, source"
+    )
     .eq("campaign_id", campaign.id)
+    .order("interest_level", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(500);
   const leads = (leadsData ?? []) as LeadRow[];

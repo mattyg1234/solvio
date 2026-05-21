@@ -2,6 +2,8 @@ export type ReceptionistBookingContext = {
   publicBookingUrl: string | null;
   bookingFlowLabel: string;
   guestBookingModes: string[];
+  /** Stripe Connect live — AI can create bookings and text deposit links on calls. */
+  depositSmsEnabled?: boolean;
 };
 
 const MODE_LABELS: Record<string, string> = {
@@ -45,14 +47,22 @@ export function appendBookingContextToPrompt(base: string, ctx: ReceptionistBook
     ctx.guestBookingModes.length
       ? `Online guests can request: ${labelGuestBookingModes(ctx.guestBookingModes)}.`
       : null,
-    ctx.publicBookingUrl
-      ? `Public booking page (share with callers who prefer self-serve): ${ctx.publicBookingUrl}`
-      : "No public booking link is published yet — capture details on the call and tell the team you logged the enquiry.",
+    ctx.depositSmsEnabled
+      ? "Deposits are live — you can secure bookings on this call and text a Stripe payment link (never read URLs aloud)."
+      : ctx.publicBookingUrl
+        ? `Public booking page (only if they insist on self-serve): ${ctx.publicBookingUrl}`
+        : "No public booking link is published yet — capture details on the call and tell the team you logged the enquiry.",
     "",
     "When someone wants a table or appointment:",
     "- Ask party size, preferred date and time, name, phone, and any notes (allergies, occasion, accessibility).",
     "- Repeat details back before ending the call.",
-    "- Offer the booking page link when they want to confirm online or pay a deposit.",
+    ctx.depositSmsEnabled
+      ? [
+          "- When they agree to pay a deposit to confirm, call send_deposit_payment_link with their name, date (YYYY-MM-DD), time, party size, and notes.",
+          "- That creates their booking and texts them a secure payment link with all details — do NOT read URLs or tell them to visit a website.",
+          "- Say: 'I've texted you your booking details and a secure payment link — open the text when you're ready.'",
+        ].join("\n")
+      : "- Offer the booking page link when they want to confirm online or pay a deposit.",
     "- Never invent availability or prices — if unsure, offer to have the team call back.",
     "",
     "Dashboard purple-mic preview: role-play as a guest (e.g. “table for four Friday at eight”) so the venue owner hears how you handle their flow.",

@@ -27,10 +27,33 @@ function parsePreferredTime(text: string | null | undefined): { h: number; m: nu
 
 async function markBookingPaid(session: Stripe.Checkout.Session) {
   const bookingId = session.metadata?.solvio_booking_request_id?.trim();
-  if (!bookingId) return;
+  const venueBookingId = session.metadata?.solvio_venue_calendar_booking_id?.trim();
+  if (!bookingId && !venueBookingId) return;
 
   try {
     const admin = createSupabaseServiceRoleClient();
+
+    if (venueBookingId) {
+      const { data: vc } = await admin
+        .from("venue_calendar_bookings")
+        .select("id,internal_notes,status")
+        .eq("id", venueBookingId)
+        .maybeSingle();
+      if (vc) {
+        const note = "Deposit paid via Stripe — booking confirmed.";
+        const prev = vc.internal_notes?.trim();
+        await admin
+          .from("venue_calendar_bookings")
+          .update({
+            status: "confirmed",
+            internal_notes: prev ? `${prev}\n${note}` : note,
+          })
+          .eq("id", venueBookingId);
+      }
+    }
+
+    if (!bookingId) return;
+
     // 1) Mark request as paid
     await admin
       .from("booking_requests")

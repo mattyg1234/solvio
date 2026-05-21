@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
+import { BookingsOverviewCalendar } from "@/components/dashboard/bookings-overview-calendar";
 import {
   BookingOperationsHub,
   type AppointmentWeekRow,
@@ -161,8 +162,11 @@ export default async function DashboardBookingsPage({
   let confirmedBookings: VenueCalendarBookingRow[] = [];
 
   const calendarSince = new Date();
-  calendarSince.setDate(calendarSince.getDate() - 14);
+  calendarSince.setDate(calendarSince.getDate() - 90);
   const calendarSinceIso = calendarSince.toISOString();
+  const calendarUntil = new Date();
+  calendarUntil.setDate(calendarUntil.getDate() + 180);
+  const calendarUntilIso = calendarUntil.toISOString();
 
   if (primaryBizId) {
     const [ah, se, ev, tb, qu, vc, tbwh] = await Promise.all([
@@ -176,8 +180,9 @@ export default async function DashboardBookingsPage({
         .select("*")
         .eq("business_id", primaryBizId)
         .gte("starts_at", calendarSinceIso)
+        .lte("starts_at", calendarUntilIso)
         .order("starts_at", { ascending: true })
-        .limit(200),
+        .limit(500),
       supabase.from("floor_plan_table_weekday_hours").select("*").eq("business_id", primaryBizId).order("weekday"),
     ]);
 
@@ -255,6 +260,45 @@ export default async function DashboardBookingsPage({
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Overview
       </Link>
+
+      {primaryBizId && primaryBizName ? (
+        <div id="booking-calendar" className="scroll-mt-6">
+          <BookingsOverviewCalendar
+            businessId={primaryBizId}
+            businessName={primaryBizName}
+            venueTimeZone={primaryVenueTz}
+            events={hostedEventsForClient.map((ev) => ({
+              id: ev.id,
+              title: ev.title,
+              starts_at: ev.starts_at,
+              ends_at: ev.ends_at,
+              recurrence: ev.recurrence,
+              cancelled_at: ev.cancelled_at,
+              deleted_at: ev.deleted_at,
+              capacity: ev.capacity,
+            }))}
+            bookings={confirmedBookings.map((b) => ({
+              id: b.id,
+              title: b.title,
+              booking_kind: b.booking_kind,
+              starts_at: b.starts_at,
+              ends_at: b.ends_at,
+              guest_name: b.guest_name,
+              guest_email: b.guest_email,
+              guest_phone: b.guest_phone,
+              guest_count: b.guest_count,
+              floor_plan_table_id: b.floor_plan_table_id,
+              business_event_id: b.business_event_id,
+              status: b.status,
+              internal_notes: b.internal_notes,
+            }))}
+            tables={floorTables.map((t) => ({ id: t.id, label: t.label }))}
+            eventOptions={hostedEventsForClient
+              .filter((e) => !e.cancelled_at && !e.deleted_at)
+              .map((e) => ({ id: e.id, title: e.title }))}
+          />
+        </div>
+      ) : null}
 
       <BookingsCommandCenter
         inboxCount={inboxRequests.length}

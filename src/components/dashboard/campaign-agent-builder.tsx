@@ -8,6 +8,7 @@ import {
   improveCampaignPromptAction,
   judgeTestCallAction,
   upsertCampaignAction,
+  type CampaignIntakeFields,
   type CampaignSaveInput,
 } from "@/app/dashboard/campaigns/campaign-actions";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
@@ -23,6 +24,7 @@ type CampaignDraft = {
   systemPrompt?: string;
   successCriteria?: string;
   vapiAssistantId?: string;
+  intakeFields?: CampaignIntakeFields;
 };
 
 type CampaignAgentBuilderProps = {
@@ -47,6 +49,9 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
   const [firstMessage, setFirstMessage] = useState(initial.firstMessage ?? "");
   const [systemPrompt, setSystemPrompt] = useState(initial.systemPrompt ?? "");
   const [successCriteria, setSuccessCriteria] = useState(initial.successCriteria ?? "");
+  const [intakeEmail, setIntakeEmail] = useState(initial.intakeFields?.email !== false);
+  const [intakeAddress, setIntakeAddress] = useState(initial.intakeFields?.address === true);
+  const [intakePreferences, setIntakePreferences] = useState(initial.intakeFields?.preferences !== false);
 
   const [pending, startTransition] = useTransition();
   const [improvePending, setImprovePending] = useState(false);
@@ -61,6 +66,10 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
     reasoning: string;
   } | null>(null);
 
+  function buildIntakeFields(): CampaignIntakeFields {
+    return { email: intakeEmail, address: intakeAddress, preferences: intakePreferences };
+  }
+
   async function handleImprovePrompt() {
     setImprovePending(true);
     try {
@@ -70,6 +79,7 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
         agentName,
         draftPrompt: systemPrompt,
         successCriteria,
+        intakeFields: buildIntakeFields(),
       });
       if (res.ok) {
         setSystemPrompt(res.text);
@@ -97,6 +107,7 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
           firstMessage,
           systemPrompt,
           successCriteria,
+          intakeFields: buildIntakeFields(),
         };
         const res = await upsertCampaignAction(input);
         setSaveOk(res.ok);
@@ -240,6 +251,76 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[24px] border border-[#ebe7f7] bg-white p-6 shadow-sm md:p-8">
+        <h2 className="text-lg font-semibold text-[#0f172a]">What to capture on each call</h2>
+        <p className="mt-1 text-sm text-[#64748b]">
+          The AI will always confirm the contact&apos;s name and gauge interest level. Toggle additional fields below.
+          Captured data is enriched automatically after every call and available in your leads export.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {/* Name is always on */}
+          <div className="flex items-start gap-3 rounded-xl border border-[#ebe7f7] bg-[#fafbff] p-3">
+            <div className="mt-0.5 h-4 w-4 flex-shrink-0 rounded bg-[#7c3aed]" aria-hidden />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">Name (always on)</p>
+              <p className="text-xs text-[#64748b]">The agent confirms the contact&apos;s name and corrects any errors.</p>
+            </div>
+          </div>
+          {/* Interest level is always on */}
+          <div className="flex items-start gap-3 rounded-xl border border-[#ebe7f7] bg-[#fafbff] p-3">
+            <div className="mt-0.5 h-4 w-4 flex-shrink-0 rounded bg-[#7c3aed]" aria-hidden />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">Interest level (always on)</p>
+              <p className="text-xs text-[#64748b]">Hot · Warm · Cold · Not interested — scored after each call.</p>
+            </div>
+          </div>
+          {/* Email toggle */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#ebe7f7] bg-white p-3 hover:border-[#c4b5fd]">
+            <input
+              type="checkbox"
+              checked={intakeEmail}
+              onChange={(e) => setIntakeEmail(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#7c3aed]"
+            />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">Email address</p>
+              <p className="text-xs text-[#64748b]">
+                &ldquo;Could I take an email so we can send you the details?&rdquo;
+              </p>
+            </div>
+          </label>
+          {/* Address toggle */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#ebe7f7] bg-white p-3 hover:border-[#c4b5fd]">
+            <input
+              type="checkbox"
+              checked={intakeAddress}
+              onChange={(e) => setIntakeAddress(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#7c3aed]"
+            />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">Address / postcode</p>
+              <p className="text-xs text-[#64748b]">Useful for local targeting, delivery, or events. Only ask if relevant.</p>
+            </div>
+          </label>
+          {/* Preferences toggle */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#ebe7f7] bg-white p-3 hover:border-[#c4b5fd]">
+            <input
+              type="checkbox"
+              checked={intakePreferences}
+              onChange={(e) => setIntakePreferences(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#7c3aed]"
+            />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">Preferences & notes</p>
+              <p className="text-xs text-[#64748b]">Preferred times, occasion, party size, anything else useful for follow-up.</p>
+            </div>
+          </label>
+        </div>
+        <p className="mt-4 text-xs text-[#94a3b8]">
+          All captured data is exported in the leads CSV. Hot and warm leads are highlighted at the top of your list.
+        </p>
       </section>
 
       <div className="fixed bottom-16 left-0 right-0 z-30 border-t border-[#ebe7f7]/90 bg-white/95 px-4 py-4 backdrop-blur-xl md:bottom-0 md:pl-64">

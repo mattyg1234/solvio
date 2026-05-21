@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Loader2, Phone, PhoneCall, Plus, Trash2, Upload } from "lucide-react";
+import { Download, Loader2, Phone, PhoneCall, Plus, Trash2, Upload } from "lucide-react";
 
 import {
   addLeadAction,
   deleteLeadAction,
   dialLeadNowAction,
+  exportLeadsCSVAction,
   uploadLeadsCsvAction,
 } from "@/app/dashboard/campaigns/lead-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -18,6 +19,12 @@ export type LeadRow = {
   phone: string;
   name: string | null;
   business_name: string | null;
+  email: string | null;
+  address_line1: string | null;
+  city: string | null;
+  postcode: string | null;
+  interest_level: "hot" | "warm" | "cold" | "not_interested" | null;
+  intake_notes: string | null;
   status: string;
   attempts: number;
   last_attempted_at: string | null;
@@ -46,6 +53,22 @@ function statusBadge(status: string) {
   );
 }
 
+function interestBadge(level: LeadRow["interest_level"]) {
+  if (!level) return null;
+  const map: Record<NonNullable<LeadRow["interest_level"]>, { label: string; cls: string }> = {
+    hot: { label: "🔥 Hot", cls: "bg-orange-50 text-orange-800 ring-orange-200" },
+    warm: { label: "☀️ Warm", cls: "bg-amber-50 text-amber-800 ring-amber-100" },
+    cold: { label: "🧊 Cold", cls: "bg-sky-50 text-sky-800 ring-sky-100" },
+    not_interested: { label: "✗ Not interested", cls: "bg-zinc-50 text-zinc-600 ring-zinc-200" },
+  };
+  const e = map[level];
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", e.cls)}>
+      {e.label}
+    </span>
+  );
+}
+
 export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -61,6 +84,9 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
   // CSV upload
   const [csvText, setCsvText] = useState("");
   const [showUpload, setShowUpload] = useState(false);
+
+  // Notes expand
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -113,17 +139,64 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
     });
   }
 
+  function handleExport() {
+    run(async () => {
+      const res = await exportLeadsCSVAction(campaignId);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      // Trigger browser download
+      const blob = new Blob([res.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  const hotLeads = leads.filter((l) => l.interest_level === "hot").length;
+  const warmLeads = leads.filter((l) => l.interest_level === "warm").length;
+
   return (
     <section className="rounded-[24px] border border-[#ebe7f7] bg-white p-6 shadow-sm md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[#0f172a]">Leads</h2>
           <p className="mt-1 text-sm text-[#64748b]">
-            Add one at a time or paste a CSV (columns: phone, name, business). UK numbers starting with 07… auto-convert
-            to +44.
+            Add one at a time or paste a CSV. After each call, the AI automatically captures name, email, address and
+            interest level from the conversation.
           </p>
+          {(hotLeads > 0 || warmLeads > 0) && (
+            <div className="mt-2 flex gap-2">
+              {hotLeads > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
+                  🔥 {hotLeads} hot {hotLeads === 1 ? "lead" : "leads"}
+                </span>
+              )}
+              {warmLeads > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
+                  ☀️ {warmLeads} warm {warmLeads === 1 ? "lead" : "leads"}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleExport}
+            disabled={pending || leads.length === 0}
+            className="rounded-full font-semibold"
+          >
+            <Download className="mr-1.5 inline h-4 w-4" aria-hidden />
+            Export CSV
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -185,15 +258,13 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
       {showUpload ? (
         <div className="mt-5 space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] p-4">
           <p className="text-xs text-[#64748b]">
-            Paste a CSV — first row can be header (phone, name, business) or just data. Max 2,000 rows per upload.
+            Paste a CSV — columns: phone, name, business (or just a column of phone numbers). Max 2,000 rows per upload.
           </p>
           <textarea
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
             rows={6}
-            placeholder={`phone,name,business
-+447700111222,Sarah Patel,The Riverside
-07700333444,John Lee,Lee Cafe`}
+            placeholder={`phone,name,business\n+447700111222,Sarah Patel,The Riverside\n07700333444,John Lee,Lee Cafe`}
             className="w-full rounded-xl border border-[#ebe7f7] bg-white px-3 py-2 font-mono text-[12px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
           />
           <Button type="button" disabled={pending || !csvText.trim()} onClick={handleUpload} className="rounded-full font-semibold">
@@ -204,71 +275,106 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
       ) : null}
 
       <div className="mt-6 overflow-x-auto rounded-2xl border border-[#f1eefc]">
-        <table className="w-full min-w-[700px] text-left text-sm">
+        <table className="w-full min-w-[800px] text-left text-sm">
           <thead className="border-b border-[#ebe7f7] bg-[#fafbff] text-[11px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
             <tr>
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Phone</th>
+              <th className="px-4 py-3">Interest</th>
+              <th className="px-4 py-3">Intake</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Attempts</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {leads.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-[#64748b]">
+                <td colSpan={6} className="px-4 py-10 text-center text-[#64748b]">
                   No leads yet. Use the buttons above to add one or upload a CSV.
                 </td>
               </tr>
             ) : (
               leads.map((l) => (
-                <tr key={l.id} className="border-b border-[#f8fafc]">
-                  <td className="px-4 py-3">
-                    <p className="font-semibold text-[#0f172a]">{l.name?.trim() || "—"}</p>
-                    {l.business_name ? <p className="text-xs text-[#64748b]">{l.business_name}</p> : null}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-[12px] text-[#475569]">{l.phone}</td>
-                  <td className="px-4 py-3 align-middle">{statusBadge(l.status)}</td>
-                  <td className="px-4 py-3 text-[#475569]">{l.attempts}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      {l.status === "queued" || l.status === "failed" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => handleDial(l.id)}
-                          className="h-8 rounded-full px-3 text-[11px] font-semibold"
-                        >
-                          {pending ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                          ) : (
-                            <>
-                              <PhoneCall className="mr-1 h-3.5 w-3.5" aria-hidden />
-                              Dial now
-                            </>
-                          )}
-                        </Button>
+                <>
+                  <tr key={l.id} className="border-b border-[#f8fafc]">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-[#0f172a]">{l.name?.trim() || "—"}</p>
+                      {l.business_name ? <p className="text-xs text-[#64748b]">{l.business_name}</p> : null}
+                      {l.email ? <p className="text-xs text-[#5b21b6]">{l.email}</p> : null}
+                      {(l.city || l.postcode) ? (
+                        <p className="text-xs text-[#64748b]">
+                          {[l.city, l.postcode].filter(Boolean).join(", ")}
+                        </p>
                       ) : null}
-                      <a
-                        href={`tel:${l.phone}`}
-                        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 rounded-full px-2 text-[#5b21b6]")}
-                      >
-                        <Phone className="h-3.5 w-3.5" aria-hidden />
-                      </a>
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => handleDelete(l.id)}
-                        className="rounded-full p-1.5 text-rose-700 hover:bg-rose-50"
-                        aria-label="Delete lead"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[12px] text-[#475569]">{l.phone}</td>
+                    <td className="px-4 py-3 align-middle">{interestBadge(l.interest_level)}</td>
+                    <td className="px-4 py-3 max-w-[200px]">
+                      {l.intake_notes ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}
+                          className="text-left text-xs text-[#5b21b6] hover:underline line-clamp-2"
+                          title={expandedId === l.id ? "Click to collapse" : "Click to expand"}
+                        >
+                          {l.intake_notes}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[#94a3b8]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle">{statusBadge(l.status)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        {l.status === "queued" || l.status === "failed" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => handleDial(l.id)}
+                            className="h-8 rounded-full px-3 text-[11px] font-semibold"
+                          >
+                            {pending ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            ) : (
+                              <>
+                                <PhoneCall className="mr-1 h-3.5 w-3.5" aria-hidden />
+                                Dial now
+                              </>
+                            )}
+                          </Button>
+                        ) : null}
+                        <a
+                          href={`tel:${l.phone}`}
+                          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 rounded-full px-2 text-[#5b21b6]")}
+                        >
+                          <Phone className="h-3.5 w-3.5" aria-hidden />
+                        </a>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => handleDelete(l.id)}
+                          className="rounded-full p-1.5 text-rose-700 hover:bg-rose-50"
+                          aria-label="Delete lead"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedId === l.id && l.intake_notes ? (
+                    <tr key={`${l.id}-notes`} className="border-b border-[#f8fafc] bg-[#fafbff]">
+                      <td colSpan={6} className="px-4 pb-3 pt-0 text-xs text-[#475569]">
+                        <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
+                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
+                            AI call notes
+                          </p>
+                          <p>{l.intake_notes}</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </>
               ))
             )}
           </tbody>
