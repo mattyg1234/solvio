@@ -8,7 +8,10 @@ import {
   judgeReceptionistTestCallAction,
   saveReceptionistStudioAction,
 } from "@/app/dashboard/setup/receptionist-actions";
-import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
+import {
+  composeVoiceAgentPromptAction,
+  generateVoiceAgentPromptOpenAIAction,
+} from "@/app/dashboard/setup/voice-prompt-actions";
 import { ReceptionistBriefPanel } from "@/components/dashboard/receptionist-brief-panel";
 import { ReceptionistVoicePicker } from "@/components/dashboard/receptionist-voice-picker";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
@@ -125,10 +128,13 @@ export function ReceptionistStudio({
     [liveTrialRevision, selectedVoiceId, vapiAssistantId],
   );
 
+  const [promptGenError, setPromptGenError] = useState<string | null>(null);
+
   async function handleBuildPrompt() {
     setGenPromptPending(true);
+    setPromptGenError(null);
     try {
-      const text = await composeVoiceAgentPromptAction({
+      const fields = {
         businessName,
         receptionistName,
         receptionScope,
@@ -137,8 +143,19 @@ export function ReceptionistStudio({
         greetingStyle: tone,
         languagesNote,
         agentFirstMessage,
-      });
-      setAgentPromptCustom(text);
+      };
+
+      // Prefer the GPT-drafted prompt — it incorporates everything the merchant
+      // entered into a richer, more practical system prompt. Fall back to the
+      // deterministic template if OpenAI isn't reachable / configured.
+      const llm = await generateVoiceAgentPromptOpenAIAction(fields);
+      if (llm.ok) {
+        setAgentPromptCustom(llm.text);
+      } else {
+        const fallback = await composeVoiceAgentPromptAction(fields);
+        setAgentPromptCustom(fallback);
+        setPromptGenError(`Used the basic template — AI generation said: ${llm.message}`);
+      }
       setShowAdvancedPrompt(true);
       markDirty();
     } finally {
@@ -446,12 +463,12 @@ export function ReceptionistStudio({
                 {genPromptPending ? (
                   <>
                     <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                    Building…
+                    Drafting with AI…
                   </>
                 ) : (
                   <>
                     <Sparkles className="mr-2 inline h-4 w-4" aria-hidden />
-                    Preview full prompt
+                    Generate best prompt with AI
                   </>
                 )}
               </button>
@@ -463,6 +480,12 @@ export function ReceptionistStudio({
                 {showAdvancedPrompt ? "Hide custom prompt" : "Edit custom prompt"}
               </button>
             </div>
+
+            {promptGenError ? (
+              <p className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                {promptGenError}
+              </p>
+            ) : null}
 
             {showAdvancedPrompt ? (
               <div className="space-y-2">
