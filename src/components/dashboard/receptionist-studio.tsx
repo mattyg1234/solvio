@@ -9,6 +9,7 @@ import {
   saveReceptionistStudioAction,
 } from "@/app/dashboard/setup/receptionist-actions";
 import { composeVoiceAgentPromptAction } from "@/app/dashboard/setup/voice-prompt-actions";
+import { ReceptionistBriefPanel } from "@/components/dashboard/receptionist-brief-panel";
 import { ReceptionistVoicePicker } from "@/components/dashboard/receptionist-voice-picker";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -238,6 +239,21 @@ export function ReceptionistStudio({
           </p>
         ) : null}
       </header>
+
+      <ReceptionistBriefPanel
+        businessId={businessId}
+        businessName={businessName}
+        onApply={(fields) => {
+          if (fields.receptionist_name) setReceptionistName(fields.receptionist_name);
+          if (fields.agent_first_message) setAgentFirstMessage(fields.agent_first_message);
+          if (fields.reception_scope) setReceptionScope(fields.reception_scope);
+          if (fields.caller_intake_priorities) setIntakePriorities(fields.caller_intake_priorities);
+          if (fields.agent_goal) setAgentGoal(fields.agent_goal);
+          if (fields.languages_note) setLanguagesNote(fields.languages_note);
+          if (fields.greeting_style) setTone(fields.greeting_style);
+          markDirty();
+        }}
+      />
 
       <div className="space-y-6">
         <section className="rounded-[24px] border border-[#ebe7f7] bg-white p-6 shadow-sm md:p-8">
