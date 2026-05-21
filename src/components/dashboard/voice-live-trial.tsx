@@ -51,11 +51,29 @@ export function VoiceLiveTrial({
     );
   }
 
+  const missing: string[] = [];
+  if (!publicKey) missing.push("NEXT_PUBLIC_VAPI_PUBLIC_KEY (deployment env)");
+  if (!assistantId) missing.push("vapi_assistant_id (returned from save)");
+
   return (
-    <p className="rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-4 text-sm leading-relaxed text-[#64748b]">
-      Save your receptionist first to create a Vapi assistant, then tap the purple mic here. Requires{" "}
-      <code className="font-mono text-xs">NEXT_PUBLIC_VAPI_PUBLIC_KEY</code> on this deployment — no scripted voice
-      fallback.
-    </p>
+    <div className="rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-4 text-sm leading-relaxed text-[#64748b]">
+      <p className="font-semibold text-[#0f172a]">Mic can&apos;t go live yet.</p>
+      <p className="mt-1">
+        Missing:{" "}
+        {missing.map((m, i) => (
+          <span key={m}>
+            <code className="font-mono text-xs">{m}</code>
+            {i < missing.length - 1 ? ", " : ""}
+          </span>
+        ))}
+        .
+      </p>
+      {!assistantId ? (
+        <p className="mt-2 text-xs">
+          Save didn&apos;t hand back a Vapi assistant id — check the server-action response for{" "}
+          <code className="font-mono">assistantId</code>, or whether your business already has one stored.
+        </p>
+      ) : null}
+    </div>
   );
 }
