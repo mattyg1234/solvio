@@ -7,19 +7,24 @@ export const metadata = { title: "Cost overview · Solvio admin" };
 
 type TierCount = { tier: string; count: number; price: number };
 
-const TIER_PRICE_EUR: Record<string, number> = {
+// Tier prices reflected at /dashboard/pricing. Pro is GBP £200 (founders' rate);
+// shown here in £ in the admin view. Business is legacy and treated as Pro-equivalent.
+const TIER_PRICE_GBP: Record<string, number> = {
   trial: 0,
-  pro: 79,
-  business: 199,
-  scale: 399,
-  enterprise: 0, // negotiated; treat as 0 unless we track separately
+  pro: 200,
+  business: 200,
+  scale: 499,
+  enterprise: 0,
 };
+const TIER_PRICE_EUR: Record<string, number> = TIER_PRICE_GBP;
 
 function fmtUSD(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
-function fmtEUR(eur: number): string {
-  return `€${eur.toFixed(0)}`;
+function fmtEUR(amount: number): string {
+  // Tier prices are now denominated in GBP — keeping the helper name for ABI
+  // stability across the rest of this file. Display currency switched to £.
+  return `£${amount.toFixed(0)}`;
 }
 
 export default async function AdminCostsPage() {
@@ -133,8 +138,8 @@ export default async function AdminCostsPage() {
   const monthLlmCalls = llmMonthRows?.length ?? 0;
   const lifetimeLlmCents = (llmAllRows ?? []).reduce((s, r) => s + Number(r.cost_cents_estimated ?? 0), 0);
 
-  // Gross-margin estimate: MRR (EUR) → roughly £ at 0.85
-  const mrrGBP = mrrEUR * 0.85;
+  // Tier prices are already GBP; mrrEUR variable name is legacy but the value is in £.
+  const mrrGBP = mrrEUR;
   const monthVoiceGBP = (monthVoiceCents / 100) * 0.79; // USD → GBP rough
   const monthLlmGBP = (monthLlmCents / 100) * 0.79;
   const grossMonthlyGBP = mrrGBP + (bundleRevenueGBP / 12); // amortise bundles over 12 mo as a soft indicator
