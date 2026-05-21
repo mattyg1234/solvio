@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { suggestBookingSlug } from "@/lib/booking-slug";
+import { pickUniqueBookingSlug } from "@/lib/booking-slug-server";
 import { mergeVoiceReceptionistDetails, type VoiceReceptionistSaveInput } from "@/lib/voice-receptionist";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -105,7 +105,7 @@ export async function saveBookingFlowSetup(
   };
 
   if (!biz?.booking_slug?.trim()) {
-    patch.booking_slug = suggestBookingSlug(biz?.name ?? "book", businessId);
+    patch.booking_slug = await pickUniqueBookingSlug(supabase, biz?.name ?? "book", businessId);
   }
 
   const { error } = await supabase.from("businesses").update(patch).eq("id", businessId);

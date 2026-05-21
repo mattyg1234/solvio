@@ -6,7 +6,8 @@ export function isValidBookingSlug(s: string): boolean {
   return t.length >= 3 && t.length <= 48 && BOOKING_SLUG_REGEX.test(t);
 }
 
-export function suggestBookingSlug(businessName: string, businessId: string): string {
+/** Cleaned, name-only slug base. No id suffix — collisions are handled at the DB layer. */
+export function cleanSlugFromName(businessName: string): string {
   let base = businessName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -14,6 +15,6 @@ export function suggestBookingSlug(businessName: string, businessId: string): st
   if (base.length < 2) {
     base = "book";
   }
-  const short = businessId.replace(/-/g, "").slice(0, 8);
-  return `${base}-${short}`;
+  return base.slice(0, 40);
 }
+

@@ -17,8 +17,6 @@ import {
 import type { BookingRequestRow } from "@/components/dashboard/booking-inbox";
 import { BookingsCommandCenter } from "@/components/dashboard/bookings-command-center";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { suggestBookingSlug } from "@/lib/booking-slug";
 import { parseBookingsHubQuery } from "@/lib/bookings-hub-query";
 import { parseStaffMembers } from "@/lib/staff-members";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
@@ -243,17 +241,6 @@ export default async function DashboardBookingsPage({
     };
   });
 
-  const bookingTips =
-    businesses.length === 0
-      ? null
-      : businesses.some((b) => !b.booking_slug)
-        ? businesses.map((b) => ({
-            id: b.id,
-            name: b.name,
-            suggested: suggestBookingSlug(b.name, b.id),
-          }))
-        : null;
-
   const confirmedActiveCount = confirmedBookings.filter((b) => b.status !== "cancelled").length;
 
   return (
@@ -305,31 +292,12 @@ export default async function DashboardBookingsPage({
       <section id="booking-links" className="scroll-mt-28 space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-[#0f172a]">Guest booking link</h2>
-          <p className="mt-1 text-[14px] text-[#64748b]">Set your slug and copy the URL you share with customers.</p>
+          <p className="mt-1 text-[14px] text-[#64748b]">
+            Your link is permanent and generated from your business name — copy it to share with customers.
+          </p>
         </div>
         <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
       </section>
-
-      {bookingTips?.length ? (
-        <Card className="rounded-[22px] border border-dashed border-[#ddd6fe] bg-[#fafbff]/90 shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-[#0f172a]">Suggested booking URL slugs</CardTitle>
-            <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              Pick a readable path before you share the link above.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 pb-6">
-            <ul className="space-y-2 text-sm text-[#475569]">
-              {bookingTips.map((t) => (
-                <li key={t.id}>
-                  <span className="font-semibold text-[#0f172a]">{t.name}:</span>{" "}
-                  <code className="rounded-md bg-[#f1f5f9] px-2 py-0.5 text-[13px] text-[#5b21b6]">{t.suggested}</code>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }

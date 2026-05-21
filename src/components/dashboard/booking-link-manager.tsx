@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Check, Copy, Link2, Loader2 } from "lucide-react";
 
-import { publishBookingSlugAction } from "@/app/dashboard/settings/actions";
-import { suggestBookingSlug, isValidBookingSlug } from "@/lib/booking-slug";
+import { ensureBookingSlugAction } from "@/app/dashboard/settings/actions";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -33,46 +32,34 @@ export function BookingLinkManager({ businesses, siteUrl }: { businesses: Busine
 }
 
 function BookingLinkCard({ business, siteUrl }: { business: BusinessRow; siteUrl: string }) {
-  const suggested = useMemo(() => suggestBookingSlug(business.name, business.id), [business.name, business.id]);
-  const [slug, setSlug] = useState((business.booking_slug ?? "").trim() || suggested);
-  const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [slug, setSlug] = useState((business.booking_slug ?? "").trim());
   const [error, setError] = useState<string | null>(null);
-  const [savedOk, setSavedOk] = useState(Boolean(business.booking_slug));
+  const [copied, setCopied] = useState(false);
+  const [pending, startTransition] = useTransition();
 
-  const publicUrl = `${siteUrl}/book/${encodeURIComponent(slug.trim())}`;
+  // First-time auto-provision: if the business has no slug yet, ask the server to mint one.
+  useEffect(() => {
+    if (slug) return;
+    startTransition(() => {
+      void ensureBookingSlugAction(business.id).then((res) => {
+        if (res.ok) setSlug(res.slug);
+        else setError(res.message);
+      });
+    });
+    // Run once per business; slug change handled by the response.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [business.id]);
 
-  async function saveSlug() {
-    setError(null);
-    const next = slug.trim().toLowerCase();
-    if (!isValidBookingSlug(next)) {
-      setError("Use 3–48 characters: lowercase letters, numbers, and single hyphens between words.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await publishBookingSlugAction(business.id, next);
-      if (!res.ok) {
-        setError(res.message);
-        setSavedOk(false);
-        return;
-      }
-      setSlug(res.slug);
-      setSavedOk(true);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const publicUrl = slug ? `${siteUrl}/book/${slug}` : null;
 
   async function copyUrl() {
-    const next = slug.trim().toLowerCase();
-    if (!isValidBookingSlug(next) || !savedOk) return;
+    if (!publicUrl) return;
     try {
-      await navigator.clipboard.writeText(`${siteUrl}/book/${next}`);
+      await navigator.clipboard.writeText(publicUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setError("Could not copy — select the URL manually.");
+      setError("Couldn't copy — select the URL manually.");
     }
   }
 
@@ -83,7 +70,7 @@ function BookingLinkCard({ business, siteUrl }: { business: BusinessRow; siteUrl
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Hosted on Solvio</p>
           <h2 className="text-lg font-semibold text-[#0f172a]">{business.name}</h2>
           <p className="max-w-xl text-sm leading-relaxed text-[#64748b]">
-            Customers open your link, submit email and phone, and requests land in the table below — call or SMS them from here.
+            Customers open this link, submit email and phone, and requests land in your inbox below.
           </p>
         </div>
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#f5f3ff] text-[#7c3aed] ring-1 ring-[#ebe7f7]">
@@ -91,94 +78,51 @@ function BookingLinkCard({ business, siteUrl }: { business: BusinessRow; siteUrl
         </span>
       </div>
 
-      <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-end">
-        <div className="min-w-0 flex-1 space-y-2">
-          <label className="text-sm font-semibold text-[#0f172a]" htmlFor={`slug-${business.id}`}>
-            Booking link slug
-          </label>
+      <div className="mt-6 space-y-3">
+        <p className="text-sm font-semibold text-[#0f172a]">Your booking link</p>
+        {publicUrl ? (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 py-2 text-[15px]">
-            <span className="shrink-0 text-[#94a3b8]">{siteUrl.replace(/^https?:\/\//, "")}/book/</span>
-            <input
-              id={`slug-${business.id}`}
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value.toLowerCase());
-                setSavedOk(false);
-              }}
-              className="min-w-[8rem] flex-1 bg-transparent text-[#0f172a] outline-none placeholder:text-[#cbd5e1]"
-              placeholder={suggested}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-w-0 flex-1 truncate font-mono text-[14px] text-[#5b21b6] hover:underline"
+            >
+              {publicUrl}
+            </a>
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full border-[#ebe7f7] font-semibold")}
+              onClick={() => void copyUrl()}
+            >
+              {copied ? (
+                <>
+                  <Check className="mr-1.5 inline h-4 w-4 text-emerald-600" aria-hidden />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-1.5 inline h-4 w-4" aria-hidden />
+                  Copy
+                </>
+              )}
+            </button>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={cn(buttonVariants({ variant: "outline" }), "rounded-full border-[#ebe7f7] font-semibold")}
-            onClick={() => {
-              setSlug(suggested);
-              setSavedOk(false);
-            }}
-          >
-            Suggest from name
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            className={cn(
-              buttonVariants({ variant: "default" }),
-              "rounded-full font-semibold shadow-md shadow-[#7c3aed]/20",
-            )}
-            onClick={() => void saveSlug()}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                Saving…
-              </>
-            ) : (
-              "Publish link"
-            )}
-          </button>
-          <button
-            type="button"
-            disabled={!savedOk || saving}
-            className={cn(buttonVariants({ variant: "outline" }), "rounded-full border-[#ebe7f7] font-semibold")}
-            onClick={() => void copyUrl()}
-          >
-            {copied ? (
-              <>
-                <Check className="mr-2 inline h-4 w-4 text-emerald-600" aria-hidden />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="mr-2 inline h-4 w-4" aria-hidden />
-                Copy URL
-              </>
-            )}
-          </button>
-        </div>
+        ) : pending ? (
+          <p className="inline-flex items-center gap-2 text-sm text-[#64748b]">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Reserving your link…
+          </p>
+        ) : null}
+        <p className="text-xs text-[#94a3b8]">
+          This link is permanent — share it confidently. It&apos;s generated from your business name so customers always
+          recognise it.
+        </p>
       </div>
 
       {error ? (
         <p className="mt-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p>
       ) : null}
-
-      {!savedOk ? (
-        <p className="mt-4 text-xs font-medium text-[#64748b]">
-          Publish saves your slug to Solvio so <span className="text-[#0f172a]">{publicUrl}</span> goes live for guests.
-        </p>
-      ) : (
-        <p className="mt-4 break-all text-xs text-[#94a3b8]">
-          Live URL:{" "}
-          <a href={publicUrl} className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
-            {publicUrl}
-          </a>
-        </p>
-      )}
     </div>
   );
 }
