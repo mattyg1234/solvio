@@ -5,6 +5,8 @@ import { getSolvioOutboundPhoneNumberId, getSolvioVapiApiKey } from "@/lib/voice
 export type StartOutboundCallParams = {
   assistantId: string;
   toPhoneE164: string;
+  /** Defaults to SOLVIO_VAPI_OUTBOUND_PHONE_NUMBER_ID — pass merchant vapi_phone_number_id when set. */
+  phoneNumberId?: string;
   /** Stored on the Vapi call object for webhook correlation back to our DB rows. */
   metadata?: Record<string, string>;
   /** Optional dynamic data merged into the assistant's prompt variables. */
@@ -19,7 +21,7 @@ export async function startOutboundCall(params: StartOutboundCallParams): Promis
   const apiKey = getSolvioVapiApiKey();
   if (!apiKey) return { ok: false, message: "Voice service isn't configured for this deployment." };
 
-  const phoneNumberId = getSolvioOutboundPhoneNumberId();
+  const phoneNumberId = params.phoneNumberId?.trim() || getSolvioOutboundPhoneNumberId();
   if (!phoneNumberId) {
     return {
       ok: false,

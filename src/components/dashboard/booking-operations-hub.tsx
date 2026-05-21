@@ -9,13 +9,13 @@ import {
   Loader2,
   Mail,
   MessageSquare,
-  Mic2,
   Phone,
   Plus,
   Trash2,
 } from "lucide-react";
 
 import { cancelVenueCalendarBooking } from "@/app/dashboard/bookings/calendar-actions";
+import { callVenueCalendarGuestAction } from "@/app/dashboard/bookings/guest-call-actions";
 import {
   cancelBusinessEvent,
   deleteAppointmentSlotException,
@@ -38,6 +38,7 @@ import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exc
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
 import { ManualBookingDialog } from "@/components/dashboard/manual-booking-dialog";
 import { EditBookingDialog } from "@/components/dashboard/edit-booking-dialog";
+import { GuestAiCallButton } from "@/components/dashboard/guest-ai-call-dialog";
 import { EventSeriesCalendarSheet, type SheetBusinessEventRow } from "@/components/dashboard/event-series-calendar-sheet";
 import { FloorTableWeekHoursStrip } from "@/components/dashboard/floor-table-week-hours-strip";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -318,6 +319,7 @@ export function BookingOperationsHub({
             confirmedBookings={confirmedBookings}
             businessId={businessId}
             businessName={businessName}
+            venueTimeZone={venueTimeZone}
             tables={tables}
             events={events}
             inventoryLinks={{
@@ -365,6 +367,7 @@ function GuestsHubPanel(props: {
   confirmedBookings: VenueCalendarBookingRow[];
   businessId: string | null;
   businessName: string;
+  venueTimeZone: string;
   tables: FloorPlanTableRow[];
   events: BusinessEventRow[];
   stripeReadyByBizId?: Record<string, boolean>;
@@ -406,6 +409,7 @@ function GuestsHubPanel(props: {
         <ConfirmedBookingsPanelWithContacts
           businessId={props.businessId}
           businessName={props.businessName}
+          venueTimeZone={props.venueTimeZone}
           bookings={props.confirmedBookings}
           tables={props.tables}
           events={props.events}
@@ -482,12 +486,14 @@ function confirmedKindLabel(kind: string | null | undefined) {
 function ConfirmedBookingsPanelWithContacts({
   businessId,
   businessName,
+  venueTimeZone,
   bookings,
   tables,
   events,
 }: {
   businessId: string | null;
   businessName: string;
+  venueTimeZone: string;
   bookings: VenueCalendarBookingRow[];
   tables: FloorPlanTableRow[];
   events: BusinessEventRow[];
@@ -682,15 +688,20 @@ function ConfirmedBookingsPanelWithContacts({
                       >
                         <Mail className="mr-1 h-3.5 w-3.5" aria-hidden /> Email
                       </Link>
-                      <Link
-                        href="/dashboard/calls"
-                        className={cn(
-                          buttonVariants({ variant: "ghost", size: "sm" }),
-                          "h-8 justify-start px-2 text-[11px] text-[#5b21b6]",
-                        )}
-                      >
-                        <Mic2 className="mr-1 h-3.5 w-3.5" aria-hidden /> AI Calls workspace
-                      </Link>
+                          <GuestAiCallButton
+                            guestName={row.guest_name}
+                            guestPhone={row.guest_phone}
+                            bookingLabel={row.title || "Booking"}
+                            defaultPurpose={row.status === "cancelled" ? "booking_cancelled" : "booking_updated"}
+                            onCall={({ purpose, changeSummary, customScript }) =>
+                              callVenueCalendarGuestAction({
+                                venueCalendarBookingId: row.id,
+                                purpose,
+                                changeSummary,
+                                customScript,
+                              })
+                            }
+                          />
                       {row.booking_request_id ? (
                         <Link
                           href={`/dashboard/bookings?tab=guests&view=inbox&booking=${row.booking_request_id}`}
@@ -729,10 +740,20 @@ function ConfirmedBookingsPanelWithContacts({
                       <div className="flex flex-col items-end gap-1">
                         <EditBookingDialog
                           booking={row}
+                          businessName={businessName}
+                          venueTimeZone={venueTimeZone}
                           tables={tables.map((t) => ({ id: t.id, label: t.label }))}
                           events={events
                             .filter((e) => !e.cancelled_at && !e.deleted_at)
                             .map((e) => ({ id: e.id, title: e.title }))}
+                          onNotifyGuest={({ purpose, changeSummary, customScript }) =>
+                            callVenueCalendarGuestAction({
+                              venueCalendarBookingId: row.id,
+                              purpose,
+                              changeSummary,
+                              customScript,
+                            })
+                          }
                         />
                         <button
                           type="button"

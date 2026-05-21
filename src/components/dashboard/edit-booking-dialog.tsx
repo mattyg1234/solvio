@@ -4,10 +4,11 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Pencil, X } from "lucide-react";
 
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
+import type { GuestCallActionResult } from "@/app/dashboard/bookings/guest-call-actions";
 import { editVenueCalendarBooking } from "@/app/dashboard/bookings/calendar-actions";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { summarizeBookingEditChange, type BookingGuestCallPurpose } from "@/lib/booking-guest-call";
+import { cn } from "@/lib/utils";
 
 type FloorPlanTableOption = { id: string; label: string };
 type BusinessEventOption = { id: string; title: string };
@@ -24,12 +25,20 @@ type BookingForEdit = {
   business_event_id: string | null;
   booking_kind: string | null;
   internal_notes: string | null;
+  title?: string;
 };
 
 type EditBookingDialogProps = {
   booking: BookingForEdit;
+  businessName: string;
+  venueTimeZone?: string;
   tables: FloorPlanTableOption[];
   events: BusinessEventOption[];
+  onNotifyGuest?: (input: {
+    purpose: BookingGuestCallPurpose;
+    changeSummary: string;
+    customScript: string;
+  }) => Promise<GuestCallActionResult>;
 };
 
 function isoToLocalDatetimeInput(iso: string): string {
@@ -40,11 +49,19 @@ function isoToLocalDatetimeInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function EditBookingDialog({ booking, tables, events }: EditBookingDialogProps) {
+export function EditBookingDialog({
+  booking,
+  businessName,
+  venueTimeZone,
+  tables,
+  events,
+  onNotifyGuest,
+}: EditBookingDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
 
   const [guestName, setGuestName] = useState(booking.guest_name);
   const [guestPhone, setGuestPhone] = useState(booking.guest_phone ?? "");
@@ -55,15 +72,19 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
   const [floorPlanTableId, setFloorPlanTableId] = useState<string>(booking.floor_plan_table_id ?? "");
   const [businessEventId, setBusinessEventId] = useState<string>(booking.business_event_id ?? "");
   const [internalNotes, setInternalNotes] = useState<string>(booking.internal_notes ?? "");
+  const [notifyByCall, setNotifyByCall] = useState(Boolean(onNotifyGuest && booking.guest_phone?.trim()));
+  const [changeSummary, setChangeSummary] = useState("");
 
   function handleClose() {
     if (pending) return;
     setOpen(false);
+    setNotifyMsg(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotifyMsg(null);
     const starts = new Date(startsLocal);
     const ends = new Date(endsLocal);
     if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
@@ -74,13 +95,26 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
       setError("End must be after start.");
       return;
     }
+
+    const nextStartsIso = starts.toISOString();
+    const nextEndsIso = ends.toISOString();
+    const autoChange = summarizeBookingEditChange({
+      prevStartsAt: booking.starts_at,
+      prevEndsAt: booking.ends_at,
+      nextStartsAt: nextStartsIso,
+      nextEndsAt: nextEndsIso,
+      prevGuestCount: booking.guest_count,
+      nextGuestCount: guestCount,
+      timeZone: venueTimeZone,
+    });
+
     startTransition(() => {
       void (async () => {
         try {
           await editVenueCalendarBooking({
             bookingId: booking.id,
-            startsAtIso: starts.toISOString(),
-            endsAtIso: ends.toISOString(),
+            startsAtIso: nextStartsIso,
+            endsAtIso: nextEndsIso,
             guestName,
             guestEmail,
             guestPhone,
@@ -89,8 +123,29 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
             businessEventId: businessEventId || null,
             internalNotes,
           });
-          handleClose();
+
+          let notifyResult: string | null = null;
+          if (notifyByCall && onNotifyGuest && guestPhone.trim()) {
+            const summary = changeSummary.trim() || autoChange;
+            if (!summary) {
+              notifyResult = "Saved — add what changed above if you want the AI to call the guest.";
+            } else {
+              const callRes = await onNotifyGuest({
+                purpose: "booking_updated",
+                changeSummary: summary,
+                customScript: "",
+              });
+              notifyResult = callRes.message;
+            }
+          }
+
           router.refresh();
+          if (notifyResult) {
+            setNotifyMsg(notifyResult);
+            setTimeout(() => handleClose(), 1800);
+          } else {
+            handleClose();
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : "Could not save changes.");
         }
@@ -102,7 +157,22 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setGuestName(booking.guest_name);
+          setGuestPhone(booking.guest_phone ?? "");
+          setGuestEmail(booking.guest_email);
+          setGuestCount(booking.guest_count ?? 2);
+          setStartsLocal(isoToLocalDatetimeInput(booking.starts_at));
+          setEndsLocal(isoToLocalDatetimeInput(booking.ends_at));
+          setFloorPlanTableId(booking.floor_plan_table_id ?? "");
+          setBusinessEventId(booking.business_event_id ?? "");
+          setInternalNotes(booking.internal_notes ?? "");
+          setChangeSummary("");
+          setNotifyByCall(Boolean(onNotifyGuest && booking.guest_phone?.trim()));
+          setError(null);
+          setNotifyMsg(null);
+          setOpen(true);
+        }}
         className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 rounded-full px-3 text-[11px] font-semibold text-[#5b21b6]")}
       >
         <Pencil className="mr-1 h-3.5 w-3.5" aria-hidden />
@@ -121,7 +191,9 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
             <header className="flex items-center justify-between border-b border-[#f1eefc] px-6 py-4">
               <div>
                 <h2 className="text-base font-semibold text-[#0f172a]">Edit booking</h2>
-                <p className="text-xs text-[#64748b]">Change time, table, event, or notes — the original record is preserved.</p>
+                <p className="text-xs text-[#64748b]">
+                  Update details for {businessName} — optionally call the guest with your AI receptionist after saving.
+                </p>
               </div>
               <button
                 type="button"
@@ -150,6 +222,7 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
                     <input
                       value={guestPhone}
                       onChange={(e) => setGuestPhone(e.target.value)}
+                      placeholder="+44…"
                       className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                     />
                   </label>
@@ -248,8 +321,43 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
                 />
               </label>
 
+              {onNotifyGuest ? (
+                <div className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-4 space-y-3">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={notifyByCall}
+                      onChange={(e) => setNotifyByCall(e.target.checked)}
+                      disabled={!guestPhone.trim()}
+                      className="mt-1"
+                    />
+                    <span className="text-sm text-[#0f172a]">
+                      <span className="font-semibold">Call guest after saving</span>
+                      <span className="mt-1 block text-[#64748b]">
+                        Your AI receptionist rings them with the update. Requires a phone number and outbound line configured.
+                      </span>
+                    </span>
+                  </label>
+                  {notifyByCall ? (
+                    <label className="block space-y-1">
+                      <span className="text-sm font-medium text-[#0f172a]">What changed? (auto-detected if left blank)</span>
+                      <textarea
+                        value={changeSummary}
+                        onChange={(e) => setChangeSummary(e.target.value)}
+                        rows={2}
+                        placeholder="e.g. The show now starts at 8pm instead of 7pm."
+                        className="w-full rounded-xl border border-[#ebe7f7] bg-white px-3 py-2 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
+
               {error ? (
                 <p className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-900">{error}</p>
+              ) : null}
+              {notifyMsg ? (
+                <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{notifyMsg}</p>
               ) : null}
 
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -262,6 +370,8 @@ export function EditBookingDialog({ booking, tables, events }: EditBookingDialog
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                       Saving…
                     </>
+                  ) : notifyByCall ? (
+                    "Save & call guest"
                   ) : (
                     "Save changes"
                   )}

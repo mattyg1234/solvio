@@ -86,6 +86,9 @@ export async function POST(req: Request) {
   const businessId = asString(metadata.solvio_business_id);
   const campaignId = asString(metadata.solvio_campaign_id);
   const leadId = asString(metadata.solvio_lead_id);
+  const venueCalendarBookingId = asString(metadata.solvio_venue_calendar_booking_id);
+  const bookingRequestId = asString(metadata.solvio_booking_request_id);
+  const callPurpose = asString(metadata.solvio_call_purpose);
 
   const admin = createSupabaseServiceRoleClient();
 
@@ -97,11 +100,12 @@ export async function POST(req: Request) {
   const summary = asString(call?.summary) || asString(call?.analysis?.summary);
   const costCents = typeof call?.cost === "number" ? Math.round(call.cost * 100) : 0;
   const endedReason = asString(call?.endedReason);
+  const callRecap = summary || (transcript ? transcript.slice(0, 800) : "");
 
-  // Find existing call_log row (the lead-actions.ts already inserted one when we placed the call).
+  // Find existing call_log row (placed when we dialled the guest or lead).
   const { data: existing } = await admin
     .from("voice_call_logs")
-    .select("id, campaign_id, business_id, lead_id")
+    .select("id, campaign_id, business_id, lead_id, venue_calendar_booking_id, booking_request_id, call_purpose")
     .eq("vapi_call_id", vapiCallId)
     .maybeSingle();
 
@@ -139,6 +143,9 @@ export async function POST(req: Request) {
         outcome: verdict === "voicemail" ? "voicemail" : verdict === "no_answer" ? "dropped" : "answered",
         judge_verdict: verdict,
         judge_reasoning: reasoning,
+        venue_calendar_booking_id: existing.venue_calendar_booking_id ?? (venueCalendarBookingId || null),
+        booking_request_id: existing.booking_request_id ?? (bookingRequestId || null),
+        call_purpose: existing.call_purpose ?? (callPurpose || null),
       })
       .eq("id", existing.id);
   } else if (businessId) {
@@ -160,7 +167,74 @@ export async function POST(req: Request) {
       outcome: verdict === "voicemail" ? "voicemail" : verdict === "no_answer" ? "dropped" : "answered",
       judge_verdict: verdict,
       judge_reasoning: reasoning,
+      venue_calendar_booking_id: venueCalendarBookingId || null,
+      booking_request_id: bookingRequestId || null,
+      call_purpose: callPurpose || null,
     });
+  }
+
+  // Append call recap to booking comms threads when this was a guest AI call.
+  if (callRecap) {
+    const resolvedVenueBookingId = existing?.venue_calendar_booking_id ?? venueCalendarBookingId;
+    const resolvedRequestId = existing?.booking_request_id ?? bookingRequestId;
+
+    if (resolvedVenueBookingId) {
+      const { data: vcbMsg } = await admin
+        .from("venue_calendar_booking_messages")
+        .select("id, body, metadata")
+        .eq("vapi_call_id", vapiCallId)
+        .maybeSingle();
+      if (vcbMsg) {
+        const meta =
+          typeof vcbMsg.metadata === "object" && vcbMsg.metadata !== null
+            ? (vcbMsg.metadata as Record<string, unknown>)
+            : {};
+        await admin
+          .from("venue_calendar_booking_messages")
+          .update({
+            body: `${vcbMsg.body}\n\nCall recap: ${callRecap}`,
+            metadata: {
+              ...meta,
+              ended_at: endedAt,
+              ended_reason: endedReason || null,
+              outcome: verdict,
+            },
+          })
+          .eq("id", vcbMsg.id);
+      }
+    }
+
+    if (resolvedRequestId) {
+      const { data: brMsgs } = await admin
+        .from("booking_messages")
+        .select("id, body, metadata")
+        .eq("booking_request_id", resolvedRequestId)
+        .eq("channel", "voice")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      const brMsg = (brMsgs ?? []).find((m) => {
+        const meta = typeof m.metadata === "object" && m.metadata !== null ? (m.metadata as Record<string, unknown>) : {};
+        return meta.vapi_call_id === vapiCallId;
+      });
+      if (brMsg) {
+        const meta =
+          typeof brMsg.metadata === "object" && brMsg.metadata !== null
+            ? (brMsg.metadata as Record<string, unknown>)
+            : {};
+        await admin
+          .from("booking_messages")
+          .update({
+            body: `${brMsg.body}\n\nCall recap: ${callRecap}`,
+            metadata: {
+              ...meta,
+              ended_at: endedAt,
+              ended_reason: endedReason || null,
+              outcome: verdict,
+            },
+          })
+          .eq("id", brMsg.id);
+      }
+    }
   }
 
   // Update lead status

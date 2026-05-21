@@ -64,6 +64,24 @@ const SYSTEM_VOICES: SolvioVoiceEntry[] = [
   },
 ];
 
+/** Solvio-curated brand voices — always in the library (Pro+ unless minTier is lower). */
+const SOLVIO_BRAND_VOICES: SolvioVoiceEntry[] = [
+  {
+    id: "viYICziHTAVNg0QMAPdO",
+    name: "Suzanne",
+    description: "Mature, professional tone — calm authority for reception and bookings.",
+    category: "solvio",
+    minTier: "pro",
+  },
+  {
+    id: "VfpuDH8MHzBzHCEu7dWW",
+    name: "Grace",
+    description: "Warm, polished hospitality — friendly and assured on every call.",
+    category: "solvio",
+    minTier: "pro",
+  },
+];
+
 type PersonalisedVoiceJson = {
   id?: unknown;
   name?: unknown;
@@ -133,6 +151,10 @@ export function getSolvioVoiceLibrary(platformVoiceId?: string): SolvioVoiceEntr
   const platformId = platformVoiceId?.trim() || getPlatformElevenLabsVoiceIdFromEnv();
   const personalised = parsePersonalisedVoicesFromEnv();
   const solvioById = new Map<string, SolvioVoiceEntry>();
+
+  for (const voice of SOLVIO_BRAND_VOICES) {
+    solvioById.set(voice.id, voice);
+  }
 
   for (const voice of personalised) {
     solvioById.set(voice.id, voice);

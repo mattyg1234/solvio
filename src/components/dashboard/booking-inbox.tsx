@@ -13,7 +13,6 @@ import {
   Phone,
   Search,
   Send,
-  Voicemail,
   X,
 } from "lucide-react";
 
@@ -23,8 +22,10 @@ import {
   sendBookingOutboundBulk,
   type BookingMessageRow,
 } from "@/app/dashboard/bookings/actions";
+import { callBookingRequestGuestAction } from "@/app/dashboard/bookings/guest-call-actions";
 import { createDepositCheckoutForBookingRequest } from "@/app/dashboard/bookings/payment-actions";
 import { createVenueCalendarBookingFromRequest } from "@/app/dashboard/bookings/calendar-actions";
+import { GuestAiCallButton } from "@/components/dashboard/guest-ai-call-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -333,14 +334,14 @@ function ConfirmBookingSlotSection({
   );
 }
 
-function channelLabel(ch: BookingMessageRow["channel"]) {
+function channelLabel(ch: BookingMessageRow["channel"], metadata?: Record<string, unknown>) {
   switch (ch) {
     case "sms":
       return "SMS";
     case "email":
       return "Email";
     case "voice":
-      return "Call log";
+      return metadata?.delivery === "vapi_outbound" ? "AI call" : "Call log";
     default:
       return "Note";
   }
@@ -348,7 +349,7 @@ function channelLabel(ch: BookingMessageRow["channel"]) {
 
 function bubbleCaption(m: BookingMessageRow) {
   const who = m.direction === "outbound" ? "Solvio team" : "Guest";
-  const bits = [who, channelLabel(m.channel)];
+  const bits = [who, channelLabel(m.channel, m.metadata)];
   if (m.direction === "outbound" && m.metadata?.from_noreply) {
     bits.push("noreply trail");
   }
@@ -637,23 +638,38 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
     });
   }
 
-  function runSingleVoiceSummary() {
-    if (!expandedId) return;
+  function runBulkVoiceCalls() {
+    if (!bulkBody.trim()) return;
     setError(null);
     startTransition(() => {
       void (async () => {
         try {
-          await sendBookingOutboundBulk({
-            bookingRequestIds: [expandedId],
-            channel: "voice",
-            body: singleBody,
-            fromNoreply: false,
-          });
-          setSingleBody("");
-          refreshThread(expandedId);
+          const targets = filteredRequests.filter((r) => selected.has(r.id) && r.phone?.trim());
+          if (!targets.length) {
+            setError("Selected guests need a phone number for AI calls.");
+            return;
+          }
+          let ok = 0;
+          const failures: string[] = [];
+          for (const r of targets) {
+            const res = await callBookingRequestGuestAction({
+              bookingRequestId: r.id,
+              purpose: "guest_request_reply",
+              changeSummary: bulkBody.trim(),
+            });
+            if (res.ok) ok += 1;
+            else failures.push(`${r.customer_name}: ${res.message}`);
+          }
+          setBulkBody("");
           router.refresh();
+          selectedIds.forEach((id) => {
+            if (expandedId === id) refreshThread(id);
+          });
+          if (failures.length) {
+            setError(`Started ${ok} call(s). ${failures.slice(0, 3).join(" · ")}${failures.length > 3 ? "…" : ""}`);
+          }
         } catch (e) {
-          setError(e instanceof Error ? e.message : "Could not log call.");
+          setError(e instanceof Error ? e.message : "Bulk call failed.");
         }
       })();
     });
@@ -731,7 +747,7 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
             <div className="rounded-[20px] border border-[#ede9fe] bg-[#fafbff]/90 p-5 shadow-inner shadow-[#ede9fe]/40">
               <p className="text-sm font-semibold text-[#0f172a]">Message selected guests</p>
               <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
-                Same message posts once per guest — stored as outbound SMS/email/call logs so everyone stays accountable when carriers sync.
+                Same message posts once per guest — SMS/email log in-app. AI calls dial each selected guest with your receptionist.
               </p>
               <textarea
                 value={bulkBody}
@@ -765,11 +781,11 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                 <button
                   type="button"
                   disabled={pending || selectedIds.length === 0 || !bulkBody.trim()}
-                  className={cn(buttonVariants({ variant: "outline" }), "rounded-full border-[#ebe7f7] px-5 font-semibold disabled:opacity-45")}
-                  onClick={() => runBulk("voice")}
+                  className={cn(buttonVariants({ variant: "outline" }), "rounded-full border-[#ddd6fe] px-5 font-semibold text-[#5b21b6] disabled:opacity-45")}
+                  onClick={() => runBulkVoiceCalls()}
                 >
-                  <Voicemail className="mr-2 inline h-4 w-4" aria-hidden />
-                  Call logs for all
+                  <Phone className="mr-2 inline h-4 w-4" aria-hidden />
+                  AI call all
                 </button>
                 <button
                   type="button"
@@ -892,6 +908,26 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                                     <MessageSquare className="mr-1.5 h-3.5 w-3.5" aria-hidden />
                                     SMS
                                   </Link>
+                                  <GuestAiCallButton
+                                    guestName={r.customer_name}
+                                    guestPhone={r.phone}
+                                    bookingLabel={r.event_title?.trim() || "Enquiry"}
+                                    defaultPurpose="guest_request_reply"
+                                    defaultChangeSummary={r.notes?.trim() || r.preferred_time?.trim() || ""}
+                                    triggerLabel="AI call"
+                                    triggerClassName="h-9 rounded-full px-3 text-xs"
+                                    onCall={({ purpose, changeSummary, customScript }) =>
+                                      callBookingRequestGuestAction({
+                                        bookingRequestId: r.id,
+                                        purpose,
+                                        changeSummary,
+                                        customScript,
+                                      }).then((res) => {
+                                        if (res.ok) refreshThread(r.id);
+                                        return res;
+                                      })
+                                    }
+                                  />
                                 </>
                               ) : (
                                 <span className="inline-flex items-center rounded-full bg-[#f8fafc] px-3 py-1 text-[11px] font-medium text-[#94a3b8]">
@@ -1042,7 +1078,7 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                                       onChange={(e) => setSingleBody(e.target.value)}
                                       disabled={pending}
                                       rows={4}
-                                      placeholder="SMS/email body or voice-call recap for just this guest…"
+                                      placeholder="SMS/email body or what your AI receptionist should tell this guest…"
                                       className="w-full resize-none rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25 disabled:opacity-60"
                                     />
                                     <div className="flex flex-wrap gap-2">
@@ -1068,17 +1104,31 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
                                       >
                                         Email · noreply
                                       </button>
-                                      <button
-                                        type="button"
-                                        disabled={pending || !singleBody.trim()}
-                                        className={cn(
-                                          buttonVariants({ variant: "outline", size: "sm" }),
-                                          "rounded-full border-[#ebe7f7] px-4 font-semibold",
-                                        )}
-                                        onClick={() => runSingleVoiceSummary()}
-                                      >
-                                        Log call summary
-                                      </button>
+                                      <GuestAiCallButton
+                                        guestName={r.customer_name}
+                                        guestPhone={r.phone}
+                                        bookingLabel={r.event_title?.trim() || "Enquiry"}
+                                        defaultPurpose="guest_request_reply"
+                                        defaultChangeSummary={singleBody.trim() || r.notes?.trim() || ""}
+                                        triggerLabel="AI call guest"
+                                        triggerClassName="rounded-full px-4 text-xs"
+                                        disabled={pending}
+                                        onCall={({ purpose, changeSummary, customScript }) =>
+                                          callBookingRequestGuestAction({
+                                            bookingRequestId: r.id,
+                                            purpose,
+                                            changeSummary: changeSummary || singleBody.trim(),
+                                            customScript,
+                                          }).then((res) => {
+                                            if (res.ok) {
+                                              setSingleBody("");
+                                              refreshThread(r.id);
+                                              router.refresh();
+                                            }
+                                            return res;
+                                          })
+                                        }
+                                      />
                                     </div>
                                   </div>
                                   <div className="space-y-3 border-t border-[#f1eefc] pt-5 md:border-l md:border-t-0 md:pl-6 md:pt-0">
