@@ -41,8 +41,25 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc("get_booking_public_context", { p_slug: slug });
-  const ctx = !error ? parseBookingPublicContext(data) : null;
+  const { data, error } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
+
+  if (error) {
+    console.error("[book] get_booking_public_context failed:", error.message);
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fafbff] px-4 py-16">
+        <div className="max-w-md rounded-[24px] border border-rose-100 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-[#0f172a]">Booking page temporarily unavailable</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#64748b]">
+            We couldn&apos;t load this venue&apos;s booking setup. If you&apos;re the owner, open Supabase → SQL Editor
+            and run the latest migrations (including{" "}
+            <code className="font-mono text-xs">20260621180000_repair_event_custom_questions.sql</code>), then try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const ctx = parseBookingPublicContext(data);
 
   if (!ctx) {
     notFound();

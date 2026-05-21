@@ -347,6 +347,10 @@ $$;
 
 grant execute on function public.get_booking_public_context(text) to anon, authenticated;
 
+-- ---------- 7) Repair missing business_events.custom_questions (fixes /book/[slug] 404) -----------
+alter table public.business_events
+  add column if not exists custom_questions jsonb not null default '[]'::jsonb;
+
 -- ============================================================================
 -- DONE. Verify with:
 --   select * from public.businesses;
