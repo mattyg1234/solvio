@@ -57,6 +57,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
       icon: Mic2,
       key: "voice",
     });
+    items.push({ href: "/dashboard/phone", label: "Phone numbers", icon: PhoneCall, key: "phone" });
     items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
   }
 
