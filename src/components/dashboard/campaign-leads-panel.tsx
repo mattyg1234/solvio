@@ -123,17 +123,34 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
   // Notes expand + per-lead loaded transcript cache
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<
-    Record<string, { transcript: string | null; summary: string | null; outcome: string | null; durationSeconds: number; loading: boolean }>
+    Record<
+      string,
+      {
+        transcript: string | null;
+        summary: string | null;
+        outcome: string | null;
+        judgeVerdict: string | null;
+        judgeReasoning: string | null;
+        durationSeconds: number;
+        loading: boolean;
+      }
+    >
   >({});
 
   function toggleExpand(leadId: string) {
     const isOpening = expandedId !== leadId;
     setExpandedId(isOpening ? leadId : null);
     if (isOpening && !transcripts[leadId]) {
-      setTranscripts((t) => ({ ...t, [leadId]: { transcript: null, summary: null, outcome: null, durationSeconds: 0, loading: true } }));
+      setTranscripts((t) => ({
+        ...t,
+        [leadId]: { transcript: null, summary: null, outcome: null, judgeVerdict: null, judgeReasoning: null, durationSeconds: 0, loading: true },
+      }));
       void getLeadCallTranscriptAction({ leadId, campaignId }).then((res) => {
         if (!res.ok) {
-          setTranscripts((t) => ({ ...t, [leadId]: { transcript: null, summary: null, outcome: null, durationSeconds: 0, loading: false } }));
+          setTranscripts((t) => ({
+            ...t,
+            [leadId]: { transcript: null, summary: null, outcome: null, judgeVerdict: null, judgeReasoning: null, durationSeconds: 0, loading: false },
+          }));
           return;
         }
         setTranscripts((t) => ({
@@ -142,6 +159,8 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
             transcript: res.transcript,
             summary: res.summary,
             outcome: res.outcome,
+            judgeVerdict: res.judgeVerdict,
+            judgeReasoning: res.judgeReasoning,
             durationSeconds: res.durationSeconds,
             loading: false,
           },
@@ -523,25 +542,62 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                               <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" aria-hidden />
                               Loading transcript…
                             </div>
-                          ) : transcripts[l.id]?.transcript ? (
-                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
-                              <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
-                                  Full chat transcript
-                                </p>
+                          ) : null}
+                          {!transcripts[l.id]?.loading && (transcripts[l.id]?.judgeVerdict || transcripts[l.id]?.outcome) ? (
+                            <div
+                              className={cn(
+                                "rounded-xl border p-3 text-[12px]",
+                                transcripts[l.id]?.judgeVerdict === "success"
+                                  ? "border-emerald-100 bg-emerald-50/60 text-emerald-900"
+                                  : transcripts[l.id]?.judgeVerdict === "fail"
+                                    ? "border-rose-100 bg-rose-50/60 text-rose-900"
+                                    : transcripts[l.id]?.judgeVerdict === "voicemail"
+                                      ? "border-amber-100 bg-amber-50/60 text-amber-900"
+                                      : "border-[#ebe7f7] bg-white text-[#475569]",
+                              )}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-semibold uppercase tracking-widest opacity-80">
+                                  Call outcome
+                                </span>
                                 {transcripts[l.id]?.outcome ? (
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[#64748b]">
-                                    {transcripts[l.id]?.outcome} · {transcripts[l.id]?.durationSeconds}s
+                                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-current/20">
+                                    {transcripts[l.id]?.outcome}
                                   </span>
                                 ) : null}
+                                {transcripts[l.id]?.judgeVerdict ? (
+                                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-current/20">
+                                    Judge: {transcripts[l.id]?.judgeVerdict}
+                                  </span>
+                                ) : null}
+                                <span className="text-[10px] opacity-70">
+                                  {transcripts[l.id]?.durationSeconds}s
+                                </span>
                               </div>
+                              {transcripts[l.id]?.judgeReasoning ? (
+                                <p className="mt-1.5 text-[12px] leading-relaxed">
+                                  {transcripts[l.id]?.judgeReasoning}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {!transcripts[l.id]?.loading && transcripts[l.id]?.transcript ? (
+                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
+                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
+                                Full chat transcript
+                              </p>
                               <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed text-[#0f172a]">
                                 {transcripts[l.id]?.transcript}
                               </pre>
                             </div>
-                          ) : l.attempts > 0 ? (
+                          ) : null}
+                          {!transcripts[l.id]?.loading &&
+                          !transcripts[l.id]?.transcript &&
+                          !transcripts[l.id]?.judgeVerdict &&
+                          !transcripts[l.id]?.outcome &&
+                          l.attempts > 0 ? (
                             <div className="rounded-xl border border-[#ebe7f7] bg-white p-3 text-[#94a3b8]">
-                              Transcript not captured for this call. Open in Vapi to view directly.
+                              No call data captured. Either the dial failed before connecting, or the webhook never fired. Open in Vapi to check directly.
                             </div>
                           ) : null}
                         </div>

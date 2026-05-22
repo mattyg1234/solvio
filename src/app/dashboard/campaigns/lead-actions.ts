@@ -362,7 +362,16 @@ export async function getLeadCallTranscriptAction(params: {
   leadId: string;
   campaignId: string;
 }): Promise<
-  | { ok: true; transcript: string | null; summary: string | null; outcome: string | null; durationSeconds: number; startedAt: string | null }
+  | {
+      ok: true;
+      transcript: string | null;
+      summary: string | null;
+      outcome: string | null;
+      judgeVerdict: string | null;
+      judgeReasoning: string | null;
+      durationSeconds: number;
+      startedAt: string | null;
+    }
   | { ok: false; message: string }
 > {
   const { supabase, user } = await requireUser();
@@ -370,14 +379,25 @@ export async function getLeadCallTranscriptAction(params: {
 
   const { data: row } = await supabase
     .from("voice_call_logs")
-    .select("raw_transcript, transcript_summary, outcome, duration_seconds, started_at")
+    .select("raw_transcript, transcript_summary, outcome, judge_verdict, judge_reasoning, duration_seconds, started_at")
     .eq("lead_id", params.leadId)
     .eq("business_id", c.business_id)
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (!row) return { ok: true, transcript: null, summary: null, outcome: null, durationSeconds: 0, startedAt: null };
+  if (!row) {
+    return {
+      ok: true,
+      transcript: null,
+      summary: null,
+      outcome: null,
+      judgeVerdict: null,
+      judgeReasoning: null,
+      durationSeconds: 0,
+      startedAt: null,
+    };
+  }
 
   const raw = row.raw_transcript as unknown;
   let transcript: string | null = null;
@@ -391,6 +411,8 @@ export async function getLeadCallTranscriptAction(params: {
     transcript,
     summary: (row.transcript_summary as string | null) ?? null,
     outcome: (row.outcome as string | null) ?? null,
+    judgeVerdict: (row.judge_verdict as string | null) ?? null,
+    judgeReasoning: (row.judge_reasoning as string | null) ?? null,
     durationSeconds: typeof row.duration_seconds === "number" ? row.duration_seconds : 0,
     startedAt: (row.started_at as string | null) ?? null,
   };
