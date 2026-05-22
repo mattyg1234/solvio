@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, Save, Sparkles, Wand2, X } from "lucide-react";
@@ -45,6 +46,7 @@ const TONES: { id: CampaignDraft["greetingStyle"]; label: string; sample: string
 ];
 
 export function CampaignAgentBuilder({ businessId, businessName, initial }: CampaignAgentBuilderProps) {
+  const router = useRouter();
   const [campaignId, setCampaignId] = useState(initial.campaignId ?? "");
   const [vapiAssistantId, setVapiAssistantId] = useState(initial.vapiAssistantId ?? "");
 
@@ -117,6 +119,14 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
   function handleSave() {
     setSaveMsg(null);
     setSaveOk(null);
+
+    if (name.trim().length < 2) {
+      setSaveOk(false);
+      setSaveMsg("Campaign name is required (at least 2 characters). Scroll up — it's the first field.");
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
     startTransition(() => {
       void (async () => {
         const input: CampaignSaveInput = {
@@ -135,12 +145,17 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
         setSaveOk(res.ok);
         setSaveMsg(res.message);
         if (res.ok) {
+          const wasCreate = !campaignId;
           setCampaignId(res.campaignId);
           setVapiAssistantId(res.assistantId);
           setTestTranscript("");
           setTestBubbleCount(0);
           setTestVerdict(null);
           setTimeout(() => setShowTestModal(true), 300);
+          // After a fresh create, push to the edit URL so the page reflects saved state.
+          if (wasCreate) {
+            router.replace(`/dashboard/campaigns/${res.campaignId}`);
+          }
         }
       })();
     });
@@ -159,6 +174,20 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
           Save once — Solvio creates a Vapi assistant on your behalf, then we test it together with speech bubbles.
         </p>
       </header>
+
+      {saveMsg ? (
+        <div
+          role={saveOk ? "status" : "alert"}
+          className={cn(
+            "rounded-2xl border px-4 py-3 text-sm font-medium",
+            saveOk
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-rose-200 bg-rose-50 text-rose-900",
+          )}
+        >
+          {saveMsg}
+        </div>
+      ) : null}
 
       <section className="rounded-[24px] border border-[#ebe7f7] bg-white p-6 shadow-sm md:p-8">
         <h2 className="text-lg font-semibold text-[#0f172a]">Identity</h2>
@@ -406,7 +435,7 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
             ) : null}
             <Button
               type="button"
-              disabled={pending || name.trim().length < 2}
+              disabled={pending}
               onClick={handleSave}
               size="lg"
               className="h-12 rounded-full px-8 font-semibold shadow-lg shadow-[#7c3aed]/20"
