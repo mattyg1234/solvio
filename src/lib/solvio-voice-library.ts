@@ -64,21 +64,21 @@ const SYSTEM_VOICES: SolvioVoiceEntry[] = [
   },
 ];
 
-/** Solvio-curated brand voices — always in the library (Pro+ unless minTier is lower). */
+/** Solvio-curated brand voices — available on all plans. */
 const SOLVIO_BRAND_VOICES: SolvioVoiceEntry[] = [
   {
     id: "viYICziHTAVNg0QMAPdO",
     name: "Suzanne",
     description: "Mature, professional tone — calm authority for reception and bookings.",
     category: "solvio",
-    minTier: "pro",
+    minTier: "trial",
   },
   {
     id: "VfpuDH8MHzBzHCEu7dWW",
     name: "Grace",
     description: "Warm, polished hospitality — friendly and assured on every call.",
     category: "solvio",
-    minTier: "pro",
+    minTier: "trial",
   },
 ];
 
