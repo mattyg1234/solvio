@@ -25,13 +25,35 @@ export type CampaignIntakeFields = {
   verifyOwner?: boolean;
 };
 
+/**
+ * Strip any previously auto-appended wrapper sections from a saved prompt so
+ * we don't double-wrap on subsequent saves. We look for the section headers
+ * this builder produces and cut from the earliest one onwards.
+ */
+function stripAutoAppendedSections(raw: string): string {
+  const markers: RegExp[] = [
+    /\n\s*## Language\b/m,
+    /\n\s*## Owner \/ decision-maker qualification/m,
+    /\n\s*## Contact intake — capture on this call/m,
+    /\n\s*## Hard boundaries\b/m,
+  ];
+  let earliest = raw.length;
+  for (const m of markers) {
+    const match = raw.match(m);
+    if (match && typeof match.index === "number" && match.index < earliest) {
+      earliest = match.index;
+    }
+  }
+  return raw.slice(0, earliest).trimEnd();
+}
+
 export function buildCampaignSystemPrompt(params: {
   basePrompt: string;
   businessName: string;
   agentName?: string;
   intakeFields?: CampaignIntakeFields;
 }): string {
-  const base = params.basePrompt.trim();
+  const base = stripAutoAppendedSections(params.basePrompt.trim());
   const biz = params.businessName.trim() || "the business";
   const agent = params.agentName?.trim();
   const fields = params.intakeFields ?? {};
