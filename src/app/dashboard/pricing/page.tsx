@@ -52,7 +52,7 @@ const TIERS: TierSpec[] = [
     cadence: "/month",
     blurb: "Every working venue — bars, restaurants, salons, ticketed events. Founders' rate £200/mo for the first 50 merchants.",
     bullets: [
-      "Up to 3 locations",
+      "Up to 2 locations",
       "1,000 AI receptionist minutes",
       "2.5% platform fee on guest deposits",
       "Stripe Connect payouts",
@@ -98,7 +98,7 @@ const comparison: ComparisonRow[] = [
   { feature: "AI receptionist minutes / month", trial: "50", pro: "1,000", scale: "3,000" },
   { feature: "Overage rate (per extra minute)", trial: "n/a", pro: "€0.40", scale: "€0.30" },
   { feature: "Platform fee on guest deposits", trial: "10%", pro: "2.5%", scale: "1%" },
-  { feature: "Locations included", trial: "1", pro: "3", scale: "Unlimited" },
+  { feature: "Locations included", trial: "1", pro: "2", scale: "Unlimited" },
   { feature: "Stripe Connect payouts", trial: false, pro: true, scale: true },
   { feature: "Operations hub (appointments / events / tables)", trial: "Light", pro: true, scale: true },
   { feature: "Floor plan + tiered pricing modes", trial: false, pro: true, scale: true },
