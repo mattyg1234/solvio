@@ -8,7 +8,6 @@ import { logLlmUsage } from "@/lib/llm-usage";
 import {
   buildCampaignFirstMessage,
   buildCampaignSystemPrompt,
-  type CampaignIntakeFields,
 } from "@/lib/campaign-prompt-builder";
 import { resolvePlatformElevenLabsVoice } from "@/lib/platform-voice-config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -17,6 +16,15 @@ import {
   syncVapiAssistantConfig,
 } from "@/lib/vapi-assistant-sync";
 import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
+
+// Defined locally (not re-exported from lib) — Turbopack's "use server" bundler
+// trips on re-exporting a type-only import; keeping the alias local sidesteps that.
+export type CampaignIntakeFields = {
+  email?: boolean;
+  address?: boolean;
+  preferences?: boolean;
+  verifyOwner?: boolean;
+};
 
 export type CampaignSaveInput = {
   campaignId?: string;
@@ -31,8 +39,6 @@ export type CampaignSaveInput = {
   /** Which fields the agent should actively try to capture on each call. */
   intakeFields?: CampaignIntakeFields;
 };
-
-export type { CampaignIntakeFields };
 
 export type CampaignSaveResult =
   | { ok: true; campaignId: string; assistantId: string; message: string }
