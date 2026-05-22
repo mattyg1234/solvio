@@ -175,7 +175,7 @@ export async function exportLeadsCSVAction(campaignId: string): Promise<
   const { data: leads, error } = await supabase
     .from("voice_outbound_leads")
     .select(
-      "phone,name,business_name,email,address_line1,city,postcode,country,interest_level,intake_notes,status,attempts,notes,created_at"
+      "phone,name,business_name,email,address_line1,city,postcode,country,interest_level,contact_role,reached_decision_maker,owner_name,owner_phone,owner_email,owner_best_time,objections,intake_notes,status,attempts,notes,created_at"
     )
     .eq("campaign_id", campaignId)
     .eq("business_id", c.business_id)
@@ -188,7 +188,9 @@ export async function exportLeadsCSVAction(campaignId: string): Promise<
   const cols = [
     "phone", "name", "business_name", "email",
     "address_line1", "city", "postcode", "country",
-    "interest_level", "intake_notes", "status", "attempts",
+    "interest_level", "contact_role", "reached_decision_maker",
+    "owner_name", "owner_phone", "owner_email", "owner_best_time",
+    "objections", "intake_notes", "status", "attempts",
     "notes", "created_at",
   ];
 

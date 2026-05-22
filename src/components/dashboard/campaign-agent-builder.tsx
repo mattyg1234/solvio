@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Save, Sparkles, X } from "lucide-react";
+import { Loader2, Save, Sparkles, Wand2, X } from "lucide-react";
 
 import {
   improveCampaignPromptAction,
@@ -13,6 +13,11 @@ import {
 } from "@/app/dashboard/campaigns/campaign-actions";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  SOLVIO_SALES_AGENT_PROMPT,
+  SOLVIO_SALES_FIRST_MESSAGE,
+  SOLVIO_SALES_SUCCESS_CRITERIA,
+} from "@/lib/campaign-prompt-builder";
 import { cn } from "@/lib/utils";
 
 type CampaignDraft = {
@@ -52,6 +57,7 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
   const [intakeEmail, setIntakeEmail] = useState(initial.intakeFields?.email !== false);
   const [intakeAddress, setIntakeAddress] = useState(initial.intakeFields?.address === true);
   const [intakePreferences, setIntakePreferences] = useState(initial.intakeFields?.preferences !== false);
+  const [verifyOwner, setVerifyOwner] = useState(initial.intakeFields?.verifyOwner !== false);
 
   const [pending, startTransition] = useTransition();
   const [improvePending, setImprovePending] = useState(false);
@@ -67,7 +73,23 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
   } | null>(null);
 
   function buildIntakeFields(): CampaignIntakeFields {
-    return { email: intakeEmail, address: intakeAddress, preferences: intakePreferences };
+    return {
+      email: intakeEmail,
+      address: intakeAddress,
+      preferences: intakePreferences,
+      verifyOwner,
+    };
+  }
+
+  function applySolvioSalesTemplate() {
+    setSystemPrompt(SOLVIO_SALES_AGENT_PROMPT);
+    if (!firstMessage.trim()) setFirstMessage(SOLVIO_SALES_FIRST_MESSAGE);
+    if (!successCriteria.trim()) setSuccessCriteria(SOLVIO_SALES_SUCCESS_CRITERIA);
+    if (!agentName.trim()) setAgentName("Sam");
+    setVerifyOwner(true);
+    setIntakeEmail(true);
+    setSaveOk(true);
+    setSaveMsg("Solvio sales template loaded — review the prompt then Save & test.");
   }
 
   async function handleImprovePrompt() {
@@ -217,27 +239,41 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
               <span className="text-sm font-medium text-[#0f172a]">
                 System prompt <span className="font-normal text-[#94a3b8]">— full instructions to the AI</span>
               </span>
-              <button
-                type="button"
-                onClick={handleImprovePrompt}
-                disabled={improvePending || !name.trim()}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "rounded-full text-xs font-semibold text-[#5b21b6]",
-                )}
-              >
-                {improvePending ? (
-                  <>
-                    <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" aria-hidden />
-                    Drafting…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-1.5 inline h-3.5 w-3.5" aria-hidden />
-                    {systemPrompt.trim() ? "Refine with ChatGPT" : "Draft with ChatGPT"}
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={applySolvioSalesTemplate}
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "rounded-full text-xs font-semibold text-[#0f172a]",
+                  )}
+                  title="Load the pre-built Solvio sales agent — verifies owner, qualifies, closes for free trial"
+                >
+                  <Wand2 className="mr-1.5 inline h-3.5 w-3.5" aria-hidden />
+                  Use Solvio sales template
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImprovePrompt}
+                  disabled={improvePending || !name.trim()}
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "rounded-full text-xs font-semibold text-[#5b21b6]",
+                  )}
+                >
+                  {improvePending ? (
+                    <>
+                      <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" aria-hidden />
+                      Drafting…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-1.5 inline h-3.5 w-3.5" aria-hidden />
+                      {systemPrompt.trim() ? "Refine with ChatGPT" : "Draft with ChatGPT"}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
             <textarea
               value={systemPrompt}
@@ -260,6 +296,27 @@ export function CampaignAgentBuilder({ businessId, businessName, initial }: Camp
           Captured data is enriched automatically after every call and available in your leads export.
         </p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {/* Verify owner toggle (default ON for B2B/sales campaigns) */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#ddd6fe] bg-[#faf7ff] p-3 hover:border-[#a78bfa] sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={verifyOwner}
+              onChange={(e) => setVerifyOwner(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#7c3aed]"
+            />
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a]">
+                Verify business owner / decision-maker{" "}
+                <span className="ml-1 inline-flex rounded-full bg-violet-100 px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wider text-violet-800">
+                  Recommended for B2B
+                </span>
+              </p>
+              <p className="text-xs text-[#64748b]">
+                Agent confirms it&apos;s speaking to the owner first. If it&apos;s a gatekeeper, it politely captures the
+                owner&apos;s name, phone, email and best time — instead of pitching the wrong person.
+              </p>
+            </div>
+          </label>
           {/* Name is always on */}
           <div className="flex items-start gap-3 rounded-xl border border-[#ebe7f7] bg-[#fafbff] p-3">
             <div className="mt-0.5 h-4 w-4 flex-shrink-0 rounded bg-[#7c3aed]" aria-hidden />

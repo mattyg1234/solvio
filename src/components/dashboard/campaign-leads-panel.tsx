@@ -24,6 +24,13 @@ export type LeadRow = {
   city: string | null;
   postcode: string | null;
   interest_level: "hot" | "warm" | "cold" | "not_interested" | null;
+  contact_role: "owner" | "manager" | "employee" | "gatekeeper" | "voicemail" | "unknown" | null;
+  reached_decision_maker: boolean | null;
+  owner_name: string | null;
+  owner_phone: string | null;
+  owner_email: string | null;
+  owner_best_time: string | null;
+  objections: string | null;
   intake_notes: string | null;
   status: string;
   attempts: number;
@@ -62,6 +69,31 @@ function interestBadge(level: LeadRow["interest_level"]) {
     not_interested: { label: "✗ Not interested", cls: "bg-zinc-50 text-zinc-600 ring-zinc-200" },
   };
   const e = map[level];
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", e.cls)}>
+      {e.label}
+    </span>
+  );
+}
+
+function roleBadge(l: LeadRow) {
+  if (l.reached_decision_maker) {
+    return (
+      <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-100">
+        ✓ Owner
+      </span>
+    );
+  }
+  if (!l.contact_role || l.contact_role === "unknown") return null;
+  const map: Record<NonNullable<LeadRow["contact_role"]>, { label: string; cls: string }> = {
+    owner: { label: "Owner", cls: "bg-emerald-50 text-emerald-800 ring-emerald-100" },
+    manager: { label: "Manager", cls: "bg-sky-50 text-sky-800 ring-sky-100" },
+    employee: { label: "Employee", cls: "bg-zinc-50 text-zinc-700 ring-zinc-200" },
+    gatekeeper: { label: "Gatekeeper", cls: "bg-amber-50 text-amber-900 ring-amber-100" },
+    voicemail: { label: "Voicemail", cls: "bg-zinc-50 text-zinc-600 ring-zinc-200" },
+    unknown: { label: "Unknown", cls: "bg-zinc-50 text-zinc-600 ring-zinc-200" },
+  };
+  const e = map[l.contact_role];
   return (
     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", e.cls)}>
       {e.label}
@@ -161,6 +193,10 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
 
   const hotLeads = leads.filter((l) => l.interest_level === "hot").length;
   const warmLeads = leads.filter((l) => l.interest_level === "warm").length;
+  const ownerReached = leads.filter((l) => l.reached_decision_maker === true).length;
+  const ownerContactCaptured = leads.filter(
+    (l) => !l.reached_decision_maker && (l.owner_name || l.owner_phone || l.owner_email),
+  ).length;
 
   return (
     <section className="rounded-[24px] border border-[#ebe7f7] bg-white p-6 shadow-sm md:p-8">
@@ -171,8 +207,8 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
             Add one at a time or paste a CSV. After each call, the AI automatically captures name, email, address and
             interest level from the conversation.
           </p>
-          {(hotLeads > 0 || warmLeads > 0) && (
-            <div className="mt-2 flex gap-2">
+          {(hotLeads > 0 || warmLeads > 0 || ownerReached > 0 || ownerContactCaptured > 0) && (
+            <div className="mt-2 flex flex-wrap gap-2">
               {hotLeads > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-semibold text-orange-800 ring-1 ring-orange-200">
                   🔥 {hotLeads} hot {hotLeads === 1 ? "lead" : "leads"}
@@ -181,6 +217,16 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
               {warmLeads > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
                   ☀️ {warmLeads} warm {warmLeads === 1 ? "lead" : "leads"}
+                </span>
+              )}
+              {ownerReached > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-100">
+                  ✓ {ownerReached} owner{ownerReached === 1 ? "" : "s"} reached
+                </span>
+              )}
+              {ownerContactCaptured > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-800 ring-1 ring-violet-100">
+                  📇 {ownerContactCaptured} owner contact{ownerContactCaptured === 1 ? "" : "s"} captured
                 </span>
               )}
             </div>
@@ -298,13 +344,25 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                 <>
                   <tr key={l.id} className="border-b border-[#f8fafc]">
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[#0f172a]">{l.name?.trim() || "—"}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-[#0f172a]">{l.name?.trim() || "—"}</p>
+                        {roleBadge(l)}
+                      </div>
                       {l.business_name ? <p className="text-xs text-[#64748b]">{l.business_name}</p> : null}
                       {l.email ? <p className="text-xs text-[#5b21b6]">{l.email}</p> : null}
                       {(l.city || l.postcode) ? (
                         <p className="text-xs text-[#64748b]">
                           {[l.city, l.postcode].filter(Boolean).join(", ")}
                         </p>
+                      ) : null}
+                      {(l.owner_name || l.owner_phone || l.owner_email) && !l.reached_decision_maker ? (
+                        <div className="mt-1.5 rounded-lg border border-violet-100 bg-violet-50/60 px-2 py-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-violet-700">Owner contact (call back)</p>
+                          {l.owner_name ? <p className="text-xs font-semibold text-violet-900">{l.owner_name}</p> : null}
+                          {l.owner_phone ? <p className="font-mono text-[11px] text-violet-800">{l.owner_phone}</p> : null}
+                          {l.owner_email ? <p className="text-[11px] text-violet-800">{l.owner_email}</p> : null}
+                          {l.owner_best_time ? <p className="text-[10px] italic text-violet-700">Best time: {l.owner_best_time}</p> : null}
+                        </div>
                       ) : null}
                     </td>
                     <td className="px-4 py-3 font-mono text-[12px] text-[#475569]">{l.phone}</td>

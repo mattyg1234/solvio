@@ -327,6 +327,13 @@ export async function POST(req: Request) {
           if (intake.country) patch.country = intake.country;
           if (intake.interest_level) patch.interest_level = intake.interest_level;
           if (intake.intake_notes) patch.intake_notes = intake.intake_notes;
+          if (intake.contact_role) patch.contact_role = intake.contact_role;
+          if (intake.reached_decision_maker !== null) patch.reached_decision_maker = intake.reached_decision_maker;
+          if (intake.owner_name) patch.owner_name = intake.owner_name;
+          if (intake.owner_phone) patch.owner_phone = intake.owner_phone;
+          if (intake.owner_email) patch.owner_email = intake.owner_email;
+          if (intake.owner_best_time) patch.owner_best_time = intake.owner_best_time;
+          if (intake.objections) patch.objections = intake.objections;
 
           await admin
             .from("voice_outbound_leads")

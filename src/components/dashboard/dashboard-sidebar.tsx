@@ -13,7 +13,6 @@ import {
   Megaphone,
   MessageCircleQuestion,
   Mic2,
-  PhoneCall,
   Radar,
   Settings2,
   Sparkles,
@@ -53,13 +52,11 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
 
   if (cap.ai_receptionist) {
     items.push({
-      href: "/dashboard/setup/voice",
-      label: "Your AI receptionist",
+      href: "/dashboard/receptionist",
+      label: "Receptionist",
       icon: Mic2,
-      key: "voice",
+      key: "receptionist",
     });
-    items.push({ href: "/dashboard/phone", label: "Phone numbers", icon: PhoneCall, key: "phone" });
-    items.push({ href: "/dashboard/calls", label: "Calls", icon: PhoneCall, key: "calls" });
   }
 
   if (cap.lead_generation) {
