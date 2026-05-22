@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { startOutboundCall } from "@/lib/vapi-outbound";
+import { getSolvioVapiApiKey } from "@/lib/voice-platform-env";
 
 async function requireUser() {
   const supabase = await createSupabaseServerClient();
@@ -294,4 +295,128 @@ export async function dialLeadNowAction(params: {
 
   revalidatePath(`/dashboard/campaigns/${params.campaignId}`);
   return { ok: true, callId: callRes.callId, creditSource: String(creditSource) };
+}
+
+/**
+ * Hang up a currently-dialing call for a lead. Best-effort — asks Vapi to end
+ * the call and marks the lead row as failed locally. If Vapi rejects the
+ * termination request, the silence timeout will end the call within ~20 s.
+ */
+export async function stopCallNowAction(params: {
+  leadId: string;
+  campaignId: string;
+}): Promise<{ ok: true; vapiCallId: string | null } | { ok: false; message: string }> {
+  const { supabase, user } = await requireUser();
+  const c = await assertOwnsCampaign(supabase, user.id, params.campaignId);
+  const admin = createSupabaseServiceRoleClient();
+
+  const { data: activeCall } = await admin
+    .from("voice_call_logs")
+    .select("id, vapi_call_id")
+    .eq("lead_id", params.leadId)
+    .eq("business_id", c.business_id)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const vapiCallId = activeCall?.vapi_call_id?.trim() || null;
+
+  if (vapiCallId) {
+    const apiKey = getSolvioVapiApiKey().trim();
+    if (apiKey) {
+      try {
+        await fetch(`https://api.vapi.ai/call/${encodeURIComponent(vapiCallId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          cache: "no-store",
+        });
+      } catch {
+        /** silence timeout will catch it within 20 s */
+      }
+    }
+  }
+
+  await admin
+    .from("voice_outbound_leads")
+    .update({ status: "failed", last_attempted_at: new Date().toISOString() })
+    .eq("id", params.leadId)
+    .eq("business_id", c.business_id);
+
+  if (activeCall?.id) {
+    await admin
+      .from("voice_call_logs")
+      .update({ ended_at: new Date().toISOString(), outcome: "dropped" })
+      .eq("id", activeCall.id);
+  }
+
+  revalidatePath(`/dashboard/campaigns/${params.campaignId}`);
+  return { ok: true, vapiCallId };
+}
+
+/**
+ * Fetch the latest call's transcript for a lead, so the panel can show the
+ * full conversation inline when the merchant expands the row.
+ */
+export async function getLeadCallTranscriptAction(params: {
+  leadId: string;
+  campaignId: string;
+}): Promise<
+  | { ok: true; transcript: string | null; summary: string | null; outcome: string | null; durationSeconds: number; startedAt: string | null }
+  | { ok: false; message: string }
+> {
+  const { supabase, user } = await requireUser();
+  const c = await assertOwnsCampaign(supabase, user.id, params.campaignId);
+
+  const { data: row } = await supabase
+    .from("voice_call_logs")
+    .select("raw_transcript, transcript_summary, outcome, duration_seconds, started_at")
+    .eq("lead_id", params.leadId)
+    .eq("business_id", c.business_id)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!row) return { ok: true, transcript: null, summary: null, outcome: null, durationSeconds: 0, startedAt: null };
+
+  const raw = row.raw_transcript as unknown;
+  let transcript: string | null = null;
+  if (typeof raw === "string") transcript = raw.trim() || null;
+  else if (raw && typeof raw === "object" && typeof (raw as { text?: unknown }).text === "string") {
+    transcript = ((raw as { text: string }).text).trim() || null;
+  }
+
+  return {
+    ok: true,
+    transcript,
+    summary: (row.transcript_summary as string | null) ?? null,
+    outcome: (row.outcome as string | null) ?? null,
+    durationSeconds: typeof row.duration_seconds === "number" ? row.duration_seconds : 0,
+    startedAt: (row.started_at as string | null) ?? null,
+  };
+}
+
+/**
+ * Return the Vapi dashboard URL for a lead's most recent call, so the
+ * merchant can watch the live transcript + listen back to the audio.
+ */
+export async function getVapiCallUrlAction(params: {
+  leadId: string;
+  campaignId: string;
+}): Promise<{ ok: true; url: string | null } | { ok: false; message: string }> {
+  const { supabase, user } = await requireUser();
+  const c = await assertOwnsCampaign(supabase, user.id, params.campaignId);
+
+  const { data: row } = await supabase
+    .from("voice_call_logs")
+    .select("vapi_call_id")
+    .eq("lead_id", params.leadId)
+    .eq("business_id", c.business_id)
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const id = row?.vapi_call_id?.trim();
+  if (!id) return { ok: true, url: null };
+  return { ok: true, url: `https://dashboard.vapi.ai/calls/${encodeURIComponent(id)}` };
 }

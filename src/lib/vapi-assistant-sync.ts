@@ -168,10 +168,15 @@ export async function createMerchantVapiAssistant(
     // a friendly closer; keep a silence + duration safety net so a stuck call
     // doesn't burn minutes.
     endCallFunctionEnabled: true,
-    endCallMessage: "Thanks for calling — have a great day, bye now!",
-    endCallPhrases: ["bye", "goodbye", "good bye", "bye now", "bye bye", "have a great day", "speak soon", "take care"],
-    silenceTimeoutSeconds: 30,
+    endCallMessage: "Have a brilliant day — bye now!",
+    endCallPhrases: ["bye", "goodbye", "good bye", "bye now", "bye bye", "have a great day", "have a brilliant day", "speak soon", "take care", "adiós", "hasta luego", "que tengas buen día"],
+    silenceTimeoutSeconds: 20,
     maxDurationSeconds: 600,
+    // Outbound voicemail handling — Vapi detects machine pick-up and leaves a
+    // short message then hangs up. No-op for inbound calls.
+    voicemailDetectionEnabled: true,
+    voicemailMessage:
+      "Hi, Sam here from Solvio — sorry to miss you. We help businesses like yours stop missing booking calls. Matty will try again at another time. Have a brilliant day!",
   };
 
   const { ok, status, json } = await vapiFetch(apiKey, "/assistant", {

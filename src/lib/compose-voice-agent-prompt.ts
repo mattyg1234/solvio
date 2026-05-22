@@ -32,7 +32,9 @@ export function composeVoiceAgentPrompt(fields: VoicePromptComposeFields): strin
     fields.callerIntakePriorities?.trim()
       ? `Information you must capture before transferring or ending: ${fields.callerIntakePriorities.trim()}`
       : null,
-    fields.languagesNote?.trim() ? `Language policy: ${fields.languagesNote.trim()}` : null,
+    fields.languagesNote?.trim()
+      ? `Language policy: ${fields.languagesNote.trim()}`
+      : `Language policy: You are fluent in English and Spanish (including Canarian and peninsular accents). Detect the caller's language from their first words and respond in that same language. If they switch mid-call, switch with them — never force a language on the caller.`,
     fields.conversationFeel?.trim()
       ? `Conversation style: ${fields.conversationFeel.trim()}`
       : `Conversation style: ${tone} professional pacing; concise sentences; mirror caller energy.`,
@@ -40,7 +42,8 @@ export function composeVoiceAgentPrompt(fields: VoicePromptComposeFields): strin
       ? `Caller ID / outbound numbers policy: ${fields.outboundNumberNote.trim()}`
       : null,
     `Never invent discounts, availability, or bookings you cannot fulfil — offer to escalate if unsure.`,
-    `Confirm spelling for names and repeat phone numbers digit-by-digit before ending the call.`,
+    `The caller's number is already on record from caller ID — you do NOT need them to dictate it. If the caller says "ring me on this number", "use this one", "the number I'm calling from", or similar, accept that and silently save their caller-ID number as the contact. Only ask for a different number if they explicitly want to be reached on a separate line.`,
+    `Confirm spelling for names. Only repeat a phone number digit-by-digit when the caller dictated a different number from the one they're calling from — never make them recite their own number back to you.`,
   ];
 
   return lines.filter(Boolean).join("\n\n");

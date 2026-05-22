@@ -2,13 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Download, Loader2, Phone, PhoneCall, Plus, Trash2, Upload } from "lucide-react";
+import { Download, ExternalLink, Loader2, Phone, PhoneCall, PhoneOff, Plus, Trash2, Upload } from "lucide-react";
 
 import {
   addLeadAction,
   deleteLeadAction,
   dialLeadNowAction,
   exportLeadsCSVAction,
+  getLeadCallTranscriptAction,
+  getVapiCallUrlAction,
+  stopCallNowAction,
   uploadLeadsCsvAction,
 } from "@/app/dashboard/campaigns/lead-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -117,8 +120,35 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
   const [csvText, setCsvText] = useState("");
   const [showUpload, setShowUpload] = useState(false);
 
-  // Notes expand
+  // Notes expand + per-lead loaded transcript cache
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [transcripts, setTranscripts] = useState<
+    Record<string, { transcript: string | null; summary: string | null; outcome: string | null; durationSeconds: number; loading: boolean }>
+  >({});
+
+  function toggleExpand(leadId: string) {
+    const isOpening = expandedId !== leadId;
+    setExpandedId(isOpening ? leadId : null);
+    if (isOpening && !transcripts[leadId]) {
+      setTranscripts((t) => ({ ...t, [leadId]: { transcript: null, summary: null, outcome: null, durationSeconds: 0, loading: true } }));
+      void getLeadCallTranscriptAction({ leadId, campaignId }).then((res) => {
+        if (!res.ok) {
+          setTranscripts((t) => ({ ...t, [leadId]: { transcript: null, summary: null, outcome: null, durationSeconds: 0, loading: false } }));
+          return;
+        }
+        setTranscripts((t) => ({
+          ...t,
+          [leadId]: {
+            transcript: res.transcript,
+            summary: res.summary,
+            outcome: res.outcome,
+            durationSeconds: res.durationSeconds,
+            loading: false,
+          },
+        }));
+      });
+    }
+  }
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -168,6 +198,29 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
     run(async () => {
       await deleteLeadAction(leadId, campaignId);
       router.refresh();
+    });
+  }
+
+  function handleStop(leadId: string) {
+    run(async () => {
+      const res = await stopCallNowAction({ leadId, campaignId });
+      if (!res.ok) setError(res.message);
+      else router.refresh();
+    });
+  }
+
+  function handleOpenVapi(leadId: string) {
+    run(async () => {
+      const res = await getVapiCallUrlAction({ leadId, campaignId });
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      if (!res.url) {
+        setError("No call yet — dial first.");
+        return;
+      }
+      window.open(res.url, "_blank", "noopener,noreferrer");
     });
   }
 
@@ -368,14 +421,14 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                     <td className="px-4 py-3 font-mono text-[12px] text-[#475569]">{l.phone}</td>
                     <td className="px-4 py-3 align-middle">{interestBadge(l.interest_level)}</td>
                     <td className="px-4 py-3 max-w-[200px]">
-                      {l.intake_notes ? (
+                      {l.intake_notes || l.attempts > 0 ? (
                         <button
                           type="button"
-                          onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}
+                          onClick={() => toggleExpand(l.id)}
                           className="text-left text-xs text-[#5b21b6] hover:underline line-clamp-2"
                           title={expandedId === l.id ? "Click to collapse" : "Click to expand"}
                         >
-                          {l.intake_notes}
+                          {l.intake_notes || "View transcript"}
                         </button>
                       ) : (
                         <span className="text-xs text-[#94a3b8]">—</span>
@@ -384,12 +437,13 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                     <td className="px-4 py-3 align-middle">{statusBadge(l.status)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        {l.status === "queued" || l.status === "failed" ? (
+                        {l.status === "queued" || l.status === "failed" || l.status === "completed" ? (
                           <Button
                             type="button"
                             size="sm"
                             disabled={pending}
                             onClick={() => handleDial(l.id)}
+                            variant={l.status === "completed" ? "outline" : "default"}
                             className="h-8 rounded-full px-3 text-[11px] font-semibold"
                           >
                             {pending ? (
@@ -397,14 +451,46 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                             ) : (
                               <>
                                 <PhoneCall className="mr-1 h-3.5 w-3.5" aria-hidden />
-                                Dial now
+                                {l.status === "completed" ? "Call again" : "Dial now"}
                               </>
                             )}
                           </Button>
                         ) : null}
+                        {l.status === "dialing" ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            disabled={pending}
+                            onClick={() => handleStop(l.id)}
+                            className="h-8 rounded-full px-3 text-[11px] font-semibold"
+                          >
+                            {pending ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            ) : (
+                              <>
+                                <PhoneOff className="mr-1 h-3.5 w-3.5" aria-hidden />
+                                Stop
+                              </>
+                            )}
+                          </Button>
+                        ) : null}
+                        {l.attempts > 0 ? (
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => handleOpenVapi(l.id)}
+                            className="rounded-full p-1.5 text-[#5b21b6] hover:bg-violet-50"
+                            aria-label="Open live call log in Vapi"
+                            title={l.status === "dialing" ? "Watch live transcript in Vapi" : "Listen to recording / view transcript in Vapi"}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </button>
+                        ) : null}
                         <a
                           href={`tel:${l.phone}`}
                           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "h-8 rounded-full px-2 text-[#5b21b6]")}
+                          title="Dial from my phone"
                         >
                           <Phone className="h-3.5 w-3.5" aria-hidden />
                         </a>
@@ -420,14 +506,44 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                       </div>
                     </td>
                   </tr>
-                  {expandedId === l.id && l.intake_notes ? (
+                  {expandedId === l.id ? (
                     <tr key={`${l.id}-notes`} className="border-b border-[#f8fafc] bg-[#fafbff]">
                       <td colSpan={6} className="px-4 pb-3 pt-0 text-xs text-[#475569]">
-                        <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
-                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
-                            AI call notes
-                          </p>
-                          <p>{l.intake_notes}</p>
+                        <div className="space-y-3">
+                          {l.intake_notes ? (
+                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
+                              <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
+                                AI call notes
+                              </p>
+                              <p>{l.intake_notes}</p>
+                            </div>
+                          ) : null}
+                          {transcripts[l.id]?.loading ? (
+                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3 text-[#94a3b8]">
+                              <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" aria-hidden />
+                              Loading transcript…
+                            </div>
+                          ) : transcripts[l.id]?.transcript ? (
+                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3">
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#94a3b8]">
+                                  Full chat transcript
+                                </p>
+                                {transcripts[l.id]?.outcome ? (
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[#64748b]">
+                                    {transcripts[l.id]?.outcome} · {transcripts[l.id]?.durationSeconds}s
+                                  </span>
+                                ) : null}
+                              </div>
+                              <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-relaxed text-[#0f172a]">
+                                {transcripts[l.id]?.transcript}
+                              </pre>
+                            </div>
+                          ) : l.attempts > 0 ? (
+                            <div className="rounded-xl border border-[#ebe7f7] bg-white p-3 text-[#94a3b8]">
+                              Transcript not captured for this call. Open in Vapi to view directly.
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
