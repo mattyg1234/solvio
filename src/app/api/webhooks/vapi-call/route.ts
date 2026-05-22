@@ -7,43 +7,95 @@ import { getSolvioVapiWebhookSecret } from "@/lib/voice-platform-env";
 
 export const runtime = "nodejs";
 
-type VapiCallMessage = {
-  type?: string;
-  call?: {
-    id?: string;
-    metadata?: Record<string, unknown>;
-    customer?: { number?: string; name?: string };
-    startedAt?: string;
-    endedAt?: string;
-    endedReason?: string;
-    cost?: number;
-    transcript?: string;
-    summary?: string;
-    messages?: { role?: string; message?: string; content?: string }[];
-    analysis?: { summary?: string };
-  };
-};
+type VapiMsg = Record<string, unknown>;
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-function buildTranscript(call: VapiCallMessage["call"]): string {
-  if (!call) return "";
-  if (typeof call.transcript === "string" && call.transcript.trim().length > 0) {
-    return call.transcript.trim();
+/** Dig transcript out of wherever Vapi decided to put it this week. */
+function extractTranscript(msg: VapiMsg): string {
+  // 1. Top-level transcript on the message object (end-of-call-report)
+  const topTx = asString(msg.transcript);
+  if (topTx.trim()) return topTx.trim();
+
+  // 2. artifact.transcript
+  const artifact = msg.artifact as VapiMsg | undefined;
+  if (artifact) {
+    const artTx = asString(artifact.transcript);
+    if (artTx.trim()) return artTx.trim();
+    // artifact.messages array
+    const artMsgs = artifact.messages;
+    if (Array.isArray(artMsgs)) {
+      const built = buildFromMessages(artMsgs as VapiMsg[]);
+      if (built) return built;
+    }
   }
-  if (Array.isArray(call.messages)) {
-    return call.messages
-      .map((m) => {
-        const text = (typeof m.message === "string" ? m.message : "") || (typeof m.content === "string" ? m.content : "");
-        const role = m.role === "assistant" ? "AI" : m.role === "user" ? "Caller" : (m.role ?? "");
-        return text ? `${role}: ${text}` : "";
-      })
-      .filter(Boolean)
-      .join("\n");
+
+  // 3. call.transcript
+  const call = msg.call as VapiMsg | undefined;
+  if (call) {
+    const callTx = asString(call.transcript);
+    if (callTx.trim()) return callTx.trim();
+    // call.messages array
+    if (Array.isArray(call.messages)) {
+      const built = buildFromMessages(call.messages as VapiMsg[]);
+      if (built) return built;
+    }
+    // call.artifact
+    const callArtifact = call.artifact as VapiMsg | undefined;
+    if (callArtifact) {
+      const caTx = asString(callArtifact.transcript);
+      if (caTx.trim()) return caTx.trim();
+    }
+  }
+
+  return "";
+}
+
+function buildFromMessages(messages: VapiMsg[]): string {
+  return messages
+    .map((m) => {
+      const text = asString(m.message) || asString(m.content) || asString(m.text);
+      const role = m.role === "assistant" ? "AI" : m.role === "user" ? "Caller" : asString(m.role);
+      return text.trim() ? `${role}: ${text.trim()}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Extract summary from wherever Vapi puts it. */
+function extractSummary(msg: VapiMsg): string {
+  const top = asString(msg.summary);
+  if (top.trim()) return top.trim();
+  const call = msg.call as VapiMsg | undefined;
+  if (call) {
+    const cs = asString(call.summary);
+    if (cs.trim()) return cs.trim();
+    const analysis = call.analysis as VapiMsg | undefined;
+    if (analysis) return asString(analysis.summary).trim();
   }
   return "";
+}
+
+/** Extract timing/cost from call obj or message top-level. */
+function extractCallField(msg: VapiMsg, field: string): unknown {
+  const call = msg.call as VapiMsg | undefined;
+  if (call && call[field] !== undefined) return call[field];
+  return msg[field];
+}
+
+/** Extract metadata (always in call.metadata). */
+function extractMetadata(msg: VapiMsg): Record<string, unknown> {
+  const call = msg.call as VapiMsg | undefined;
+  const meta = call?.metadata;
+  return meta && typeof meta === "object" && !Array.isArray(meta) ? (meta as Record<string, unknown>) : {};
+}
+
+/** Extract call ID from call.id or msg.callId. */
+function extractCallId(msg: VapiMsg): string {
+  const call = msg.call as VapiMsg | undefined;
+  return asString(call?.id) || asString(msg.callId) || asString(msg.id);
 }
 
 export async function POST(req: Request) {
@@ -63,27 +115,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "bad json" }, { status: 400 });
   }
 
-  const msg = (body && typeof body === "object" && "message" in body
-    ? (body as { message: VapiCallMessage }).message
-    : (body as VapiCallMessage)) ?? {};
+  const msg: VapiMsg = (body && typeof body === "object" && "message" in body
+    ? (body as { message: VapiMsg }).message
+    : (body as VapiMsg)) ?? {};
 
-  const type = msg.type ?? "";
-  // We only act on end-of-call. Other Vapi events (status-update, transcript) are ignored for now.
-  if (type !== "end-of-call-report" && type !== "call.ended" && type !== "status-update") {
+  const type = asString(msg.type);
+  // Only act on end-of-call events. Skip status-update (fires too early, no transcript yet).
+  if (type !== "end-of-call-report" && type !== "call.ended") {
     return NextResponse.json({ ok: true, ignored: type || "unknown" });
   }
 
-  const call = msg.call;
-  const vapiCallId = asString(call?.id);
+  const vapiCallId = extractCallId(msg);
   if (!vapiCallId) return NextResponse.json({ ok: true, ignored: "no call id" });
 
-  // For status-update, only react if status is "ended"
-  if (type === "status-update") {
-    const status = (msg as unknown as { status?: string }).status ?? "";
-    if (status !== "ended") return NextResponse.json({ ok: true, ignored: "non-end status" });
-  }
-
-  const metadata = (call?.metadata && typeof call.metadata === "object") ? (call.metadata as Record<string, unknown>) : {};
+  const metadata = extractMetadata(msg);
   const businessId = asString(metadata.solvio_business_id);
   const campaignId = asString(metadata.solvio_campaign_id);
   const leadId = asString(metadata.solvio_lead_id);
@@ -93,14 +138,17 @@ export async function POST(req: Request) {
 
   const admin = createSupabaseServiceRoleClient();
 
-  const startedAt = call?.startedAt ? new Date(call.startedAt).toISOString() : null;
-  const endedAt = call?.endedAt ? new Date(call.endedAt).toISOString() : new Date().toISOString();
+  const startedAtRaw = asString(extractCallField(msg, "startedAt"));
+  const endedAtRaw = asString(extractCallField(msg, "endedAt"));
+  const startedAt = startedAtRaw ? new Date(startedAtRaw).toISOString() : null;
+  const endedAt = endedAtRaw ? new Date(endedAtRaw).toISOString() : new Date().toISOString();
   let durationSec = 0;
   if (startedAt && endedAt) durationSec = Math.max(0, Math.floor((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000));
-  const transcript = buildTranscript(call);
-  const summary = asString(call?.summary) || asString(call?.analysis?.summary);
-  const costCents = typeof call?.cost === "number" ? Math.round(call.cost * 100) : 0;
-  const endedReason = asString(call?.endedReason);
+  const transcript = extractTranscript(msg);
+  const summary = extractSummary(msg);
+  const costRaw = extractCallField(msg, "cost");
+  const costCents = typeof costRaw === "number" ? Math.round(costRaw * 100) : 0;
+  const endedReason = asString(extractCallField(msg, "endedReason"));
   const callRecap = summary || (transcript ? transcript.slice(0, 800) : "");
 
   // Find existing call_log row (placed when we dialled the guest or lead).
@@ -156,8 +204,8 @@ export async function POST(req: Request) {
       lead_id: leadId || null,
       direction: "outbound",
       vapi_call_id: vapiCallId,
-      caller_phone: asString(call?.customer?.number),
-      caller_name: asString(call?.customer?.name),
+      caller_phone: asString((extractCallField(msg, "customer") as Record<string,unknown>)?.number),
+      caller_name: asString((extractCallField(msg, "customer") as Record<string,unknown>)?.name),
       started_at: startedAt ?? endedAt,
       ended_at: endedAt,
       duration_seconds: durationSec,
