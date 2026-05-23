@@ -36,6 +36,7 @@ import {
 } from "@/app/dashboard/bookings/inventory-actions";
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
 import { AppointmentWeekGrid, type AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
+import { StaffWeekPlanner } from "@/components/dashboard/staff-week-planner";
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
 import { ManualBookingDialog } from "@/components/dashboard/manual-booking-dialog";
 import { EditBookingDialog } from "@/components/dashboard/edit-booking-dialog";
@@ -121,6 +122,7 @@ export type VenueCalendarBookingRow = {
   business_event_id: string | null;
   status: string;
   internal_notes: string | null;
+  staff_member?: string | null;
   created_at: string;
 };
 
@@ -325,6 +327,9 @@ export function BookingOperationsHub({
             venueTimeZone={venueTimeZone}
             tables={tables}
             events={events}
+            schedules={schedules}
+            breaks={breaks}
+            staffMembers={staffMembers}
             inventoryLinks={{
               tables: tables.map((t) => ({ id: t.id, label: t.label })),
               events: events
@@ -374,31 +379,33 @@ function GuestsHubPanel(props: {
   venueTimeZone: string;
   tables: FloorPlanTableRow[];
   events: BusinessEventRow[];
+  schedules: AppointmentWeekRow[];
+  breaks: AppointmentBreakRow[];
+  staffMembers: StaffMember[];
   stripeReadyByBizId?: Record<string, boolean>;
 }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
-        <button
-          type="button"
-          onClick={() => props.onGuestsSub("inbox")}
-          className={cn(
-            "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
-            props.guestsSub === "inbox" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
-          )}
-        >
-          Incoming
-        </button>
-        <button
-          type="button"
-          onClick={() => props.onGuestsSub("confirmed")}
-          className={cn(
-            "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
-            props.guestsSub === "confirmed" ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
-          )}
-        >
-          Confirmed
-        </button>
+        {(
+          [
+            { key: "inbox"    as const, label: "Incoming" },
+            { key: "confirmed" as const, label: "Confirmed" },
+            { key: "planner"  as const, label: "Week planner" },
+          ]
+        ).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => props.onGuestsSub(t.key)}
+            className={cn(
+              "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
+              props.guestsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {props.guestsSub === "inbox" ? (
@@ -408,6 +415,14 @@ function GuestsHubPanel(props: {
           stripeReadyByBizId={props.stripeReadyByBizId}
           inventoryLinks={props.inventoryLinks}
           highlightBookingRequestId={props.bookingRequestHighlight ?? undefined}
+        />
+      ) : props.guestsSub === "planner" ? (
+        <StaffWeekPlanner
+          bookings={props.confirmedBookings}
+          staffMembers={props.staffMembers}
+          schedules={props.schedules}
+          breaks={props.breaks}
+          venueTimeZone={props.venueTimeZone}
         />
       ) : (
         <ConfirmedBookingsPanelWithContacts

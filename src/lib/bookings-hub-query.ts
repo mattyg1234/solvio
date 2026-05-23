@@ -6,7 +6,7 @@
 export const BOOKING_HUB_PRIMARIES = ["guests", "offerings"] as const;
 export type BookingHubPrimary = (typeof BOOKING_HUB_PRIMARIES)[number];
 
-export const BOOKING_GUESTS_SUBS = ["inbox", "confirmed"] as const;
+export const BOOKING_GUESTS_SUBS = ["inbox", "confirmed", "planner"] as const;
 export type BookingGuestsSub = (typeof BOOKING_GUESTS_SUBS)[number];
 
 export const BOOKING_OFFERINGS_SUBS = ["appointments", "events", "tables"] as const;
@@ -17,7 +17,9 @@ function normQs(s?: string | null): string {
 }
 
 function coerceGuestsSub(raw: string): BookingGuestsSub {
-  return raw === "confirmed" || raw === "scheduled" || raw === "calendar" ? "confirmed" : "inbox";
+  if (raw === "confirmed" || raw === "scheduled" || raw === "calendar") return "confirmed";
+  if (raw === "planner" || raw === "week" || raw === "schedule") return "planner";
+  return "inbox";
 }
 
 function coerceOfferingsSub(raw: string): BookingOfferingsSub {

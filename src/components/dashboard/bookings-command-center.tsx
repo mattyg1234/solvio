@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CalendarRange,
+  Columns3,
   Inbox,
   Link2,
   PartyPopper,
@@ -101,6 +102,13 @@ export function BookingsCommandCenter({
       Icon: CalendarCheck,
       active: activePrimary === "guests" && activeGuestsSub === "confirmed",
       badge: confirmedCount,
+    },
+    {
+      href: "/dashboard/bookings?tab=guests&view=planner#bookings-workspace",
+      label: "Week planner",
+      hint: "See every booking on a time grid — assign staff and spot gaps at a glance.",
+      Icon: Columns3,
+      active: activePrimary === "guests" && activeGuestsSub === "planner",
     },
   ];
 

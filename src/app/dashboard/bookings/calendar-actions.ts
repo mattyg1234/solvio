@@ -444,6 +444,34 @@ export async function editVenueCalendarBooking(params: {
   revBookings();
 }
 
+export async function assignBookingToStaff(bookingId: string, staffMember: string) {
+  const { supabase, user } = await requireUser();
+  if (!bookingId.trim()) throw new Error("Missing booking.");
+
+  const { data: row, error: fetchErr } = await supabase
+    .from("venue_calendar_bookings")
+    .select("id,business_id")
+    .eq("id", bookingId.trim())
+    .maybeSingle();
+  if (fetchErr || !row?.business_id) throw new Error(fetchErr?.message ?? "Booking not found.");
+
+  const { data: biz } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("id", row.business_id)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!biz) throw new Error("Unauthorized.");
+
+  const { error: updErr } = await supabase
+    .from("venue_calendar_bookings")
+    .update({ staff_member: staffMember.trim() || null, updated_at: new Date().toISOString() })
+    .eq("id", bookingId.trim());
+  if (updErr) throw new Error(updErr.message);
+
+  revBookings();
+}
+
 export async function cancelVenueCalendarBooking(bookingId: string) {
   const { supabase, user } = await requireUser();
   if (!bookingId.trim()) {
