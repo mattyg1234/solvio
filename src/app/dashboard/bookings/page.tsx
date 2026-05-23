@@ -15,6 +15,7 @@ import {
   type TableQuestionRow,
   type VenueCalendarBookingRow,
 } from "@/components/dashboard/booking-operations-hub";
+import type { AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
 import type { BookingRequestRow } from "@/components/dashboard/booking-inbox";
 import { BookingsCommandCenter } from "@/components/dashboard/bookings-command-center";
 import { buttonVariants } from "@/components/ui/button";
@@ -160,6 +161,7 @@ export default async function DashboardBookingsPage({
   let floorTables: FloorPlanTableRow[] = [];
   let tableQuestions: TableQuestionRow[] = [];
   let confirmedBookings: VenueCalendarBookingRow[] = [];
+  let breaks: AppointmentBreakRow[] = [];
 
   const calendarSince = new Date();
   calendarSince.setDate(calendarSince.getDate() - 90);
@@ -169,7 +171,7 @@ export default async function DashboardBookingsPage({
   const calendarUntilIso = calendarUntil.toISOString();
 
   if (primaryBizId) {
-    const [ah, se, ev, tb, qu, vc, tbwh] = await Promise.all([
+    const [ah, se, ev, tb, qu, vc, tbwh, bk] = await Promise.all([
       supabase.from("appointment_weekday_hours").select("*").eq("business_id", primaryBizId).order("weekday"),
       supabase.from("appointment_slot_exceptions").select("*").eq("business_id", primaryBizId).order("exception_date", { ascending: false }).limit(80),
       supabase.from("business_events").select("*").eq("business_id", primaryBizId).order("starts_at", { ascending: true }).limit(80),
@@ -184,11 +186,13 @@ export default async function DashboardBookingsPage({
         .order("starts_at", { ascending: true })
         .limit(500),
       supabase.from("floor_plan_table_weekday_hours").select("*").eq("business_id", primaryBizId).order("weekday"),
+      supabase.from("appointment_breaks").select("*").eq("business_id", primaryBizId).order("created_at"),
     ]);
 
     schedules = (ah.data ?? []) as AppointmentWeekRow[];
     exceptions = (se.data ?? []) as SlotExceptionRow[];
     hostedEvents = (ev.data ?? []) as BusinessEventRow[];
+    breaks = (bk.data ?? []) as AppointmentBreakRow[];
 
     const tableHoursByFloorId = new Map<string, FloorPlanTableWeekHourRow[]>();
     for (const row of tbwh?.data ?? []) {
@@ -330,6 +334,7 @@ export default async function DashboardBookingsPage({
           stripeReadyByBizId={stripeReadyByBizId}
           staffMembers={staffMembers}
           appointmentQuestions={appointmentQuestions}
+          breaks={breaks}
         />
       </div>
 

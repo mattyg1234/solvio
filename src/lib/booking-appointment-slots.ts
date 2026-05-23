@@ -137,15 +137,23 @@ export function getUnavailableSlotStartsHm(dateYmd: string, exceptions: PublicAp
   return blockedSlotHmSet(exceptionsForAppointmentDay(dateYmd, exceptions));
 }
 
+export type AppointmentBreak = {
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+};
+
 /**
  * Public booking: convert a preferred calendar day + recurring hours into selectable slots.
  * Exceptions remove slots from inventory (both removed + cancelled behave as unavailable for picks).
+ * Breaks (recurring weekly windows) also hide matching slots.
  */
 export function buildAppointmentSlotChoices(
   dateYmd: string,
   row: PublicAppointmentHour | undefined,
   venueTimeZone: string,
   exceptions: PublicAppointmentSlotException[] | undefined,
+  breaks?: AppointmentBreak[],
 ): AppointmentSlotChoice[] {
   if (!row) return [];
   const unavailable = blockedSlotHmSet(exceptionsForAppointmentDay(dateYmd.trim(), exceptions ?? []));
@@ -153,12 +161,19 @@ export function buildAppointmentSlotChoices(
   const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[row.weekday];
   const intervals = intervalsForHourRow(row);
   const tz = coerceValidIanaTimeZone(venueTimeZone);
+  const dayDow = dowSundayZeroInBusinessTZ(dateYmd.trim(), venueTimeZone);
 
   const out: AppointmentSlotChoice[] = [];
   for (const { start, end } of intervals) {
     const a = minutesToClock(start);
     const b = minutesToClock(end);
     if (unavailable.hm.has(a)) continue;
+    if (breaks?.some((br) => {
+      if (!br.weekdays.includes(dayDow)) return false;
+      const bStart = clockToMinutes(br.start_time);
+      const bEnd = clockToMinutes(br.end_time);
+      return bStart !== null && bEnd !== null && start >= bStart && start < bEnd;
+    })) continue;
     out.push({
       slotStartHm: a,
       value: `${dateYmd.trim()} · ${a}–${b} (${tz})`,

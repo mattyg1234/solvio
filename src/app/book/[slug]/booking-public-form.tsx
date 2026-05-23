@@ -28,6 +28,7 @@ import {
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import { PhoneWithCountryCode } from "@/components/booking/phone-with-country-code";
 import {
+  type AppointmentBreak,
   type AppointmentSlotChoice,
   buildAppointmentSlotChoices,
   dowSundayZeroInBusinessTZ,
@@ -91,6 +92,7 @@ type BookingPublicFormProps = {
   context: BookingPublicContextPayload;
   guestModes: BookingGuestMode[];
   depositFlash?: "success" | "cancel" | null;
+  breaks?: AppointmentBreak[];
 };
 
 function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
@@ -156,7 +158,7 @@ function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
   );
 }
 
-export function BookingPublicForm({ slug, context, guestModes, depositFlash = null }: BookingPublicFormProps) {
+export function BookingPublicForm({ slug, context, guestModes, depositFlash = null, breaks = [] }: BookingPublicFormProps) {
   const bound = submitBookingRequestAction.bind(null, slug);
   const [state, formAction, pending] = useActionState(bound, initialState);
 
@@ -195,9 +197,9 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
     }
     const dowCal = dowSundayZeroInBusinessTZ(requestedDate, venueTz);
     const hourRow = context.appointment_hours.find((h) => h.weekday === dowCal);
-    const slots = buildAppointmentSlotChoices(requestedDate.trim(), hourRow, venueTz, context.appointment_slot_exceptions);
+    const slots = buildAppointmentSlotChoices(requestedDate.trim(), hourRow, venueTz, context.appointment_slot_exceptions, breaks);
     return { hourRow, slots };
-  }, [context.appointment_hours, context.appointment_slot_exceptions, requestedDate, structuredAppointmentBooking, venueTz]);
+  }, [breaks, context.appointment_hours, context.appointment_slot_exceptions, requestedDate, structuredAppointmentBooking, venueTz]);
 
   const appointmentSlotsList = appointmentSchedule.slots;
 

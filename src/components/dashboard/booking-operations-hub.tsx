@@ -35,6 +35,7 @@ import {
   upsertTableBookingQuestion,
 } from "@/app/dashboard/bookings/inventory-actions";
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
+import { AppointmentWeekGrid, type AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
 import { ManualBookingDialog } from "@/components/dashboard/manual-booking-dialog";
 import { EditBookingDialog } from "@/components/dashboard/edit-booking-dialog";
@@ -177,6 +178,7 @@ type BookingOperationsHubProps = {
   stripeReadyByBizId?: Record<string, boolean>;
   staffMembers?: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  breaks?: AppointmentBreakRow[];
 };
 
 export function BookingOperationsHub({
@@ -199,6 +201,7 @@ export function BookingOperationsHub({
   stripeReadyByBizId,
   staffMembers = [],
   appointmentQuestions = [],
+  breaks = [],
 }: BookingOperationsHubProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -347,6 +350,7 @@ export function BookingOperationsHub({
             questions={questions}
             staffMembers={staffMembers}
             appointmentQuestions={appointmentQuestions}
+            breaks={breaks}
           />
         )}
       </div>
@@ -431,6 +435,7 @@ function OfferingsHubPanel(props: {
   questions: TableQuestionRow[];
   staffMembers: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  breaks?: AppointmentBreakRow[];
 }) {
   return (
     <div className="space-y-6">
@@ -464,6 +469,7 @@ function OfferingsHubPanel(props: {
           venueTimeZone={props.venueTimeZone}
           staffMembers={props.staffMembers}
           appointmentQuestions={props.appointmentQuestions}
+          breaks={props.breaks ?? []}
         />
       ) : null}
 
@@ -785,6 +791,7 @@ function AppointmentsPanel({
   venueTimeZone,
   staffMembers,
   appointmentQuestions = [],
+  breaks = [],
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
@@ -792,6 +799,7 @@ function AppointmentsPanel({
   venueTimeZone: string;
   staffMembers: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  breaks?: AppointmentBreakRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -937,6 +945,12 @@ function AppointmentsPanel({
           Save day
         </Button>
       </div>
+
+      <AppointmentWeekGrid
+        businessId={businessId}
+        schedules={schedules}
+        breaks={breaks}
+      />
 
       <AppointmentExceptionGrid
         businessId={businessId}

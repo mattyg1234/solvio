@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BookingPublicForm } from "./booking-public-form";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
+import type { AppointmentBreak } from "@/lib/booking-appointment-slots";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -41,7 +42,11 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
+  const admin = createSupabaseServiceRoleClient();
+  const [{ data, error }, { data: bizRow }] = await Promise.all([
+    supabase.rpc("get_booking_public_context", { p_slug: slug.trim() }),
+    admin.from("businesses").select("id").eq("booking_slug", slug.trim()).maybeSingle(),
+  ]);
 
   if (error) {
     console.error("[book] get_booking_public_context failed:", error.message);
@@ -65,6 +70,15 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
     notFound();
   }
 
+  let publicBreaks: AppointmentBreak[] = [];
+  if (bizRow?.id) {
+    const { data: brkData } = await admin
+      .from("appointment_breaks")
+      .select("weekdays, start_time, end_time")
+      .eq("business_id", bizRow.id);
+    publicBreaks = (brkData ?? []) as AppointmentBreak[];
+  }
+
   let guestModes = parseGuestModesFromRpc(ctx.guest_modes_raw);
   if (!guestModes.length) {
     guestModes = ["appointment", "table", "walk_in"];
@@ -76,7 +90,7 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
       <div className="pointer-events-none absolute -right-24 bottom-20 h-80 w-80 rounded-full bg-[#dbeafe]/60 blur-3xl" aria-hidden />
       <div className="relative z-10 flex min-h-screen flex-col items-center px-4 py-12 md:py-16">
         <div className="w-full max-w-lg rounded-[28px] border border-[#ebe7f7]/90 bg-white/95 p-6 shadow-[0_28px_90px_-48px_rgba(124,58,237,0.35)] backdrop-blur-sm md:p-8">
-          <BookingPublicForm slug={slug} context={ctx} guestModes={guestModes} depositFlash={depositFlash} />
+          <BookingPublicForm slug={slug} context={ctx} guestModes={guestModes} depositFlash={depositFlash} breaks={publicBreaks} />
         </div>
       </div>
     </div>

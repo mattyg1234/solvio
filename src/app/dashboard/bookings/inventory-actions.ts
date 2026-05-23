@@ -65,6 +65,39 @@ export async function upsertAppointmentWeekdayHour(params: {
   revBookings();
 }
 
+/** Add a recurring break window (lunch, dinner prep, etc.) to a business's appointment schedule. */
+export async function upsertAppointmentBreak(params: {
+  businessId: string;
+  weekdays: number[];
+  startTime: string;
+  endTime: string;
+  label: string;
+}) {
+  if (params.endTime <= params.startTime) throw new Error("End time must be after start time.");
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { error } = await supabase.from("appointment_breaks").insert({
+    business_id: params.businessId,
+    weekdays: params.weekdays,
+    start_time: params.startTime,
+    end_time: params.endTime,
+    label: params.label.trim() || "Break",
+  });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Delete a recurring break window by ID. */
+export async function deleteAppointmentBreak(businessId: string, breakId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("appointment_breaks")
+    .delete()
+    .eq("id", breakId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
 /** Replace venue-wide appointment intake questions stored in booking_flow_details.appointment_questions. */
 export async function saveAppointmentQuestions(
   businessId: string,
