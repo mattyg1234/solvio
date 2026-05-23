@@ -173,6 +173,7 @@ export async function addManualVenueCalendarBooking(params: {
   businessEventId?: string | null;
   internalNotes?: string;
   paymentNote?: "cash" | "card_offline" | "comped" | "unpaid" | "";
+  staffMember?: string;
 }) {
   const { supabase, user } = await requireUser();
 
@@ -296,6 +297,7 @@ export async function addManualVenueCalendarBooking(params: {
     floor_plan_table_id: floorPlanTableId,
     business_event_id: businessEventId,
     internal_notes: internalNotes,
+    staff_member: params.staffMember?.trim() || null,
   });
 
   if (insErr) {

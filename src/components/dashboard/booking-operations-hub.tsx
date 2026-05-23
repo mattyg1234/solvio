@@ -418,6 +418,7 @@ function GuestsHubPanel(props: {
         />
       ) : props.guestsSub === "planner" ? (
         <StaffWeekPlanner
+          businessId={props.businessId ?? ""}
           bookings={props.confirmedBookings}
           staffMembers={props.staffMembers}
           schedules={props.schedules}
