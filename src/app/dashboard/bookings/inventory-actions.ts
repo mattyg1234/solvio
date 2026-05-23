@@ -165,6 +165,74 @@ export async function saveStaffMembers(businessId: string, members: StaffMember[
   revBookings();
 }
 
+/** Create a new appointment service. */
+export async function createAppointmentService(params: {
+  businessId: string;
+  name: string;
+  durationMinutes: number;
+  priceCents: number;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { error } = await supabase.from("appointment_services").insert({
+    business_id: params.businessId,
+    name: params.name.trim(),
+    duration_minutes: params.durationMinutes,
+    price_cents: params.priceCents,
+    sort_order: 0,
+  });
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Update an existing appointment service. */
+export async function updateAppointmentService(params: {
+  serviceId: string;
+  businessId: string;
+  name: string;
+  durationMinutes: number;
+  priceCents: number;
+}) {
+  const supabase = await getOwnedSupabase(params.businessId);
+  const { error } = await supabase
+    .from("appointment_services")
+    .update({
+      name: params.name.trim(),
+      duration_minutes: params.durationMinutes,
+      price_cents: params.priceCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", params.serviceId)
+    .eq("business_id", params.businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Delete an appointment service. */
+export async function deleteAppointmentService(businessId: string, serviceId: string) {
+  const supabase = await getOwnedSupabase(businessId);
+  const { error } = await supabase
+    .from("appointment_services")
+    .delete()
+    .eq("id", serviceId)
+    .eq("business_id", businessId);
+  if (error) throw new Error(error.message);
+  revBookings();
+}
+
+/** Reorder appointment services. */
+export async function reorderAppointmentServices(businessId: string, orderMap: Record<string, number>) {
+  const supabase = await getOwnedSupabase(businessId);
+  for (const [serviceId, sortOrder] of Object.entries(orderMap)) {
+    const { error } = await supabase
+      .from("appointment_services")
+      .update({ sort_order: sortOrder, updated_at: new Date().toISOString() })
+      .eq("id", serviceId)
+      .eq("business_id", businessId);
+    if (error) throw new Error(error.message);
+  }
+  revBookings();
+}
+
 export async function deleteAppointmentWeekdayHour(businessId: string, rowId: string) {
   const supabase = await getOwnedSupabase(businessId);
   const { error } = await supabase.from("appointment_weekday_hours").delete().eq("id", rowId).eq("business_id", businessId);

@@ -20,6 +20,14 @@ export type PublicAppointmentSlotException = {
   kind: "removed" | "cancelled";
 };
 
+export type PublicAppointmentService = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price_cents: number;
+  sort_order: number;
+};
+
 export type EventCustomQuestion = {
   label: string;
   required: boolean;
@@ -87,6 +95,7 @@ export type BookingPublicContextPayload = {
   guest_modes_raw: unknown;
   appointment_hours: PublicAppointmentHour[];
   appointment_slot_exceptions: PublicAppointmentSlotException[];
+  appointment_services: PublicAppointmentService[];
   events: PublicBusinessEvent[];
   tables: PublicFloorTable[];
   table_questions: PublicTableQuestion[];
@@ -307,6 +316,31 @@ function parseQuestions(raw: unknown): PublicTableQuestion[] {
   return out;
 }
 
+function parseAppointmentServices(raw: unknown): PublicAppointmentService[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicAppointmentService[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    const durationMinutes = typeof o.duration_minutes === "number" ? o.duration_minutes : Number(o.duration_minutes);
+    const priceCents = typeof o.price_cents === "number" ? o.price_cents : Number(o.price_cents);
+    const sortOrder = typeof o.sort_order === "number" ? o.sort_order : Number(o.sort_order);
+    if (!id || !name || !Number.isFinite(durationMinutes) || durationMinutes <= 0) continue;
+    if (!Number.isFinite(priceCents) || priceCents < 0) continue;
+    out.push({
+      id,
+      name,
+      duration_minutes: durationMinutes,
+      price_cents: priceCents,
+      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+    });
+  }
+  out.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  return out;
+}
+
 export function parseGuestModesFromRpc(raw: unknown): BookingGuestMode[] {
   if (!raw) return [];
   if (Array.isArray(raw)) {
@@ -343,6 +377,7 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     guest_modes_raw: root.guest_modes,
     appointment_hours: parseHours(root.appointment_hours),
     appointment_slot_exceptions: parseAppointmentSlotExceptions(root.appointment_slot_exceptions),
+    appointment_services: parseAppointmentServices(root.appointment_services),
     events: parseEvents(root.events),
     tables: parseTables(root.tables),
     table_questions: parseQuestions(root.table_questions),

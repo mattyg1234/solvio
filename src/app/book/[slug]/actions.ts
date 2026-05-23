@@ -110,6 +110,7 @@ export async function submitBookingRequestAction(
   }
 
   const preferredStaffId = String(formData.get("preferred_staff") ?? "").trim();
+  const selectedServiceId = String(formData.get("selected_service") ?? "").trim();
 
   if (!slug.trim()) {
     return { ok: false, message: "Invalid booking link." };
@@ -124,6 +125,18 @@ export async function submitBookingRequestAction(
   const supabase = await createSupabaseServerClient();
   const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
   const parsedCtx = parseBookingPublicContext(ctxRaw);
+
+  if (selectedServiceId) {
+    const serviceMatch = parsedCtx?.appointment_services.find((s) => s.id === selectedServiceId);
+    if (serviceMatch) {
+      intakeExtras.selected_service = serviceMatch.name;
+      intakeExtras.selected_service_id = serviceMatch.id;
+      intakeExtras.selected_service_duration = serviceMatch.duration_minutes;
+      intakeExtras.selected_service_price_cents = serviceMatch.price_cents;
+      const priceStr = serviceMatch.price_cents > 0 ? ` · €${(serviceMatch.price_cents / 100).toFixed(serviceMatch.price_cents % 100 === 0 ? 0 : 2)}` : "";
+      intakeLines.push(`Service: ${serviceMatch.name} (${serviceMatch.duration_minutes} min)${priceStr}`);
+    }
+  }
 
   if (preferredStaffId) {
     const staffMatch = parsedCtx?.staff_members.find((s) => s.id === preferredStaffId);

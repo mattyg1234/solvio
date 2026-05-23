@@ -173,6 +173,8 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   const [pickedHostedEventKey, setPickedHostedEventKey] = useState("");
   const [hostedOccurrenceSel, setHostedOccurrenceSel] = useState<ExpandedOccurrence | null>(null);
   const [preferredTable, setPreferredTable] = useState("");
+  const [selectedService, setSelectedService] = useState("");
+  const [preferredStaff, setPreferredStaff] = useState("");
 
   const guestModesKey = guestModes.join(",");
 
@@ -779,24 +781,78 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         ) : null}
 
         <div className="space-y-3">
+          <input type="hidden" name="selected_service" value={selectedService} />
+          {structuredAppointmentBooking && context.appointment_services.length > 0 ? (
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-[#0f172a]">
+                What would you like? <span className="font-normal text-rose-600">*</span>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {context.appointment_services.map((svc) => {
+                  const priceEur = (svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2);
+                  const isSelected = selectedService === svc.id;
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      onClick={() => setSelectedService(svc.id)}
+                      className={cn(
+                        "rounded-xl border-2 p-4 text-left transition-all",
+                        isSelected
+                          ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
+                          : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="font-semibold text-[#0f172a]">{svc.name}</p>
+                          <p className="text-[13px] text-[#64748b]">{svc.duration_minutes} min</p>
+                        </div>
+                        {svc.price_cents > 0 && (
+                          <p className="font-semibold text-[#7c3aed]">€{priceEur}</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <input type="hidden" name="preferred_staff" value={preferredStaff} />
           {structuredAppointmentBooking && context.staff_members.length > 0 ? (
             <div className="space-y-2">
-              <label htmlFor="preferred_staff" className="text-sm font-semibold text-[#0f172a]">
-                Preferred staff <span className="font-normal text-[#94a3b8]">(optional)</span>
+              <label className="text-sm font-semibold text-[#0f172a]">
+                Preferred stylist <span className="font-normal text-[#94a3b8]">(optional)</span>
               </label>
-              <select
-                id="preferred_staff"
-                name="preferred_staff"
-                defaultValue=""
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-              >
-                <option value="">No preference</option>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setPreferredStaff("")}
+                  className={cn(
+                    "rounded-xl border-2 p-4 text-center transition-all",
+                    preferredStaff === ""
+                      ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
+                      : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
+                  )}
+                >
+                  <p className="font-semibold text-[#0f172a]">No preference</p>
+                </button>
                 {context.staff_members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => setPreferredStaff(member.id)}
+                    className={cn(
+                      "rounded-xl border-2 p-4 text-center transition-all",
+                      preferredStaff === member.id
+                        ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
+                        : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
+                    )}
+                  >
+                    <p className="font-semibold text-[#0f172a]">{member.name}</p>
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           ) : null}
           {structuredAppointmentBooking && context.appointment_questions.length > 0 ? (

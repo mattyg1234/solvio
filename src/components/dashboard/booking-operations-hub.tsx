@@ -180,6 +180,7 @@ type BookingOperationsHubProps = {
   stripeReadyByBizId?: Record<string, boolean>;
   staffMembers?: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
 };
 
@@ -203,6 +204,7 @@ export function BookingOperationsHub({
   stripeReadyByBizId,
   staffMembers = [],
   appointmentQuestions = [],
+  appointmentServices = [],
   breaks = [],
 }: BookingOperationsHubProps) {
   const router = useRouter();
@@ -355,6 +357,7 @@ export function BookingOperationsHub({
             questions={questions}
             staffMembers={staffMembers}
             appointmentQuestions={appointmentQuestions}
+            appointmentServices={appointmentServices}
             breaks={breaks}
           />
         )}
@@ -451,6 +454,7 @@ function OfferingsHubPanel(props: {
   questions: TableQuestionRow[];
   staffMembers: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
 }) {
   return (
@@ -485,6 +489,7 @@ function OfferingsHubPanel(props: {
           venueTimeZone={props.venueTimeZone}
           staffMembers={props.staffMembers}
           appointmentQuestions={props.appointmentQuestions}
+          appointmentServices={props.appointmentServices}
           breaks={props.breaks ?? []}
         />
       ) : null}
@@ -800,6 +805,14 @@ function ConfirmedBookingsPanelWithContacts({
   );
 }
 
+export type AppointmentServiceRow = {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price_cents: number;
+  sort_order: number;
+};
+
 function AppointmentsPanel({
   businessId,
   schedules,
@@ -807,6 +820,7 @@ function AppointmentsPanel({
   venueTimeZone,
   staffMembers,
   appointmentQuestions = [],
+  appointmentServices = [],
   breaks = [],
 }: {
   businessId: string;
@@ -815,6 +829,7 @@ function AppointmentsPanel({
   venueTimeZone: string;
   staffMembers: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
+  appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
 }) {
   const router = useRouter();
@@ -826,6 +841,10 @@ function AppointmentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffMember[]>(staffMembers);
   const [newStaffName, setNewStaffName] = useState("");
+  const [services, setServices] = useState<AppointmentServiceRow[]>(appointmentServices);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceDuration, setNewServiceDuration] = useState(60);
+  const [newServicePrice, setNewServicePrice] = useState(0);
   const [questions, setQuestions] = useState<{ label: string; required: boolean }[]>(appointmentQuestions);
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
@@ -833,6 +852,10 @@ function AppointmentsPanel({
   useEffect(() => {
     setStaff(staffMembers);
   }, [staffMembers]);
+
+  useEffect(() => {
+    setServices(appointmentServices);
+  }, [appointmentServices]);
 
   useEffect(() => {
     setQuestions(appointmentQuestions);
@@ -974,6 +997,122 @@ function AppointmentsPanel({
         exceptions={exceptions}
         venueTimeZone={venueTimeZone}
       />
+
+      <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-[#0f172a]">Services</h3>
+            <p className="mt-1 text-sm text-[#64748b]">
+              Guests select a service (haircut, color, massage, etc.) with duration and price on the public form.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            className="h-9 rounded-full text-xs font-semibold"
+            onClick={() => {
+              if (newServiceName.trim().length < 2) {
+                setError("Service name must be at least 2 characters.");
+                return;
+              }
+              if (newServiceDuration < 5) {
+                setError("Duration must be at least 5 minutes.");
+                return;
+              }
+              run(async () => {
+                const {
+                  createAppointmentService,
+                } = await import("@/app/dashboard/bookings/inventory-actions");
+                await createAppointmentService({
+                  businessId,
+                  name: newServiceName,
+                  durationMinutes: newServiceDuration,
+                  priceCents: newServicePrice,
+                });
+                setNewServiceName("");
+                setNewServiceDuration(60);
+                setNewServicePrice(0);
+                router.refresh();
+              });
+            }}
+          >
+            <Plus className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+            Add service
+          </Button>
+        </header>
+        {services.length === 0 ? (
+          <p className="text-sm text-[#94a3b8]">No services yet — guests will book a generic appointment slot.</p>
+        ) : (
+          <ul className="space-y-2">
+            {services.map((svc) => (
+              <li
+                key={svc.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] bg-white px-3 py-2 text-sm"
+              >
+                <div className="flex-1">
+                  <span className="font-semibold text-[#0f172a]">{svc.name}</span>
+                  <p className="text-[12px] text-[#64748b]">
+                    {svc.duration_minutes} min · €{(svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={pending}
+                  className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
+                  onClick={() =>
+                    run(async () => {
+                      const {
+                        deleteAppointmentService,
+                      } = await import("@/app/dashboard/bookings/inventory-actions");
+                      await deleteAppointmentService(businessId, svc.id);
+                      setServices((prev) => prev.filter((s) => s.id !== svc.id));
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="space-y-3 border-t border-[#ebe7f7] pt-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+              Service name
+              <input
+                value={newServiceName}
+                onChange={(e) => setNewServiceName(e.target.value)}
+                placeholder="Haircut, Color, Massage…"
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal normal-case tracking-normal text-[#0f172a]"
+              />
+            </label>
+            <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+              Duration (min)
+              <input
+                type="number"
+                value={newServiceDuration}
+                onChange={(e) => setNewServiceDuration(Math.max(5, Number(e.target.value)))}
+                min="5"
+                step="5"
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
+              />
+            </label>
+            <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
+              Price (€)
+              <input
+                type="number"
+                value={newServicePrice / 100}
+                onChange={(e) => setNewServicePrice(Math.max(0, Number(e.target.value) * 100))}
+                min="0"
+                step="0.50"
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
         <header>
