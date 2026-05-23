@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Check, Minus, Sparkles } from "lucide-react";
 
-import { checkoutProAction, checkoutScaleAction } from "@/app/dashboard/pricing/checkout-actions";
+import { checkoutBookingAction, checkoutProAction, checkoutScaleAction } from "@/app/dashboard/pricing/checkout-actions";
 import { openBillingPortalAction } from "@/app/dashboard/pricing/billing-portal-action";
 import { buttonVariants } from "@/components/ui/button";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -29,6 +29,25 @@ type TierSpec = {
 };
 
 const TIERS: TierSpec[] = [
+  {
+    name: "Booking",
+    monthlyDisplay: "£89",
+    yearlyDisplay: "£79",
+    yearlyTotal: "£948",
+    yearlyEquivalent: "(save £120 vs monthly)",
+    cadence: "/month",
+    blurb: "Full booking system for restaurants, bars and salons. No AI commitment — includes 30 demo AI minutes so you can try the receptionist before upgrading.",
+    bullets: [
+      "1 location",
+      "Full booking microsite (tables, appointments, events)",
+      "Stripe Connect payouts",
+      "30 demo AI receptionist minutes",
+      "4% platform fee on guest deposits",
+      "Email confirmations to guests",
+    ],
+    ctaLabel: "Start with Booking",
+    checkoutAction: checkoutBookingAction,
+  },
   {
     name: "Trial",
     monthlyDisplay: "Free",
@@ -91,23 +110,25 @@ const TIERS: TierSpec[] = [
 type ComparisonCell = boolean | string;
 type ComparisonRow = {
   feature: string;
-  trial: ComparisonCell;
+  booking: ComparisonCell;
   pro: ComparisonCell;
   scale: ComparisonCell;
 };
 
 const comparison: ComparisonRow[] = [
-  { feature: "Public booking microsite", trial: true, pro: true, scale: true },
-  { feature: "AI receptionist minutes / month", trial: "50", pro: "1,000", scale: "3,000" },
-  { feature: "Overage rate (per extra minute)", trial: "n/a", pro: "€0.40", scale: "€0.30" },
-  { feature: "Platform fee on guest deposits", trial: "10%", pro: "2.5%", scale: "1%" },
-  { feature: "Locations included", trial: "1", pro: "2", scale: "Unlimited" },
-  { feature: "Stripe Connect payouts", trial: false, pro: true, scale: true },
-  { feature: "Operations hub (appointments / events / tables)", trial: "Light", pro: true, scale: true },
-  { feature: "Floor plan + tiered pricing modes", trial: false, pro: true, scale: true },
-  { feature: "Ask Solvio AI (chat with your bookings + calls)", trial: false, pro: true, scale: true },
-  { feature: "Custom branding (logo, colour)", trial: false, pro: false, scale: true },
-  { feature: "Priority support + solution design", trial: false, pro: false, scale: true },
+  { feature: "Public booking microsite", booking: true, pro: true, scale: true },
+  { feature: "AI receptionist minutes / month", booking: "30 demo", pro: "1,000", scale: "3,000" },
+  { feature: "Overage rate (per extra minute)", booking: "n/a", pro: "£0.40", scale: "£0.30" },
+  { feature: "Platform fee on guest deposits", booking: "4%", pro: "2.5%", scale: "1%" },
+  { feature: "Locations included", booking: "1", pro: "2", scale: "Unlimited" },
+  { feature: "Stripe Connect payouts", booking: true, pro: true, scale: true },
+  { feature: "Operations hub (appointments / events / tables)", booking: true, pro: true, scale: true },
+  { feature: "Floor plan + tiered pricing modes", booking: true, pro: true, scale: true },
+  { feature: "Full AI receptionist (unlimited config)", booking: false, pro: true, scale: true },
+  { feature: "Ask Solvio AI (chat with your bookings + calls)", booking: false, pro: true, scale: true },
+  { feature: "Outbound voice campaigns", booking: false, pro: false, scale: true },
+  { feature: "Custom branding (logo, colour)", booking: false, pro: false, scale: true },
+  { feature: "Priority support + solution design", booking: false, pro: false, scale: true },
 ];
 
 const faqs = [
@@ -157,6 +178,7 @@ function Cell({ value }: { value: ComparisonCell }) {
 
 const TIER_LABELS: Record<string, string> = {
   trial: "Free Trial",
+  booking: "Booking · £89/mo",
   pro: "Pro · £200/mo",
   business: "Business · £399/mo",
   scale: "Scale · £499/mo",
@@ -329,7 +351,7 @@ export default async function DashboardPricingPage() {
             <thead className="bg-[#fafbff] text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8]">
               <tr>
                 <th className="px-6 py-4">Capability</th>
-                <th className="px-4 py-4 text-center">Trial</th>
+                <th className="px-4 py-4 text-center">Booking</th>
                 <th className="px-4 py-4 text-center">Pro</th>
                 <th className="px-4 py-4 text-center">Scale</th>
               </tr>
@@ -338,7 +360,7 @@ export default async function DashboardPricingPage() {
               {comparison.map((row) => (
                 <tr key={row.feature}>
                   <td className="px-6 py-4 font-medium text-[#0f172a]">{row.feature}</td>
-                  <td className="px-4 py-4 text-center"><Cell value={row.trial} /></td>
+                  <td className="px-4 py-4 text-center"><Cell value={row.booking} /></td>
                   <td className="px-4 py-4 text-center"><Cell value={row.pro} /></td>
                   <td className="px-4 py-4 text-center"><Cell value={row.scale} /></td>
                 </tr>

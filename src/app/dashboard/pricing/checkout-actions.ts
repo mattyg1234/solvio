@@ -6,9 +6,10 @@ import { stripeClient } from "@/lib/stripe-client";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export type StripePlanTier = "pro" | "business" | "scale";
+export type StripePlanTier = "booking" | "pro" | "business" | "scale";
 
 const PRICE_IDS: Record<StripePlanTier, string | undefined> = {
+  booking: process.env.STRIPE_PRICE_BOOKING?.trim(),
   // Prefer new env names; fall back to legacy names if not set yet.
   pro: (process.env.STRIPE_PRICE_PRO ?? process.env.STRIPE_PRICE_STARTER)?.trim(),
   business: (process.env.STRIPE_PRICE_BUSINESS ?? process.env.STRIPE_PRICE_GROWTH)?.trim(),
@@ -55,6 +56,10 @@ export async function startStripeCheckout(plan: StripePlanTier) {
   }
 
   redirect(session.url);
+}
+
+export async function checkoutBookingAction() {
+  await startStripeCheckout("booking");
 }
 
 export async function checkoutProAction() {

@@ -155,6 +155,7 @@ async function creditOutboundBundle(session: Stripe.Checkout.Session) {
 }
 
 const TIER_SETTINGS = {
+  booking:  { platform_fee_bps: 400,  monthly_ai_minutes_included: 30,    included_locations: 1   },
   pro:      { platform_fee_bps: 250,  monthly_ai_minutes_included: 1000,  included_locations: 2   },
   business: { platform_fee_bps: 200,  monthly_ai_minutes_included: 2000,  included_locations: 5   },
   scale:    { platform_fee_bps: 100,  monthly_ai_minutes_included: 10000, included_locations: 999 },

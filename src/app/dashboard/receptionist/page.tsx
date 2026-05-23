@@ -66,13 +66,15 @@ export default async function DashboardReceptionistPage() {
     assistantId: string | null;
     phoneE164: string | null;
     phoneCountry: string | null;
+    subscriptionTier: string;
+    monthlyAiMinutesIncluded: number;
   } | null = null;
   let migrationPending = false;
 
   const full = await supabase
     .from("businesses")
     .select(
-      "id,name,voice_receptionist_completed_at,booking_flow_completed_at,voice_receptionist_details,phone_number_e164,phone_number_country",
+      "id,name,voice_receptionist_completed_at,booking_flow_completed_at,voice_receptionist_details,phone_number_e164,phone_number_country,subscription_tier,monthly_ai_minutes_included",
     )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
@@ -99,6 +101,8 @@ export default async function DashboardReceptionistPage() {
         assistantId: extractAssistantId(basic.data.voice_receptionist_details),
         phoneE164: null,
         phoneCountry: null,
+        subscriptionTier: "trial",
+        monthlyAiMinutesIncluded: 50,
       };
     }
   } else if (full.data) {
@@ -110,6 +114,8 @@ export default async function DashboardReceptionistPage() {
       assistantId: extractAssistantId(full.data.voice_receptionist_details),
       phoneE164: (full.data.phone_number_e164 as string | null) ?? null,
       phoneCountry: (full.data.phone_number_country as string | null) ?? null,
+      subscriptionTier: (full.data.subscription_tier as string | null) ?? "trial",
+      monthlyAiMinutesIncluded: (full.data.monthly_ai_minutes_included as number | null) ?? 50,
     };
   }
 
@@ -135,6 +141,24 @@ export default async function DashboardReceptionistPage() {
   const voiceReady = business.voiceComplete && Boolean(business.assistantId);
   const numberReady = Boolean(business.phoneE164);
   const bookingsReady = business.bookingComplete;
+  const isBookingTier = business.subscriptionTier === "booking";
+
+  // Current month AI minutes used
+  let minutesUsedThisMonth = 0;
+  if (isBookingTier) {
+    const startOfMonth = new Date();
+    startOfMonth.setUTCDate(1);
+    startOfMonth.setUTCHours(0, 0, 0, 0);
+    const { data: usageRows } = await supabase
+      .from("voice_call_logs")
+      .select("duration_minutes_billable")
+      .eq("business_id", business.id)
+      .gte("started_at", startOfMonth.toISOString());
+    minutesUsedThisMonth = (usageRows ?? []).reduce(
+      (sum, r) => sum + (Number(r.duration_minutes_billable) || 0),
+      0,
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -148,6 +172,30 @@ export default async function DashboardReceptionistPage() {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Overview
       </Link>
+
+      {/* Demo minutes banner — Booking tier only */}
+      {isBookingTier && (
+        <div className="flex flex-col gap-3 rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-amber-900">
+              Demo AI minutes — {Math.round(minutesUsedThisMonth * 10) / 10} of {business.monthlyAiMinutesIncluded} used this month
+            </p>
+            <p className="text-xs text-amber-700">
+              You&apos;re on the Booking plan. These 30 demo minutes let you experience the AI receptionist.
+              Upgrade to Pro for 1,000 minutes/month and full voice configuration.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/pricing"
+            className={cn(
+              buttonVariants({ variant: "default" }),
+              "h-9 shrink-0 rounded-full px-5 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+            )}
+          >
+            Upgrade to Pro →
+          </Link>
+        </div>
+      )}
 
       <section className="relative overflow-hidden rounded-[28px] border border-[#ebe7f7]/90 bg-gradient-to-br from-white via-[#fafbff] to-[#f8fafc] p-8 shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
         <div className="pointer-events-none absolute right-8 top-10 h-32 w-32 rounded-full bg-[#c4b5fd]/25 blur-3xl" aria-hidden />
