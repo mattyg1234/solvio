@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Check, Minus } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowLeft, Check, Minus, Sparkles } from "lucide-react";
 
 import { checkoutProAction, checkoutScaleAction } from "@/app/dashboard/pricing/checkout-actions";
+import { openBillingPortalAction } from "@/app/dashboard/pricing/billing-portal-action";
 import { buttonVariants } from "@/components/ui/button";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -152,7 +155,31 @@ function Cell({ value }: { value: ComparisonCell }) {
   return <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748b]">{value}</span>;
 }
 
-export default function DashboardPricingPage() {
+const TIER_LABELS: Record<string, string> = {
+  trial: "Free Trial",
+  pro: "Pro · £200/mo",
+  business: "Business · £399/mo",
+  scale: "Scale · £499/mo",
+  enterprise: "Enterprise",
+};
+
+export default async function DashboardPricingPage() {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: biz } = await supabase
+    .from("businesses")
+    .select("subscription_tier, stripe_customer_id")
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const tier = (biz as { subscription_tier?: string; stripe_customer_id?: string } | null)?.subscription_tier ?? "trial";
+  const hasStripeCustomer = Boolean((biz as { stripe_customer_id?: string } | null)?.stripe_customer_id);
+  const isPaid = tier !== "trial";
+
   return (
     <div className="space-y-12">
       <Link
@@ -165,6 +192,42 @@ export default function DashboardPricingPage() {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Overview
       </Link>
+
+      {/* Current subscription status */}
+      <div className={cn(
+        "flex flex-col gap-4 rounded-[22px] border p-6 sm:flex-row sm:items-center sm:justify-between",
+        isPaid
+          ? "border-[#c4b5fd] bg-[#f5f3ff]"
+          : "border-[#ebe7f7] bg-[#fafbff]",
+      )}>
+        <div className="flex items-center gap-3">
+          <span className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+            isPaid ? "bg-[#7c3aed] text-white" : "bg-white text-[#94a3b8] ring-1 ring-[#ebe7f7]",
+          )}>
+            <Sparkles className="h-5 w-5" aria-hidden />
+          </span>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Current plan</p>
+            <p className="text-lg font-semibold text-[#0f172a]">{TIER_LABELS[tier] ?? tier}</p>
+          </div>
+        </div>
+        {hasStripeCustomer ? (
+          <form action={openBillingPortalAction}>
+            <button
+              type="submit"
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "h-10 rounded-full border-[#c4b5fd] px-5 text-sm font-semibold text-[#5b21b6] hover:bg-[#ede9fe]",
+              )}
+            >
+              Manage billing &amp; invoices →
+            </button>
+          </form>
+        ) : (
+          <p className="text-sm text-[#64748b]">Choose a plan below to activate your subscription.</p>
+        )}
+      </div>
 
       <header className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Pricing</p>

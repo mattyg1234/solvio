@@ -75,7 +75,7 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
 
   items.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: MessageCircleQuestion, key: "ask" });
   items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
-  items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics", badge: "Soon" });
+  items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
   items.push({ href: "/dashboard/pricing", label: "Plans", icon: Euro, key: "plans" });
   items.push({ href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" });
 

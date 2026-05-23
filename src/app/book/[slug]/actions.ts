@@ -8,7 +8,7 @@ import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking
 import { isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
-import { sendBookingRequestReceivedEmail } from "@/lib/notifications/booking-emails";
+import { sendBookingRequestReceivedEmail, sendNewBookingNotificationEmail } from "@/lib/notifications/booking-emails";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -348,6 +348,40 @@ export async function submitBookingRequestAction(
         merchantName,
         siteUrl,
       });
+    }
+  } catch {
+    /* email is additive */
+  }
+
+  // Notify the merchant that a new booking request arrived
+  try {
+    const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
+    const adminClient = createSupabaseServiceRoleClient();
+    const { data: biz } = await adminClient
+      .from("businesses")
+      .select("owner_id, name")
+      .eq("booking_slug", slug.trim())
+      .maybeSingle();
+    if (biz?.owner_id) {
+      const { data: ownerProfile } = await adminClient
+        .from("profiles")
+        .select("email")
+        .eq("id", biz.owner_id)
+        .maybeSingle();
+      if (ownerProfile?.email) {
+        await sendNewBookingNotificationEmail({
+          merchantEmail: ownerProfile.email,
+          merchantName: biz.name,
+          guestName: customerName,
+          guestEmail: email,
+          bookingKind,
+          requestedDate,
+          preferredTime: preferredTimeRaw,
+          guestCount,
+          notes,
+          dashboardUrl: siteUrl,
+        });
+      }
     }
   } catch {
     /* email is additive */

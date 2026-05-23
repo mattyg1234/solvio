@@ -154,6 +154,70 @@ async function creditOutboundBundle(session: Stripe.Checkout.Session) {
   }
 }
 
+const TIER_SETTINGS = {
+  pro:      { platform_fee_bps: 250,  monthly_ai_minutes_included: 1000,  included_locations: 2   },
+  business: { platform_fee_bps: 200,  monthly_ai_minutes_included: 2000,  included_locations: 5   },
+  scale:    { platform_fee_bps: 100,  monthly_ai_minutes_included: 10000, included_locations: 999 },
+} as const;
+type PaidTier = keyof typeof TIER_SETTINGS;
+
+function isPaidTier(t: string | undefined): t is PaidTier {
+  return !!t && t in TIER_SETTINGS;
+}
+
+/** Activate a merchant's paid subscription tier after successful Stripe checkout. */
+async function activateSubscriptionTier(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.solvio_auth_user_id?.trim();
+  const tier = session.metadata?.solvio_plan_tier?.trim();
+  if (!userId || !isPaidTier(tier)) return;
+
+  const settings = TIER_SETTINGS[tier];
+  const stripeCustomerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : (session.customer as Stripe.Customer | null)?.id ?? null;
+
+  try {
+    const admin = createSupabaseServiceRoleClient();
+    await admin
+      .from("businesses")
+      .update({
+        subscription_tier: tier,
+        platform_fee_bps: settings.platform_fee_bps,
+        monthly_ai_minutes_included: settings.monthly_ai_minutes_included,
+        included_locations: settings.included_locations,
+        ...(stripeCustomerId ? { stripe_customer_id: stripeCustomerId } : {}),
+      })
+      .eq("owner_id", userId);
+  } catch (e) {
+    console.error("[stripe webhook] subscription tier activation failed", e);
+  }
+}
+
+/** Downgrade a merchant to trial when their Stripe subscription is cancelled. */
+async function cancelSubscription(subscription: Stripe.Subscription) {
+  const stripeCustomerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : (subscription.customer as Stripe.Customer | null)?.id;
+  if (!stripeCustomerId) return;
+
+  try {
+    const admin = createSupabaseServiceRoleClient();
+    await admin
+      .from("businesses")
+      .update({
+        subscription_tier: "trial",
+        platform_fee_bps: 1000,
+        monthly_ai_minutes_included: 50,
+        included_locations: 1,
+      })
+      .eq("stripe_customer_id", stripeCustomerId);
+  } catch (e) {
+    console.error("[stripe webhook] subscription cancellation failed", e);
+  }
+}
+
 async function syncConnectAccount(account: Stripe.Account) {
   const businessId = account.metadata?.solvio_business_id?.trim();
   if (!businessId) return;
@@ -203,14 +267,20 @@ export async function POST(req: Request) {
       if (session.metadata?.solvio_kind === "outbound_call_bundle") {
         await creditOutboundBundle(session);
       }
+      if (session.mode === "subscription" && isPaidTier(session.metadata?.solvio_plan_tier)) {
+        await activateSubscriptionTier(session);
+      }
       break;
     }
     case "account.updated": {
       await syncConnectAccount(evt.data.object as Stripe.Account);
       break;
     }
+    case "customer.subscription.deleted": {
+      await cancelSubscription(evt.data.object as Stripe.Subscription);
+      break;
+    }
     case "customer.subscription.created":
-    case "customer.subscription.deleted":
       break;
     default:
       break;
