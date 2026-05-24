@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
@@ -8,8 +9,8 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="max-w-md space-y-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] text-sm font-bold text-white">
-              S
+            <span className="block h-9 w-9 overflow-hidden rounded-xl">
+              <Image src="/brand/icon-192.png" alt="" width={72} height={72} className="h-full w-full" />
             </span>
             <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={0.42} />
           </div>

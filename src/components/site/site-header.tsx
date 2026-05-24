@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -24,7 +25,7 @@ export function SiteHeader() {
         <Link href="/" className="flex items-center gap-2 rounded-xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]">
           <motion.span
             aria-hidden
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] text-sm font-bold text-white shadow-sm shadow-[#7c3aed]/25"
+            className="block h-9 w-9 overflow-hidden rounded-xl shadow-sm shadow-[#7c3aed]/25"
             initial={{ opacity: reduce ? 1 : 0, scale: reduce ? 1 : 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{
@@ -33,7 +34,7 @@ export function SiteHeader() {
               delay: reduce ? 0 : 0.02,
             }}
           >
-            S
+            <Image src="/brand/icon-192.png" alt="" width={72} height={72} className="h-full w-full" priority />
           </motion.span>
           <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
         </Link>

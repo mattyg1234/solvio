@@ -1,0 +1,45 @@
+---
+description: Solvio brand assets and how to render the logo. Use when adding a logo, favicon, OG image, header/footer/sidebar mark, email signature, marketing screenshot, or anywhere the Solvio identity appears.
+globs:
+  - "src/components/site/site-header.tsx"
+  - "src/components/site/site-footer.tsx"
+  - "src/components/dashboard/dashboard-sidebar.tsx"
+  - "src/components/brand/**"
+  - "src/app/layout.tsx"
+  - "src/app/manifest.ts"
+  - "src/app/icon.*"
+  - "src/app/apple-icon.*"
+  - "src/app/opengraph-image.*"
+  - "src/app/twitter-image.*"
+  - "public/brand/**"
+---
+
+# Solvio brand
+
+## Canonical assets — `public/brand/`
+
+- `icon-source.png` — 1024×1024 master square icon (purple gradient rounded square, white stylized "S" with two circuit-node dots). Treat as the brand source of truth.
+- `icon-512.png`, `icon-192.png`, `icon-96.png` — pre-resized square icons for manifest / in-app use.
+- `wordmark-source.png` — 1024×1024 master with icon + "Solvio" wordmark.
+
+## Next.js metadata files — `src/app/`
+
+These are auto-discovered by Next.js App Router. Do not rename them.
+
+- `icon.png` (512) — favicon / `/icon`
+- `apple-icon.png` (180) — iOS home-screen
+- `opengraph-image.png` (1200×630) — social cards
+- `twitter-image.png` (1200×630) — duplicate of OG for `twitter:image`
+
+## Rules
+
+1. **Header / footer / sidebar logo mark** = `<Image src="/brand/icon-192.png" />` inside a `h-9 w-9 rounded-xl overflow-hidden` wrapper. Never re-implement the mark as a CSS gradient with a hand-rolled "S" character — that was the old placeholder.
+2. **Wordmark text** = `<SolvioWordmark />` from `@/components/brand/solvio-wordmark` (animated clip-path reveal). The image wordmark in `public/brand/wordmark-source.png` is for OG / external use, not for in-page rendering — the React text wordmark scales better and is accessible.
+3. **Primary brand color** = `#7c3aed` (violet-600). Gradient extension `from-[#7c3aed] to-[#a78bfa]` is fine for accents but is no longer the logo mark itself.
+4. **Theme color** for browser chrome / PWA = `#7c3aed` — already set via `viewport.themeColor` in `src/app/layout.tsx`.
+5. **Regenerating sizes**: source images are 1024×1024. Use `sips -Z <max> source.png --out dest.png` on macOS, or `sharp` in Node. Always start from `icon-source.png` / `wordmark-source.png`, never re-resize an already-shrunk file.
+6. **Do not commit external/customer logos to `public/brand/`** — that folder is exclusively Solvio's own identity. Merchant logos belong in Supabase storage or under `public/customers/` if shipped statically.
+
+## When the user provides new brand artwork
+
+Replace `icon-source.png` / `wordmark-source.png` first, then regenerate every derived size with `sips` (or `sharp`). Re-deploy to production — favicons and OG images are CDN-cached so a fresh deploy + browser cache bust may be needed to see changes.

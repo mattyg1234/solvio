@@ -1,6 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -102,8 +103,8 @@ export function DashboardSidebar({ capabilities, campaignsEnabled = false }: Das
         href="/dashboard"
         className="flex items-center gap-2 border-b border-[#ebe7f7]/90 px-5 py-5 outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] text-sm font-bold text-white shadow-sm shadow-[#7c3aed]/25">
-          S
+        <span className="block h-9 w-9 shrink-0 overflow-hidden rounded-xl shadow-sm shadow-[#7c3aed]/25">
+          <Image src="/brand/icon-192.png" alt="" width={72} height={72} className="h-full w-full" />
         </span>
         <span className="truncate text-lg font-semibold tracking-tight text-[#0f172a]">Solvio</span>
         <Sparkles className="ml-auto h-4 w-4 shrink-0 text-[#a78bfa]" aria-hidden />
