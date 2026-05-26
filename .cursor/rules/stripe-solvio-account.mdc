@@ -21,6 +21,12 @@ Merchants see *"You can only create new accounts if you've signed up for Connect
 3. Complete the platform profile; choose **Express** accounts for connected merchants
 4. Retry **Dashboard → Payments → Connect Stripe**
 
+## Merchant balance dashboard (Solvio UI)
+
+Solvio surfaces Connect data in **Dashboard → Payments** and **Dashboard → Analytics** via the Stripe API (balance, charges, payouts). Merchants still use the **Express dashboard** link for refunds and disputes — Stripe remains merchant-of-record on direct charges.
+
+Model: **Platform + Express + direct charges + application fees** (see Stripe interactive platform guide).
+
 `STRIPE_SECRET_KEY`, all `STRIPE_PRICE_*`, and `STRIPE_WEBHOOK_SECRET` on Vercel project **solvio** must all be from this account.
 
 ## Plans (GBP/month)

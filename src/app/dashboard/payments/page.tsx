@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
 
 import { StripeConnectPanel } from "@/components/dashboard/stripe-connect-panel";
+import { StripeMerchantBalanceDashboard } from "@/components/dashboard/stripe-merchant-balance-dashboard";
 import { refreshStripeConnectStatusAction } from "@/app/dashboard/payments/connect-actions";
+import { loadStripeMerchantDashboardAction } from "@/app/dashboard/payments/merchant-data-actions";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +59,14 @@ export default async function DashboardPaymentsPage({
 
   const stripeReady =
     businessesRefreshed?.some((b) => Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled)) ?? false;
+
+  const primaryConnected = businessesRefreshed?.find(
+    (b) => b.stripe_connect_account_id?.trim() && b.stripe_connect_charges_enabled,
+  );
+  const merchantDashboard =
+    primaryConnected?.id && primaryConnected.stripe_connect_account_id
+      ? await loadStripeMerchantDashboardAction(primaryConnected.id)
+      : null;
 
   return (
     <div className="space-y-8">
@@ -136,6 +146,17 @@ export default async function DashboardPaymentsPage({
           />
         </CardContent>
       </Card>
+
+      {merchantDashboard?.ok ? (
+        <Card className="rounded-[22px] border border-[#ede9fe] bg-white shadow-sm">
+          <CardContent className="pb-8 pt-6">
+            <StripeMerchantBalanceDashboard
+              initialData={merchantDashboard.data}
+              businessId={merchantDashboard.data.businessId}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-5 md:grid-cols-2">
         <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
