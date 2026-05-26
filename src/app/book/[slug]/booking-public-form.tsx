@@ -497,8 +497,19 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         </span>
         <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Request received</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
-          {businessName} has your booking details on file and will confirm using the email or phone you shared.
+          {state.emailSent && state.smsSent
+            ? `${businessName} has your details — we emailed and texted you a confirmation.`
+            : state.emailSent
+              ? `${businessName} has your details — check your email for a confirmation.`
+              : state.smsSent
+                ? `${businessName} has your details — we texted you a confirmation.`
+                : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
         </p>
+        {!state.emailSent && !state.smsSent ? (
+          <p className="mt-3 text-sm text-amber-900/90">
+            Automatic confirmations aren&apos;t configured on this deployment yet — your request was still saved.
+          </p>
+        ) : null}
         <p className="mt-8 text-center text-sm text-[#94a3b8]">
           Powered by{" "}
           <Link href="/" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">

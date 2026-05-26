@@ -8,12 +8,15 @@ import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking
 import { isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
+import { dowSundayZeroInBusinessTZ, validateAppointmentSlotSelection, type AppointmentBreak } from "@/lib/booking-appointment-slots";
+import { isStaffWorkingOnWeekday } from "@/lib/staff-members";
 import { sendBookingRequestReceivedEmail, sendNewBookingNotificationEmail } from "@/lib/notifications/booking-emails";
+import { sendBookingRequestReceivedSms } from "@/lib/notifications/booking-sms";
+import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { getSiteUrl } from "@/lib/site-url";
 
 export type SubmitBookingState =
-  | { ok: true; depositCheckoutUrl?: string }
+  | { ok: true; depositCheckoutUrl?: string; emailSent?: boolean; smsSent?: boolean }
   | { ok: false; message: string };
 
 function mergeGuestIntakeNotes(base: string, lines: string[]): string {
@@ -39,7 +42,7 @@ export async function submitBookingRequestAction(
   const eventTitle = String(formData.get("event_title") ?? "").trim();
   const bookingKind = String(formData.get("booking_kind") ?? "").trim().toLowerCase();
   const requestedDate = String(formData.get("requested_date") ?? "").trim();
-  const guestCount = String(formData.get("guest_count") ?? "").trim();
+  let guestCount = String(formData.get("guest_count") ?? "").trim();
   const preferredTable = String(formData.get("preferred_table") ?? "").trim();
   const hostedEventId = String(formData.get("hosted_event_id") ?? "").trim();
   const hostedOccurrenceStartsAt = String(formData.get("hosted_occurrence_starts_at") ?? "").trim();
@@ -160,17 +163,31 @@ export async function submitBookingRequestAction(
   }
 
   const bkLower = bookingKind.trim().toLowerCase();
+  const isAppointmentBooking = bkLower === "appointment";
+
   if (!guestCount.trim()) {
-    return { ok: false, message: "Please enter how many people are coming." };
+    if (isAppointmentBooking) {
+      guestCount = "1";
+    } else {
+      return { ok: false, message: "Please enter how many people are coming." };
+    }
   }
   const gc = Number.parseInt(guestCount, 10);
   if (!Number.isFinite(gc) || gc < 1 || gc > 999) {
-    return { ok: false, message: "Guest count must be a whole number between 1 and 999." };
+    return { ok: false, message: isAppointmentBooking ? "Invalid appointment request." : "Guest count must be a whole number between 1 and 999." };
   }
 
   const allowedKinds = parsedCtx ? parseGuestModesFromRpc(parsedCtx.guest_modes_raw) : [];
   const kindOk =
     isBookingGuestMode(bkLower) && (allowedKinds.length === 0 || allowedKinds.some((m) => m === bkLower));
+
+  if (
+    isAppointmentBooking &&
+    (parsedCtx?.appointment_services?.length ?? 0) > 0 &&
+    !selectedServiceId
+  ) {
+    return { ok: false, message: "Please choose a service for your appointment." };
+  }
   const needsPreferredDateOutsideHostedCalendar =
     kindOk &&
     bkLower !== "event" &&
@@ -179,6 +196,52 @@ export async function submitBookingRequestAction(
 
   if (needsPreferredDateOutsideHostedCalendar && !requestedDate.trim()) {
     return { ok: false, message: "Choose your preferred date for this enquiry." };
+  }
+
+  if (
+    isAppointmentBooking &&
+    (parsedCtx?.appointment_hours?.length ?? 0) > 0 &&
+    requestedDate.trim() &&
+    preferredTimeRaw.trim() &&
+    /\d{4}-\d{2}-\d{2}\s·\s\d{2}:\d{2}/.test(preferredTimeRaw)
+  ) {
+    const dow = dowSundayZeroInBusinessTZ(requestedDate, parsedCtx!.venue_time_zone);
+    const hourRow = parsedCtx!.appointment_hours.find((h) => h.weekday === dow);
+    if (hourRow) {
+      const staffMatch = preferredStaffId ? parsedCtx!.staff_members.find((s) => s.id === preferredStaffId) : null;
+      const staffWorking = parsedCtx!.staff_members
+        .filter((m) => isStaffWorkingOnWeekday(m, dow))
+        .map((m) => m.name);
+
+      let breaks: AppointmentBreak[] = [];
+      const { data: bizRow } = await supabase
+        .from("businesses")
+        .select("id")
+        .ilike("booking_slug", slug.trim())
+        .maybeSingle();
+      if (bizRow?.id) {
+        const { data: brkData } = await supabase
+          .from("appointment_breaks")
+          .select("weekdays, start_time, end_time")
+          .eq("business_id", bizRow.id);
+        breaks = (brkData ?? []) as AppointmentBreak[];
+      }
+
+      const slotCheck = validateAppointmentSlotSelection({
+        preferredTime: preferredTimeRaw,
+        dateYmd: requestedDate,
+        row: hourRow,
+        venueTimeZone: parsedCtx!.venue_time_zone,
+        exceptions: parsedCtx!.appointment_slot_exceptions,
+        breaks,
+        bookedSlots: parsedCtx!.appointment_booked_slots ?? [],
+        preferredStaffName: staffMatch?.name ?? null,
+        staffWorkingThatDay: staffWorking,
+      });
+      if (!slotCheck.ok) {
+        return { ok: false, message: slotCheck.message };
+      }
+    }
   }
 
   const hostedCheck = validateHostedEventSubmission({
@@ -351,24 +414,36 @@ export async function submitBookingRequestAction(
     }
   }
 
-  try {
-    const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
-    const merchantName = parsedCtx?.business_name?.trim();
-    if (merchantName && email) {
-      await sendBookingRequestReceivedEmail({
-        guestEmail: email,
-        guestName: customerName,
-        merchantName,
-        siteUrl,
-      });
+  let emailSent = false;
+  let smsSent = false;
+  const siteUrl = getDeploymentSiteUrl();
+  const merchantName = parsedCtx?.business_name?.trim();
+
+  if (merchantName && email) {
+    const guestEmailResult = await sendBookingRequestReceivedEmail({
+      guestEmail: email,
+      guestName: customerName,
+      merchantName,
+      siteUrl,
+    });
+    emailSent = guestEmailResult.ok;
+    if (!guestEmailResult.ok) {
+      console.error("[booking-submit] guest email failed:", guestEmailResult.message);
     }
-  } catch {
-    /* email is additive */
   }
 
-  // Notify the merchant that a new booking request arrived
+  if (merchantName && phone) {
+    const guestSmsResult = await sendBookingRequestReceivedSms({
+      phoneE164: phone,
+      merchantName,
+    });
+    smsSent = guestSmsResult.ok;
+    if (!guestSmsResult.ok && guestSmsResult.reason !== "not_configured") {
+      console.error("[booking-submit] guest SMS failed:", guestSmsResult.message);
+    }
+  }
+
   try {
-    const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
     const adminClient = createSupabaseServiceRoleClient();
     const { data: biz } = await adminClient
       .from("businesses")
@@ -382,7 +457,7 @@ export async function submitBookingRequestAction(
         .eq("id", biz.owner_id)
         .maybeSingle();
       if (ownerProfile?.email) {
-        await sendNewBookingNotificationEmail({
+        const merchantEmailResult = await sendNewBookingNotificationEmail({
           merchantEmail: ownerProfile.email,
           merchantName: biz.name,
           guestName: customerName,
@@ -394,11 +469,19 @@ export async function submitBookingRequestAction(
           notes,
           dashboardUrl: siteUrl,
         });
+        if (!merchantEmailResult.ok) {
+          console.error("[booking-submit] merchant email failed:", merchantEmailResult.message);
+        }
       }
     }
-  } catch {
-    /* email is additive */
+  } catch (err) {
+    console.error("[booking-submit] merchant notify error:", err);
   }
 
-  return { ok: true, ...(depositCheckoutUrl ? { depositCheckoutUrl } : {}) };
+  return {
+    ok: true,
+    emailSent,
+    smsSent,
+    ...(depositCheckoutUrl ? { depositCheckoutUrl } : {}),
+  };
 }

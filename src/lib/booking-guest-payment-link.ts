@@ -305,7 +305,7 @@ export async function sendGuestDepositPaymentLink(params: {
     callDetails: params.callBookingDetails,
   });
 
-  const smsSent = await sendBookingSms({ phoneE164: guestPhone, body: smsBody });
+  const smsSent = (await sendBookingSms({ phoneE164: guestPhone, body: smsBody })).ok;
 
   const logBody = `Deposit link (${formatEuro(amountCents)})${smsSent ? " sent by SMS" : " created — SMS not configured on deployment"}.`;
 

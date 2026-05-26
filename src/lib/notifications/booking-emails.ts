@@ -1,6 +1,10 @@
 import { Resend } from "resend";
 
-function resend(): Resend | null {
+export type NotificationSendResult =
+  | { ok: true; id?: string }
+  | { ok: false; reason: "not_configured" | "invalid_recipient" | "provider_error"; message: string };
+
+function resendClient(): Resend | null {
   const apiKey =
     process.env.SOLVIO_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || process.env.RESEND_API_TOKEN?.trim();
   if (!apiKey) return null;
@@ -15,20 +19,46 @@ function fromAddr(): string {
   );
 }
 
+async function sendViaResend(args: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<NotificationSendResult> {
+  const client = resendClient();
+  const to = args.to.trim();
+  if (!client) {
+    return { ok: false, reason: "not_configured", message: "SOLVIO_RESEND_API_KEY is not set on this deployment." };
+  }
+  if (!to || !to.includes("@")) {
+    return { ok: false, reason: "invalid_recipient", message: "Guest email address is missing or invalid." };
+  }
+
+  const { data, error } = await client.emails.send({
+    from: fromAddr(),
+    to,
+    subject: args.subject,
+    html: args.html,
+    text: args.text,
+  });
+
+  if (error) {
+    console.error("[booking-email] Resend error:", error.message);
+    return { ok: false, reason: "provider_error", message: error.message };
+  }
+
+  return { ok: true, id: data?.id };
+}
+
 /** Guest receipt immediately after submitting /book/[slug]. */
 export async function sendBookingRequestReceivedEmail(opts: {
   guestEmail: string;
   guestName: string;
   merchantName: string;
   siteUrl: string;
-}) {
-  const client = resend();
-  const to = opts.guestEmail.trim();
-  if (!client || !to) return;
-
-  await client.emails.send({
-    from: fromAddr(),
-    to,
+}): Promise<NotificationSendResult> {
+  return sendViaResend({
+    to: opts.guestEmail,
     subject: `${opts.merchantName} · we received your request`,
     html: `
       <p>Hi ${escapeHtml(opts.guestName)},</p>
@@ -51,11 +81,7 @@ export async function sendBookingConfirmedEmail(opts: {
   endsIso: string;
   timeZone: string;
   siteUrl: string;
-}) {
-  const client = resend();
-  const to = opts.guestEmail.trim();
-  if (!client || !to) return;
-
+}): Promise<NotificationSendResult> {
   const formatter = new Intl.DateTimeFormat("en", {
     timeZone: opts.timeZone || "UTC",
     weekday: "short",
@@ -68,9 +94,8 @@ export async function sendBookingConfirmedEmail(opts: {
   const startLine = formatter.format(new Date(opts.startsIso));
   const endLine = formatter.format(new Date(opts.endsIso));
 
-  await client.emails.send({
-    from: fromAddr(),
-    to,
+  return sendViaResend({
+    to: opts.guestEmail,
     subject: `Confirmed · ${opts.merchantName}`,
     html: `
       <p>Hi ${escapeHtml(opts.guestName)},</p>
@@ -99,11 +124,7 @@ export async function sendNewBookingNotificationEmail(opts: {
   guestCount?: string;
   notes?: string;
   dashboardUrl: string;
-}) {
-  const client = resend();
-  const to = opts.merchantEmail.trim();
-  if (!client || !to) return;
-
+}): Promise<NotificationSendResult> {
   const kindLabel = opts.bookingKind
     ? opts.bookingKind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : "Booking";
@@ -116,9 +137,8 @@ export async function sendNewBookingNotificationEmail(opts: {
     opts.notes ? `<tr><td style="padding:4px 0;color:#64748b;font-size:14px;vertical-align:top">Notes</td><td style="padding:4px 0;font-size:14px">${escapeHtml(opts.notes.slice(0, 400))}</td></tr>` : "",
   ].filter(Boolean).join("");
 
-  await client.emails.send({
-    from: fromAddr(),
-    to,
+  return sendViaResend({
+    to: opts.merchantEmail,
     subject: `New ${kindLabel} request — ${escapeHtml(opts.guestName)}`,
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
