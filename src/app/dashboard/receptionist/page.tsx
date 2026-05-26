@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BOOKING_DEMO_AI_MINUTES, PRO_AI_MINUTES, PRO_MONTHLY_GBP } from "@/lib/solvio-pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -181,8 +182,8 @@ export default async function DashboardReceptionistPage() {
               Demo AI minutes — {Math.round(minutesUsedThisMonth * 10) / 10} of {business.monthlyAiMinutesIncluded} used this month
             </p>
             <p className="text-xs text-amber-700">
-              You&apos;re on the Booking plan. These 30 demo minutes let you experience the AI receptionist.
-              Upgrade to Pro for 1,000 minutes/month and full voice configuration.
+              You&apos;re on the Booking plan — {BOOKING_DEMO_AI_MINUTES} demo minutes to test calls, not for live receptionist volume.
+              Want to really maximise your sales with your AI receptionist? Upgrade to Pro for {PRO_AI_MINUTES.toLocaleString("en-GB")} minutes/month.
             </p>
           </div>
           <Link
@@ -192,7 +193,7 @@ export default async function DashboardReceptionistPage() {
               "h-9 shrink-0 rounded-full px-5 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
             )}
           >
-            Upgrade to Pro →
+            Upgrade to Pro · £{PRO_MONTHLY_GBP}/mo →
           </Link>
         </div>
       )}

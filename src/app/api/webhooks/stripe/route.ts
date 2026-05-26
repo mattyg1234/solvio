@@ -155,7 +155,7 @@ async function creditOutboundBundle(session: Stripe.Checkout.Session) {
 }
 
 const TIER_SETTINGS = {
-  booking:  { platform_fee_bps: 400,  monthly_ai_minutes_included: 30,    included_locations: 1   },
+  booking:  { platform_fee_bps: 400,  monthly_ai_minutes_included: 10,    included_locations: 1   },
   pro:      { platform_fee_bps: 250,  monthly_ai_minutes_included: 1000,  included_locations: 2   },
   business: { platform_fee_bps: 200,  monthly_ai_minutes_included: 2000,  included_locations: 5   },
   scale:    { platform_fee_bps: 100,  monthly_ai_minutes_included: 10000, included_locations: 999 },
@@ -240,9 +240,13 @@ async function syncConnectAccount(account: Stripe.Account) {
 
 export async function POST(req: Request) {
   const stripe = stripeClient();
-  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  const primarySecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  const connectSecret = process.env.STRIPE_WEBHOOK_SECRET_CONNECT?.trim();
+  const webhookSecrets = [primarySecret, connectSecret].filter(
+    (s): s is string => Boolean(s),
+  );
 
-  if (!stripe || !secret) {
+  if (!stripe || webhookSecrets.length === 0) {
     return NextResponse.json({ ok: false, error: "Stripe webhook not configured" }, { status: 501 });
   }
 
@@ -252,10 +256,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Missing signature" }, { status: 400 });
   }
 
-  let evt: Stripe.Event;
-  try {
-    evt = stripe.webhooks.constructEvent(raw, sig, secret);
-  } catch {
+  let evt: Stripe.Event | null = null;
+  let lastErr: unknown = null;
+  for (const secret of webhookSecrets) {
+    try {
+      evt = stripe.webhooks.constructEvent(raw, sig, secret);
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!evt) {
+    console.error("[stripe webhook] signature verification failed", lastErr);
     return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 400 });
   }
 

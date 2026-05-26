@@ -7,12 +7,12 @@ export const metadata = { title: "Cost overview · Solvio admin" };
 
 type TierCount = { tier: string; count: number; price: number };
 
-// Tier prices reflected at /dashboard/pricing. Pro is GBP £200 (founders' rate);
-// shown here in £ in the admin view. Business is legacy and treated as Pro-equivalent.
+// Tier prices reflected at /dashboard/pricing.
 const TIER_PRICE_GBP: Record<string, number> = {
   trial: 0,
-  pro: 200,
-  business: 200,
+  booking: 50,
+  pro: 150,
+  business: 150,
   scale: 499,
   enterprise: 0,
 };

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 
+import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
 import { stripeClient } from "@/lib/stripe-client";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,14 +39,24 @@ export async function startStripeCheckout(plan: StripePlanTier) {
     customerEmail = envEmail || undefined;
   }
 
+  const sessionMetadata = {
+    solvio_plan_tier: plan,
+    ...(user?.id ? { solvio_auth_user_id: user.id } : {}),
+  };
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer_email: customerEmail,
     line_items: [{ price: priceId, quantity: 1 }],
-    metadata: {
-      solvio_plan_tier: plan,
-      ...(user?.id ? { solvio_auth_user_id: user.id } : {}),
-    },
+    metadata: sessionMetadata,
+    ...(plan === "booking"
+      ? {
+          subscription_data: {
+            trial_period_days: BOOKING_TRIAL_DAYS,
+            metadata: sessionMetadata,
+          },
+        }
+      : {}),
     success_url: successUrl,
     cancel_url: cancelUrl,
     allow_promotion_codes: true,

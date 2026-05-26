@@ -1,0 +1,42 @@
+---
+description: Vercel CLI — use solvio project only (not Tipsi); env vars and prod deploys
+alwaysApply: true
+---
+
+# Vercel — Solvio project only
+
+Use the **Vercel CLI** for env vars, deploys, and inspection on this repo. The user is logged in locally (`vercel whoami`); no token required unless CI.
+
+## Correct project (never Tipsi)
+
+Always operate on the linked **solvio** project:
+
+| Field | Value |
+|-------|--------|
+| Project name | `solvio` |
+| Project ID | `prj_lxbtbFAzyGxvITJBaKga2eFqeT7P` |
+| Team / scope | `mattyg1234s-projects` (`team_JRCtlld9iiMiuBw5kyLcfF7m`) |
+| Link file | `.vercel/project.json` |
+
+**Do not** deploy or set env vars on: `tipsi`, `tipsi2-0`, `tipsi-upgrade`, `v0-solvio`, or other team projects.
+
+Before any `vercel env` or `vercel deploy`, confirm cwd is `Village/sites/solvio` and `cat .vercel/project.json` shows `projectName: solvio`.
+
+## Production URLs
+
+- Canonical: `https://www.solviosystems.com`
+- Vercel alias: `https://solvio-roan.vercel.app`
+
+Stripe webhook endpoint: `https://www.solviosystems.com/api/webhooks/stripe`
+
+## Common commands
+
+```bash
+cd Village/sites/solvio
+npx vercel env ls production
+printf '%s' 'value' | npx vercel env update VAR_NAME production -y --sensitive
+npx vercel deploy --prod --yes
+npx vercel inspect <deployment-url>
+```
+
+After changing Production env vars, **redeploy production** so serverless functions pick up new values.

@@ -6,6 +6,19 @@ import { ArrowLeft, Check, Minus, Sparkles } from "lucide-react";
 import { checkoutBookingAction, checkoutProAction, checkoutScaleAction } from "@/app/dashboard/pricing/checkout-actions";
 import { openBillingPortalAction } from "@/app/dashboard/pricing/billing-portal-action";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  BOOKING_DEMO_AI_MINUTES,
+  BOOKING_MONTHLY_GBP,
+  BOOKING_TRIAL_DAYS,
+  PRO_AI_MINUTES,
+  PRO_ANNUAL_GBP,
+  PRO_MONTHLY_GBP,
+  SCALE_AI_MINUTES,
+  SCALE_MONTHLY_GBP,
+  TRIAL_AI_MINUTES,
+  isTrialExpired,
+  trialDaysRemaining,
+} from "@/lib/solvio-pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -16,10 +29,9 @@ export const metadata: Metadata = {
 type TierSpec = {
   name: string;
   monthlyDisplay: string;
-  yearlyDisplay: string;
-  yearlyTotal: string;
-  yearlyEquivalent: string;
   cadence: string;
+  /** Optional — shown below monthly price, never as the primary price. */
+  annualNote?: string;
   blurb: string;
   bullets: string[];
   featured?: boolean;
@@ -31,72 +43,62 @@ type TierSpec = {
 const TIERS: TierSpec[] = [
   {
     name: "Booking",
-    monthlyDisplay: "£89",
-    yearlyDisplay: "£79",
-    yearlyTotal: "£948",
-    yearlyEquivalent: "(save £120 vs monthly)",
+    monthlyDisplay: `£${BOOKING_MONTHLY_GBP}`,
     cadence: "/month",
-    blurb: "Full booking system for restaurants, bars and salons. No AI commitment — includes 30 demo AI minutes so you can try the receptionist before upgrading.",
+    blurb: `Full booking system for restaurants, bars and salons — public /book pages, deposits, and confirmations. ${BOOKING_TRIAL_DAYS}-day free trial; card required — £${BOOKING_MONTHLY_GBP}/mo starts after trial unless you cancel.`,
     bullets: [
       "1 location",
       "Full booking microsite (tables, appointments, events)",
       "Stripe Connect payouts",
-      "30 demo AI receptionist minutes",
+      `${BOOKING_DEMO_AI_MINUTES} demo AI receptionist minutes to test calls`,
       "4% platform fee on guest deposits",
       "Email confirmations to guests",
     ],
-    ctaLabel: "Start with Booking",
+    ctaLabel: `Start ${BOOKING_TRIAL_DAYS}-day free trial`,
     checkoutAction: checkoutBookingAction,
   },
   {
     name: "Trial",
     monthlyDisplay: "Free",
-    yearlyDisplay: "Free",
-    yearlyTotal: "Free",
-    yearlyEquivalent: "",
     cadence: "",
-    blurb: "Try Solvio end-to-end with no card — guests can book and pay through your link from day one.",
+    blurb: `${BOOKING_TRIAL_DAYS}-day trial on us — explore the dashboard and publish your booking link. After ${BOOKING_TRIAL_DAYS} days, add a card on the Booking plan to keep going (£${BOOKING_MONTHLY_GBP}/mo).`,
     bullets: [
       "1 location",
-      "50 AI receptionist minutes",
+      `${TRIAL_AI_MINUTES} AI receptionist minutes during trial`,
       "10% platform fee on guest deposits",
       "Public booking microsite",
       "Email + SMS confirmations",
     ],
-    ctaLabel: "Already on trial",
+    ctaLabel: "Current free trial",
   },
   {
     name: "Pro",
-    monthlyDisplay: "£200",
-    yearlyDisplay: "£180",
-    yearlyTotal: "£2,160",
-    yearlyEquivalent: "(save £240 vs monthly)",
+    monthlyDisplay: `£${PRO_MONTHLY_GBP}`,
     cadence: "/month",
-    blurb: "Every working venue — bars, restaurants, salons, ticketed events. Founders' rate £200/mo for the first 50 merchants.",
+    annualNote: `Annual billing available — £${PRO_ANNUAL_GBP.toLocaleString("en-GB")}/year (save 10% vs monthly).`,
+    blurb: "Every working venue — bars, restaurants, salons, ticketed events — with the full AI receptionist and operations hub.",
     bullets: [
       "Up to 2 locations",
-      "1,000 AI receptionist minutes",
+      `${PRO_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes / month`,
       "2.5% platform fee on guest deposits",
       "Stripe Connect payouts",
       "Full Operations Hub + floor plan",
       "Lead pipeline + Ask Solvio AI",
     ],
     featured: true,
-    badge: "Founders' rate · £299 after first 50",
-    ctaLabel: "Start with Pro",
+    badge: "Most popular",
+    ctaLabel: "Upgrade to Pro",
     checkoutAction: checkoutProAction,
   },
   {
     name: "Scale",
-    monthlyDisplay: "£499",
-    yearlyDisplay: "£449",
-    yearlyTotal: "£5,388",
-    yearlyEquivalent: "(save £600 vs monthly)",
+    monthlyDisplay: `£${SCALE_MONTHLY_GBP}`,
     cadence: "/month",
-    blurb: "Groups, event venues, multi-location operators selling thousands of tickets a month.",
+    annualNote: "Annual billing available — £5,388/year (save 10% vs monthly).",
+    blurb: "Groups, event venues, and multi-location operators selling thousands of tickets a month.",
     bullets: [
       "Unlimited locations",
-      "3,000 AI receptionist minutes (€0.30 / extra min)",
+      `${SCALE_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes (€0.30 / extra min)`,
       "1% platform fee on guest deposits",
       "Priority provisioning + custom routing",
       "Solution engineering blocks",
@@ -117,7 +119,7 @@ type ComparisonRow = {
 
 const comparison: ComparisonRow[] = [
   { feature: "Public booking microsite", booking: true, pro: true, scale: true },
-  { feature: "AI receptionist minutes / month", booking: "30 demo", pro: "1,000", scale: "3,000" },
+  { feature: "AI receptionist minutes / month", booking: `${BOOKING_DEMO_AI_MINUTES} demo`, pro: PRO_AI_MINUTES.toLocaleString("en-GB"), scale: SCALE_AI_MINUTES.toLocaleString("en-GB") },
   { feature: "Overage rate (per extra minute)", booking: "n/a", pro: "£0.40", scale: "£0.30" },
   { feature: "Platform fee on guest deposits", booking: "4%", pro: "2.5%", scale: "1%" },
   { feature: "Locations included", booking: "1", pro: "2", scale: "Unlimited" },
@@ -141,16 +143,12 @@ const faqs = [
     a: "Yes. Upgrade or downgrade anytime from the Stripe Customer Portal. Changes prorate to the day, and your platform fee % updates immediately on the next guest deposit.",
   },
   {
-    q: "How does the founders' rate work?",
-    a: "Pro is £200/mo for the first 50 paying merchants. After that, list price moves to £299/mo. Existing founders keep their £200/mo rate as long as the subscription stays active.",
-  },
-  {
-    q: "Annual prepay — what's the deal?",
-    a: "Pay 12 months up front and save 10% (£2,160 vs £2,400 on Pro, £5,388 vs £5,988 on Scale). Locks in your founders' rate even if list pricing changes.",
+    q: "Can I pay annually instead of monthly?",
+    a: `Yes — on Pro and Scale you can prepay 12 months and save 10% (e.g. £${PRO_ANNUAL_GBP.toLocaleString("en-GB")}/year on Pro vs £${PRO_MONTHLY_GBP}/mo). Monthly billing is the default; switch anytime in the billing portal or ask us to set up annual invoicing.`,
   },
   {
     q: "Is there a free trial?",
-    a: "Yes — every account starts on Trial. 50 AI minutes, full public booking page, 10% platform fee on any deposits taken during trial. Upgrade to Pro any time to drop the fee to 2.5%.",
+    a: `Yes — every account gets ${BOOKING_TRIAL_DAYS} days free. Start the Booking plan with your card on file; after ${BOOKING_TRIAL_DAYS} days you're charged £${BOOKING_MONTHLY_GBP}/mo unless you cancel. During the trial you get ${TRIAL_AI_MINUTES} AI minutes and a 10% platform fee on guest deposits.`,
   },
   {
     q: "Do guests need an account?",
@@ -177,9 +175,9 @@ function Cell({ value }: { value: ComparisonCell }) {
 }
 
 const TIER_LABELS: Record<string, string> = {
-  trial: "Free Trial",
-  booking: "Booking · £89/mo",
-  pro: "Pro · £200/mo",
+  trial: `Free Trial · ${BOOKING_TRIAL_DAYS} days`,
+  booking: `Booking · £${BOOKING_MONTHLY_GBP}/mo`,
+  pro: `Pro · £${PRO_MONTHLY_GBP}/mo`,
   business: "Business · £399/mo",
   scale: "Scale · £499/mo",
   enterprise: "Enterprise",
@@ -192,15 +190,20 @@ export default async function DashboardPricingPage() {
 
   const { data: biz } = await supabase
     .from("businesses")
-    .select("subscription_tier, stripe_customer_id")
+    .select("subscription_tier, stripe_customer_id, created_at")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
-  const tier = (biz as { subscription_tier?: string; stripe_customer_id?: string } | null)?.subscription_tier ?? "trial";
+  const tier = (biz as { subscription_tier?: string; stripe_customer_id?: string; created_at?: string } | null)?.subscription_tier ?? "trial";
   const hasStripeCustomer = Boolean((biz as { stripe_customer_id?: string } | null)?.stripe_customer_id);
   const isPaid = tier !== "trial";
+  const createdAt = (biz as { created_at?: string } | null)?.created_at;
+  const onFreeTrial = tier === "trial" && createdAt;
+  const trialDaysLeft = createdAt ? trialDaysRemaining(createdAt) : BOOKING_TRIAL_DAYS;
+  const trialExpired = createdAt ? isTrialExpired(createdAt) : false;
+  const onBookingTier = tier === "booking";
 
   return (
     <div className="space-y-12">
@@ -247,9 +250,60 @@ export default async function DashboardPricingPage() {
             </button>
           </form>
         ) : (
-          <p className="text-sm text-[#64748b]">Choose a plan below to activate your subscription.</p>
+          <p className="text-sm text-[#64748b]">
+            {trialExpired
+              ? `Your ${BOOKING_TRIAL_DAYS}-day trial has ended — start Booking below to keep your link live (£${BOOKING_MONTHLY_GBP}/mo; card required).`
+              : onFreeTrial
+                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your free trial — add a card on Booking before it ends.`
+                : "Choose a plan below to activate your subscription."}
+          </p>
         )}
       </div>
+
+      {onBookingTier ? (
+        <div className="flex flex-col gap-4 rounded-[22px] border border-[#c4b5fd] bg-gradient-to-br from-[#f5f3ff] to-white p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-[#5b21b6]">
+              Want to really maximise your sales with your AI receptionist?
+            </p>
+            <p className="text-sm leading-relaxed text-[#64748b]">
+              You&apos;re on Booking with {BOOKING_DEMO_AI_MINUTES} demo minutes. Upgrade to Pro for {PRO_AI_MINUTES.toLocaleString("en-GB")} minutes/month,
+              full voice configuration, and a lower platform fee.
+            </p>
+          </div>
+          <form action={checkoutProAction}>
+            <button
+              type="submit"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "h-10 shrink-0 rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+              )}
+            >
+              Upgrade to Pro · £{PRO_MONTHLY_GBP}/mo →
+            </button>
+          </form>
+        </div>
+      ) : null}
+
+      {onFreeTrial && !trialExpired ? (
+        <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">
+            {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left on your free trial
+          </p>
+          <p className="mt-1 text-amber-800">
+            Start Booking below with your card — £{BOOKING_MONTHLY_GBP}/month begins after {BOOKING_TRIAL_DAYS} days unless you cancel.
+          </p>
+        </div>
+      ) : null}
+
+      {onFreeTrial && trialExpired ? (
+        <div className="rounded-[20px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
+          <p className="font-semibold">Your free trial has ended</p>
+          <p className="mt-1">
+            Add a card on the Booking plan to keep your booking link and dashboard active (£{BOOKING_MONTHLY_GBP}/mo after {BOOKING_TRIAL_DAYS} days unless you cancel).
+          </p>
+        </div>
+      ) : null}
 
       <header className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Pricing</p>
@@ -257,8 +311,7 @@ export default async function DashboardPricingPage() {
           AI receptionist + bookings, priced like a part-time team member
         </h1>
         <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-          Free trial · founders&apos; rate £200/mo · annual prepay saves 10%. Each plan includes AI minutes, hosted
-          booking links, and a tier-based platform fee on guest deposits.
+          Free trial · Booking £{BOOKING_MONTHLY_GBP}/mo · Pro £{PRO_MONTHLY_GBP}/mo · Scale £{SCALE_MONTHLY_GBP}/mo · tier-based platform fee on guest deposits.
         </p>
       </header>
 
@@ -273,9 +326,9 @@ export default async function DashboardPricingPage() {
                 : "border-[#ebe7f7]",
             )}
           >
-            {t.featured ? (
+            {t.featured || t.badge ? (
               <span className="mb-4 inline-flex w-fit rounded-full bg-[#ede9fe] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b21b6]">
-                Most popular
+                {t.badge ?? "Most popular"}
               </span>
             ) : (
               <span className="mb-4 block h-6" aria-hidden />
@@ -285,15 +338,8 @@ export default async function DashboardPricingPage() {
               <span className="text-4xl font-semibold">{t.monthlyDisplay}</span>
               {t.cadence ? <span className="text-sm font-medium text-[#64748b]">{t.cadence}</span> : null}
             </p>
-            {t.yearlyEquivalent ? (
-              <p className="mt-1 text-[12px] text-[#7c3aed]">
-                or {t.yearlyDisplay}/mo annual ({t.yearlyTotal} up front · {t.yearlyEquivalent.replace(/[()]/g, "")})
-              </p>
-            ) : null}
-            {t.badge ? (
-              <p className="mt-2 inline-flex w-fit rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-900 ring-1 ring-amber-100">
-                {t.badge}
-              </p>
+            {t.annualNote ? (
+              <p className="mt-2 text-[12px] leading-relaxed text-[#64748b]">{t.annualNote}</p>
             ) : null}
             <p className="mt-4 text-sm leading-relaxed text-[#475569]">{t.blurb}</p>
             <ul className="mt-6 flex-1 space-y-3 text-sm text-[#475569]">
