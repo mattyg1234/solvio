@@ -1,0 +1,46 @@
+---
+description: Supabase — Solvio project only (not Tipsi); MCP reconnect and env refs
+alwaysApply: true
+---
+
+# Supabase — Solvio project only
+
+Use the **Solvio** Supabase project for this repo. Never Tipsi (`muzonmhumkzxwivzmzgx`) or other refs.
+
+## Correct project
+
+| Field | Value |
+|-------|--------|
+| Project ref | `aasfahcrdcoqxwnlkdnv` |
+| API URL | `https://aasfahcrdcoqxwnlkdnv.supabase.co` |
+| Dashboard | https://supabase.com/dashboard/project/aasfahcrdcoqxwnlkdnv |
+
+**Do not** use Tipsi ref `muzonmhumkzxwivzmzgx` for Solvio env vars, migrations, or MCP.
+
+## Env vars (Vercel + local)
+
+On Vercel project **solvio** Production and Preview:
+
+- `NEXT_PUBLIC_SUPABASE_URL` → `https://aasfahcrdcoqxwnlkdnv.supabase.co`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` → anon key whose JWT payload `ref` is `aasfahcrdcoqxwnlkdnv`
+- `SUPABASE_SERVICE_ROLE_KEY` → service role from the same project
+
+Local `.env.local` must match the same ref (not Tipsi).
+
+Verify anon key ref without exposing the key:
+
+```bash
+node -e "const t=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY; console.log(JSON.parse(Buffer.from(t.split('.')[1],'base64url')).ref)"
+```
+
+## Cursor Supabase MCP
+
+Workspace config: `.cursor/mcp.json` → `project_ref=aasfahcrdcoqxwnlkdnv`.
+
+If MCP `get_project_url` returns Tipsi (`muzonmhumkzxwivzmzgx`), OAuth is still bound to the wrong project:
+
+1. Cursor Settings → MCP → Supabase → **Clear MCP Tokens** (or disconnect)
+2. Reconnect and select project **Solvio** / ref `aasfahcrdcoqxwnlkdnv`
+3. Confirm `get_project_url` returns `https://aasfahcrdcoqxwnlkdnv.supabase.co`
+
+Until MCP is reconnected, use Supabase Dashboard or CLI against `aasfahcrdcoqxwnlkdnv` — Vercel Production is already wired correctly.
