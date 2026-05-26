@@ -9,7 +9,17 @@ alwaysApply: true
 
 **Account ID:** `acct_1TbSEyEMUQyVybDT`  
 **API keys:** https://dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/apikeys  
-**Webhooks:** https://dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/workbench/webhooks
+**Webhooks:** https://dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/workbench/webhooks  
+**Connect setup:** https://dashboard.stripe.com/connect — required once before merchants can onboard (Express accounts)
+
+### Enable Connect (one-time)
+
+Merchants see *"You can only create new accounts if you've signed up for Connect"* until this is done:
+
+1. Log in as **mattygale2023@gmail.com** on account `acct_1TbSEyEMUQyVybDT`
+2. Open **Connect** → **Get started**
+3. Complete the platform profile; choose **Express** accounts for connected merchants
+4. Retry **Dashboard → Payments → Connect Stripe**
 
 `STRIPE_SECRET_KEY`, all `STRIPE_PRICE_*`, and `STRIPE_WEBHOOK_SECRET` on Vercel project **solvio** must all be from this account.
 

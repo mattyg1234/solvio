@@ -21,10 +21,21 @@ function isMissingStripeResource(err: unknown): boolean {
   );
 }
 
+function formatConnectPlatformError(message: string): string {
+  if (/signed up for Connect/i.test(message)) {
+    return (
+      "Solvio's Stripe platform account needs Connect turned on before venues can link. " +
+      "In Stripe (mattygale2023@gmail.com): open Connect → Get started → choose Express accounts for merchants. " +
+      "Then return here and click Connect Stripe again."
+    );
+  }
+  return message;
+}
+
 function connectErrorMessage(err: unknown, fallback: string): string {
   if (typeof err === "object" && err !== null && "message" in err) {
     const message = String((err as { message?: string }).message ?? "").trim();
-    if (message) return message;
+    if (message) return formatConnectPlatformError(message);
   }
   return fallback;
 }
