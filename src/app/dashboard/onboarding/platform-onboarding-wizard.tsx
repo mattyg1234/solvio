@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PlatformCapabilityKey } from "@/lib/platform-capabilities";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 import {
@@ -21,6 +23,11 @@ import {
 export type MerchantProfileDraft = {
   phone?: string;
   address?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  postcode?: string;
+  country?: string;
   social?: string;
 };
 
@@ -31,6 +38,8 @@ type PlatformOnboardingWizardProps = {
   initialLogoUrl: string | null;
   initialWebsiteUrl: string | null;
   merchantProfile: MerchantProfileDraft;
+  initialStep?: number;
+  bookingSetupComplete?: boolean;
 };
 
 const STEP_LABELS = [
@@ -61,7 +70,7 @@ const CAP_DEFS: { key: PlatformCapabilityKey; label: string; hint: string }[] = 
 
 export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
   const router = useRouter();
-  const [stepIdx, setStepIdx] = useState(0);
+  const [stepIdx, setStepIdx] = useState(() => props.initialStep ?? 0);
   const [err, setErr] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -69,15 +78,23 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
   const [timeZone, setTimeZone] = useState(props.initialTimeZone || "UTC");
   const [logoUrl, setLogoUrl] = useState(props.initialLogoUrl ?? "");
   const [websiteUrl, setWebsiteUrl] = useState(props.initialWebsiteUrl ?? "");
-  const [phone, setPhone] = useState(props.merchantProfile.phone ?? "");
-  const [address, setAddress] = useState(props.merchantProfile.address ?? "");
+  const initialPhone = parsePhoneDialFields(props.merchantProfile.phone ?? "");
+  const [phoneDial, setPhoneDial] = useState<string>(initialPhone.dial);
+  const [phoneLocal, setPhoneLocal] = useState(initialPhone.local);
+  const [addressLine1, setAddressLine1] = useState(
+    props.merchantProfile.address_line1 ?? props.merchantProfile.address ?? "",
+  );
+  const [addressLine2, setAddressLine2] = useState(props.merchantProfile.address_line2 ?? "");
+  const [city, setCity] = useState(props.merchantProfile.city ?? "");
+  const [postcode, setPostcode] = useState(props.merchantProfile.postcode ?? "");
+  const [country, setCountry] = useState(props.merchantProfile.country ?? "");
   const [social, setSocial] = useState(props.merchantProfile.social ?? "");
 
   const [caps, setCaps] = useState<Record<PlatformCapabilityKey, boolean>>({
     appointments: true,
-    events: true,
+    events: false,
     tables: true,
-    ai_receptionist: true,
+    ai_receptionist: false,
     lead_generation: false,
   });
 
@@ -104,14 +121,23 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
 
   async function persistProfileAdvance() {
     const picked = [...TIMEZONES].includes(timeZone as (typeof TIMEZONES)[number]) ? timeZone : "UTC";
+    const phoneCheck = optionalPhoneE164(phoneDial, phoneLocal);
+    if (!phoneCheck.ok) {
+      setErr(phoneCheck.message);
+      return;
+    }
     const fd = new FormData();
     fd.append("business_id", props.businessId);
     fd.append("name", name.trim());
     fd.append("time_zone", picked);
     fd.append("logo_url", logoUrl.trim());
     fd.append("website_url", websiteUrl.trim());
-    fd.append("merchant_phone", phone.trim());
-    fd.append("merchant_address", address.trim());
+    fd.append("merchant_phone", phoneCheck.e164 ?? "");
+    fd.append("merchant_address_line1", addressLine1.trim());
+    fd.append("merchant_address_line2", addressLine2.trim());
+    fd.append("merchant_city", city.trim());
+    fd.append("merchant_postcode", postcode.trim());
+    fd.append("merchant_country", country.trim());
     fd.append("merchant_social", social.trim());
     const res = await saveOnboardingBusinessProfile(fd);
     if (!res.ok) throw new Error(res.message);
@@ -123,6 +149,14 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
     const aiRes = await saveOnboardingCapabilities(caps);
     if (!aiRes.ok) throw new Error(aiRes.message);
     setStepIdx(1);
+  }
+
+  async function skipAiSetup() {
+    const nextCaps = { ...caps, ai_receptionist: false };
+    setCaps(nextCaps);
+    const aiRes = await saveOnboardingCapabilities(nextCaps);
+    if (!aiRes.ok) throw new Error(aiRes.message);
+    setStepIdx(3);
   }
 
   async function finishLaunch() {
@@ -233,21 +267,69 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
               </label>
-              <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-phone">
-                Phone number
+              <PhoneDialCodeField
+                idPrefix="onb-phone"
+                label="Phone number"
+                optional
+                dialCode={phoneDial}
+                localNumber={phoneLocal}
+                onDialCodeChange={setPhoneDial}
+                onLocalNumberChange={setPhoneLocal}
+                localPlaceholder="7700 900123"
+                inputClassName="rounded-2xl bg-[#fafbff] px-4"
+                selectClassName="rounded-2xl bg-white px-3"
+              />
+              <label className="space-y-2 text-sm font-semibold text-[#0f172a] sm:col-span-2" htmlFor="onb-addr1">
+                Street address
                 <input
-                  id="onb-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  id="onb-addr1"
+                  value={addressLine1}
+                  onChange={(e) => setAddressLine1(e.target.value)}
+                  autoComplete="address-line1"
+                  placeholder="123 High Street"
                   className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
               </label>
-              <label className="space-y-2 text-sm font-semibold text-[#0f172a] sm:col-span-2" htmlFor="onb-addr">
-                Address
+              <label className="space-y-2 text-sm font-semibold text-[#0f172a] sm:col-span-2" htmlFor="onb-addr2">
+                Address line 2{" "}
+                <span className="font-normal text-[#94a3b8]">(optional)</span>
                 <input
-                  id="onb-addr"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  id="onb-addr2"
+                  value={addressLine2}
+                  onChange={(e) => setAddressLine2(e.target.value)}
+                  autoComplete="address-line2"
+                  placeholder="Suite, floor, unit…"
+                  className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
+                />
+              </label>
+              <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-city">
+                City / town
+                <input
+                  id="onb-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  autoComplete="address-level2"
+                  className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
+                />
+              </label>
+              <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-postcode">
+                Postcode
+                <input
+                  id="onb-postcode"
+                  value={postcode}
+                  onChange={(e) => setPostcode(e.target.value)}
+                  autoComplete="postal-code"
+                  className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
+                />
+              </label>
+              <label className="space-y-2 text-sm font-semibold text-[#0f172a] sm:col-span-2" htmlFor="onb-country">
+                Country
+                <input
+                  id="onb-country"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  autoComplete="country-name"
+                  placeholder="Spain, United Kingdom…"
                   className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
               </label>
@@ -288,6 +370,10 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   </label>
                 ))}
               </div>
+              <p className="text-xs leading-relaxed text-[#64748b]">
+                Booking only? Leave AI receptionist off — you can turn it on later under{" "}
+                <span className="font-semibold text-[#5b21b6]">Dashboard → Receptionist</span>.
+              </p>
             </div>
 
             <div className="flex justify-end gap-3">
@@ -338,11 +424,16 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                 After saving, add at least one table, event, or appointment slot in Bookings.
               </li>
             </ul>
+            {props.bookingSetupComplete ? (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Booking flow saved — continue to AI setup or skip straight to payments.
+              </div>
+            ) : null}
             <Link
-              href="/dashboard/setup/bookings"
+              href="/dashboard/setup/bookings?from=onboarding"
               className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#7c3aed] px-6 text-sm font-semibold text-white shadow-lg shadow-[#7c3aed]/25 hover:bg-[#6d28d9]"
             >
-              Start booking setup
+              {props.bookingSetupComplete ? "Review booking setup" : "Start booking setup"}
             </Link>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(0)}>
@@ -364,8 +455,8 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
       {stepIdx === 2 ? (
         <Card className="rounded-[24px] border border-[#ebe7f7] bg-white shadow-sm">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-xl text-[#0f172a]">Build your AI employee</CardTitle>
-            <CardDescription>Pick vibe + sanity-check the prompt before real telephony ships.</CardDescription>
+            <CardTitle className="text-xl text-[#0f172a]">AI receptionist</CardTitle>
+            <CardDescription>Optional — skip if you only need booking for now. Set up anytime under Dashboard → Receptionist.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pb-8">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -394,7 +485,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                 Persona:&nbsp;
                 <span className="font-semibold capitalize text-[#5b21b6]">{personaSel}</span>. Escalates unknowns back to inbox.
               </p>
-              <Link href="/dashboard/setup/voice" className="text-sm font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+              <Link href="/dashboard/setup/voice?from=onboarding" className="text-sm font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
                 Open full receptionist composer →
               </Link>
             </div>
@@ -413,6 +504,20 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(1)}>
                 Back
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 rounded-full px-6 font-semibold text-[#64748b]"
+                disabled={pending}
+                onClick={() => {
+                  setErr(null);
+                  startTransition(() => {
+                    void skipAiSetup().catch((e: unknown) => setErr(e instanceof Error ? e.message : "Could not save."));
+                  });
+                }}
+              >
+                Skip AI — booking only
               </Button>
               <Button type="button" className="h-11 rounded-full px-8 font-semibold shadow-lg shadow-[#7c3aed]/25" onClick={() => setStepIdx(3)}>
                 Continue
@@ -479,7 +584,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Link
-                href="/dashboard/setup/bookings"
+                href="/dashboard/setup/bookings?from=onboarding"
                 className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
               >
                 Start booking setup →

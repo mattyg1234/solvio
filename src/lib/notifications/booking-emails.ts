@@ -56,18 +56,45 @@ export async function sendBookingRequestReceivedEmail(opts: {
   guestName: string;
   merchantName: string;
   siteUrl: string;
+  bookingKind?: string;
+  requestedDate?: string;
+  preferredTime?: string;
+  serviceName?: string;
+  staffName?: string;
+  guestCount?: string;
+  paymentNote?: string;
 }): Promise<NotificationSendResult> {
+  const kind = opts.bookingKind?.replace(/_/g, " ").trim() || "booking";
+  const detailRows = [
+    opts.serviceName ? `<tr><td style="padding:4px 8px 4px 0;color:#64748b;font-size:14px">Service</td><td style="padding:4px 0;font-size:14px;font-weight:600">${escapeHtml(opts.serviceName)}</td></tr>` : "",
+    opts.requestedDate ? `<tr><td style="padding:4px 8px 4px 0;color:#64748b;font-size:14px">Date</td><td style="padding:4px 0;font-size:14px;font-weight:600">${escapeHtml(opts.requestedDate)}</td></tr>` : "",
+    opts.preferredTime ? `<tr><td style="padding:4px 8px 4px 0;color:#64748b;font-size:14px">Time</td><td style="padding:4px 0;font-size:14px;font-weight:600">${escapeHtml(opts.preferredTime)}</td></tr>` : "",
+    opts.staffName ? `<tr><td style="padding:4px 8px 4px 0;color:#64748b;font-size:14px">Stylist</td><td style="padding:4px 0;font-size:14px;font-weight:600">${escapeHtml(opts.staffName)}</td></tr>` : "",
+    opts.guestCount ? `<tr><td style="padding:4px 8px 4px 0;color:#64748b;font-size:14px">Party</td><td style="padding:4px 0;font-size:14px;font-weight:600">${escapeHtml(opts.guestCount)} guest${opts.guestCount === "1" ? "" : "s"}</td></tr>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const paymentBlock = opts.paymentNote
+    ? `<p style="margin:16px 0 0;padding:12px 14px;border-radius:12px;background:#f5f3ff;border:1px solid #ddd6fe;font-size:14px;color:#5b21b6">${escapeHtml(opts.paymentNote)}</p>`
+    : "";
+
   return sendViaResend({
     to: opts.guestEmail,
-    subject: `${opts.merchantName} · we received your request`,
+    subject: `${opts.merchantName} · your ${kind} request`,
     html: `
-      <p>Hi ${escapeHtml(opts.guestName)},</p>
-      <p>Thanks — <strong>${escapeHtml(opts.merchantName)}</strong> has your booking details and will reply soon.</p>
-      <p style="margin-top:1.5rem;color:#64748b;font-size:14px;">
-        Hosted on Solvio · <a href="${escapeHtml(opts.siteUrl)}">Open site</a>
-      </p>
+      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
+        <p>Hi ${escapeHtml(opts.guestName)},</p>
+        <p>Thanks — <strong>${escapeHtml(opts.merchantName)}</strong> has your <strong>${escapeHtml(kind)}</strong> details.</p>
+        ${detailRows ? `<table style="border-collapse:collapse;margin:16px 0 8px;width:100%">${detailRows}</table>` : ""}
+        ${paymentBlock}
+        <p style="margin-top:20px;font-size:14px;color:#64748b">They'll confirm using the contact details you shared. If you started a Stripe payment, finish that step to secure your slot.</p>
+        <p style="margin-top:1.5rem;color:#64748b;font-size:14px;">
+          Hosted on Solvio · <a href="${escapeHtml(opts.siteUrl)}">Open site</a>
+        </p>
+      </div>
     `,
-    text: `Hi ${opts.guestName},\n\nThanks — ${opts.merchantName} has your booking details and will reply soon.\n`,
+    text: `Hi ${opts.guestName},\n\nThanks — ${opts.merchantName} has your ${kind} request.\n${opts.requestedDate ? `Date: ${opts.requestedDate}\n` : ""}${opts.preferredTime ? `Time: ${opts.preferredTime}\n` : ""}${opts.serviceName ? `Service: ${opts.serviceName}\n` : ""}${opts.paymentNote ? `\n${opts.paymentNote}\n` : ""}\nThey'll confirm soon.\n`,
   });
 }
 

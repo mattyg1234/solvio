@@ -9,7 +9,7 @@ export type BookingHubPrimary = (typeof BOOKING_HUB_PRIMARIES)[number];
 export const BOOKING_GUESTS_SUBS = ["inbox", "confirmed", "planner"] as const;
 export type BookingGuestsSub = (typeof BOOKING_GUESTS_SUBS)[number];
 
-export const BOOKING_OFFERINGS_SUBS = ["appointments", "events", "tables"] as const;
+export const BOOKING_OFFERINGS_SUBS = ["appointments", "staff", "events", "tables"] as const;
 export type BookingOfferingsSub = (typeof BOOKING_OFFERINGS_SUBS)[number];
 
 function normQs(s?: string | null): string {
@@ -23,7 +23,7 @@ function coerceGuestsSub(raw: string): BookingGuestsSub {
 }
 
 function coerceOfferingsSub(raw: string): BookingOfferingsSub {
-  if (raw === "events" || raw === "tables" || raw === "appointments") return raw;
+  if (raw === "events" || raw === "tables" || raw === "appointments" || raw === "staff") return raw;
   return "appointments";
 }
 
@@ -56,7 +56,7 @@ export function parseBookingsHubQuery(params: {
 
   if (!ht.length) {
     if (!hv.length) return base;
-    if (hv === "appointments" || hv === "events" || hv === "tables") {
+    if (hv === "appointments" || hv === "staff" || hv === "events" || hv === "tables") {
       return {
         primary: "offerings",
         guestsSub: "inbox",
@@ -91,7 +91,7 @@ export function parseBookingsHubQuery(params: {
     };
   }
 
-  if (ht === "appointments" || ht === "events" || ht === "tables") {
+  if (ht === "appointments" || ht === "staff" || ht === "events" || ht === "tables") {
     return {
       primary: "offerings",
       guestsSub: "inbox",

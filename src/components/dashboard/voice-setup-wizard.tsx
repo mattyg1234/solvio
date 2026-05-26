@@ -19,6 +19,8 @@ import {
 } from "@/app/dashboard/setup/voice-prompt-actions";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { buttonVariants } from "@/components/ui/button";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 const TOTAL_STEPS = 7;
@@ -55,7 +57,9 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
   const [tone, setTone] = useState<VoiceReceptionistClientDetails["greeting_style"]>(initialDetails.greeting_style);
   const [languagesNote, setLanguagesNote] = useState(initialDetails.languages_note ?? "");
-  const [escalationPhone, setEscalationPhone] = useState(initialDetails.escalation_phone ?? "");
+  const initialEscalation = parsePhoneDialFields(initialDetails.escalation_phone ?? "");
+  const [escalationDial, setEscalationDial] = useState<string>(initialEscalation.dial);
+  const [escalationLocal, setEscalationLocal] = useState(initialEscalation.local);
   const [agentFirstMessage, setAgentFirstMessage] = useState(initialDetails.agent_first_message ?? "");
   const [vapiAssistantId, setVapiAssistantId] = useState(initialDetails.vapi_assistant_id ?? "");
   const [vapiAssistantName, setVapiAssistantName] = useState(initialDetails.vapi_assistant_name ?? "");
@@ -169,6 +173,12 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
     }
   }
 
+  function escalationPhoneE164(): string | undefined {
+    const check = optionalPhoneE164(escalationDial, escalationLocal);
+    if (!check.ok) return undefined;
+    return check.e164 ?? undefined;
+  }
+
   async function handleSyncMerchantAssistant() {
     setMerchantSyncMsg(null);
     setMerchantSyncPending(true);
@@ -176,7 +186,7 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
       const payload: VoiceReceptionistSaveInput = {
         greeting_style: tone,
         languages_note: languagesNote.trim() || undefined,
-        escalation_phone: escalationPhone.trim() || undefined,
+        escalation_phone: escalationPhoneE164(),
         reception_identity: receptionIdentity.trim() || undefined,
         reception_scope: receptionScope.trim() || undefined,
         caller_intake_priorities: intakePriorities.trim() || undefined,
@@ -202,13 +212,18 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
 
   function submit() {
     setError(null);
+    const phoneCheck = optionalPhoneE164(escalationDial, escalationLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      return;
+    }
     startTransition(() => {
       void (async () => {
         try {
           const payload: VoiceReceptionistSaveInput = {
             greeting_style: tone,
             languages_note: languagesNote.trim() || undefined,
-            escalation_phone: escalationPhone.trim() || undefined,
+            escalation_phone: escalationPhoneE164(),
             reception_identity: receptionIdentity.trim() || undefined,
             reception_scope: receptionScope.trim() || undefined,
             caller_intake_priorities: intakePriorities.trim() || undefined,
@@ -494,19 +509,17 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
                 className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               />
             </div>
-            <div className="space-y-2">
-              <label htmlFor="escalation" className="text-sm font-semibold text-[#0f172a]">
-                Escalation phone <span className="font-normal text-[#94a3b8]">(optional)</span>
-              </label>
-              <input
-                id="escalation"
-                type="tel"
-                value={escalationPhone}
-                onChange={(e) => setEscalationPhone(e.target.value)}
-                placeholder="Who picks up when AI hands off?"
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-              />
-            </div>
+            <PhoneDialCodeField
+              idPrefix="voice-escalation"
+              label="Escalation phone"
+              optional
+              dialCode={escalationDial}
+              localNumber={escalationLocal}
+              onDialCodeChange={setEscalationDial}
+              onLocalNumberChange={setEscalationLocal}
+              localPlaceholder="Who picks up when AI hands off?"
+              inputClassName="rounded-xl bg-[#fafbff] px-4"
+            />
           </div>
         ) : null}
 
@@ -718,7 +731,7 @@ export function VoiceSetupWizard({ businessId, businessName, initialDetails }: V
               </div>
               <div>
                 <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Escalation</dt>
-                <dd className="mt-1 text-[#475569]">{escalationPhone.trim() || "—"}</dd>
+                <dd className="mt-1 text-[#475569]">{escalationPhoneE164() ?? "—"}</dd>
               </div>
               <div>
                 <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Voice stack</dt>

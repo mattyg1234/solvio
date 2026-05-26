@@ -26,16 +26,16 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="space-y-8"
         >
           <p className="inline-flex max-w-xl rounded-full border border-[#ebe7f7]/90 bg-[#f8fafc]/90 px-4 py-2 text-[13px] font-medium leading-snug text-[#475569] backdrop-blur-sm sm:text-sm">
-            AI receptionists & booking systems for hospitality and services
+            Booking link + Stripe deposits for restaurants, salons & cafés
           </p>
 
           <div className="space-y-5">
             <h1 className="text-[clamp(2.35rem,5vw,3.65rem)] font-semibold tracking-tight text-[#0f172a] leading-[1.07]">
-              Never miss another booking, customer, or phone call.
+              Your booking page live in 30 minutes — guests pay deposits straight to you.
             </h1>
             <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">
-              AI receptionists, bookings, events, tables and payments — one calm dashboard. Complexity only appears for the
-              modules you turn on.
+              One calm `/book` link, purple calendars for events, appointment slots with stylist names, and Stripe Connect
+              checkout. AI receptionist when you&apos;re ready to upgrade.
             </p>
           </div>
 
@@ -73,22 +73,22 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               Start free trial
             </Link>
             <Link
-              href="/#demo"
+              href="/#pricing"
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "h-12 rounded-full border-[#ebe7f7] px-8 text-base font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
               )}
             >
-              How we help
+              See pricing · £50/mo
             </Link>
             <Link
-              href="#live-ai-receptionist"
+              href="/book/solvio-d67c90cc"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "lg" }),
                 "h-12 rounded-full px-6 text-base font-semibold text-[#475569] hover:bg-[#f8fafc] hover:text-[#0f172a]",
               )}
             >
-              Talk to our receptionist
+              Try live booking demo
             </Link>
           </div>
 

@@ -16,7 +16,13 @@ function parseBookingKind(raw: string | null): BookingFlowKind | null {
   return bookingKinds.includes(raw as BookingFlowKind) ? (raw as BookingFlowKind) : null;
 }
 
-export default async function BookingFlowSetupPage() {
+export default async function BookingFlowSetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string }>;
+}) {
+  const sp = await searchParams;
+  const fromOnboarding = sp.from === "onboarding";
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -69,6 +75,7 @@ export default async function BookingFlowSetupPage() {
       businessName={biz.name}
       initialKind={initialKind}
       initialDetails={initialDetails}
+      fromOnboarding={fromOnboarding}
     />
   );
 }

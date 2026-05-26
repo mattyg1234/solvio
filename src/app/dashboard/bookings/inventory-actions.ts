@@ -38,6 +38,19 @@ function revBookings() {
   revalidatePath("/dashboard/bookings");
 }
 
+async function assertStripeReadyForServicePrice(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, businessId: string, priceCents: number) {
+  if (priceCents <= 0) return;
+  const { data: biz } = await supabase
+    .from("businesses")
+    .select("stripe_connect_account_id,stripe_connect_charges_enabled")
+    .eq("id", businessId)
+    .maybeSingle();
+  const ready = Boolean(biz?.stripe_connect_account_id?.trim() && biz?.stripe_connect_charges_enabled);
+  if (!ready) {
+    throw new Error("Connect Stripe under Payments before setting a service price.");
+  }
+}
+
 /** Upsert weekly row for one weekday (0=Sun … 6=Sat). Times as HH:MM (24h). */
 export async function upsertAppointmentWeekdayHour(params: {
   businessId: string;
@@ -173,6 +186,7 @@ export async function createAppointmentService(params: {
   priceCents: number;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
+  await assertStripeReadyForServicePrice(supabase, params.businessId, params.priceCents);
   const { error } = await supabase.from("appointment_services").insert({
     business_id: params.businessId,
     name: params.name.trim(),
@@ -193,6 +207,7 @@ export async function updateAppointmentService(params: {
   priceCents: number;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
+  await assertStripeReadyForServicePrice(supabase, params.businessId, params.priceCents);
   const { error } = await supabase
     .from("appointment_services")
     .update({
@@ -320,6 +335,28 @@ export async function replaceAppointmentSlotExceptionsForDate(params: {
   const { error } = await supabase.from("appointment_slot_exceptions").insert(rows);
   if (error) throw new Error(error.message);
   revBookings();
+}
+
+/** Mark dates closed (whole day) or reopen them — used by the closed-days calendar. */
+export async function batchSetAppointmentClosedDays(params: {
+  businessId: string;
+  dates: string[];
+  closed: boolean;
+  kind?: "removed" | "cancelled";
+  reason?: string | null;
+}) {
+  const unique = [...new Set(params.dates.map((d) => d.trim()).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))];
+  if (!unique.length) return;
+
+  for (const exceptionDate of unique) {
+    await replaceAppointmentSlotExceptionsForDate({
+      businessId: params.businessId,
+      exceptionDate,
+      kind: params.kind ?? "removed",
+      reason: params.reason ?? null,
+      mode: params.closed ? "whole_day" : "clear",
+    });
+  }
 }
 
 export async function upsertBusinessEvent(params: {

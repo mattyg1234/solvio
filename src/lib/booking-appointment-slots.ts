@@ -1,5 +1,10 @@
-import type { PublicAppointmentHour, PublicAppointmentSlotException } from "@/lib/booking-public-context";
+import type {
+  PublicAppointmentBookedSlot,
+  PublicAppointmentHour,
+  PublicAppointmentSlotException,
+} from "@/lib/booking-public-context";
 import { BOOKING_PUBLIC_WEEKDAY_SHORT } from "@/lib/booking-public-context";
+import { isStaffWorkingOnWeekday, type StaffMember } from "@/lib/staff-members";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 
 export type AppointmentSlotChoice = {
@@ -9,6 +14,15 @@ export type AppointmentSlotChoice = {
   label: string;
   /** Canonical slot start HH:MM in venue-local wall clock (matches exceptions). */
   slotStartHm: string;
+  slotEndHm: string;
+};
+
+export type AppointmentSlotStatus = "available" | "booked" | "break" | "blocked";
+
+export type AppointmentSlotDisplay = AppointmentSlotChoice & {
+  status: AppointmentSlotStatus;
+  /** Compact label for grid cells, e.g. 9:00 */
+  shortLabel: string;
 };
 
 /**
@@ -71,11 +85,13 @@ export function normalizeSlotStartHm(raw: string | null | undefined): string | n
 }
 
 function clockToMinutes(clock: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(clock.trim());
+  const normalized = normalizeSlotStartHm(clock);
+  if (!normalized) return null;
+  const m = /^(\d{2}):(\d{2})$/.exec(normalized);
   if (!m) return null;
   const hh = Number(m[1]);
   const mm = Number(m[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
   return hh * 60 + mm;
 }
 
@@ -143,10 +159,148 @@ export type AppointmentBreak = {
   end_time: string;
 };
 
+function slotOverlapsBooking(
+  slotStartMins: number,
+  slotEndMins: number,
+  booking: PublicAppointmentBookedSlot,
+): boolean {
+  const bStart = clockToMinutes(booking.slot_start);
+  const bEnd = clockToMinutes(booking.slot_end);
+  if (bStart === null || bEnd === null) return false;
+  return bStart < slotEndMins && bEnd > slotStartMins;
+}
+
+/** Whether this slot is taken for the guest's staff choice. */
+export function isAppointmentSlotBookedForGuest(params: {
+  dateYmd: string;
+  slotStartMins: number;
+  slotEndMins: number;
+  bookedSlots: PublicAppointmentBookedSlot[];
+  preferredStaffName?: string | null;
+  staffWorkingThatDay?: string[];
+}): boolean {
+  const dayBooked = params.bookedSlots.filter((b) => b.date === params.dateYmd.trim());
+
+  function overlaps(b: PublicAppointmentBookedSlot): boolean {
+    return slotOverlapsBooking(params.slotStartMins, params.slotEndMins, b);
+  }
+
+  if (params.preferredStaffName?.trim()) {
+    const name = params.preferredStaffName.trim();
+    return dayBooked.some((b) => {
+      if (!overlaps(b)) return false;
+      const assigned = b.staff_member?.trim() || null;
+      return !assigned || assigned === name;
+    });
+  }
+
+  const working = params.staffWorkingThatDay ?? [];
+  if (working.length === 0) {
+    return dayBooked.some(overlaps);
+  }
+
+  return !working.some(
+    (name) =>
+      !dayBooked.some((b) => {
+        if (!overlaps(b)) return false;
+        const assigned = b.staff_member?.trim() || null;
+        return !assigned || assigned === name;
+      }),
+  );
+}
+
 /**
- * Public booking: convert a preferred calendar day + recurring hours into selectable slots.
- * Exceptions remove slots from inventory (both removed + cancelled behave as unavailable for picks).
- * Breaks (recurring weekly windows) also hide matching slots.
+ * Full slot grid for a day — includes booked/break/blocked slots (shown struck-through in UI).
+ */
+export function buildAppointmentSlotGrid(params: {
+  dateYmd: string;
+  row: PublicAppointmentHour | undefined;
+  venueTimeZone: string;
+  exceptions?: PublicAppointmentSlotException[];
+  breaks?: AppointmentBreak[];
+  bookedSlots?: PublicAppointmentBookedSlot[];
+  preferredStaffName?: string | null;
+  staffWorkingThatDay?: string[];
+}): AppointmentSlotDisplay[] {
+  const { dateYmd, row, venueTimeZone } = params;
+  if (!row) return [];
+
+  const unavailable = blockedSlotHmSet(exceptionsForAppointmentDay(dateYmd.trim(), params.exceptions ?? []));
+  if (unavailable.wholeDay) return [];
+
+  const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[row.weekday];
+  const intervals = intervalsForHourRow(row);
+  const tz = coerceValidIanaTimeZone(venueTimeZone);
+  const dayDow = dowSundayZeroInBusinessTZ(dateYmd.trim(), venueTimeZone);
+  const booked = params.bookedSlots ?? [];
+
+  const out: AppointmentSlotDisplay[] = [];
+  for (const { start, end } of intervals) {
+    const a = minutesToClock(start);
+    const b = minutesToClock(end);
+    let status: AppointmentSlotStatus = "available";
+
+    if (unavailable.hm.has(a)) {
+      status = "blocked";
+    } else if (
+      params.breaks?.some((br) => {
+        if (!br.weekdays.includes(dayDow)) return false;
+        const bStart = clockToMinutes(br.start_time);
+        const bEnd = clockToMinutes(br.end_time);
+        return bStart !== null && bEnd !== null && start >= bStart && start < bEnd;
+      })
+    ) {
+      status = "break";
+    } else if (
+      isAppointmentSlotBookedForGuest({
+        dateYmd,
+        slotStartMins: start,
+        slotEndMins: end,
+        bookedSlots: booked,
+        preferredStaffName: params.preferredStaffName,
+        staffWorkingThatDay: params.staffWorkingThatDay,
+      })
+    ) {
+      status = "booked";
+    }
+
+    out.push({
+      slotStartHm: a,
+      slotEndHm: b,
+      value: `${dateYmd.trim()} · ${a}–${b} (${tz})`,
+      label: `${dow} ${dateYmd.trim()} · ${a}–${b}`,
+      shortLabel: a,
+      status,
+    });
+  }
+  return out;
+}
+
+/** Validate a chosen slot value is still free before submit. */
+export function validateAppointmentSlotSelection(params: {
+  preferredTime: string;
+  dateYmd: string;
+  row: PublicAppointmentHour | undefined;
+  venueTimeZone: string;
+  exceptions?: PublicAppointmentSlotException[];
+  breaks?: AppointmentBreak[];
+  bookedSlots?: PublicAppointmentBookedSlot[];
+  preferredStaffName?: string | null;
+  staffWorkingThatDay?: string[];
+}): { ok: true } | { ok: false; message: string } {
+  const grid = buildAppointmentSlotGrid(params);
+  const match = grid.find((s) => s.value === params.preferredTime.trim());
+  if (!match) {
+    return { ok: false, message: "Pick an available time slot from the grid." };
+  }
+  if (match.status !== "available") {
+    return { ok: false, message: "That time was just taken — please choose another slot." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Available slots only — backwards-compatible wrapper around the full grid.
  */
 export function buildAppointmentSlotChoices(
   dateYmd: string,
@@ -154,31 +308,85 @@ export function buildAppointmentSlotChoices(
   venueTimeZone: string,
   exceptions: PublicAppointmentSlotException[] | undefined,
   breaks?: AppointmentBreak[],
+  bookedSlots?: PublicAppointmentBookedSlot[],
+  preferredStaffName?: string | null,
+  staffWorkingThatDay?: string[],
 ): AppointmentSlotChoice[] {
-  if (!row) return [];
-  const unavailable = blockedSlotHmSet(exceptionsForAppointmentDay(dateYmd.trim(), exceptions ?? []));
-  if (unavailable.wholeDay) return [];
-  const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[row.weekday];
-  const intervals = intervalsForHourRow(row);
-  const tz = coerceValidIanaTimeZone(venueTimeZone);
-  const dayDow = dowSundayZeroInBusinessTZ(dateYmd.trim(), venueTimeZone);
+  return buildAppointmentSlotGrid({
+    dateYmd,
+    row,
+    venueTimeZone,
+    exceptions,
+    breaks,
+    bookedSlots,
+    preferredStaffName,
+    staffWorkingThatDay,
+  }).filter((s) => s.status === "available");
+}
 
-  const out: AppointmentSlotChoice[] = [];
-  for (const { start, end } of intervals) {
-    const a = minutesToClock(start);
-    const b = minutesToClock(end);
-    if (unavailable.hm.has(a)) continue;
-    if (breaks?.some((br) => {
-      if (!br.weekdays.includes(dayDow)) return false;
-      const bStart = clockToMinutes(br.start_time);
-      const bEnd = clockToMinutes(br.end_time);
-      return bStart !== null && bEnd !== null && start >= bStart && start < bEnd;
-    })) continue;
-    out.push({
-      slotStartHm: a,
-      value: `${dateYmd.trim()} · ${a}–${b} (${tz})`,
-      label: `${dow} ${dateYmd.trim()} · ${a}–${b}`,
-    });
+export type AppointmentDayCalendarStatus = "past" | "no_hours" | "closed" | "full" | "bookable";
+
+export type AppointmentDayCalendarSummary = {
+  dateYmd: string;
+  status: AppointmentDayCalendarStatus;
+  staffNames: string[];
+  availableCount: number;
+};
+
+/** Guest calendar cell — bookable days mirror hosted-event purple; closures use rose strikethrough. */
+export function summarizeAppointmentDayForCalendar(params: {
+  dateYmd: string;
+  todayYmd: string;
+  appointmentHours: PublicAppointmentHour[];
+  venueTimeZone: string;
+  exceptions: PublicAppointmentSlotException[];
+  breaks?: AppointmentBreak[];
+  bookedSlots?: PublicAppointmentBookedSlot[];
+  staffMembers: StaffMember[];
+}): AppointmentDayCalendarSummary {
+  const dateYmd = params.dateYmd.trim();
+  if (dateYmd < params.todayYmd.trim()) {
+    return { dateYmd, status: "past", staffNames: [], availableCount: 0 };
   }
-  return out;
+
+  const dow = dowSundayZeroInBusinessTZ(dateYmd, params.venueTimeZone);
+  const hourRow = params.appointmentHours.find((h) => h.weekday === dow);
+  const staffWorking = params.staffMembers.filter((m) => isStaffWorkingOnWeekday(m, dow));
+  const staffNames = staffWorking.map((m) => m.name.trim()).filter(Boolean);
+
+  if (!hourRow) {
+    return { dateYmd, status: "no_hours", staffNames, availableCount: 0 };
+  }
+
+  const dayExceptions = params.exceptions.filter((e) => e.exception_date.trim() === dateYmd);
+  if (dayExceptions.some((e) => !e.slot_start)) {
+    return { dateYmd, status: "closed", staffNames, availableCount: 0 };
+  }
+
+  const slots = buildAppointmentSlotGrid({
+    dateYmd,
+    row: hourRow,
+    venueTimeZone: params.venueTimeZone,
+    exceptions: params.exceptions,
+    breaks: params.breaks,
+    bookedSlots: params.bookedSlots,
+    preferredStaffName: null,
+    staffWorkingThatDay: staffNames.length ? staffNames : params.staffMembers.map((m) => m.name),
+  });
+
+  const availableCount = slots.filter((s) => s.status === "available").length;
+  if (slots.length === 0) {
+    return { dateYmd, status: "no_hours", staffNames, availableCount: 0 };
+  }
+  if (availableCount === 0) {
+    return { dateYmd, status: "full", staffNames, availableCount: 0 };
+  }
+  return { dateYmd, status: "bookable", staffNames, availableCount };
+}
+
+export function formatAppointmentStaffPreview(names: string[], max = 2): string | null {
+  const clean = names.map((n) => n.trim()).filter(Boolean);
+  if (!clean.length) return null;
+  if (clean.length <= max) return clean.join(" · ");
+  return `${clean.slice(0, max).join(" · ")} +${clean.length - max}`;
 }

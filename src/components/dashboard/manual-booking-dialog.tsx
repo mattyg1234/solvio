@@ -5,6 +5,8 @@ import { useState, useTransition } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 import { addManualVenueCalendarBooking } from "@/app/dashboard/bookings/calendar-actions";
@@ -49,7 +51,9 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
   const [error, setError] = useState<string | null>(null);
 
   const [guestName, setGuestName] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
+  const initialGuestPhone = parsePhoneDialFields("");
+  const [guestPhoneDial, setGuestPhoneDial] = useState<string>(initialGuestPhone.dial);
+  const [guestPhoneLocal, setGuestPhoneLocal] = useState(initialGuestPhone.local);
   const [guestEmail, setGuestEmail] = useState("");
   const [guestCount, setGuestCount] = useState<number>(2);
   const [bookingKind, setBookingKind] = useState<"table" | "appointment" | "event" | "walk_in">("table");
@@ -62,7 +66,8 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
 
   function reset() {
     setGuestName("");
-    setGuestPhone("");
+    setGuestPhoneDial("+44");
+    setGuestPhoneLocal("");
     setGuestEmail("");
     setGuestCount(2);
     setBookingKind("table");
@@ -91,6 +96,11 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
       return;
     }
     const ends = new Date(starts.getTime() + durationMinutes * 60_000);
+    const phoneCheck = optionalPhoneE164(guestPhoneDial, guestPhoneLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      return;
+    }
 
     startTransition(() => {
       void (async () => {
@@ -99,7 +109,7 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
             businessId,
             guestName,
             guestEmail: guestEmail || undefined,
-            guestPhone: guestPhone || undefined,
+            guestPhone: phoneCheck.e164 ?? undefined,
             guestCount,
             bookingKind,
             startsAtIso: starts.toISOString(),
@@ -171,15 +181,17 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
                   />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1">
-                    <span className="text-sm font-medium text-[#0f172a]">Phone</span>
-                    <input
-                      value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      placeholder="+44…"
-                      className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                    />
-                  </label>
+                <PhoneDialCodeField
+                  idPrefix="manual-guest-phone"
+                  label="Phone"
+                  optional
+                  dialCode={guestPhoneDial}
+                  localNumber={guestPhoneLocal}
+                  onDialCodeChange={setGuestPhoneDial}
+                  onLocalNumberChange={setGuestPhoneLocal}
+                  showHint={false}
+                  inputClassName="rounded-xl bg-[#fafbff]"
+                />
                   <label className="block space-y-1">
                     <span className="text-sm font-medium text-[#0f172a]">Email</span>
                     <input

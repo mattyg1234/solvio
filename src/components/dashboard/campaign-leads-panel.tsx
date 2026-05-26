@@ -15,6 +15,8 @@ import {
   uploadLeadsCsvAction,
 } from "@/app/dashboard/campaigns/lead-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { validateBookingPhone } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 export type LeadRow = {
@@ -112,7 +114,8 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
 
   // Manual add
   const [showAdd, setShowAdd] = useState(false);
-  const [phone, setPhone] = useState("");
+  const [phoneDial, setPhoneDial] = useState("+44");
+  const [phoneLocal, setPhoneLocal] = useState("");
   const [name, setName] = useState("");
   const [bizName, setBizName] = useState("");
 
@@ -176,11 +179,17 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
   }
 
   function handleAdd() {
+    const phoneCheck = validateBookingPhone(phoneDial, phoneLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      return;
+    }
     run(async () => {
-      const res = await addLeadAction({ campaignId, phone, name, businessName: bizName });
+      const res = await addLeadAction({ campaignId, phone: phoneCheck.e164, name, businessName: bizName });
       if (!res.ok) setError(res.message);
       else {
-        setPhone("");
+        setPhoneDial("+44");
+        setPhoneLocal("");
         setName("");
         setBizName("");
         setShowAdd(false);
@@ -347,11 +356,16 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
 
       {showAdd ? (
         <div className="mt-5 grid gap-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff] p-4 md:grid-cols-3">
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Phone (+447700... or 07700...)"
-            className="h-10 rounded-xl border border-[#ebe7f7] bg-white px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+          <PhoneDialCodeField
+            idPrefix="campaign-lead-phone"
+            label="Phone"
+            required
+            dialCode={phoneDial}
+            localNumber={phoneLocal}
+            onDialCodeChange={setPhoneDial}
+            onLocalNumberChange={setPhoneLocal}
+            compact
+            showHint={false}
           />
           <input
             value={name}
@@ -366,7 +380,7 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
               placeholder="Business (optional)"
               className="h-10 flex-1 rounded-xl border border-[#ebe7f7] bg-white px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
-            <Button type="button" disabled={pending || !phone.trim()} onClick={handleAdd} className="rounded-full font-semibold">
+            <Button type="button" disabled={pending || !phoneLocal.trim()} onClick={handleAdd} className="rounded-full font-semibold">
               {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : "Save"}
             </Button>
           </div>

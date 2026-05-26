@@ -33,8 +33,8 @@ const blocks = [
     icon: Hourglass,
   },
   {
-    title: "Works with your calendar",
-    body: "Google Calendar stays the source of truth — Solvio keeps it effortlessly updated.",
+    title: "One booking inbox",
+    body: "Requests, deposits and confirmations in one place — no spreadsheet chasing.",
     icon: CalendarDays,
   },
 ];

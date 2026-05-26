@@ -49,6 +49,21 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
+                <Link href="/privacy" className="hover:text-[#7c3aed]">
+                  Privacy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-[#7c3aed]">
+                  Terms
+                </Link>
+              </li>
+              <li>
+                <Link href="/book/solvio-d67c90cc" className="hover:text-[#7c3aed]">
+                  Live booking demo
+                </Link>
+              </li>
+              <li>
                 <Link href="/login" className="hover:text-[#7c3aed]">
                   Log in
                 </Link>

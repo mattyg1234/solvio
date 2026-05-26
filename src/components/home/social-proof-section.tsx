@@ -45,13 +45,13 @@ export function SocialProofSection() {
         >
           <div className="max-w-xl space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">
-              Proof from busy storefronts
+              Example outcomes
             </p>
             <h2 className="text-[clamp(1.95rem,4vw,2.75rem)] font-semibold tracking-tight text-[#0f172a]">
-              Loved by restaurants, salons & cafés across Spain.
+              Built for busy storefronts like yours.
             </h2>
             <p className="text-[17px] leading-relaxed text-[#64748b]">
-              Real-world outcomes — fewer interruptions, fuller calendars and happier guests who feel welcomed instantly.
+              Illustrative scenarios from hospitality and services — your results will vary.
             </p>
           </div>
 

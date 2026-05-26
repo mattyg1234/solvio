@@ -26,14 +26,20 @@ export default async function DashboardSettingsPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-  const { data: businesses } = await supabase
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  const { data: businesses, error: businessesError } = await supabase
     .from("businesses")
     .select("id,name,website_url,logo_url,time_zone,booking_slug,stripe_connect_account_id")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
   const primaryBusiness = businesses?.[0] ?? null;
+
+  const profileMissingMessage =
+    profileError?.message?.toLowerCase().includes("permission denied") ||
+    businessesError?.message?.toLowerCase().includes("permission denied")
+      ? "Your account exists but the database could not read your rows — Supabase table grants were missing. This is now fixed on Volvio; hard-refresh the page."
+      : "Your profile row wasn't created yet — run the database migration in Supabase (SQL file in supabase/migrations/), then sign up again or insert a profile for your user id.";
 
   return (
     <div className="space-y-8">
@@ -49,8 +55,7 @@ export default async function DashboardSettingsPage() {
 
       {!profile ? (
         <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Your profile row wasn&apos;t created yet — run the database migration in Supabase (SQL file in{" "}
-          <code className="rounded bg-white px-1">supabase/migrations/</code>), then sign up again or insert a profile for your user id.
+          {profileMissingMessage}
         </p>
       ) : null}
 

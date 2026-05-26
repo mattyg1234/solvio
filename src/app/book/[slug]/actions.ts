@@ -1,6 +1,7 @@
 "use server";
 
 import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { formatMoney } from "@/lib/checkout-money";
 import { validateBookingPhone } from "@/lib/normalize-phone";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
 import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprint";
@@ -15,8 +16,18 @@ import { sendBookingRequestReceivedSms } from "@/lib/notifications/booking-sms";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
+export type SubmitBookingSummary = {
+  bookingKind: string;
+  requestedDate?: string;
+  preferredTime?: string;
+  serviceName?: string;
+  staffName?: string;
+  guestCount?: string;
+  paymentLabel?: string;
+};
+
 export type SubmitBookingState =
-  | { ok: true; depositCheckoutUrl?: string; emailSent?: boolean; smsSent?: boolean }
+  | { ok: true; depositCheckoutUrl?: string; emailSent?: boolean; smsSent?: boolean; summary?: SubmitBookingSummary }
   | { ok: false; message: string };
 
 function mergeGuestIntakeNotes(base: string, lines: string[]): string {
@@ -128,17 +139,20 @@ export async function submitBookingRequestAction(
   const supabase = await createSupabaseServerClient();
   const { data: ctxRaw } = await supabase.rpc("get_booking_public_context", { p_slug: slug.trim() });
   const parsedCtx = parseBookingPublicContext(ctxRaw);
+  const selectedServiceMatch = selectedServiceId
+    ? parsedCtx?.appointment_services.find((s) => s.id === selectedServiceId) ?? null
+    : null;
 
-  if (selectedServiceId) {
-    const serviceMatch = parsedCtx?.appointment_services.find((s) => s.id === selectedServiceId);
-    if (serviceMatch) {
-      intakeExtras.selected_service = serviceMatch.name;
-      intakeExtras.selected_service_id = serviceMatch.id;
-      intakeExtras.selected_service_duration = serviceMatch.duration_minutes;
-      intakeExtras.selected_service_price_cents = serviceMatch.price_cents;
-      const priceStr = serviceMatch.price_cents > 0 ? ` · €${(serviceMatch.price_cents / 100).toFixed(serviceMatch.price_cents % 100 === 0 ? 0 : 2)}` : "";
-      intakeLines.push(`Service: ${serviceMatch.name} (${serviceMatch.duration_minutes} min)${priceStr}`);
-    }
+  if (selectedServiceMatch) {
+    intakeExtras.selected_service = selectedServiceMatch.name;
+    intakeExtras.selected_service_id = selectedServiceMatch.id;
+    intakeExtras.selected_service_duration = selectedServiceMatch.duration_minutes;
+    intakeExtras.selected_service_price_cents = selectedServiceMatch.price_cents;
+    const priceStr =
+      selectedServiceMatch.price_cents > 0
+        ? ` · €${(selectedServiceMatch.price_cents / 100).toFixed(selectedServiceMatch.price_cents % 100 === 0 ? 0 : 2)}`
+        : "";
+    intakeLines.push(`Service: ${selectedServiceMatch.name} (${selectedServiceMatch.duration_minutes} min)${priceStr}`);
   }
 
   if (preferredStaffId) {
@@ -369,8 +383,7 @@ export async function submitBookingRequestAction(
     }
   }
 
-  // Same pattern for appointment bookings — if the merchant set a flat
-  // appointment_deposit_cents on their business row, route through checkout.
+  // Appointment checkout — service price first, else flat appointment_deposit_cents.
   if (
     parsedCtx &&
     bookingId &&
@@ -394,16 +407,19 @@ export async function submitBookingRequestAction(
           .eq("id", bookingRow.business_id)
           .maybeSingle();
 
-        const depositCents = Number(biz?.appointment_deposit_cents ?? 0);
+        const servicePriceCents = selectedServiceMatch?.price_cents ?? 0;
+        const flatDepositCents = Number(biz?.appointment_deposit_cents ?? 0);
+        const amountCents = servicePriceCents > 0 ? servicePriceCents : flatDepositCents;
         const connectId = biz?.stripe_connect_account_id?.trim();
-        if (depositCents > 0 && connectId && biz?.stripe_connect_charges_enabled && biz.id) {
+        if (amountCents > 0 && connectId && biz?.stripe_connect_charges_enabled && biz.id) {
+          const checkoutLabel = selectedServiceMatch?.name?.trim() || "Appointment";
           const url = await createBookingDepositCheckoutSession({
             bookingRequestId: bookingId,
             businessId: biz.id,
             connectAccountId: connectId,
-            amountCents: depositCents,
+            amountCents,
             guestEmail: email,
-            description: `${parsedCtx.business_name} · Appointment deposit`,
+            description: `${parsedCtx.business_name} · ${checkoutLabel}`,
             slug: slug.trim(),
           });
           if (url) depositCheckoutUrl = url;
@@ -419,12 +435,45 @@ export async function submitBookingRequestAction(
   const siteUrl = getDeploymentSiteUrl();
   const merchantName = parsedCtx?.business_name?.trim();
 
+  const staffMatch = preferredStaffId ? parsedCtx?.staff_members.find((s) => s.id === preferredStaffId) : null;
+  let paymentLabel: string | undefined;
+  if (depositCheckoutUrl) {
+    const tableDeposit =
+      bkLower === "table"
+        ? computeTableDepositCents({ ctx: parsedCtx!, preferredTableLabel: preferredTable, guestCount: gc })
+        : null;
+    const amountCents =
+      selectedServiceMatch?.price_cents && selectedServiceMatch.price_cents > 0
+        ? selectedServiceMatch.price_cents
+        : tableDeposit && tableDeposit > 0
+          ? tableDeposit
+          : null;
+    if (amountCents) paymentLabel = `Complete ${formatMoney(amountCents)} on Stripe to secure your booking.`;
+  }
+
+  const summary: SubmitBookingSummary = {
+    bookingKind: bkLower,
+    requestedDate: requestedDate.trim() || undefined,
+    preferredTime: preferredTimeRaw.trim() || undefined,
+    serviceName: selectedServiceMatch?.name,
+    staffName: staffMatch?.name,
+    guestCount: guestCount.trim() || undefined,
+    paymentLabel,
+  };
+
   if (merchantName && email) {
     const guestEmailResult = await sendBookingRequestReceivedEmail({
       guestEmail: email,
       guestName: customerName,
       merchantName,
       siteUrl,
+      bookingKind: bkLower,
+      requestedDate: summary.requestedDate,
+      preferredTime: summary.preferredTime,
+      serviceName: summary.serviceName,
+      staffName: summary.staffName,
+      guestCount: summary.guestCount,
+      paymentNote: paymentLabel,
     });
     emailSent = guestEmailResult.ok;
     if (!guestEmailResult.ok) {
@@ -482,6 +531,7 @@ export async function submitBookingRequestAction(
     ok: true,
     emailSent,
     smsSent,
+    summary,
     ...(depositCheckoutUrl ? { depositCheckoutUrl } : {}),
   };
 }

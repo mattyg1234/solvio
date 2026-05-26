@@ -15,6 +15,8 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,6 +41,32 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
       setError(err instanceof Error ? err.message : "Missing Supabase env vars — check .env.local.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onForgotPassword() {
+    setError(null);
+    setResetSent(false);
+    const emailInput = document.getElementById("login-email") as HTMLInputElement | null;
+    const email = emailInput?.value.trim() ?? "";
+    if (!email) {
+      setError("Enter your email above, then click Forgot.");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard/settings`;
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (resetErr) {
+        setError(resetErr.message);
+        return;
+      }
+      setResetSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send reset email.");
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -72,9 +100,9 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
           </label>
           <button
             type="button"
-            disabled
-            title="Password reset coming soon"
-            className="cursor-not-allowed text-xs font-semibold uppercase tracking-[0.18em] text-[#cbd5e1]"
+            disabled={resetLoading}
+            onClick={() => void onForgotPassword()}
+            className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c3aed] hover:underline disabled:opacity-50"
           >
             Forgot?
           </button>
@@ -89,6 +117,12 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
           className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
         />
       </div>
+
+      {resetSent ? (
+        <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-relaxed text-emerald-900">
+          Password reset link sent — check your inbox.
+        </p>
+      ) : null}
 
       {error ? (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-800">

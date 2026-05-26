@@ -20,6 +20,14 @@ export type PublicAppointmentSlotException = {
   kind: "removed" | "cancelled";
 };
 
+/** Confirmed appointment diary occupancy (venue-local date + wall clock). */
+export type PublicAppointmentBookedSlot = {
+  date: string;
+  slot_start: string;
+  slot_end: string;
+  staff_member: string | null;
+};
+
 export type PublicAppointmentService = {
   id: string;
   name: string;
@@ -95,6 +103,7 @@ export type BookingPublicContextPayload = {
   guest_modes_raw: unknown;
   appointment_hours: PublicAppointmentHour[];
   appointment_slot_exceptions: PublicAppointmentSlotException[];
+  appointment_booked_slots: PublicAppointmentBookedSlot[];
   appointment_services: PublicAppointmentService[];
   events: PublicBusinessEvent[];
   tables: PublicFloorTable[];
@@ -161,6 +170,30 @@ function parseAppointmentSlotExceptions(raw: unknown): PublicAppointmentSlotExce
     }
 
     out.push({ exception_date, slot_start: slot_start ?? null, kind: kindRaw });
+  }
+  return out;
+}
+
+function parseAppointmentBookedSlots(raw: unknown): PublicAppointmentBookedSlot[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PublicAppointmentBookedSlot[] = [];
+  for (const row of raw) {
+    const o = asRecord(row);
+    if (!o) continue;
+    const date = typeof o.date === "string" ? o.date.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const slotStartRaw = typeof o.slot_start === "string" ? o.slot_start.trim() : "";
+    const slotEndRaw = typeof o.slot_end === "string" ? o.slot_end.trim() : "";
+    const startClip = /^(\d{2}:\d{2})/.exec(slotStartRaw);
+    const endClip = /^(\d{2}:\d{2})/.exec(slotEndRaw);
+    if (!startClip || !endClip) continue;
+    const staffRaw = typeof o.staff_member === "string" ? o.staff_member.trim() : "";
+    out.push({
+      date,
+      slot_start: startClip[1]!,
+      slot_end: endClip[1]!,
+      staff_member: staffRaw.length ? staffRaw : null,
+    });
   }
   return out;
 }
@@ -377,6 +410,7 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
     guest_modes_raw: root.guest_modes,
     appointment_hours: parseHours(root.appointment_hours),
     appointment_slot_exceptions: parseAppointmentSlotExceptions(root.appointment_slot_exceptions),
+    appointment_booked_slots: parseAppointmentBookedSlots(root.appointment_booked_slots ?? []),
     appointment_services: parseAppointmentServices(root.appointment_services),
     events: parseEvents(root.events),
     tables: parseTables(root.tables),

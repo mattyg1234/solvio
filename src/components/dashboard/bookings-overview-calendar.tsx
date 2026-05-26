@@ -39,7 +39,6 @@ function todayYmd(timeZone: string): string {
 
 function BookingsDayDetailSheet({
   day,
-  businessId,
   businessName,
   venueTimeZone,
   tables,
@@ -49,7 +48,6 @@ function BookingsDayDetailSheet({
   onManageEvent,
 }: {
   day: DayCalendarSummary;
-  businessId: string;
   businessName: string;
   venueTimeZone: string;
   tables: { id: string; label: string }[];
@@ -455,7 +453,6 @@ export function BookingsOverviewCalendar({
       {selectedDay ? (
         <BookingsDayDetailSheet
           day={selectedDay}
-          businessId={businessId}
           businessName={businessName}
           venueTimeZone={venueTimeZone}
           tables={tables}

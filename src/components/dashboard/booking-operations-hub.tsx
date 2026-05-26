@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import {
-  CalendarOff,
   Loader2,
   Mail,
   MessageSquare,
@@ -18,7 +17,6 @@ import { cancelVenueCalendarBooking } from "@/app/dashboard/bookings/calendar-ac
 import { callVenueCalendarGuestAction } from "@/app/dashboard/bookings/guest-call-actions";
 import {
   cancelBusinessEvent,
-  deleteAppointmentSlotException,
   deleteAppointmentWeekdayHour,
   deleteFloorPlanTable,
   deleteTableBookingQuestion,
@@ -47,7 +45,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
-import { appointmentExceptionKindLabel } from "@/lib/booking-inventory-types";
 export type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 import { cn } from "@/lib/utils";
 import {
@@ -372,6 +369,7 @@ export function BookingOperationsHub({
             appointmentQuestions={appointmentQuestions}
             appointmentServices={appointmentServices}
             breaks={breaks}
+            stripeReadyByBizId={stripeReadyByBizId}
           />
         )}
       </div>
@@ -469,6 +467,7 @@ function OfferingsHubPanel(props: {
   appointmentQuestions?: { label: string; required: boolean }[];
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
+  stripeReadyByBizId?: Record<string, boolean>;
 }) {
   const inAppointmentArea = props.offeringsSub === "appointments" || props.offeringsSub === "staff";
 
@@ -506,6 +505,7 @@ function OfferingsHubPanel(props: {
           appointmentQuestions={props.appointmentQuestions}
           appointmentServices={props.appointmentServices}
           breaks={props.breaks ?? []}
+          stripeReady={Boolean(props.stripeReadyByBizId?.[props.businessId])}
         />
       ) : null}
 
@@ -844,6 +844,7 @@ function AppointmentsPanel({
   appointmentQuestions = [],
   appointmentServices = [],
   breaks = [],
+  stripeReady = false,
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
@@ -852,6 +853,7 @@ function AppointmentsPanel({
   appointmentQuestions?: { label: string; required: boolean }[];
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
+  stripeReady?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -876,6 +878,39 @@ function AppointmentsPanel({
     setQuestions(appointmentQuestions);
   }, [appointmentQuestions]);
 
+  useEffect(() => {
+    if (!stripeReady) setNewServicePriceEuro("");
+  }, [stripeReady]);
+
+  function saveNewService() {
+    if (newServiceName.trim().length < 2) {
+      setError("Service name must be at least 2 characters.");
+      return;
+    }
+    if (newServiceDuration < 5) {
+      setError("Duration must be at least 5 minutes.");
+      return;
+    }
+    const priceCents = stripeReady ? parseEuroInputToCents(newServicePriceEuro) : 0;
+    if (!stripeReady && newServicePriceEuro.trim()) {
+      setError("Connect Stripe under Payments before setting a service price.");
+      return;
+    }
+    run(async () => {
+      const { createAppointmentService } = await import("@/app/dashboard/bookings/inventory-actions");
+      await createAppointmentService({
+        businessId,
+        name: newServiceName,
+        durationMinutes: newServiceDuration,
+        priceCents,
+      });
+      setNewServiceName("");
+      setNewServiceDuration(60);
+      setNewServicePriceEuro("");
+      router.refresh();
+    });
+  }
+
   function run(fn: () => Promise<void>) {
     setError(null);
     startTransition(() => {
@@ -895,7 +930,7 @@ function AppointmentsPanel({
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Weekly appointment windows</h2>
         <p className="mt-1 text-sm text-[#64748b]">
-          Slot length feeds the squares below — closed slots hide from your public booking page; day-off closures can include a reason for callers and your AI.
+          Set your regular open hours below. Use the calendar to block specific days off — guests won&apos;t see slots on closed dates.
         </p>
       </header>
 
@@ -1014,47 +1049,21 @@ function AppointmentsPanel({
       />
 
       <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-[#0f172a]">Services</h3>
-            <p className="mt-1 text-sm text-[#64748b]">
-              Guests select a service (haircut, color, massage, etc.) with duration and price on the public form.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            className="h-9 rounded-full text-xs font-semibold"
-            onClick={() => {
-              if (newServiceName.trim().length < 2) {
-                setError("Service name must be at least 2 characters.");
-                return;
-              }
-              if (newServiceDuration < 5) {
-                setError("Duration must be at least 5 minutes.");
-                return;
-              }
-              run(async () => {
-                const {
-                  createAppointmentService,
-                } = await import("@/app/dashboard/bookings/inventory-actions");
-                await createAppointmentService({
-                  businessId,
-                  name: newServiceName,
-                  durationMinutes: newServiceDuration,
-                  priceCents: parseEuroInputToCents(newServicePriceEuro),
-                });
-                setNewServiceName("");
-                setNewServiceDuration(60);
-                setNewServicePriceEuro("");
-                router.refresh();
-              });
-            }}
-          >
-            <Plus className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-            Add service
-          </Button>
+        <header>
+          <h3 className="text-base font-semibold text-[#0f172a]">Services</h3>
+          <p className="mt-1 text-sm text-[#64748b]">
+            Guests select a service (haircut, color, massage, etc.) with duration and price on the public form.
+            {!stripeReady ? (
+              <>
+                {" "}
+                Prices stay at €0 until{" "}
+                <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+                  Stripe is connected
+                </Link>
+                .
+              </>
+            ) : null}
+          </p>
         </header>
         {services.length === 0 ? (
           <p className="text-sm text-[#94a3b8]">No services yet — guests will book a generic appointment slot.</p>
@@ -1093,7 +1102,7 @@ function AppointmentsPanel({
           </ul>
         )}
         <div className="space-y-3 border-t border-[#ebe7f7] pt-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_110px_auto] sm:items-end">
             <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
               Service name
               <input
@@ -1101,6 +1110,12 @@ function AppointmentsPanel({
                 onChange={(e) => setNewServiceName(e.target.value)}
                 placeholder="Haircut, Color, Massage…"
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal normal-case tracking-normal text-[#0f172a]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveNewService();
+                  }
+                }}
               />
             </label>
             <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
@@ -1120,11 +1135,28 @@ function AppointmentsPanel({
                 type="text"
                 inputMode="decimal"
                 value={newServicePriceEuro}
-                onChange={(e) => setNewServicePriceEuro(sanitizeEuroInput(e.target.value))}
-                placeholder="10.50"
-                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
+                onChange={(e) => {
+                  if (!stripeReady) return;
+                  setNewServicePriceEuro(sanitizeEuroInput(e.target.value));
+                }}
+                placeholder={stripeReady ? "10.50" : "Connect Stripe"}
+                disabled={!stripeReady}
+                title={stripeReady ? undefined : "Connect Stripe under Payments to set a price"}
+                className={cn(
+                  "h-11 w-full rounded-xl border border-[#ebe7f7] px-3 text-[15px] font-normal text-[#0f172a]",
+                  !stripeReady && "cursor-not-allowed bg-[#f8fafc] text-[#94a3b8]",
+                )}
               />
             </label>
+            <Button
+              type="button"
+              disabled={pending || newServiceName.trim().length < 2}
+              className="h-11 rounded-full px-5 font-semibold shadow-md shadow-[#7c3aed]/20 sm:mt-0"
+              onClick={saveNewService}
+            >
+              {pending ? <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden /> : <Plus className="mr-2 inline h-4 w-4" aria-hidden />}
+              Save service
+            </Button>
           </div>
         </div>
       </div>
@@ -1201,40 +1233,6 @@ function AppointmentsPanel({
         >
           Save appointment questions
         </Button>
-      </div>
-
-      <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-white p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <CalendarOff className="h-5 w-5 text-[#7c3aed]" aria-hidden />
-          <h3 className="text-base font-semibold text-[#0f172a]">Stored exceptions</h3>
-        </div>
-        <p className="text-sm text-[#64748b]">
-          Deleting clears the rule instantly. Saving new shading for a calendar date replaces rows for <span className="font-semibold">that date only</span>.
-        </p>
-        <ul className="space-y-2 text-sm">
-          {exceptions.map((x) => (
-            <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] px-3 py-2">
-              <span className="text-[#0f172a]">
-                {x.exception_date}
-                {x.slot_start ? ` · ${clipTime(x.slot_start)}` : " · whole day"} — <span className="font-semibold">{appointmentExceptionKindLabel(x.kind)}</span>
-                {x.reason ? <span className="text-[#64748b]"> — {x.reason}</span> : null}
-              </span>
-              <button
-                type="button"
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
-                disabled={pending}
-                onClick={() =>
-                  run(async () => {
-                    await deleteAppointmentSlotException(businessId, x.id);
-                  })
-                }
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-          {exceptions.length === 0 ? <li className="text-[#94a3b8]">Nothing saved yet.</li> : null}
-        </ul>
       </div>
     </div>
   );

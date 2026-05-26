@@ -12,7 +12,43 @@ export const BOOKING_PHONE_DIAL_CODES = [
 
 export type BookingPhoneDialCode = (typeof BOOKING_PHONE_DIAL_CODES)[number]["dial"];
 
+const DIAL_CODES_LONGEST_FIRST = [...BOOKING_PHONE_DIAL_CODES].sort(
+  (a, b) => b.dial.length - a.dial.length,
+);
+
 const E164_RE = /^\+\d{8,15}$/;
+
+/** Split a stored E.164 or legacy local number into dial + local digits for UI fields. */
+export function parsePhoneDialFields(
+  raw: string,
+  defaultDial: BookingPhoneDialCode = "+44",
+): { dial: BookingPhoneDialCode; local: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { dial: defaultDial, local: "" };
+
+  if (trimmed.startsWith("+")) {
+    for (const { dial } of DIAL_CODES_LONGEST_FIRST) {
+      if (trimmed.startsWith(dial)) {
+        const local = trimmed.slice(dial.length).replace(/[^\d]/g, "");
+        return { dial, local };
+      }
+    }
+    return { dial: defaultDial, local: trimmed.slice(1).replace(/[^\d]/g, "") };
+  }
+
+  const digits = trimmed.replace(/[^\d]/g, "");
+  return { dial: defaultDial, local: digits };
+}
+
+export function optionalPhoneE164(
+  dialCode: string,
+  localNumber: string,
+): { ok: true; e164: string | null } | { ok: false; message: string } {
+  if (!localNumber.trim()) return { ok: true, e164: null };
+  const check = validateBookingPhone(dialCode, localNumber);
+  if (!check.ok) return check;
+  return { ok: true, e164: check.e164 };
+}
 
 /** Normalize a phone string to E.164 (best-effort). Returns null if invalid. */
 export function normalizePhoneE164(raw: string, defaultCountry: BookingPhoneDialCode | string = "+44"): string | null {

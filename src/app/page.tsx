@@ -4,6 +4,7 @@ import { CommerceSection } from "@/components/home/commerce-section";
 import { GrowthSection } from "@/components/home/growth-section";
 import { HeroSection } from "@/components/home/hero-section";
 import { LiveDemoSection } from "@/components/home/live-demo-section";
+import { PricingSection } from "@/components/home/pricing-section";
 import { SocialProofSection } from "@/components/home/social-proof-section";
 import { loadMarketingVapiConfig } from "@/lib/marketing-vapi-server";
 
@@ -17,6 +18,7 @@ export default async function Home() {
         <HeroSection vapiConfig={vapiConfig} />
         <GrowthSection />
         <CommerceSection />
+        <PricingSection />
         <SocialProofSection />
         <LiveDemoSection />
       </main>

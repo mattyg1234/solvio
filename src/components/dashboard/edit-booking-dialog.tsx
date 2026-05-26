@@ -7,7 +7,9 @@ import { Loader2, Pencil, X } from "lucide-react";
 import type { GuestCallActionResult } from "@/app/dashboard/bookings/guest-call-actions";
 import { editVenueCalendarBooking } from "@/app/dashboard/bookings/calendar-actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
 import { summarizeBookingEditChange, type BookingGuestCallPurpose } from "@/lib/booking-guest-call";
+import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 type FloorPlanTableOption = { id: string; label: string };
@@ -63,8 +65,10 @@ export function EditBookingDialog({
   const [error, setError] = useState<string | null>(null);
   const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
 
+  const initialGuestPhone = parsePhoneDialFields(booking.guest_phone ?? "");
   const [guestName, setGuestName] = useState(booking.guest_name);
-  const [guestPhone, setGuestPhone] = useState(booking.guest_phone ?? "");
+  const [guestPhoneDial, setGuestPhoneDial] = useState<string>(initialGuestPhone.dial);
+  const [guestPhoneLocal, setGuestPhoneLocal] = useState(initialGuestPhone.local);
   const [guestEmail, setGuestEmail] = useState(booking.guest_email);
   const [guestCount, setGuestCount] = useState<number>(booking.guest_count ?? 2);
   const [startsLocal, setStartsLocal] = useState<string>(isoToLocalDatetimeInput(booking.starts_at));
@@ -95,6 +99,13 @@ export function EditBookingDialog({
       setError("End must be after start.");
       return;
     }
+
+    const phoneCheck = optionalPhoneE164(guestPhoneDial, guestPhoneLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      return;
+    }
+    const guestPhone = phoneCheck.e164 ?? "";
 
     const nextStartsIso = starts.toISOString();
     const nextEndsIso = ends.toISOString();
@@ -158,8 +169,10 @@ export function EditBookingDialog({
       <button
         type="button"
         onClick={() => {
+          const parsedPhone = parsePhoneDialFields(booking.guest_phone ?? "");
           setGuestName(booking.guest_name);
-          setGuestPhone(booking.guest_phone ?? "");
+          setGuestPhoneDial(parsedPhone.dial);
+          setGuestPhoneLocal(parsedPhone.local);
           setGuestEmail(booking.guest_email);
           setGuestCount(booking.guest_count ?? 2);
           setStartsLocal(isoToLocalDatetimeInput(booking.starts_at));
@@ -217,15 +230,23 @@ export function EditBookingDialog({
                   />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1">
-                    <span className="text-sm font-medium text-[#0f172a]">Phone</span>
-                    <input
-                      value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      placeholder="+44…"
-                      className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                    />
-                  </label>
+                  <PhoneDialCodeField
+                    idPrefix="edit-guest-phone"
+                    label="Phone"
+                    optional
+                    dialCode={guestPhoneDial}
+                    localNumber={guestPhoneLocal}
+                    onDialCodeChange={(dial) => {
+                      setGuestPhoneDial(dial);
+                      setNotifyByCall(Boolean(onNotifyGuest && guestPhoneLocal.trim()));
+                    }}
+                    onLocalNumberChange={(local) => {
+                      setGuestPhoneLocal(local);
+                      setNotifyByCall(Boolean(onNotifyGuest && local.trim()));
+                    }}
+                    showHint={false}
+                    inputClassName="rounded-xl bg-[#fafbff]"
+                  />
                   <label className="block space-y-1">
                     <span className="text-sm font-medium text-[#0f172a]">Email</span>
                     <input
@@ -328,7 +349,7 @@ export function EditBookingDialog({
                       type="checkbox"
                       checked={notifyByCall}
                       onChange={(e) => setNotifyByCall(e.target.checked)}
-                      disabled={!guestPhone.trim()}
+                      disabled={!guestPhoneLocal.trim()}
                       className="mt-1"
                     />
                     <span className="text-sm text-[#0f172a]">

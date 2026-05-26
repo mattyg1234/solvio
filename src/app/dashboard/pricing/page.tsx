@@ -69,7 +69,7 @@ const TIERS: TierSpec[] = [
       `${TRIAL_AI_MINUTES} AI receptionist minutes during trial`,
       "10% platform fee on guest deposits",
       "Public booking microsite",
-      "Email + SMS confirmations",
+      "Email confirmations for guests",
     ],
     ctaLabel: "Current free trial",
   },

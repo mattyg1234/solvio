@@ -16,8 +16,10 @@ import { ReceptionistBriefPanel } from "@/components/dashboard/receptionist-brie
 import { ReceptionistVoicePicker } from "@/components/dashboard/receptionist-voice-picker";
 import { VoiceLiveTrial } from "@/components/dashboard/voice-live-trial";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
 import type { SolvioVoiceEntry, SubscriptionTier } from "@/lib/solvio-voice-library";
 import type { VoiceReceptionistClientDetails } from "@/lib/voice-receptionist";
+import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 const tones: {
@@ -74,7 +76,9 @@ export function ReceptionistStudio({
   const [intakePriorities, setIntakePriorities] = useState(initialDetails.caller_intake_priorities ?? "");
   const [agentGoal, setAgentGoal] = useState(initialDetails.agent_goal ?? "");
   const [languagesNote, setLanguagesNote] = useState(initialDetails.languages_note ?? "");
-  const [escalationPhone, setEscalationPhone] = useState(initialDetails.escalation_phone ?? "");
+  const initialEscalation = parsePhoneDialFields(initialDetails.escalation_phone ?? "");
+  const [escalationDial, setEscalationDial] = useState<string>(initialEscalation.dial);
+  const [escalationLocal, setEscalationLocal] = useState(initialEscalation.local);
   const [tone, setTone] = useState(initialDetails.greeting_style);
   const [agentPromptCustom, setAgentPromptCustom] = useState(initialDetails.agent_prompt_custom ?? "");
   const [showAdvancedPrompt, setShowAdvancedPrompt] = useState(Boolean(initialDetails.agent_prompt_custom?.trim()));
@@ -166,6 +170,12 @@ export function ReceptionistStudio({
   function handleSave() {
     setSaveMsg(null);
     setSaveOk(null);
+    const phoneCheck = optionalPhoneE164(escalationDial, escalationLocal);
+    if (!phoneCheck.ok) {
+      setSaveOk(false);
+      setSaveMsg(phoneCheck.message);
+      return;
+    }
     startTransition(() => {
       void (async () => {
         const res = await saveReceptionistStudioAction({
@@ -178,7 +188,7 @@ export function ReceptionistStudio({
           caller_intake_priorities: intakePriorities.trim() || undefined,
           agent_goal: agentGoal.trim() || undefined,
           languages_note: languagesNote.trim() || undefined,
-          escalation_phone: escalationPhone.trim() || undefined,
+          escalation_phone: phoneCheck.e164 ?? undefined,
           agent_prompt_custom: showAdvancedPrompt ? agentPromptCustom.trim() || undefined : undefined,
           vapi_assistant_id: vapiAssistantId.trim() || undefined,
           vapi_assistant_name: vapiAssistantName.trim() || undefined,
@@ -436,21 +446,23 @@ export function ReceptionistStudio({
                   className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
               </div>
-              <div className="space-y-2">
-                <label htmlFor="escalation" className="text-sm font-semibold text-[#0f172a]">
-                  Escalation phone
-                </label>
-                <input
-                  id="escalation"
-                  value={escalationPhone}
-                  onChange={(e) => {
-                    setEscalationPhone(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder="+34 …"
-                  className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                />
-              </div>
+              <PhoneDialCodeField
+                idPrefix="studio-escalation"
+                label="Escalation phone"
+                optional
+                dialCode={escalationDial}
+                localNumber={escalationLocal}
+                onDialCodeChange={(dial) => {
+                  setEscalationDial(dial);
+                  markDirty();
+                }}
+                onLocalNumberChange={(local) => {
+                  setEscalationLocal(local);
+                  markDirty();
+                }}
+                showHint={false}
+                inputClassName="rounded-xl bg-[#fafbff] px-4"
+              />
             </div>
 
             <div className="flex flex-wrap gap-3 border-t border-[#f1eefc] pt-5">

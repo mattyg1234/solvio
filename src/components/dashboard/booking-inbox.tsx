@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
+import { parseEuroInputToCents, sanitizeEuroInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 
 export type BookingRequestRow = {
@@ -416,9 +417,9 @@ function BookingDepositSection({
   function createLink() {
     setDepositError(null);
     setCheckoutUrl(null);
-    const euroRaw = amountEuro.trim().replace(",", ".");
-    const overrideCents = euroRaw.length ? Math.round(Number.parseFloat(euroRaw) * 100) : undefined;
-    if (overrideCents != null && (!Number.isFinite(overrideCents) || overrideCents < 50)) {
+    const trimmed = amountEuro.trim();
+    const overrideCents = trimmed.length ? parseEuroInputToCents(trimmed) : undefined;
+    if (overrideCents != null && overrideCents < 50) {
       setDepositError("Enter a valid amount of at least €0.50, or leave blank to use table pricing.");
       return;
     }
@@ -457,8 +458,10 @@ function BookingDepositSection({
               </label>
               <input
                 id={`dep-euro-${request.id}`}
+                type="text"
+                inputMode="decimal"
                 value={amountEuro}
-                onChange={(e) => setAmountEuro(e.target.value)}
+                onChange={(e) => setAmountEuro(sanitizeEuroInput(e.target.value))}
                 placeholder="Uses table price"
                 className="h-10 w-36 rounded-xl border border-[#ebe7f7] bg-white px-3 text-sm"
               />

@@ -7,7 +7,6 @@ import { upsertAppointmentBreak, deleteAppointmentBreak } from "@/app/dashboard/
 import { cn } from "@/lib/utils";
 
 const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const WEEKDAY_LONG  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
 export type WeekGridScheduleRow = {
   id: string;
@@ -99,8 +98,8 @@ export function AppointmentWeekGrid({
   // ── Grid generation ──────────────────────────────────────────────────────────
   const STEP = 30; // 30-min grid rows regardless of slot_minutes
 
-  const { minMins, maxMins, rows, columns } = useMemo(() => {
-    if (!schedules.length) return { minMins: 480, maxMins: 1080, rows: [], columns: [] };
+  const { rows, columns } = useMemo(() => {
+    if (!schedules.length) return { rows: [], columns: [] as Array<{ open: number; close: number } | null> };
 
     // Overall time range
     const rawMin = Math.min(...schedules.map((s) => clockToMins(s.open_time)));
@@ -118,7 +117,7 @@ export function AppointmentWeekGrid({
       return s ? { open: clockToMins(s.open_time), close: clockToMins(s.close_time) } : null;
     });
 
-    return { minMins: minM, maxMins: maxM, rows: rowTimes, columns: cols };
+    return { rows: rowTimes, columns: cols };
   }, [schedules]);
 
   // For each (row, col): determine cell state

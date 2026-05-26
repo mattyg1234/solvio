@@ -25,7 +25,10 @@ import {
   isWeekdayInsideTableBookingWindows,
   tableBlockedByHostedShowMessage,
 } from "@/lib/booking-table-rules";
+import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
+import { AppointmentMonthCalendar } from "./appointment-month-calendar";
 import { PhoneWithCountryCode } from "@/components/booking/phone-with-country-code";
 import { AppointmentTimeSlotPicker } from "@/components/booking/appointment-time-slot-picker";
 import {
@@ -128,7 +131,7 @@ function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
     >
       <div className="absolute inset-x-3 top-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#94a3b8]">
         <MapPin className="h-3.5 w-3.5" />
-        Layout preview
+        Layout reference
       </div>
       {tables.map((t) => {
         const sh = coerceFloorPlanShape(t.shape);
@@ -182,6 +185,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   const [selectedService, setSelectedService] = useState("");
   const [preferredStaff, setPreferredStaff] = useState("");
   const [selectedSlotValue, setSelectedSlotValue] = useState("");
+  const [partySize, setPartySize] = useState("2");
 
   const guestModesKey = guestModes.join(",");
 
@@ -244,6 +248,36 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
 
   const appointmentSlotsList = appointmentSchedule.slots;
   const appointmentSlotsAvailable = appointmentSlotsList.filter((s) => s.status === "available");
+
+  const selectedServiceRow = useMemo(
+    () => context.appointment_services.find((s) => s.id === selectedService) ?? null,
+    [context.appointment_services, selectedService],
+  );
+
+  const appointmentCheckoutCents = selectedServiceRow?.price_cents ?? 0;
+
+  const tableDepositCents = useMemo(() => {
+    if (effectiveKind !== "table") return null;
+    const gc = Number.parseInt(partySize, 10);
+    if (!Number.isFinite(gc) || gc < 1) return null;
+    return computeTableDepositCents({ ctx: context, preferredTableLabel: preferredTable, guestCount: gc });
+  }, [context, effectiveKind, partySize, preferredTable]);
+
+  const submitPaymentCents =
+    effectiveKind === "appointment" && appointmentCheckoutCents > 0
+      ? appointmentCheckoutCents
+      : effectiveKind === "table" && tableDepositCents && tableDepositCents > 0
+        ? tableDepositCents
+        : null;
+
+  const submitButtonLabel = useMemo(() => {
+    if (submitPaymentCents) return `Continue · pay ${formatMoneyDisplay(submitPaymentCents)}`;
+    if (effectiveKind === "appointment") return "Request appointment";
+    if (effectiveKind === "event") return "Request event seats";
+    if (effectiveKind === "table") return "Request table";
+    if (effectiveKind === "walk_in") return "Send walk-in enquiry";
+    return "Send booking request";
+  }, [effectiveKind, submitPaymentCents]);
 
   const todayYmd = useMemo(() => calendarYmdInZone(Date.now(), venueTz), [venueTz]);
 
@@ -464,7 +498,9 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center md:p-10">
         <Loader2 className="mx-auto h-10 w-10 animate-spin text-[#7c3aed]" aria-hidden />
         <h2 className="mt-6 text-xl font-semibold text-[#0f172a]">Redirecting to secure payment…</h2>
-        <p className="mt-3 text-[15px] text-[#64748b]">Your enquiry is saved. Complete the deposit on Stripe to hold your table.</p>
+        <p className="mt-3 text-[15px] text-[#64748b]">
+          Your request is saved.{state.summary?.paymentLabel ? ` ${state.summary.paymentLabel}` : " Complete payment on Stripe to hold your booking."}
+        </p>
       </div>
     );
   }
@@ -490,6 +526,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   }
 
   if (state?.ok && !("depositCheckoutUrl" in state && state.depositCheckoutUrl)) {
+    const s = state.summary;
     return (
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ecfdf5] text-emerald-600 ring-1 ring-emerald-100">
@@ -497,17 +534,48 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         </span>
         <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Request received</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
-          {state.emailSent && state.smsSent
-            ? `${businessName} has your details — we emailed and texted you a confirmation.`
-            : state.emailSent
-              ? `${businessName} has your details — check your email for a confirmation.`
-              : state.smsSent
-                ? `${businessName} has your details — we texted you a confirmation.`
-                : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
+          {state.emailSent
+            ? `${businessName} has your details — check your email for a confirmation with the summary below.`
+            : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
         </p>
-        {!state.emailSent && !state.smsSent ? (
+        {s ? (
+          <ul className="mx-auto mt-6 max-w-sm space-y-2 rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-4 text-left text-sm text-[#0f172a]">
+            {s.serviceName ? (
+              <li>
+                <span className="text-[#64748b]">Service · </span>
+                <span className="font-semibold">{s.serviceName}</span>
+              </li>
+            ) : null}
+            {s.requestedDate ? (
+              <li>
+                <span className="text-[#64748b]">Date · </span>
+                <span className="font-semibold">{s.requestedDate}</span>
+              </li>
+            ) : null}
+            {s.preferredTime ? (
+              <li>
+                <span className="text-[#64748b]">Time · </span>
+                <span className="font-semibold">{s.preferredTime}</span>
+              </li>
+            ) : null}
+            {s.staffName ? (
+              <li>
+                <span className="text-[#64748b]">Stylist · </span>
+                <span className="font-semibold">{s.staffName}</span>
+              </li>
+            ) : null}
+            {s.guestCount ? (
+              <li>
+                <span className="text-[#64748b]">Party · </span>
+                <span className="font-semibold">{s.guestCount}</span>
+              </li>
+            ) : null}
+          </ul>
+        ) : null}
+        <p className="mt-4 text-sm text-[#64748b]">What happens next: {businessName} reviews your request and confirms by email or phone.</p>
+        {!state.emailSent ? (
           <p className="mt-3 text-sm text-amber-900/90">
-            Automatic confirmations aren&apos;t configured on this deployment yet — your request was still saved.
+            Automatic email isn&apos;t configured on this deployment yet — your request was still saved.
           </p>
         ) : null}
         <p className="mt-8 text-center text-sm text-[#94a3b8]">
@@ -644,8 +712,14 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               return (
                 <div className="mt-2 space-y-2">
                   {isPaid ? (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-950">
+                      Ticket price shown for reference — online payment isn&apos;t live yet. Submit your request and{" "}
+                      {businessName} will confirm how to pay.
+                    </p>
+                  ) : null}
+                  {isPaid ? (
                     <p className="rounded-xl border border-[#ddd6fe] bg-[#f5f3ff] px-3 py-2 text-[13px] font-medium text-[#5b21b6]">
-                      🎟️ Ticket: <span className="font-semibold">{priceStr}</span> per person
+                      🎟️ From <span className="font-semibold">{priceStr}</span> per person (pay at venue / by reply)
                     </p>
                   ) : null}
                   {remaining !== null && showSeats ? (
@@ -831,26 +905,40 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
                   : "Which date?"
             }
           >
-            <label htmlFor="requested_date" className="sr-only">
-              Preferred date
-            </label>
-            <input
-              id="requested_date"
-              name="requested_date"
-              type="date"
-              value={requestedDate}
-              min={structuredAppointmentBooking ? todayYmd : undefined}
-              required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
-              max="9999-12-31"
-              onChange={(e) => setRequestedDate(e.target.value)}
-              onBlur={(e) => setRequestedDate(e.target.value)}
-              className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-            />
-            {structuredAppointmentBooking && requestedDate.trim() ? (
-              <p className="text-[13px] text-[#64748b]">
-                {BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(requestedDate.trim(), venueTz)]} · pick a stylist and time below.
-              </p>
-            ) : null}
+            {structuredAppointmentBooking ? (
+              <>
+                <input type="hidden" name="requested_date" value={requestedDate} required />
+                <AppointmentMonthCalendar
+                  timeZone={venueTz}
+                  todayYmd={todayYmd}
+                  appointmentHours={context.appointment_hours}
+                  exceptions={context.appointment_slot_exceptions}
+                  bookedSlots={context.appointment_booked_slots}
+                  staffMembers={context.staff_members}
+                  breaks={breaks}
+                  selectedDateYmd={requestedDate}
+                  onSelectDate={setRequestedDate}
+                />
+              </>
+            ) : (
+              <>
+                <label htmlFor="requested_date" className="sr-only">
+                  Preferred date
+                </label>
+                <input
+                  id="requested_date"
+                  name="requested_date"
+                  type="date"
+                  value={requestedDate}
+                  min={todayYmd}
+                  required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
+                  max="9999-12-31"
+                  onChange={(e) => setRequestedDate(e.target.value)}
+                  onBlur={(e) => setRequestedDate(e.target.value)}
+                  className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                />
+              </>
+            )}
             {tableBlockedForHostedShow && tableHostedShowBlockMessage ? (
               <div className="space-y-3 rounded-xl border-2 border-[#a78bfa] bg-[#f5f3ff] px-4 py-4">
                 <p className="text-[14px] font-medium leading-relaxed text-[#4c1d95]">{tableHostedShowBlockMessage}</p>
@@ -1024,6 +1112,8 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               min={1}
               max={999}
               required
+              value={partySize}
+              onChange={(e) => setPartySize(e.target.value)}
               placeholder="e.g. 4"
               className="h-12 w-full max-w-xs rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
@@ -1224,6 +1314,21 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </div>
         ) : null}
 
+        {structuredAppointmentBooking && appointmentCheckoutCents > 0 ? (
+          <p className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3 text-[13px] leading-relaxed text-[#4c1d95]">
+            After you submit, you&apos;ll pay{" "}
+            <span className="font-semibold">{formatMoneyDisplay(appointmentCheckoutCents)}</span> securely via Stripe for{" "}
+            <span className="font-semibold">{selectedServiceRow?.name ?? "your service"}</span>.
+          </p>
+        ) : null}
+
+        {effectiveKind === "table" && tableDepositCents && tableDepositCents > 0 ? (
+          <p className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3 text-[13px] leading-relaxed text-[#4c1d95]">
+            After you submit, you&apos;ll pay{" "}
+            <span className="font-semibold">{formatMoneyDisplay(tableDepositCents)}</span> securely via Stripe to hold your table.
+          </p>
+        ) : null}
+
         <button
           type="submit"
           disabled={
@@ -1232,6 +1337,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
             hostedCalendarSelectionBlocked ||
             tableBlockedForHostedShow ||
             (hasAppointmentServices && !selectedService) ||
+            (structuredAppointmentBooking && !requestedDate.trim()) ||
             (structuredAppointmentBooking &&
               appointmentSlotsAvailable.length > 0 &&
               !selectedSlotValue.trim())
@@ -1247,7 +1353,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               Sending…
             </>
           ) : (
-            "Send booking request"
+            submitButtonLabel
           )}
         </button>
       </form>

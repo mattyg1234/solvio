@@ -10,6 +10,8 @@ import type { VenueCalendarBookingRow } from "@/components/dashboard/booking-ope
 import type { StaffMember } from "@/lib/staff-members";
 import type { AppointmentWeekRow } from "@/lib/booking-inventory-types";
 import type { AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { optionalPhoneE164 } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -53,9 +55,6 @@ function minsToLabel(m: number): string {
     : `${h12}:${String(min).padStart(2, "0")}${h < 12 ? "am" : "pm"}`;
 }
 
-function minsToHhMm(m: number): string {
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
 
 function dateToYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -119,28 +118,6 @@ function weekRangeLabel(dates: Date[]): string {
     : `${first.getDate()} ${mo1} – ${last.getDate()} ${mo2} ${yr}`;
 }
 
-function leastBookedStaff(
-  staffMembers: StaffMember[],
-  slotMins: number,
-  slotEndMins: number,
-  dayBookings: VenueCalendarBookingRow[],
-  tz: string,
-): string | null {
-  if (!staffMembers.length) return null;
-  let best = staffMembers[0]!;
-  let bestCount = Infinity;
-  for (const s of staffMembers) {
-    const count = dayBookings.filter((b) => {
-      if (b.staff_member !== s.name) return false;
-      const bStart = isoToVenueMins(b.starts_at, tz);
-      const bEnd   = isoToVenueMins(b.ends_at,   tz);
-      return bStart < slotEndMins && bEnd > slotMins;
-    }).length;
-    if (count < bestCount) { bestCount = count; best = s; }
-  }
-  return best.name;
-}
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type QuickBookState = {
@@ -178,7 +155,8 @@ export function StaffWeekPlanner({
   // Quick-book popup (day view)
   const [quickBook, setQuickBook]         = useState<QuickBookState | null>(null);
   const [qbName,    setQbName]            = useState("");
-  const [qbPhone,   setQbPhone]           = useState("");
+  const [qbPhoneDial, setQbPhoneDial] = useState("+44");
+  const [qbPhoneLocal, setQbPhoneLocal] = useState("");
   const [qbDuration, setQbDuration]       = useState(60);
   const [qbSubmitting, setQbSubmitting]   = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -246,6 +224,11 @@ export function StaffWeekPlanner({
 
   async function doQuickBook() {
     if (!quickBook || !qbName.trim() || qbSubmitting) return;
+    const phoneCheck = optionalPhoneE164(qbPhoneDial, qbPhoneLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      return;
+    }
     setQbSubmitting(true);
     setError(null);
     try {
@@ -254,14 +237,14 @@ export function StaffWeekPlanner({
       await addManualVenueCalendarBooking({
         businessId,
         guestName:   qbName.trim(),
-        guestPhone:  qbPhone.trim() || undefined,
+        guestPhone:  phoneCheck.e164 ?? undefined,
         bookingKind: "appointment",
         startsAtIso: startsIso,
         endsAtIso:   endsIso,
         staffMember: quickBook.staffName,
       });
       setQuickBook(null);
-      setQbName(""); setQbPhone(""); setQbDuration(60);
+      setQbName(""); setQbPhoneDial("+44"); setQbPhoneLocal(""); setQbDuration(60);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not book.");
     } finally {
@@ -271,7 +254,7 @@ export function StaffWeekPlanner({
 
   function openQuickBook(staffName: string, dateYmd: string, slotMins: number, rowIndex: number) {
     setQuickBook({ staffName, dateYmd, slotMins, anchorTop: rowIndex * ROW_H });
-    setQbName(""); setQbPhone(""); setQbDuration(60);
+    setQbName(""); setQbPhoneDial("+44"); setQbPhoneLocal(""); setQbDuration(60);
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -358,7 +341,6 @@ export function StaffWeekPlanner({
           dateYmd={dayYmd}
           bookings={byDate.get(dayYmd) ?? []}
           staffMembers={staffMembers}
-          schedules={schedules}
           breaks={breaks}
           openMins={openMins}
           timeRows={timeRows}
@@ -371,16 +353,15 @@ export function StaffWeekPlanner({
           onCloseQuickBook={() => setQuickBook(null)}
           popupRef={popupRef}
           qbName={qbName}
-          qbPhone={qbPhone}
+          qbPhoneDial={qbPhoneDial}
+          qbPhoneLocal={qbPhoneLocal}
           qbDuration={qbDuration}
           qbSubmitting={qbSubmitting}
           onQbName={setQbName}
-          onQbPhone={setQbPhone}
+          onQbPhoneDial={setQbPhoneDial}
+          onQbPhoneLocal={setQbPhoneLocal}
           onQbDuration={setQbDuration}
           onQbSubmit={doQuickBook}
-          leastBookedStaff={(slotMins, slotEndMins, dayBookings) =>
-            leastBookedStaff(staffMembers, slotMins, slotEndMins, dayBookings, venueTimeZone)
-          }
         />
       )}
 
@@ -414,7 +395,6 @@ function DayView({
   dateYmd,
   bookings,
   staffMembers,
-  schedules,
   breaks,
   openMins,
   timeRows,
@@ -427,19 +407,19 @@ function DayView({
   onCloseQuickBook,
   popupRef,
   qbName,
-  qbPhone,
+  qbPhoneDial,
+  qbPhoneLocal,
   qbDuration,
   qbSubmitting,
   onQbName,
-  onQbPhone,
+  onQbPhoneDial,
+  onQbPhoneLocal,
   onQbDuration,
   onQbSubmit,
-  leastBookedStaff: getLeast,
 }: {
   dateYmd: string;
   bookings: VenueCalendarBookingRow[];
   staffMembers: StaffMember[];
-  schedules: AppointmentWeekRow[];
   breaks: AppointmentBreakRow[];
   openMins: number;
   timeRows: number[];
@@ -452,14 +432,15 @@ function DayView({
   onCloseQuickBook: () => void;
   popupRef: React.RefObject<HTMLDivElement | null>;
   qbName: string;
-  qbPhone: string;
+  qbPhoneDial: string;
+  qbPhoneLocal: string;
   qbDuration: number;
   qbSubmitting: boolean;
   onQbName: (v: string) => void;
-  onQbPhone: (v: string) => void;
+  onQbPhoneDial: (v: string) => void;
+  onQbPhoneLocal: (v: string) => void;
   onQbDuration: (v: number) => void;
   onQbSubmit: () => void;
-  leastBookedStaff: (slotMins: number, slotEndMins: number, dayBookings: VenueCalendarBookingRow[]) => string | null;
 }) {
   // Parse date to get JS day-of-week
   const [y, mo, d] = dateYmd.split("-").map(Number);
@@ -470,10 +451,6 @@ function DayView({
   const dayBreaks = breaks.filter((b) => b.weekdays.includes(jsDay));
 
   // Virtual "Unassigned" column for bookings with no staff
-  const columns: { id: string; name: string }[] = staffMembers.length
-    ? [...staffMembers, { id: "__unassigned__", name: "" }]
-    : [{ id: "__unassigned__", name: "" }];
-
   const displayCols = staffMembers.length
     ? staffMembers.map((s) => ({ id: s.id, name: s.name }))
     : [{ id: "__unassigned__", name: "All bookings" }];
@@ -501,9 +478,7 @@ function DayView({
         {/* Column headers */}
         <div className="flex border-b border-[#f1eefc] bg-[#fafbff]">
           <div style={{ width: GUTTER_W, minWidth: GUTTER_W }} className="shrink-0 border-r border-[#f1eefc]" />
-          {displayCols.map((col, ci) => {
-            const col2 = staffColor(col.name || null);
-            return (
+          {displayCols.map((col, ci) => (
               <div key={col.id} className="flex flex-1 items-center justify-center gap-2 border-r border-[#f1eefc] py-3 last:border-r-0">
                 {col.name ? (
                   <>
@@ -514,8 +489,7 @@ function DayView({
                   <span className="text-[12px] font-semibold text-[#94a3b8]">Unassigned</span>
                 )}
               </div>
-            );
-          })}
+            ))}
         </div>
 
         {/* Grid body */}
@@ -537,9 +511,8 @@ function DayView({
           </div>
 
           {/* Staff columns */}
-          {displayCols.map((col, ci) => {
+          {displayCols.map((col) => {
             const staffBookings = bookingsForStaff(col.name);
-            const colColor = PALETTE[ci % PALETTE.length] ?? UNASSIGNED;
 
             return (
               <div
@@ -626,11 +599,16 @@ function DayView({
                         placeholder="Guest name *"
                         className="h-9 w-full rounded-xl border border-[#ebe7f7] px-3 text-[13px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/20"
                       />
-                      <input
-                        value={qbPhone}
-                        onChange={(e) => onQbPhone(e.target.value)}
-                        placeholder="Phone (optional)"
-                        className="h-9 w-full rounded-xl border border-[#ebe7f7] px-3 text-[13px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/20"
+                      <PhoneDialCodeField
+                        idPrefix="qb-phone"
+                        label="Phone"
+                        optional
+                        compact
+                        showHint={false}
+                        dialCode={qbPhoneDial}
+                        localNumber={qbPhoneLocal}
+                        onDialCodeChange={onQbPhoneDial}
+                        onLocalNumberChange={onQbPhoneLocal}
                       />
                       <select
                         value={qbDuration}

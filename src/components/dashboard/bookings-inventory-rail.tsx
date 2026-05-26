@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Armchair, ArrowRight, CalendarDays, ListOrdered, PartyPopper, Settings2 } from "lucide-react";
+import { Armchair, ArrowRight, ListOrdered, PartyPopper, Scissors, Settings2 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ const OFFER_LINKS = [
     label: "Appointment slots",
     detail:
       "This is what appears when guests choose appointments on your link — weekly hours, slot size (15 / 30 min), and blocked slots.",
-    Icon: CalendarDays,
+    Icon: Scissors,
   },
   {
     tab: "tables",

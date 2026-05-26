@@ -7,7 +7,11 @@ import type { PlatformCapabilityKey } from "@/lib/platform-capabilities";
 
 type MerchantExtras = {
   merchant_phone?: string;
-  merchant_address?: string;
+  merchant_address_line1?: string;
+  merchant_address_line2?: string;
+  merchant_city?: string;
+  merchant_postcode?: string;
+  merchant_country?: string;
   merchant_social?: string;
 };
 
@@ -19,8 +23,24 @@ function mergeDetails(existing: Record<string, unknown>, patch: MerchantExtras):
       : {};
 
   if (patch.merchant_phone !== undefined) profile.phone = patch.merchant_phone;
-  if (patch.merchant_address !== undefined) profile.address = patch.merchant_address;
+  if (patch.merchant_address_line1 !== undefined) profile.address_line1 = patch.merchant_address_line1;
+  if (patch.merchant_address_line2 !== undefined) profile.address_line2 = patch.merchant_address_line2;
+  if (patch.merchant_city !== undefined) profile.city = patch.merchant_city;
+  if (patch.merchant_postcode !== undefined) profile.postcode = patch.merchant_postcode;
+  if (patch.merchant_country !== undefined) profile.country = patch.merchant_country;
   if (patch.merchant_social !== undefined) profile.social = patch.merchant_social;
+
+  const formattedAddress = [
+    patch.merchant_address_line1,
+    patch.merchant_address_line2,
+    patch.merchant_city,
+    patch.merchant_postcode,
+    patch.merchant_country,
+  ]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+  if (formattedAddress) profile.address = formattedAddress;
 
   next.merchant_onboarding_profile = profile;
   return next;
@@ -42,7 +62,11 @@ export async function saveOnboardingBusinessProfile(formData: FormData) {
   const website_url = String(formData.get("website_url") ?? "").trim();
 
   const phone = String(formData.get("merchant_phone") ?? "").trim();
-  const address = String(formData.get("merchant_address") ?? "").trim();
+  const addressLine1 = String(formData.get("merchant_address_line1") ?? "").trim();
+  const addressLine2 = String(formData.get("merchant_address_line2") ?? "").trim();
+  const city = String(formData.get("merchant_city") ?? "").trim();
+  const postcode = String(formData.get("merchant_postcode") ?? "").trim();
+  const country = String(formData.get("merchant_country") ?? "").trim();
   const social = String(formData.get("merchant_social") ?? "").trim();
 
   if (!bizId || !name) {
@@ -67,7 +91,11 @@ export async function saveOnboardingBusinessProfile(formData: FormData) {
 
   const booking_flow_details = mergeDetails(existingDetails, {
     merchant_phone: phone,
-    merchant_address: address,
+    merchant_address_line1: addressLine1,
+    merchant_address_line2: addressLine2,
+    merchant_city: city,
+    merchant_postcode: postcode,
+    merchant_country: country,
     merchant_social: social,
   });
 

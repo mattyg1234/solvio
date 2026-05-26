@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import {
   fetchStripeMerchantDashboard,
   type StripeMerchantDashboardResult,
-  type StripeMerchantDashboardSnapshot,
 } from "@/lib/stripe-connect-merchant";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 

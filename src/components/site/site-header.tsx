@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/#growth", label: "Growth" },
+  { href: "/#pricing", label: "Pricing" },
   { href: "/#commerce", label: "Commerce" },
-  { href: "/#proof", label: "Stories" },
-  { href: "/#live-ai-receptionist", label: "Receptionist" },
+  { href: "/book/solvio-d67c90cc", label: "Live demo" },
   { href: "/#contact", label: "Contact" },
 ];
 

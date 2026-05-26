@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CalendarSync,
   CalendarX,
   CreditCard,
   Mail,
@@ -20,9 +19,8 @@ const capabilities = [
   { title: "Answers calls", body: "Guests reach a calm voice — day or night." },
   { title: "Takes bookings", body: "Tables, chairs or stylist slots — held correctly." },
   { title: "Collects deposits", body: "Secure prepayments before you turn anyone away." },
-  { title: "Confirms visits", body: "Texts or emails guests actually open." },
-  { title: "Syncs calendars", body: "Google Calendar stays aligned automatically." },
-  { title: "Handles changes", body: "Cancellations and refunds follow your rules." },
+  { title: "Confirms visits", body: "Email confirmations guests actually open." },
+  { title: "Handles changes", body: "Cancellations and closed days stay in sync on your calendar." },
 ];
 
 export function CommerceSection() {
@@ -114,16 +112,11 @@ export function CommerceSection() {
                 Pricing that grows when you grow
               </h3>
               <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">
-                Expect a straightforward monthly plan — typically{" "}
-                <span className="font-medium text-[#0f172a]">€79–€299</span> depending on seats and locations — plus a tiny{" "}
-                <span className="font-medium text-[#0f172a]">booking fee</span> (often around{" "}
-                <span className="font-medium text-[#0f172a]">1%</span> or €0.50–€2 per reservation).
+                <span className="font-medium text-[#0f172a]">£50/month</span> launch pricing for the Booking tier — public link,
+                operations hub, Stripe deposits, and guest email. Pro adds AI receptionist from £150/mo when you&apos;re ready.
               </p>
               <p className="mt-4 text-[14px] leading-relaxed text-[#94a3b8]">
-                Five hundred bookings at €1 each means €500/month before subscriptions — proof that aligned incentives beat bolt-on AI widgets.
-              </p>
-              <p className="mt-4 text-[13px] italic leading-relaxed text-[#94a3b8]">
-                Figures shown as examples — exact tiers confirmed during onboarding.
+                First 50 venues keep £50/mo — then standard pricing applies. Guest deposits go to your connected Stripe account.
               </p>
             </Card>
           </motion.div>
@@ -203,21 +196,21 @@ export function CommerceSection() {
                   <span className="font-semibold text-[#0f172a]">Caller:</span> “Haircut tomorrow afternoon.”
                 </p>
                 <p>
-                  <span className="font-semibold text-[#0f172a]">Solvio:</span> picks an open stylist slot → collects a €10 deposit → fires SMS/email confirmations → writes straight into Google Calendar so nobody double-books.
+                  <span className="font-semibold text-[#0f172a]">Solvio:</span> shows purple calendar days → guest picks stylist &amp; time → pays a £10 deposit via Stripe → email confirmation lands instantly.
                 </p>
                 <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#64748b]">
-                  <CalendarSync className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                  Calendar sync
+                  <CreditCard className="h-4 w-4 text-[#7c3aed]" aria-hidden />
+                  Stripe deposit
                   <span aria-hidden className="text-[#cbd5e1]">
                     ·
                   </span>
-                  <CreditCard className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                  Deposit secured
+                  <Mail className="h-4 w-4 text-[#7c3aed]" aria-hidden />
+                  Email confirm
                   <span aria-hidden className="text-[#cbd5e1]">
                     ·
                   </span>
                   <CalendarX className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                  Cancellation rules respected
+                  Closed days blocked
                 </p>
               </div>
             </Card>

@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { isPathAllowedDuringOnboarding } from "@/lib/onboarding-routes";
+
 type OnboardingGateProps = {
   needsOnboarding: boolean;
 };
@@ -14,7 +16,7 @@ export function OnboardingGate({ needsOnboarding }: OnboardingGateProps) {
 
   useEffect(() => {
     if (!needsOnboarding) return;
-    if (pathname.startsWith("/dashboard/onboarding")) return;
+    if (isPathAllowedDuringOnboarding(pathname)) return;
     router.replace("/dashboard/onboarding");
   }, [needsOnboarding, pathname, router]);
 

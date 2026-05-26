@@ -68,22 +68,22 @@ export function LiveDemoSection() {
           className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
         >
           <Link
-            href="/#live-ai-receptionist"
+            href="/book/solvio-d67c90cc"
             className={cn(
               buttonVariants({ variant: "default", size: "lg" }),
               "h-12 rounded-full px-9 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
             )}
           >
-            Talk to our receptionist
+            Try live booking demo
           </Link>
           <Link
-            href="/#growth"
+            href="/#live-ai-receptionist"
             className={cn(
-              buttonVariants({ variant: "ghost", size: "lg" }),
+              buttonVariants({ variant: "outline", size: "lg" }),
               "h-12 rounded-full px-6 text-base font-semibold text-[#64748b] hover:bg-white/70",
             )}
           >
-            Explore benefits
+            Talk to AI receptionist
           </Link>
         </motion.div>
       </div>
