@@ -2,12 +2,12 @@ import Link from "next/link";
 import {
   Armchair,
   CalendarCheck,
-  CalendarDays,
   CalendarRange,
   Columns3,
   Inbox,
   Link2,
   PartyPopper,
+  Scissors,
 } from "lucide-react";
 
 import type { BookingGuestsSub, BookingHubPrimary, BookingOfferingsSub } from "@/lib/bookings-hub-query";
@@ -115,15 +115,15 @@ export function BookingsCommandCenter({
   const createTiles: TileDef[] = [
     {
       href: "/dashboard/bookings?tab=offerings&view=appointments#bookings-workspace",
-      label: "Appointment hours",
+      label: "Appointment manager",
       hint: "Weekly open times and slot length — what guests pick on timed bookings.",
-      Icon: CalendarDays,
-      active: activePrimary === "offerings" && activeOfferingsSub === "appointments",
+      Icon: Scissors,
+      active: activePrimary === "offerings" && (activeOfferingsSub === "appointments" || activeOfferingsSub === "staff"),
       disabled: !bookingFlowComplete,
     },
     {
       href: "/dashboard/bookings?tab=offerings&view=events#bookings-workspace",
-      label: "Hosted events",
+      label: "Event manager",
       hint: "Shows and nights — guests choose your listing, then tap purple dates on the calendar.",
       Icon: PartyPopper,
       active: activePrimary === "offerings" && activeOfferingsSub === "events",
@@ -131,7 +131,7 @@ export function BookingsCommandCenter({
     },
     {
       href: "/dashboard/bookings?tab=offerings&view=tables#bookings-workspace",
-      label: "Tables & floor plan",
+      label: "Tables and floor plan",
       hint: "Add tables, rename them anytime, set shapes, colours, and seating questions for table enquiries.",
       Icon: Armchair,
       active: activePrimary === "offerings" && activeOfferingsSub === "tables",

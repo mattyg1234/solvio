@@ -26,7 +26,6 @@ import {
   restoreBusinessEvent,
   saveAppointmentQuestions,
   saveFloorPlanLayout,
-  saveStaffMembers,
   softDeleteBusinessEvent,
   uncancelBusinessEvent,
   upsertAppointmentWeekdayHour,
@@ -37,6 +36,7 @@ import {
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
 import { AppointmentWeekGrid, type AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
 import { StaffWeekPlanner } from "@/components/dashboard/staff-week-planner";
+import { StaffWeekScheduleGrid } from "@/components/dashboard/staff-week-schedule-grid";
 import { BookingInbox, type BookingRequestRow, telBookingHref } from "@/components/dashboard/booking-inbox";
 import { ManualBookingDialog } from "@/components/dashboard/manual-booking-dialog";
 import { EditBookingDialog } from "@/components/dashboard/edit-booking-dialog";
@@ -47,6 +47,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
+import { appointmentExceptionKindLabel } from "@/lib/booking-inventory-types";
 export type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 import { cn } from "@/lib/utils";
 import {
@@ -57,7 +58,13 @@ import {
 } from "@/lib/floor-plan-visuals";
 
 import type { BookingGuestsSub, BookingHubPrimary, BookingOfferingsSub } from "@/lib/bookings-hub-query";
-import { newStaffMember, type StaffMember } from "@/lib/staff-members";
+import type { StaffMember } from "@/lib/staff-members";
+import {
+  centsToEuroInputValue,
+  parseEuroInputToCents,
+  parseOptionalEuroInputToCents,
+  sanitizeEuroInput,
+} from "@/lib/money-input";
 
 export type BusinessEventRow = {
   id: string;
@@ -248,20 +255,26 @@ export function BookingOperationsHub({
         subtitle: "Open a row to reply, call, or use Confirm slot to add them to the diary.",
       };
     }
+    if (offeringsSub === "staff") {
+      return {
+        title: "Staff members",
+        subtitle: "Set who works each day — guests pick a preferred team member on timed bookings.",
+      };
+    }
     if (offeringsSub === "events") {
       return {
-        title: "Hosted events",
+        title: "Event manager",
         subtitle: "Add or edit show listings — purple calendar dates on your guest link come from here.",
       };
     }
     if (offeringsSub === "tables") {
       return {
-        title: "Tables & floor plan",
+        title: "Tables and floor plan",
         subtitle: "Drag tables on the canvas, set capacity and colours, save layout when done.",
       };
     }
     return {
-      title: "Appointment hours",
+      title: "Appointment manager",
       subtitle: "Set weekday open/close times and slot length — block individual slots for breaks below.",
     };
   }, [primary, guestsSub, offeringsSub]);
@@ -457,29 +470,32 @@ function OfferingsHubPanel(props: {
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
 }) {
+  const inAppointmentArea = props.offeringsSub === "appointments" || props.offeringsSub === "staff";
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
-        {(
-          [
-            { key: "appointments" as const, label: "Appointments" },
-            { key: "events" as const, label: "Events" },
-            { key: "tables" as const, label: "Tables" },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => props.onOfferingsSub(t.key)}
-            className={cn(
-              "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
-              props.offeringsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {inAppointmentArea ? (
+        <div className="flex flex-wrap gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] p-1">
+          {(
+            [
+              { key: "appointments" as const, label: "Appointments" },
+              { key: "staff" as const, label: "Staff members" },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => props.onOfferingsSub(t.key)}
+              className={cn(
+                "rounded-full px-5 py-2.5 text-[14px] font-semibold transition-colors",
+                props.offeringsSub === t.key ? "bg-white text-[#5b21b6] shadow-sm" : "text-[#64748b] hover:text-[#0f172a]",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {props.offeringsSub === "appointments" ? (
         <AppointmentsPanel
@@ -487,10 +503,17 @@ function OfferingsHubPanel(props: {
           schedules={props.schedules}
           exceptions={props.exceptions}
           venueTimeZone={props.venueTimeZone}
-          staffMembers={props.staffMembers}
           appointmentQuestions={props.appointmentQuestions}
           appointmentServices={props.appointmentServices}
           breaks={props.breaks ?? []}
+        />
+      ) : null}
+
+      {props.offeringsSub === "staff" ? (
+        <StaffWeekScheduleGrid
+          businessId={props.businessId}
+          staffMembers={props.staffMembers}
+          openWeekdays={props.schedules.map((s) => s.weekday)}
         />
       ) : null}
 
@@ -818,7 +841,6 @@ function AppointmentsPanel({
   schedules,
   exceptions,
   venueTimeZone,
-  staffMembers,
   appointmentQuestions = [],
   appointmentServices = [],
   breaks = [],
@@ -827,7 +849,6 @@ function AppointmentsPanel({
   schedules: AppointmentWeekRow[];
   exceptions: SlotExceptionRow[];
   venueTimeZone: string;
-  staffMembers: StaffMember[];
   appointmentQuestions?: { label: string; required: boolean }[];
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
@@ -839,19 +860,13 @@ function AppointmentsPanel({
   const [closeTime, setCloseTime] = useState("17:00");
   const [slotMin, setSlotMin] = useState(30);
   const [error, setError] = useState<string | null>(null);
-  const [staff, setStaff] = useState<StaffMember[]>(staffMembers);
-  const [newStaffName, setNewStaffName] = useState("");
   const [services, setServices] = useState<AppointmentServiceRow[]>(appointmentServices);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDuration, setNewServiceDuration] = useState(60);
-  const [newServicePrice, setNewServicePrice] = useState(0);
+  const [newServicePriceEuro, setNewServicePriceEuro] = useState("");
   const [questions, setQuestions] = useState<{ label: string; required: boolean }[]>(appointmentQuestions);
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
-
-  useEffect(() => {
-    setStaff(staffMembers);
-  }, [staffMembers]);
 
   useEffect(() => {
     setServices(appointmentServices);
@@ -880,7 +895,7 @@ function AppointmentsPanel({
       <header>
         <h2 className="text-lg font-semibold text-[#0f172a]">Weekly appointment windows</h2>
         <p className="mt-1 text-sm text-[#64748b]">
-          Slot length feeds the squares below — blocked slots hide from your public booking page; cancelled keeps a paper trail for callers.
+          Slot length feeds the squares below — closed slots hide from your public booking page; day-off closures can include a reason for callers and your AI.
         </p>
       </header>
 
@@ -1028,11 +1043,11 @@ function AppointmentsPanel({
                   businessId,
                   name: newServiceName,
                   durationMinutes: newServiceDuration,
-                  priceCents: newServicePrice,
+                  priceCents: parseEuroInputToCents(newServicePriceEuro),
                 });
                 setNewServiceName("");
                 setNewServiceDuration(60);
-                setNewServicePrice(0);
+                setNewServicePriceEuro("");
                 router.refresh();
               });
             }}
@@ -1102,79 +1117,15 @@ function AppointmentsPanel({
             <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
               Price (€)
               <input
-                type="number"
-                value={newServicePrice / 100}
-                onChange={(e) => setNewServicePrice(Math.max(0, Number(e.target.value) * 100))}
-                min="0"
-                step="0.50"
+                type="text"
+                inputMode="decimal"
+                value={newServicePriceEuro}
+                onChange={(e) => setNewServicePriceEuro(sanitizeEuroInput(e.target.value))}
+                placeholder="10.50"
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
               />
             </label>
           </div>
-        </div>
-      </div>
-
-      <div className="space-y-4 rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 p-5">
-        <header>
-          <h3 className="text-base font-semibold text-[#0f172a]">Staff on public form</h3>
-          <p className="mt-1 text-sm text-[#64748b]">
-            Guests booking appointments can pick a preferred team member — optional if the list is empty.
-          </p>
-        </header>
-        <ul className="space-y-2">
-          {staff.map((member) => (
-            <li
-              key={member.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] bg-white px-3 py-2 text-sm"
-            >
-              <span className="font-semibold text-[#0f172a]">{member.name}</span>
-              <button
-                type="button"
-                disabled={pending}
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-rose-700")}
-                onClick={() =>
-                  run(async () => {
-                    const next = staff.filter((s) => s.id !== member.id);
-                    await saveStaffMembers(businessId, next);
-                    setStaff(next);
-                    router.refresh();
-                  })
-                }
-              >
-                <Trash2 className="h-4 w-4" aria-hidden />
-              </button>
-            </li>
-          ))}
-          {staff.length === 0 ? <li className="text-sm text-[#94a3b8]">No staff saved yet.</li> : null}
-        </ul>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="block flex-1 space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-            Add name
-            <input
-              value={newStaffName}
-              onChange={(e) => setNewStaffName(e.target.value)}
-              placeholder="Sarah, front desk…"
-              className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal normal-case tracking-normal text-[#0f172a]"
-            />
-          </label>
-          <Button
-            type="button"
-            disabled={pending || newStaffName.trim().length < 2}
-            className="h-11 rounded-full font-semibold shadow-md shadow-[#7c3aed]/20"
-            onClick={() =>
-              run(async () => {
-                const member = newStaffMember(newStaffName);
-                const next = [...staff, member];
-                await saveStaffMembers(businessId, next);
-                setStaff(next);
-                setNewStaffName("");
-                router.refresh();
-              })
-            }
-          >
-            <Plus className="mr-2 inline h-4 w-4" aria-hidden />
-            Add staff
-          </Button>
         </div>
       </div>
 
@@ -1265,7 +1216,7 @@ function AppointmentsPanel({
             <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#f1eefc] px-3 py-2">
               <span className="text-[#0f172a]">
                 {x.exception_date}
-                {x.slot_start ? ` · ${clipTime(x.slot_start)}` : " · whole day"} — <span className="font-semibold">{x.kind}</span>
+                {x.slot_start ? ` · ${clipTime(x.slot_start)}` : " · whole day"} — <span className="font-semibold">{appointmentExceptionKindLabel(x.kind)}</span>
                 {x.reason ? <span className="text-[#64748b]"> — {x.reason}</span> : null}
               </span>
               <button
@@ -1401,12 +1352,11 @@ function EventsPanel({
             Ticket price <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(€ — leave blank for free / RSVP)</span>
           </label>
           <input
-            type="number"
-            min={0}
-            step={0.5}
+            type="text"
+            inputMode="decimal"
             value={ticketPriceEur}
-            onChange={(e) => setTicketPriceEur(e.target.value)}
-            placeholder="e.g. 25"
+            onChange={(e) => setTicketPriceEur(sanitizeEuroInput(e.target.value))}
+            placeholder="10.50"
             className="h-11 w-40 rounded-xl border border-[#ebe7f7] px-3"
           />
           <p className="text-[12px] text-[#64748b]">
@@ -1509,9 +1459,7 @@ function EventsPanel({
             onClick={() =>
               run(async () => {
                 const capParsed = parseInt(capacity, 10);
-                const ticketParsed = parseFloat(ticketPriceEur);
-                const ticketCents =
-                  Number.isFinite(ticketParsed) && ticketParsed > 0 ? Math.round(ticketParsed * 100) : null;
+                const ticketCents = parseOptionalEuroInputToCents(ticketPriceEur);
                 await upsertBusinessEvent({
                   businessId,
                   title,
@@ -1716,7 +1664,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
         ? "group_tier"
         : "table";
   const [pricingMode, setPricingMode] = useState<"table" | "person" | "group_tier">(pmInit);
-  const [priceEuro, setPriceEuro] = useState((table.price_cents / 100).toFixed(2));
+  const [priceEuro, setPriceEuro] = useState(() => centsToEuroInputValue(table.price_cents));
   const teInit = tierEuroDefaults(table);
   const [threshold, setThreshold] = useState(teInit.threshold);
   const [aboveEuro, setAboveEuro] = useState(teInit.aboveEuro);
@@ -1735,18 +1683,12 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
           ? "group_tier"
           : "table";
     setPricingMode(pm);
-    setPriceEuro((table.price_cents / 100).toFixed(2));
+    setPriceEuro(centsToEuroInputValue(table.price_cents));
     const te = tierEuroDefaults(table);
     setThreshold(te.threshold);
     setAboveEuro(te.aboveEuro);
     setBelowEuro(te.belowEuro);
   }, [snapshotKey, table]);
-
-  function euroToCentsScratch(s: string) {
-    const n = Number.parseFloat(s.replace(",", "."));
-    if (Number.isNaN(n)) return 0;
-    return Math.round(n * 100);
-  }
 
   function runSave(fn: () => Promise<void>) {
     setError(null);
@@ -1829,7 +1771,14 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
         {pricingMode !== "group_tier" ? (
           <div className="space-y-2 md:col-span-2">
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
-            <input value={priceEuro} onChange={(e) => setPriceEuro(e.target.value)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={priceEuro}
+              onChange={(e) => setPriceEuro(sanitizeEuroInput(e.target.value))}
+              placeholder="10.50"
+              className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3"
+            />
           </div>
         ) : (
           <div className="flex flex-wrap gap-3 md:col-span-6">
@@ -1839,11 +1788,25 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#64748b]">Charge €</label>
-              <input value={aboveEuro} onChange={(e) => setAboveEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={aboveEuro}
+                onChange={(e) => setAboveEuro(sanitizeEuroInput(e.target.value))}
+                placeholder="100"
+                className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3"
+              />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#64748b]">Else €</label>
-              <input value={belowEuro} onChange={(e) => setBelowEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={belowEuro}
+                onChange={(e) => setBelowEuro(sanitizeEuroInput(e.target.value))}
+                placeholder="50"
+                className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3"
+              />
             </div>
           </div>
         )}
@@ -1855,13 +1818,13 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
         onClick={() =>
           runSave(async () => {
             const price_cents =
-              pricingMode === "group_tier" ? euroToCentsScratch(belowEuro) : euroToCentsScratch(priceEuro);
+              pricingMode === "group_tier" ? parseEuroInputToCents(belowEuro) : parseEuroInputToCents(priceEuro);
             const group_pricing =
               pricingMode === "group_tier"
                 ? {
                     thresholdPeople: Number.parseInt(threshold, 10) || 10,
-                    atOrAboveCents: euroToCentsScratch(aboveEuro),
-                    belowCents: euroToCentsScratch(belowEuro),
+                    atOrAboveCents: parseEuroInputToCents(aboveEuro),
+                    belowCents: parseEuroInputToCents(belowEuro),
                   }
                 : null;
             await upsertFloorPlanTable({
@@ -2007,12 +1970,6 @@ function TablesPanel({
   const [addHeight, setAddHeight] = useState(80);
   const [error, setError] = useState<string | null>(null);
 
-  function euroToCents(s: string) {
-    const n = Number.parseFloat(s.replace(",", "."));
-    if (Number.isNaN(n)) return 0;
-    return Math.round(n * 100);
-  }
-
   function run(fn: () => Promise<void>) {
     setError(null);
     startTransition(() => {
@@ -2153,7 +2110,14 @@ function TablesPanel({
         {pricingMode !== "group_tier" ? (
           <div className="space-y-2 md:col-span-4">
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
-            <input value={priceEuro} onChange={(e) => setPriceEuro(e.target.value)} className="h-11 w-full max-w-[200px] rounded-xl border border-[#ebe7f7] px-3" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={priceEuro}
+              onChange={(e) => setPriceEuro(sanitizeEuroInput(e.target.value))}
+              placeholder="10.50"
+              className="h-11 w-full max-w-[200px] rounded-xl border border-[#ebe7f7] px-3"
+            />
           </div>
         ) : (
           <div className="flex flex-wrap gap-3 md:col-span-6">
@@ -2163,11 +2127,25 @@ function TablesPanel({
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#64748b]">Charge €</label>
-              <input value={aboveEuro} onChange={(e) => setAboveEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={aboveEuro}
+                onChange={(e) => setAboveEuro(sanitizeEuroInput(e.target.value))}
+                placeholder="100"
+                className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3"
+              />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-semibold text-[#64748b]">Else €</label>
-              <input value={belowEuro} onChange={(e) => setBelowEuro(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={belowEuro}
+                onChange={(e) => setBelowEuro(sanitizeEuroInput(e.target.value))}
+                placeholder="50"
+                className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3"
+              />
             </div>
           </div>
         )}
@@ -2180,14 +2158,14 @@ function TablesPanel({
               run(async () => {
                 const price_cents =
                   pricingMode === "group_tier"
-                    ? euroToCents(belowEuro)
-                    : euroToCents(priceEuro);
+                    ? parseEuroInputToCents(belowEuro)
+                    : parseEuroInputToCents(priceEuro);
                 const group_pricing =
                   pricingMode === "group_tier"
                     ? {
                         thresholdPeople: Number.parseInt(threshold, 10) || 10,
-                        atOrAboveCents: euroToCents(aboveEuro),
-                        belowCents: euroToCents(belowEuro),
+                        atOrAboveCents: parseEuroInputToCents(aboveEuro),
+                        belowCents: parseEuroInputToCents(belowEuro),
                       }
                     : null;
                 await upsertFloorPlanTable({
