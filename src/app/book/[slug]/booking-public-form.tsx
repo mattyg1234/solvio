@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CalendarCheck, Loader2, MapPin, Mic2, PartyPopper, Sparkles, UtensilsCrossed } from "lucide-react";
+import { CalendarCheck, Check, Loader2, MapPin, PartyPopper, Scissors, Sparkles, UtensilsCrossed } from "lucide-react";
 
 import { submitBookingRequestAction, type SubmitBookingState } from "./actions";
 import {
@@ -27,13 +27,19 @@ import {
 } from "@/lib/booking-table-rules";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import { PhoneWithCountryCode } from "@/components/booking/phone-with-country-code";
+import { AppointmentTimeSlotPicker } from "@/components/booking/appointment-time-slot-picker";
 import {
   type AppointmentBreak,
-  type AppointmentSlotChoice,
-  buildAppointmentSlotChoices,
+  buildAppointmentSlotGrid,
+  calendarYmdInZone,
   dowSundayZeroInBusinessTZ,
 } from "@/lib/booking-appointment-slots";
 import { buttonVariants } from "@/components/ui/button";
+import { isStaffWorkingOnWeekday } from "@/lib/staff-members";
+import {
+  PUBLIC_MODE_HEADINGS,
+  PUBLIC_MODE_HINTS,
+} from "@/lib/booking-public-links";
 import { cn } from "@/lib/utils";
 
 const initialState: SubmitBookingState | null = null;
@@ -46,7 +52,7 @@ function hostedEventPickKey(evt: PublicBusinessEvent): string {
 const FLOW_KIND_HINT: Record<string, string> = {
   restaurant_tables: "Pick a date and table — or switch to Events for hosted show nights.",
   hosted_events: "Browse upcoming hosted events and pick the date that works for you.",
-  salon_appointments: "Choose a date and time slot from the venue calendar.",
+  salon_appointments: "Pick your service, then choose a day, stylist, and time slot.",
   walk_in_waitlist: "Tell us when you plan to arrive and how many are in your party.",
   mixed: "Start by choosing how you want to book below.",
 };
@@ -59,7 +65,7 @@ const MODE_PICKER: {
 }[] = [
   { mode: "event", label: "Events", blurb: "Hosted shows — pick the act, then a purple calendar date", Icon: PartyPopper },
   { mode: "table", label: "Tables", blurb: "Reserve seating for a regular visit", Icon: UtensilsCrossed },
-  { mode: "appointment", label: "Appointments", blurb: "Timed slots from the weekly schedule", Icon: Mic2 },
+  { mode: "appointment", label: "Appointments", blurb: "Choose a service, team member, and time", Icon: Scissors },
   { mode: "walk_in", label: "Walk-in", blurb: "Ask about availability or send a walk-in enquiry", Icon: Sparkles },
 ];
 
@@ -175,6 +181,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   const [preferredTable, setPreferredTable] = useState("");
   const [selectedService, setSelectedService] = useState("");
   const [preferredStaff, setPreferredStaff] = useState("");
+  const [selectedSlotValue, setSelectedSlotValue] = useState("");
 
   const guestModesKey = guestModes.join(",");
 
@@ -190,20 +197,65 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   const structuredAppointmentBooking =
     effectiveKind === "appointment" && guestModes.includes("appointment") && context.appointment_hours.length > 0;
 
+  const staffForSelectedDate = useMemo(() => {
+    if (!structuredAppointmentBooking) return context.staff_members;
+    if (!requestedDate.trim()) return context.staff_members;
+    const dow = dowSundayZeroInBusinessTZ(requestedDate, venueTz);
+    return context.staff_members.filter((member) => isStaffWorkingOnWeekday(member, dow));
+  }, [context.staff_members, requestedDate, structuredAppointmentBooking, venueTz]);
+
   const appointmentSchedule = useMemo((): {
     hourRow: PublicAppointmentHour | undefined;
-    slots: AppointmentSlotChoice[];
+    slots: ReturnType<typeof buildAppointmentSlotGrid>;
   } => {
     if (!structuredAppointmentBooking || !requestedDate.trim()) {
       return { hourRow: undefined, slots: [] };
     }
     const dowCal = dowSundayZeroInBusinessTZ(requestedDate, venueTz);
     const hourRow = context.appointment_hours.find((h) => h.weekday === dowCal);
-    const slots = buildAppointmentSlotChoices(requestedDate.trim(), hourRow, venueTz, context.appointment_slot_exceptions, breaks);
+    const preferredStaffName =
+      preferredStaff.trim().length > 0
+        ? context.staff_members.find((m) => m.id === preferredStaff)?.name ?? null
+        : null;
+    const staffWorkingThatDay = staffForSelectedDate.map((m) => m.name);
+    const slots = buildAppointmentSlotGrid({
+      dateYmd: requestedDate.trim(),
+      row: hourRow,
+      venueTimeZone: venueTz,
+      exceptions: context.appointment_slot_exceptions,
+      breaks,
+      bookedSlots: context.appointment_booked_slots,
+      preferredStaffName,
+      staffWorkingThatDay,
+    });
     return { hourRow, slots };
-  }, [breaks, context.appointment_hours, context.appointment_slot_exceptions, requestedDate, structuredAppointmentBooking, venueTz]);
+  }, [
+    breaks,
+    context.appointment_hours,
+    context.appointment_booked_slots,
+    context.appointment_slot_exceptions,
+    context.staff_members,
+    preferredStaff,
+    requestedDate,
+    staffForSelectedDate,
+    structuredAppointmentBooking,
+    venueTz,
+  ]);
 
   const appointmentSlotsList = appointmentSchedule.slots;
+  const appointmentSlotsAvailable = appointmentSlotsList.filter((s) => s.status === "available");
+
+  const todayYmd = useMemo(() => calendarYmdInZone(Date.now(), venueTz), [venueTz]);
+
+  useEffect(() => {
+    if (!preferredStaff) return;
+    if (staffForSelectedDate.some((m) => m.id === preferredStaff)) return;
+    setPreferredStaff("");
+  }, [preferredStaff, staffForSelectedDate]);
+
+  useEffect(() => {
+    setSelectedSlotValue("");
+  }, [requestedDate, preferredStaff, selectedService]);
 
   const sortedQuestions = useMemo(
     () => [...context.table_questions].sort((a, b) => a.sort_order - b.sort_order || a.question_label.localeCompare(b.question_label)),
@@ -263,6 +315,48 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   useEffect(() => {
     if (effectiveKind !== "table") setPreferredTable("");
   }, [effectiveKind]);
+
+  useEffect(() => {
+    if (effectiveKind !== "appointment") {
+      setSelectedService("");
+      setPreferredStaff("");
+    }
+  }, [effectiveKind]);
+
+  const isAppointmentMode = effectiveKind === "appointment" && guestModes.includes("appointment");
+  const hasAppointmentServices = structuredAppointmentBooking && context.appointment_services.length > 0;
+  const hasAppointmentStaff = structuredAppointmentBooking && context.staff_members.length > 0;
+  const hasAppointmentQuestions = structuredAppointmentBooking && context.appointment_questions.length > 0;
+
+  const appointmentSteps = useMemo(() => {
+    let s = primaryKind ? 0 : 1;
+    const bump = () => {
+      s += 1;
+      return s;
+    };
+    const steps: {
+      service: number | null;
+      date: number;
+      staff: number | null;
+      time: number;
+      questions: number | null;
+      details: number;
+    } = {
+      service: null,
+      date: 0,
+      staff: null,
+      time: 0,
+      questions: null,
+      details: 0,
+    };
+    if (hasAppointmentServices) steps.service = bump();
+    steps.date = bump();
+    if (hasAppointmentStaff) steps.staff = bump();
+    steps.time = bump();
+    if (hasAppointmentQuestions) steps.questions = bump();
+    steps.details = bump();
+    return steps;
+  }, [hasAppointmentQuestions, hasAppointmentServices, hasAppointmentStaff, primaryKind]);
 
   const blockedHostedTableNights = useMemo(
     () => datesWithUpcomingHostedOccurrences(context.events, venueTz),
@@ -332,8 +426,38 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   }, [state]);
 
   const flowHint =
-    (bookingFlowKind && FLOW_KIND_HINT[bookingFlowKind]) ||
-    "Choose the booking type that fits — your details go straight to the team.";
+    primaryKind
+      ? PUBLIC_MODE_HINTS[primaryKind]
+      : (bookingFlowKind && FLOW_KIND_HINT[bookingFlowKind]) ||
+        "Choose the booking type that fits — your details go straight to the team.";
+
+  const pageTitle = primaryKind ? PUBLIC_MODE_HEADINGS[primaryKind] : "Request a booking";
+
+  const appointmentSummary = useMemo(() => {
+    if (!structuredAppointmentBooking) return null;
+    const service = selectedService
+      ? context.appointment_services.find((s) => s.id === selectedService)
+      : null;
+    const staff = preferredStaff ? context.staff_members.find((m) => m.id === preferredStaff) : null;
+    const slot = selectedSlotValue ? appointmentSlotsList.find((s) => s.value === selectedSlotValue) : null;
+    if (!requestedDate.trim() && !service && !slot) return null;
+    return {
+      service: service?.name ?? null,
+      date: requestedDate.trim() || null,
+      staff: staff?.name ?? (hasAppointmentStaff ? "First available" : null),
+      time: slot?.shortLabel ?? null,
+    };
+  }, [
+    appointmentSlotsList,
+    context.appointment_services,
+    context.staff_members,
+    hasAppointmentStaff,
+    preferredStaff,
+    requestedDate,
+    selectedService,
+    selectedSlotValue,
+    structuredAppointmentBooking,
+  ]);
 
   if (state?.ok && "depositCheckoutUrl" in state && state.depositCheckoutUrl) {
     return (
@@ -395,7 +519,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
 
       <div className="mb-6 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Book with {businessName}</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">Request a booking</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{pageTitle}</h1>
         {guestMessage ? (
           <p className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-[#64748b]">{guestMessage}</p>
         ) : (
@@ -630,10 +754,71 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </section>
         ) : null}
 
+        {structuredAppointmentBooking && hasAppointmentServices ? (
+          <FormSection step={appointmentSteps.service!} title="Choose a service">
+            <input type="hidden" name="selected_service" value={selectedService} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {context.appointment_services.map((svc) => {
+                const priceEur = (svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2);
+                const isSelected = selectedService === svc.id;
+                return (
+                  <button
+                    key={svc.id}
+                    type="button"
+                    onClick={() => setSelectedService(svc.id)}
+                    className={cn(
+                      "relative rounded-xl border-2 p-4 text-left transition-all",
+                      isSelected
+                        ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md ring-2 ring-[#ddd6fe]/70"
+                        : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd] hover:shadow-sm",
+                    )}
+                  >
+                    {isSelected ? (
+                      <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-[#7c3aed] text-white">
+                        <Check className="h-3.5 w-3.5" aria-hidden />
+                      </span>
+                    ) : null}
+                    <div className="flex items-start justify-between gap-2 pr-6">
+                      <div className="flex-1">
+                        <p className="font-semibold text-[#0f172a]">{svc.name}</p>
+                        <p className="mt-0.5 text-[13px] text-[#64748b]">{svc.duration_minutes} min</p>
+                      </div>
+                      {svc.price_cents > 0 ? (
+                        <p className="shrink-0 font-semibold text-[#7c3aed]">€{priceEur}</p>
+                      ) : (
+                        <p className="shrink-0 text-[12px] font-medium text-[#64748b]">Free</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {!selectedService ? (
+              <p className="text-[13px] text-[#64748b]">Tap a service — e.g. haircut, colour, blow-dry.</p>
+            ) : null}
+          </FormSection>
+        ) : structuredAppointmentBooking ? (
+          <input type="hidden" name="selected_service" value={selectedService} />
+        ) : null}
+
         {!suppressGenericPreferredDateGuestsRow ? (
           <FormSection
-            step={primaryKind ? 1 : effectiveKind === "event" ? 4 : 2}
-            title={effectiveKind === "table" ? "Which evening?" : "Which date?"}
+            step={
+              structuredAppointmentBooking
+                ? appointmentSteps.date
+                : primaryKind
+                  ? 1
+                  : effectiveKind === "event"
+                    ? 4
+                    : 2
+            }
+            title={
+              structuredAppointmentBooking
+                ? "Which day?"
+                : effectiveKind === "table"
+                  ? "Which evening?"
+                  : "Which date?"
+            }
           >
             <label htmlFor="requested_date" className="sr-only">
               Preferred date
@@ -643,12 +828,18 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               name="requested_date"
               type="date"
               value={requestedDate}
+              min={structuredAppointmentBooking ? todayYmd : undefined}
               required={Boolean(bookingPreferredDateHardRequired && !hostedCalendarMode)}
               max="9999-12-31"
               onChange={(e) => setRequestedDate(e.target.value)}
               onBlur={(e) => setRequestedDate(e.target.value)}
               className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
+            {structuredAppointmentBooking && requestedDate.trim() ? (
+              <p className="text-[13px] text-[#64748b]">
+                {BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(requestedDate.trim(), venueTz)]} · pick a stylist and time below.
+              </p>
+            ) : null}
             {tableBlockedForHostedShow && tableHostedShowBlockMessage ? (
               <div className="space-y-3 rounded-xl border-2 border-[#a78bfa] bg-[#f5f3ff] px-4 py-4">
                 <p className="text-[14px] font-medium leading-relaxed text-[#4c1d95]">{tableHostedShowBlockMessage}</p>
@@ -673,10 +864,143 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </FormSection>
         ) : null}
 
-        {effectiveKind !== "" ? (
+        {structuredAppointmentBooking && hasAppointmentStaff ? (
+          <FormSection step={appointmentSteps.staff!} title="Choose your stylist">
+            <input type="hidden" name="preferred_staff" value={preferredStaff} />
+            {!requestedDate.trim() ? (
+              <p className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/80 px-4 py-3 text-[13px] leading-relaxed text-[#1e40af]">
+                Pick a day above first — then we&apos;ll show who&apos;s working.
+              </p>
+            ) : staffForSelectedDate.length === 0 ? (
+              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
+                No team members are scheduled that day — try another date or continue without a preference.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setPreferredStaff("")}
+                  className={cn(
+                    "rounded-xl border-2 p-4 text-center transition-all",
+                    preferredStaff === ""
+                      ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
+                      : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
+                  )}
+                >
+                  <p className="font-semibold text-[#0f172a]">No preference</p>
+                  <p className="mt-1 text-[12px] text-[#64748b]">First available</p>
+                </button>
+                {staffForSelectedDate.map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => setPreferredStaff(member.id)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-xl border-2 p-4 text-left transition-all",
+                      preferredStaff === member.id
+                        ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md ring-2 ring-[#ddd6fe]/70"
+                        : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd] hover:shadow-sm",
+                    )}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ede9fe] text-sm font-bold text-[#5b21b6]">
+                      {member.name.trim().charAt(0).toUpperCase()}
+                    </span>
+                    <span className="font-semibold text-[#0f172a]">{member.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </FormSection>
+        ) : structuredAppointmentBooking ? (
+          <input type="hidden" name="preferred_staff" value={preferredStaff} />
+        ) : null}
+
+        {structuredAppointmentBooking ? (
+          <FormSection step={appointmentSteps.time} title="Pick a time">
+            {!requestedDate.trim() ? (
+              <p className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/80 px-4 py-3 text-[13px] leading-relaxed text-[#1e40af]">
+                Choose a day above — we&apos;ll show every slot, with booked times crossed out.
+              </p>
+            ) : null}
+            {requestedDate.trim() && !appointmentSchedule.hourRow ? (
+              <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
+                No opening hours saved for{" "}
+                <span className="font-semibold">
+                  {BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(requestedDate.trim(), venueTz)] ?? "that"} weekday
+                </span>
+                — pick another day or note your ideal time at the end.
+              </p>
+            ) : null}
+            {appointmentSlotsList.length > 0 ? (
+              <>
+                <input type="hidden" name="preferred_time" value={selectedSlotValue} />
+                <AppointmentTimeSlotPicker
+                  slots={appointmentSlotsList}
+                  value={selectedSlotValue}
+                  onChange={setSelectedSlotValue}
+                  slotMinutes={appointmentSchedule.hourRow?.slot_minutes ?? 30}
+                />
+              </>
+            ) : null}
+            {requestedDate.trim() && appointmentSchedule.hourRow && appointmentSlotsAvailable.length === 0 && appointmentSlotsList.length > 0 ? (
+              <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-[13px] leading-relaxed text-rose-900">
+                Every slot is booked or blocked that day — try another date or stylist.
+              </p>
+            ) : null}
+            {requestedDate.trim() && appointmentSchedule.hourRow && appointmentSlotsList.length === 0 ? (
+              <>
+                <p className="text-[13px] leading-relaxed text-[#92400e]">
+                  No bookable slots left in the diary — type when you&apos;d ideally like to come and the team will confirm.
+                </p>
+                <input
+                  id="preferred_time_fallback"
+                  name="preferred_time"
+                  required
+                  placeholder="Rough time — team will confirm"
+                  className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                />
+              </>
+            ) : null}
+            {requestedDate.trim() && !appointmentSchedule.hourRow ? (
+              <input
+                id="preferred_time_fallback_closed"
+                name="preferred_time"
+                required
+                placeholder="Approximate time — team will confirm"
+                className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+              />
+            ) : null}
+          </FormSection>
+        ) : null}
+
+        {structuredAppointmentBooking && hasAppointmentQuestions ? (
+          <FormSection step={appointmentSteps.questions!} title="Anything else we should know?">
+            <input type="hidden" name="appt_q_count" value={context.appointment_questions.length} />
+            <div className="space-y-3">
+              {context.appointment_questions.map((q, i) => (
+                <label key={`${q.label}-${i}`} className="block space-y-1">
+                  <span className="text-[13px] font-medium text-[#0f172a]">
+                    {q.label}
+                    {q.required ? <span className="ml-1 text-rose-600">*</span> : null}
+                  </span>
+                  <input type="hidden" name={`aq_${i}`} value={q.label} />
+                  <input
+                    name={`aa_${i}`}
+                    required={q.required}
+                    className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                  />
+                </label>
+              ))}
+            </div>
+          </FormSection>
+        ) : null}
+
+        {isAppointmentMode ? <input type="hidden" name="guest_count" value="1" /> : null}
+
+        {effectiveKind !== "" && !isAppointmentMode ? (
           <FormSection
             step={primaryKind ? 2 : effectiveKind === "event" ? 5 : 3}
-            title="How many guests?"
+            title={effectiveKind === "walk_in" ? "How many in your party?" : "How many guests?"}
           >
             <label htmlFor="guest_count" className="sr-only">
               How many are coming?
@@ -781,173 +1105,15 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         ) : null}
 
         <div className="space-y-3">
-          <input type="hidden" name="selected_service" value={selectedService} />
-          {structuredAppointmentBooking && context.appointment_services.length > 0 ? (
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-[#0f172a]">
-                What would you like? <span className="font-normal text-rose-600">*</span>
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {context.appointment_services.map((svc) => {
-                  const priceEur = (svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2);
-                  const isSelected = selectedService === svc.id;
-                  return (
-                    <button
-                      key={svc.id}
-                      type="button"
-                      onClick={() => setSelectedService(svc.id)}
-                      className={cn(
-                        "rounded-xl border-2 p-4 text-left transition-all",
-                        isSelected
-                          ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
-                          : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <p className="font-semibold text-[#0f172a]">{svc.name}</p>
-                          <p className="text-[13px] text-[#64748b]">{svc.duration_minutes} min</p>
-                        </div>
-                        {svc.price_cents > 0 && (
-                          <p className="font-semibold text-[#7c3aed]">€{priceEur}</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-          <input type="hidden" name="preferred_staff" value={preferredStaff} />
-          {structuredAppointmentBooking && context.staff_members.length > 0 ? (
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-[#0f172a]">
-                Preferred stylist <span className="font-normal text-[#94a3b8]">(optional)</span>
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setPreferredStaff("")}
-                  className={cn(
-                    "rounded-xl border-2 p-4 text-center transition-all",
-                    preferredStaff === ""
-                      ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
-                      : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
-                  )}
-                >
-                  <p className="font-semibold text-[#0f172a]">No preference</p>
-                </button>
-                {context.staff_members.map((member) => (
-                  <button
-                    key={member.id}
-                    type="button"
-                    onClick={() => setPreferredStaff(member.id)}
-                    className={cn(
-                      "rounded-xl border-2 p-4 text-center transition-all",
-                      preferredStaff === member.id
-                        ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md"
-                        : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd]",
-                    )}
-                  >
-                    <p className="font-semibold text-[#0f172a]">{member.name}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {structuredAppointmentBooking && context.appointment_questions.length > 0 ? (
-            <div className="space-y-3 border-t border-[#f1eefc] pt-3">
-              <p className="text-sm font-semibold text-[#0f172a]">A few quick questions</p>
-              <input type="hidden" name="appt_q_count" value={context.appointment_questions.length} />
-              {context.appointment_questions.map((q, i) => (
-                <label key={`${q.label}-${i}`} className="block space-y-1">
-                  <span className="text-[13px] font-medium text-[#0f172a]">
-                    {q.label}
-                    {q.required ? <span className="ml-1 text-rose-600">*</span> : null}
-                  </span>
-                  <input type="hidden" name={`aq_${i}`} value={q.label} />
-                  <input
-                    name={`aa_${i}`}
-                    required={q.required}
-                    className="h-10 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                  />
-                </label>
-              ))}
-            </div>
-          ) : null}
-          {structuredAppointmentBooking ? (
+          {!structuredAppointmentBooking ? (
             <>
-              <label htmlFor="preferred_time" className="text-sm font-semibold text-[#0f172a]">
-                Time slot<span className="font-normal text-rose-600"> *</span>
-              </label>
-              {!requestedDate.trim() ? (
-                <p className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/80 px-4 py-3 text-[13px] leading-relaxed text-[#1e40af]">
-                  Select a preferred date above — Solvio lists every discrete start time (usually{' '}
-                  <span className="font-semibold">30&nbsp;minute</span> steps) derived from weekly hours configured under{' '}
-                  <span className="font-semibold">Dashboard → Bookings</span>.
-                </p>
-              ) : null}
-              {requestedDate.trim() && !appointmentSchedule.hourRow ? (
-                <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] leading-relaxed text-[#92400e]">
-                  No opening hours saved for{' '}
-                  <span className="font-semibold">
-                    {BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(requestedDate.trim(), venueTz)] ?? "that"} weekday
-                  </span>
-                  — pick another date, or outline your ideal visit below so the venue can reconcile manually.
-                </p>
-              ) : null}
-              {appointmentSlotsList.length > 0 ? (
-                <>
-                  <select
-                    key={requestedDate.trim()}
-                    id="preferred_time"
-                    name="preferred_time"
-                    required
-                    defaultValue=""
-                    className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                  >
-                    <option value="" disabled>
-                      Choose a {(appointmentSchedule.hourRow?.slot_minutes ?? 30).toString()}-minute start…
-                    </option>
-                    {appointmentSlotsList.map((slot) => (
-                      <option key={slot.value} value={slot.value}>
-                        {slot.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] leading-relaxed text-[#94a3b8]">
-                    Times follow <span className="font-semibold text-[#64748b]">{venueTz}</span> windows from your weekday grid.
-                  </p>
-                </>
-              ) : null}
-              {requestedDate.trim() && appointmentSchedule.hourRow && appointmentSlotsList.length === 0 ? (
-                <>
-                  <p className="text-[13px] leading-relaxed text-[#92400e]">
-                    No full slot fits within the configured open/close range for that weekday — widen the window in Bookings
-                    inventory or type a fallback request below.
-                  </p>
-                  <input
-                    id="preferred_time"
-                    name="preferred_time"
-                    required
-                    placeholder='Rough arrival time (team will reschedule if needed)'
-                    className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                  />
-                </>
-              ) : null}
-              {requestedDate.trim() && !appointmentSchedule.hourRow ? (
-                <input
-                  id="preferred_time"
-                  name="preferred_time"
-                  required
-                  placeholder="Approximate arrival / ideal window..."
-                  className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none ring-offset-2 transition focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                />
-              ) : null}
+              <input type="hidden" name="selected_service" value={selectedService} />
+              <input type="hidden" name="preferred_staff" value={preferredStaff} />
             </>
-          ) : hostedCalendarMode ? (
+          ) : null}
+          {structuredAppointmentBooking ? null : hostedCalendarMode ? (
             <p className="text-[11px] leading-relaxed text-[#94a3b8]">
-              Your slot is set from the showing you chose on the calendar — times are in{' '}
+              Your slot is set from the showing you chose on the calendar — times are in{" "}
               <span className="font-semibold text-[#64748b]">{venueTz}</span>.
             </p>
           ) : (
@@ -965,7 +1131,19 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           )}
         </div>
 
-        <FormSection step={primaryKind ? 4 : 5} title="Your details" className="border-[#f1eefc] bg-[#fafbff]">
+        <FormSection
+          step={
+            structuredAppointmentBooking
+              ? appointmentSteps.details
+              : primaryKind
+                ? 4
+                : effectiveKind === "event"
+                  ? 6
+                  : 5
+          }
+          title="Your name & contact"
+          className="border-[#f1eefc] bg-[#fafbff]"
+        >
           <div className="space-y-3">
             <input
               id="customer_name"
@@ -985,6 +1163,11 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               placeholder="Email address"
             />
             <PhoneWithCountryCode required localPlaceholder="7700 900123" />
+            <p className="text-[12px] text-[#64748b]">
+              {structuredAppointmentBooking
+                ? "We’ll text or call to confirm your appointment."
+                : "The venue will use these details to confirm your booking."}
+            </p>
             <textarea
               id="notes"
               name="notes"
@@ -995,10 +1178,52 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </div>
         </FormSection>
 
+        {appointmentSummary ? (
+          <div className="rounded-2xl border border-[#ddd6fe] bg-gradient-to-br from-[#fafbff] to-[#f5f3ff] px-4 py-4 text-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7c3aed]">Your appointment</p>
+            <ul className="mt-2 space-y-1 text-[#0f172a]">
+              {appointmentSummary.service ? (
+                <li>
+                  <span className="text-[#64748b]">Service · </span>
+                  <span className="font-semibold">{appointmentSummary.service}</span>
+                </li>
+              ) : null}
+              {appointmentSummary.date ? (
+                <li>
+                  <span className="text-[#64748b]">Day · </span>
+                  <span className="font-semibold">
+                    {BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(appointmentSummary.date, venueTz)]}{" "}
+                    {appointmentSummary.date}
+                  </span>
+                </li>
+              ) : null}
+              {appointmentSummary.staff ? (
+                <li>
+                  <span className="text-[#64748b]">Stylist · </span>
+                  <span className="font-semibold">{appointmentSummary.staff}</span>
+                </li>
+              ) : null}
+              {appointmentSummary.time ? (
+                <li>
+                  <span className="text-[#64748b]">Time · </span>
+                  <span className="font-semibold">{appointmentSummary.time}</span>
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
+
         <button
           type="submit"
           disabled={
-            pending || hostedEventSubmissionBlocked || hostedCalendarSelectionBlocked || tableBlockedForHostedShow
+            pending ||
+            hostedEventSubmissionBlocked ||
+            hostedCalendarSelectionBlocked ||
+            tableBlockedForHostedShow ||
+            (hasAppointmentServices && !selectedService) ||
+            (structuredAppointmentBooking &&
+              appointmentSlotsAvailable.length > 0 &&
+              !selectedSlotValue.trim())
           }
           className={cn(
             buttonVariants({ variant: "default" }),

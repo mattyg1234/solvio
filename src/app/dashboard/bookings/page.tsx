@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
+import { guestModesFromFlowDetails } from "@/lib/booking-public-links";
 import { BookingsOverviewCalendar } from "@/components/dashboard/bookings-overview-calendar";
 import {
   BookingOperationsHub,
@@ -74,7 +75,7 @@ export default async function DashboardBookingsPage({
   const { data: businessesRaw } = await supabase
     .from("businesses")
     .select(
-      "id,name,booking_slug,time_zone,booking_flow_completed_at,booking_flow_details,stripe_connect_account_id,stripe_connect_charges_enabled",
+      "id,name,booking_slug,time_zone,booking_flow_kind,booking_flow_completed_at,booking_flow_details,stripe_connect_account_id,stripe_connect_charges_enabled",
     )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
@@ -84,6 +85,10 @@ export default async function DashboardBookingsPage({
       id: b.id,
       name: b.name,
       booking_slug: b.booking_slug as string | null,
+      guestModes: guestModesFromFlowDetails(
+        b.booking_flow_details,
+        (b as { booking_flow_kind?: string | null }).booking_flow_kind,
+      ),
     })) ?? [];
 
   const stripeReadyByBizId = Object.fromEntries(

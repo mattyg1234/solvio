@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, CalendarDays, Layers, LayoutGrid, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, Layers, LayoutGrid, Loader2, Scissors } from "lucide-react";
 
 import { saveBookingFlowSetup, type BookingFlowDetails } from "@/app/dashboard/setup/actions";
 import { buttonVariants } from "@/components/ui/button";
@@ -55,7 +55,7 @@ function defaultModesForKind(k: BookingFlowKind): BookingGuestMode[] {
     case "walk_in_waitlist":
       return ["walk_in"];
     case "mixed":
-      return ["appointment", "event", "table", "walk_in"];
+      return ["appointment", "table"];
     default:
       return ["appointment", "table", "walk_in"];
   }
@@ -77,29 +77,26 @@ const kinds: {
 }[] = [
   {
     id: "restaurant_tables",
-    title: "Table bookings",
-    description:
-      "Reserved seats or covers with party sizes — when guests choose a seating area or table group for a specific visit.",
+    title: "Tables",
+    description: "Guests pick a date, party size, and leave their details — like a normal restaurant reservation.",
     icon: LayoutGrid,
   },
   {
     id: "hosted_events",
     title: "Events",
-    description:
-      "Ticketed or hosted happenings — comedy nights, supper clubs, workshops, or any dated listing guests pick from your events calendar.",
+    description: "Guests book a specific night or show — comedy, supper club, workshop, etc.",
     icon: CalendarDays,
   },
   {
     id: "salon_appointments",
     title: "Appointments",
-    description: "Timed slots with start times and durations — consultations, sessions, visits, or any calendar-style booking.",
-    icon: CalendarClock,
+    description: "Guests pick a date and time slot — haircuts, treatments, consultations.",
+    icon: Scissors,
   },
   {
     id: "mixed",
-    title: "Mixed operations",
-    description:
-      "Combine table bookings, appointments, and hosted events — for teams that operate more than one guest flow.",
+    title: "More than one",
+    description: "You take tables, appointments, and/or events — turn on whichever you need on the next step.",
     icon: Layers,
   },
 ];
@@ -109,6 +106,7 @@ type BookingFlowSetupWizardProps = {
   businessName: string;
   initialKind: BookingFlowKind | null;
   initialDetails: BookingFlowDetails | null;
+  fromOnboarding?: boolean;
 };
 
 export function BookingFlowSetupWizard({
@@ -116,6 +114,7 @@ export function BookingFlowSetupWizard({
   businessName,
   initialKind,
   initialDetails,
+  fromOnboarding = false,
 }: BookingFlowSetupWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -126,11 +125,7 @@ export function BookingFlowSetupWizard({
   const [typicalPartySize, setTypicalPartySize] = useState(initialDetails?.typical_party_size ?? "2–4 guests");
   const [appointmentSlotMinutes, setAppointmentSlotMinutes] = useState(initialDetails?.appointment_slot_minutes ?? 30);
   const [peakHoursNote, setPeakHoursNote] = useState(initialDetails?.peak_hours_note ?? "");
-  const [mixedNotes, setMixedNotes] = useState(initialDetails?.mixed_notes ?? "");
   const [guestMessage, setGuestMessage] = useState(initialDetails?.guest_message ?? "");
-  const [blockTableWhenHostedNight, setBlockTableWhenHostedNight] = useState(
-    Boolean(initialDetails?.block_public_table_when_hosted_event_date),
-  );
   const [guestModes, setGuestModes] = useState<BookingGuestMode[]>(() =>
     coerceModes(initialDetails?.guest_booking_modes, initialKind ?? "restaurant_tables"),
   );
@@ -164,8 +159,6 @@ export function BookingFlowSetupWizard({
     const base: BookingFlowDetails = {
       guest_message: guestMessage.trim() || undefined,
       guest_booking_modes: guestModes,
-      block_public_table_when_hosted_event_date:
-        guestModes.includes("table") && guestModes.includes("event") ? blockTableWhenHostedNight : false,
     };
     if (kind === "restaurant_tables") {
       base.typical_party_size = typicalPartySize.trim() || undefined;
@@ -184,7 +177,6 @@ export function BookingFlowSetupWizard({
     if (kind === "mixed") {
       base.typical_party_size = typicalPartySize.trim() || undefined;
       base.peak_hours_note = peakHoursNote.trim() || undefined;
-      base.mixed_notes = mixedNotes.trim() || undefined;
     }
     return base;
   }
@@ -195,7 +187,11 @@ export function BookingFlowSetupWizard({
       void (async () => {
         try {
           await saveBookingFlowSetup(businessId, kind, buildDetails());
-          router.push(bookingsHubPostSetupPath(kind));
+          if (fromOnboarding) {
+            router.push("/dashboard/onboarding?step=2&booking=done");
+          } else {
+            router.push(bookingsHubPostSetupPath(kind));
+          }
           router.refresh();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not save.");
@@ -208,14 +204,14 @@ export function BookingFlowSetupWizard({
     <div className="mx-auto max-w-2xl space-y-8">
       <div className="flex flex-wrap items-center gap-4">
         <Link
-          href="/dashboard"
+          href={fromOnboarding ? "/dashboard/onboarding?step=1" : "/dashboard"}
           className={cn(
             buttonVariants({ variant: "ghost" }),
             "inline-flex h-10 items-center gap-2 px-2 text-sm font-semibold text-[#64748b] hover:text-[#0f172a]",
           )}
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          Dashboard
+          {fromOnboarding ? "Back to onboarding" : "Dashboard"}
         </Link>
         <span className="rounded-full bg-[#ede9fe] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b21b6]">
           Step {step + 1} / 4
@@ -226,10 +222,10 @@ export function BookingFlowSetupWizard({
         {step === 0 ? (
           <div className="space-y-6">
             <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">How does {businessName} take bookings?</h1>
+              <h1 className="text-2xl font-semibold tracking-tight text-[#0f172a]">How do guests book {businessName}?</h1>
               <p className="text-[15px] leading-relaxed text-[#64748b]">
-                Pick the closest fit — Solvio adjusts intake on your hosted booking link. To collect table deposits, connect
-                Stripe and publish your link from the dashboard launch checklist after you save.
+                Choose the closest match. You&apos;ll get a link like <strong className="font-semibold text-[#475569]">yoursite.com/book/your-venue</strong> to
+                share on Instagram, Google, and your website.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -262,16 +258,18 @@ export function BookingFlowSetupWizard({
 
         {step === detailStepIndex ? (
           <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-[#0f172a]">Tune defaults</h2>
-            <p className="text-sm text-[#64748b]">
-              These hints train Solvio&apos;s wording — switch anytime under Bookings setup.
+            <h2 className="text-xl font-semibold text-[#0f172a]">Your booking link</h2>
+            <p className="text-sm leading-relaxed text-[#64748b]">
+              Turn on what guests can request. You can change this anytime. Opening hours and closed days are set later in{" "}
+              <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                Bookings
+              </Link>
+              .
             </p>
 
             <div className="rounded-2xl border border-[#ede9fe] bg-[#fafbff]/90 px-4 py-4">
-              <p className="text-sm font-semibold text-[#0f172a]">What can guests book on your link?</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
-                Toggle paths guests see on your link — appointments, events, tables, or walk-in enquiries (pick any combo).
-              </p>
+              <p className="text-sm font-semibold text-[#0f172a]">Guests can book…</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#64748b]">Tap to turn each option on or off.</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {MODE_ORDER.map((m) => {
                   const active = guestModes.includes(m);
@@ -292,37 +290,19 @@ export function BookingFlowSetupWizard({
                   );
                 })}
               </div>
-              <p className="mt-2 text-[11px] font-medium text-[#94a3b8]">
-                At least one mode must stay on — Solvio hides disabled paths from guests on your booking link automatically.
-              </p>
-
-              {guestModes.includes("table") && guestModes.includes("event") ? (
-                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#e9d5ff] bg-white px-4 py-3 text-sm text-[#475569]">
-                  <input
-                    type="checkbox"
-                    checked={blockTableWhenHostedNight}
-                    onChange={(e) => setBlockTableWhenHostedNight(e.target.checked)}
-                    className="mt-1 h-4 w-4 rounded border-[#d4d4d8]"
-                  />
-                  <span className="space-y-1">
-                    <span className="block font-semibold text-[#0f172a]">Block informal table enquires during hosted-show nights</span>
-                    <span className="text-[12px] leading-relaxed text-[#64748b]">
-                      Keeps diners from requesting free-style tables while a comedy night, supper club, or other ticketed hosted listing occupies the diary — still bookable via the Events tab.
-                    </span>
-                  </span>
-                </label>
-              ) : null}
+              <p className="mt-2 text-[11px] font-medium text-[#94a3b8]">Keep at least one option on.</p>
             </div>
 
             {(kind === "restaurant_tables" || kind === "mixed") && (
               <div className="space-y-2">
                 <label htmlFor="party" className="text-sm font-semibold text-[#0f172a]">
-                  Typical party size
+                  Usual group size <span className="font-normal text-[#94a3b8]">(optional hint for guests)</span>
                 </label>
                 <input
                   id="party"
                   value={typicalPartySize}
                   onChange={(e) => setTypicalPartySize(e.target.value)}
+                  placeholder="e.g. 2–4 people"
                   className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
               </div>
@@ -331,7 +311,7 @@ export function BookingFlowSetupWizard({
             {kind === "salon_appointments" && (
               <div className="space-y-2">
                 <label htmlFor="slot" className="text-sm font-semibold text-[#0f172a]">
-                  Default appointment length
+                  How long is a typical appointment?
                 </label>
                 <select
                   id="slot"
@@ -346,12 +326,7 @@ export function BookingFlowSetupWizard({
                   ))}
                 </select>
                 <p className="text-[12px] leading-relaxed text-[#64748b]">
-                  Guests pick discrete start slots on your public booking page — length defaults to{' '}
-                  <span className="font-semibold text-[#475569]">30&nbsp;minute</span> steps unless each weekday overrides it in{' '}
-                  <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
-                    Dashboard → Bookings
-                  </Link>
-                  .
+                  Guests will pick a start time in {appointmentSlotMinutes}-minute steps. Fine-tune hours per day in Bookings after you save.
                 </p>
               </div>
             )}
@@ -361,49 +336,21 @@ export function BookingFlowSetupWizard({
               kind === "salon_appointments" ||
               kind === "walk_in_waitlist" ||
               kind === "mixed") && (
-              <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff]/80 px-4 py-4">
-                <p className="text-[13px] leading-relaxed text-[#475569]">
-                  <strong className="font-semibold text-[#0f172a]">Availability & blackout dates</strong> are managed inside{' '}
-                  <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
-                    Bookings
-                  </Link>{' '}
-                  (weekly grids + blocked days). Appointment bookings use{' '}
-                  <span className="font-semibold">a date plus a timed slot</span> generated from those hours. Ticketed or
-                  one-off happenings are configured as <span className="font-semibold">Events</span> so guests can choose those
-                  instead of a plain slot.
-                </p>
-                <div className="space-y-2">
-                  <label htmlFor="peak" className="text-sm font-semibold text-[#0f172a]">
-                    Optional note shown on booking page<span className="font-normal text-[#94a3b8]"> (marketing / caveats)</span>
-                  </label>
-                  <textarea
-                    id="peak"
-                    value={peakHoursNote}
-                    onChange={(e) => setPeakHoursNote(e.target.value)}
-                    rows={3}
-                    placeholder="Example: &quot;We open next month&apos;s bookings every Friday.&quot; — blackout days live in Dashboard → Bookings inventory."
-                    className="w-full rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-                  />
-                  <p className="text-[11px] font-medium leading-relaxed text-[#94a3b8]">
-                    Tip: Leave this blank if you rely on purely structured hours + automated slots below.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {kind === "mixed" && (
               <div className="space-y-2">
-                <label htmlFor="mixed" className="text-sm font-semibold text-[#0f172a]">
-                  Describe the hybrid flow
+                <label htmlFor="peak" className="text-sm font-semibold text-[#0f172a]">
+                  Extra message for guests <span className="font-normal text-[#94a3b8]">(optional)</span>
                 </label>
                 <textarea
-                  id="mixed"
-                  value={mixedNotes}
-                  onChange={(e) => setMixedNotes(e.target.value)}
+                  id="peak"
+                  value={peakHoursNote}
+                  onChange={(e) => setPeakHoursNote(e.target.value)}
                   rows={3}
-                  placeholder="Example: weekdays are walk-ins only — weekends reserve tables ahead; mention anything staff should remember."
-                  className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
+                  placeholder='e.g. "We reply within 2 hours. Large groups may need a deposit."'
+                  className="w-full rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                 />
+                <p className="text-[11px] font-medium leading-relaxed text-[#94a3b8]">
+                  Shows on your public booking page. Skip if you don&apos;t need it.
+                </p>
               </div>
             )}
           </div>
@@ -411,15 +358,15 @@ export function BookingFlowSetupWizard({
 
         {step === messageStepIndex ? (
           <div className="space-y-5">
-            <h2 className="text-xl font-semibold text-[#0f172a]">Guest-facing greeting</h2>
+            <h2 className="text-xl font-semibold text-[#0f172a]">Welcome message</h2>
             <p className="text-sm leading-relaxed text-[#64748b]">
-              Appears near the top of your Solvio booking page so guests know what to expect before they share contact details.
+              The first thing guests read on your booking page — say hello and set expectations.
             </p>
             <textarea
               value={guestMessage}
               onChange={(e) => setGuestMessage(e.target.value)}
               rows={5}
-              placeholder={`Example: Thanks for choosing ${businessName}. We confirm by message within an hour — larger groups may need a deposit.`}
+              placeholder={`Thanks for booking ${businessName}. We confirm by email — usually within an hour.`}
               className="w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />
           </div>
@@ -427,54 +374,38 @@ export function BookingFlowSetupWizard({
 
         {step === reviewStepIndex ? (
           <div className="space-y-5">
-            <h2 className="text-xl font-semibold text-[#0f172a]">Review booking setup</h2>
+            <h2 className="text-xl font-semibold text-[#0f172a]">Check and save</h2>
             <dl className="space-y-4 rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-5 py-5 text-sm">
               <div>
-                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Flow</dt>
+                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Type</dt>
                 <dd className="mt-1 text-[#0f172a]">{kinds.find((x) => x.id === kind)?.title}</dd>
               </div>
               <div>
-                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Guest booking paths</dt>
+                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Guests can book</dt>
                 <dd className="mt-1 text-[#475569]">
                   {guestModes.map((m) => BOOKING_GUEST_MODE_LABELS[m]).join(" · ")}
                 </dd>
               </div>
               {(kind === "restaurant_tables" || kind === "mixed") && (
                 <div>
-                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Party size hint</dt>
+                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Group size</dt>
                   <dd className="mt-1 text-[#475569]">{typicalPartySize.trim() || "—"}</dd>
                 </div>
               )}
               {kind === "salon_appointments" && (
                 <div>
-                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Slot length</dt>
+                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Appointment length</dt>
                   <dd className="mt-1 text-[#475569]">{appointmentSlotMinutes} minutes</dd>
                 </div>
               )}
               {(peakHoursNote.trim() || kind === "hosted_events" || kind === "walk_in_waitlist") && (
                 <div>
-                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Guest-visible note</dt>
+                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Extra message</dt>
                   <dd className="mt-1 text-[#475569]">{peakHoursNote.trim() || "—"}</dd>
                 </div>
               )}
-              {guestModes.includes("table") && guestModes.includes("event") ? (
-                <div>
-                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Hosted vs table clashes</dt>
-                  <dd className="mt-1 text-[#475569]">
-                    {blockTableWhenHostedNight
-                      ? "Table path pauses anytime a hosted show lands on that calendar night."
-                      : "Table path stays open even when hosted happenings exist — revisit setup if you prefer to block clashes."}
-                  </dd>
-                </div>
-              ) : null}
-              {kind === "mixed" && (
-                <div>
-                  <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Hybrid notes</dt>
-                  <dd className="mt-1 text-[#475569]">{mixedNotes.trim() || "—"}</dd>
-                </div>
-              )}
               <div>
-                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Guest message</dt>
+                <dt className="font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Welcome message</dt>
                 <dd className="mt-1 whitespace-pre-wrap text-[#475569]">{guestMessage.trim() || "—"}</dd>
               </div>
             </dl>
@@ -482,18 +413,19 @@ export function BookingFlowSetupWizard({
               <p className="font-semibold text-[#0f172a]">After you save</p>
               <ol className="mt-2 list-decimal space-y-1.5 pl-5">
                 <li>
-                  <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
-                    Connect Stripe
-                  </Link>{" "}
-                  so guests can pay table deposits
-                </li>
-                <li>
-                  Publish your booking slug under{" "}
+                  Add your tables, events, or time slots in{" "}
                   <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
                     Bookings
                   </Link>
                 </li>
-                <li>Add at least one table, event, or appointment slot for guests to choose</li>
+                <li>Share your booking link with customers</li>
+                <li>
+                  Optional:{" "}
+                  <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                    Connect Stripe
+                  </Link>{" "}
+                  if you want deposits online
+                </li>
               </ol>
             </div>
             {error ? <p className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-900">{error}</p> : null}

@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { BookingPublicForm } from "./booking-public-form";
+import { parseBookingModeQuery } from "@/lib/booking-public-links";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
 import type { AppointmentBreak } from "@/lib/booking-appointment-slots";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<{ deposit?: string | string[] }>;
+  searchParams?: Promise<{ deposit?: string | string[]; mode?: string | string[] }>;
 };
 
 function parseDepositFlash(raw: string | string[] | undefined): "success" | "cancel" | null {
@@ -84,13 +85,23 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
     guestModes = ["appointment", "table", "walk_in"];
   }
 
+  const modeQuery = parseBookingModeQuery(sp.mode);
+  const activeGuestModes =
+    modeQuery && guestModes.includes(modeQuery) ? [modeQuery] : guestModes;
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#f8fafc] via-[#fafbff] to-[#f5f3ff]/40">
       <div className="pointer-events-none absolute -left-32 top-0 h-72 w-72 rounded-full bg-[#ede9fe]/80 blur-3xl" aria-hidden />
       <div className="pointer-events-none absolute -right-24 bottom-20 h-80 w-80 rounded-full bg-[#dbeafe]/60 blur-3xl" aria-hidden />
       <div className="relative z-10 flex min-h-screen flex-col items-center px-4 py-12 md:py-16">
         <div className="w-full max-w-lg rounded-[28px] border border-[#ebe7f7]/90 bg-white/95 p-6 shadow-[0_28px_90px_-48px_rgba(124,58,237,0.35)] backdrop-blur-sm md:p-8">
-          <BookingPublicForm slug={slug} context={ctx} guestModes={guestModes} depositFlash={depositFlash} breaks={publicBreaks} />
+          <BookingPublicForm
+            slug={slug}
+            context={ctx}
+            guestModes={activeGuestModes}
+            depositFlash={depositFlash}
+            breaks={publicBreaks}
+          />
         </div>
       </div>
     </div>
