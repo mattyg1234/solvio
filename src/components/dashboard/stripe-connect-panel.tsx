@@ -27,8 +27,8 @@ export function StripeConnectPanel({ businesses }: { businesses: StripeConnectBu
   function run(fn: () => Promise<void>) {
     setError(null);
     startTransition(() => {
-      void fn().catch((e) => {
-        setError(e instanceof Error ? e.message : "Something went wrong.");
+      void fn().catch(() => {
+        setError("Something went wrong.");
       });
     });
   }
@@ -90,8 +90,12 @@ export function StripeConnectPanel({ businesses }: { businesses: StripeConnectBu
                   className="rounded-full font-semibold"
                   onClick={() =>
                     run(async () => {
-                      const { url } = await startStripeConnectOnboardingAction(b.id);
-                      window.location.href = url;
+                      const result = await startStripeConnectOnboardingAction(b.id);
+                      if (!result.ok) {
+                        setError(result.message);
+                        return;
+                      }
+                      window.location.href = result.data.url;
                     })
                   }
                 >
@@ -111,7 +115,10 @@ export function StripeConnectPanel({ businesses }: { businesses: StripeConnectBu
                       className="rounded-full"
                       onClick={() =>
                         run(async () => {
-                          await refreshStripeConnectStatusAction(b.id);
+                          const result = await refreshStripeConnectStatusAction(b.id);
+                          if (!result.ok) {
+                            setError(result.message);
+                          }
                         })
                       }
                     >
@@ -126,7 +133,11 @@ export function StripeConnectPanel({ businesses }: { businesses: StripeConnectBu
                           className="rounded-full"
                           onClick={() =>
                             run(async () => {
-                              await disconnectStripeConnectAction(b.id);
+                              const result = await disconnectStripeConnectAction(b.id);
+                              if (!result.ok) {
+                                setError(result.message);
+                                return;
+                              }
                               setConfirmDisconnectId(null);
                             })
                           }

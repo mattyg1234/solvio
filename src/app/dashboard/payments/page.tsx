@@ -45,11 +45,7 @@ export default async function DashboardPaymentsPage({
   if (sp.connect === "return" && businesses?.length) {
     for (const b of businesses) {
       if (b.stripe_connect_account_id?.trim()) {
-        try {
-          await refreshStripeConnectStatusAction(b.id);
-        } catch {
-          /* onboarding may still be incomplete */
-        }
+        await refreshStripeConnectStatusAction(b.id);
       }
     }
   }
