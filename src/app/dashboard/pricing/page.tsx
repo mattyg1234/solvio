@@ -9,6 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   BOOKING_DEMO_AI_MINUTES,
   BOOKING_MONTHLY_GBP,
+  BOOKING_PLATFORM_FEE_BPS,
   BOOKING_TRIAL_DAYS,
   PRO_AI_MINUTES,
   PRO_ANNUAL_GBP,
@@ -16,6 +17,7 @@ import {
   SCALE_AI_MINUTES,
   SCALE_MONTHLY_GBP,
   TRIAL_AI_MINUTES,
+  formatTrialEndDate,
   isTrialExpired,
   trialDaysRemaining,
 } from "@/lib/solvio-pricing";
@@ -45,16 +47,16 @@ const TIERS: TierSpec[] = [
     name: "Booking",
     monthlyDisplay: `£${BOOKING_MONTHLY_GBP}`,
     cadence: "/month",
-    blurb: `Full booking system for restaurants, bars and salons — public /book pages, deposits, and confirmations. ${BOOKING_TRIAL_DAYS}-day free trial; card required — £${BOOKING_MONTHLY_GBP}/mo starts after trial unless you cancel.`,
+    blurb: `Full booking system for restaurants, bars and salons — public /book pages, deposits, and confirmations. Add your card to continue after your free trial (£${BOOKING_MONTHLY_GBP}/mo).`,
     bullets: [
       "1 location",
       "Full booking microsite (tables, appointments, events)",
       "Stripe Connect payouts",
       `${BOOKING_DEMO_AI_MINUTES} demo AI receptionist minutes to test calls`,
-      "4% platform fee on guest deposits",
+      `${BOOKING_PLATFORM_FEE_BPS / 100}% platform fee on guest deposits`,
       "Email confirmations to guests",
     ],
-    ctaLabel: `Start ${BOOKING_TRIAL_DAYS}-day free trial`,
+    ctaLabel: "Add card · continue on Booking",
     checkoutAction: checkoutBookingAction,
   },
   {
@@ -121,7 +123,7 @@ const comparison: ComparisonRow[] = [
   { feature: "Public booking microsite", booking: true, pro: true, scale: true },
   { feature: "AI receptionist minutes / month", booking: `${BOOKING_DEMO_AI_MINUTES} demo`, pro: PRO_AI_MINUTES.toLocaleString("en-GB"), scale: SCALE_AI_MINUTES.toLocaleString("en-GB") },
   { feature: "Overage rate (per extra minute)", booking: "n/a", pro: "£0.40", scale: "£0.30" },
-  { feature: "Platform fee on guest deposits", booking: "4%", pro: "2.5%", scale: "1%" },
+  { feature: "Platform fee on guest deposits", booking: "5%", pro: "2.5%", scale: "1%" },
   { feature: "Locations included", booking: "1", pro: "2", scale: "Unlimited" },
   { feature: "Stripe Connect payouts", booking: true, pro: true, scale: true },
   { feature: "Operations hub (appointments / events / tables)", booking: true, pro: true, scale: true },
@@ -183,7 +185,34 @@ const TIER_LABELS: Record<string, string> = {
   enterprise: "Enterprise",
 };
 
-export default async function DashboardPricingPage() {
+export default async function DashboardPricingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ checkout?: string; tier?: string }>;
+}) {
+  const sp = searchParams ? await searchParams : {};
+  const checkoutNotice = (() => {
+    switch (sp.checkout) {
+      case "success":
+        return { tone: "success" as const, text: `Payment started — your ${sp.tier ?? "plan"} subscription is activating.` };
+      case "cancel":
+        return { tone: "neutral" as const, text: "Checkout cancelled — no charge was made." };
+      case "needs_stripe":
+        return { tone: "error" as const, text: "Stripe is not configured on production yet (missing secret key or price ID)." };
+      case "price_mismatch":
+        return {
+          tone: "error" as const,
+          text: "Stripe price ID does not match your platform account. In Vercel (project solvio), set STRIPE_SECRET_KEY and STRIPE_PRICE_* from mattygale2023@gmail.com — account acct_1TbSEyEMUQyVybDT (dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/apikeys).",
+        };
+      case "stripe_error":
+        return { tone: "error" as const, text: "Stripe checkout failed — check that live keys and price IDs are from the same account, then try again." };
+      case "error":
+        return { tone: "error" as const, text: "Checkout could not start. Please try again or contact support." };
+      default:
+        return null;
+    }
+  })();
+
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -204,6 +233,7 @@ export default async function DashboardPricingPage() {
   const trialDaysLeft = createdAt ? trialDaysRemaining(createdAt) : BOOKING_TRIAL_DAYS;
   const trialExpired = createdAt ? isTrialExpired(createdAt) : false;
   const onBookingTier = tier === "booking";
+  const trialEndLabel = createdAt ? formatTrialEndDate(createdAt) : null;
 
   return (
     <div className="space-y-12">
@@ -217,6 +247,19 @@ export default async function DashboardPricingPage() {
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Overview
       </Link>
+
+      {checkoutNotice ? (
+        <div
+          className={cn(
+            "rounded-[20px] border px-5 py-4 text-sm",
+            checkoutNotice.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-900",
+            checkoutNotice.tone === "neutral" && "border-[#ebe7f7] bg-[#fafbff] text-[#64748b]",
+            checkoutNotice.tone === "error" && "border-red-200 bg-red-50 text-red-900",
+          )}
+        >
+          {checkoutNotice.text}
+        </div>
+      ) : null}
 
       {/* Current subscription status */}
       <div className={cn(
@@ -252,9 +295,9 @@ export default async function DashboardPricingPage() {
         ) : (
           <p className="text-sm text-[#64748b]">
             {trialExpired
-              ? `Your ${BOOKING_TRIAL_DAYS}-day trial has ended — start Booking below to keep your link live (£${BOOKING_MONTHLY_GBP}/mo; card required).`
+              ? `Your ${BOOKING_TRIAL_DAYS}-day trial has ended — add a card on Booking below to keep your link live (£${BOOKING_MONTHLY_GBP}/mo).`
               : onFreeTrial
-                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your free trial — add a card on Booking before it ends.`
+                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your free trial${trialEndLabel ? ` (ends ${trialEndLabel})` : ""}. No card needed yet.`
                 : "Choose a plan below to activate your subscription."}
           </p>
         )}
@@ -288,10 +331,10 @@ export default async function DashboardPricingPage() {
       {onFreeTrial && !trialExpired ? (
         <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
           <p className="font-semibold">
-            {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} left on your free trial
+            When your trial ends{trialEndLabel ? ` on ${trialEndLabel}` : ""}, add a card on Booking to stay live.
           </p>
           <p className="mt-1 text-amber-800">
-            Start Booking below with your card — £{BOOKING_MONTHLY_GBP}/month begins after {BOOKING_TRIAL_DAYS} days unless you cancel.
+            £{BOOKING_MONTHLY_GBP}/month starts then — not another 7-day wait. You can add your card now; we won&apos;t charge until your trial ends. Cancel anytime in billing.
           </p>
         </div>
       ) : null}
@@ -300,7 +343,7 @@ export default async function DashboardPricingPage() {
         <div className="rounded-[20px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
           <p className="font-semibold">Your free trial has ended</p>
           <p className="mt-1">
-            Add a card on the Booking plan to keep your booking link and dashboard active (£{BOOKING_MONTHLY_GBP}/mo after {BOOKING_TRIAL_DAYS} days unless you cancel).
+            Add a card on Booking below (£{BOOKING_MONTHLY_GBP}/mo starts immediately).
           </p>
         </div>
       ) : null}

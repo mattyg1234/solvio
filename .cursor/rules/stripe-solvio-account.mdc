@@ -1,0 +1,33 @@
+---
+description: Solvio Stripe — mattygale2023@gmail.com only (never Tipsi or other logins)
+alwaysApply: true
+---
+
+# Stripe — Solvio platform account
+
+**Login:** `mattygale2023@gmail.com` only. Never Tipsi or other Stripe accounts.
+
+**Account ID:** `acct_1TbSEyEMUQyVybDT`  
+**API keys:** https://dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/apikeys  
+**Webhooks:** https://dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/workbench/webhooks
+
+`STRIPE_SECRET_KEY`, all `STRIPE_PRICE_*`, and `STRIPE_WEBHOOK_SECRET` on Vercel project **solvio** must all be from this account.
+
+## Plans (GBP/month)
+
+| Plan | Amount |
+|------|--------|
+| Booking | £50 |
+| Pro | £150 |
+| Scale | £499 |
+
+Create prices on this account (Dashboard or `node scripts/stripe-provision-solvio-prices.mjs` with `STRIPE_SECRET_KEY`), then set `STRIPE_PRICE_BOOKING`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_SCALE` on Vercel.
+
+Webhook URL: `https://www.solviosystems.com/api/webhooks/stripe`
+
+Events (platform): `checkout.session.completed`, `customer.subscription.deleted`  
+Events (Connect): `checkout.session.completed`, `account.updated` → optional `STRIPE_WEBHOOK_SECRET_CONNECT`
+
+## Cursor Stripe MCP
+
+Re-authenticate Stripe MCP while logged into Stripe as **mattygale2023@gmail.com** on **acct_1TbSEyEMUQyVybDT** — not `acct_1TakxOE6WXzG2TKU`.
