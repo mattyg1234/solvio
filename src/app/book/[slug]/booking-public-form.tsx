@@ -11,7 +11,7 @@ import {
 import {
   BOOKING_PUBLIC_WEEKDAY_SHORT,
   type BookingPublicContextPayload,
-  formatPublicTablePriceEUR,
+  formatPublicTablePrice,
   type PublicAppointmentHour,
   type PublicBusinessEvent,
   type PublicFloorTable,
@@ -25,7 +25,7 @@ import {
   isWeekdayInsideTableBookingWindows,
   tableBlockedByHostedShowMessage,
 } from "@/lib/booking-table-rules";
-import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { computeTableDepositCents, computeEventTicketCents } from "@/lib/booking-deposit-pricing";
 import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { EventOccurrenceMonthCalendar } from "./event-occurrence-calendar";
 import { AppointmentMonthCalendar } from "./appointment-month-calendar";
@@ -101,6 +101,8 @@ type BookingPublicFormProps = {
   context: BookingPublicContextPayload;
   guestModes: BookingGuestMode[];
   depositFlash?: "success" | "cancel" | null;
+  depositSuccessKind?: string | null;
+  paymentsReady?: boolean;
   breaks?: AppointmentBreak[];
 };
 
@@ -167,7 +169,15 @@ function TableFloorPreview({ tables }: { tables: PublicFloorTable[] }) {
   );
 }
 
-export function BookingPublicForm({ slug, context, guestModes, depositFlash = null, breaks = [] }: BookingPublicFormProps) {
+export function BookingPublicForm({
+  slug,
+  context,
+  guestModes,
+  depositFlash = null,
+  depositSuccessKind = null,
+  paymentsReady = false,
+  breaks = [],
+}: BookingPublicFormProps) {
   const bound = submitBookingRequestAction.bind(null, slug);
   const [state, formAction, pending] = useActionState(bound, initialState);
 
@@ -263,22 +273,6 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
     return computeTableDepositCents({ ctx: context, preferredTableLabel: preferredTable, guestCount: gc });
   }, [context, effectiveKind, partySize, preferredTable]);
 
-  const submitPaymentCents =
-    effectiveKind === "appointment" && appointmentCheckoutCents > 0
-      ? appointmentCheckoutCents
-      : effectiveKind === "table" && tableDepositCents && tableDepositCents > 0
-        ? tableDepositCents
-        : null;
-
-  const submitButtonLabel = useMemo(() => {
-    if (submitPaymentCents) return `Continue · pay ${formatMoneyDisplay(submitPaymentCents)}`;
-    if (effectiveKind === "appointment") return "Request appointment";
-    if (effectiveKind === "event") return "Request event seats";
-    if (effectiveKind === "table") return "Request table";
-    if (effectiveKind === "walk_in") return "Send walk-in enquiry";
-    return "Send booking request";
-  }, [effectiveKind, submitPaymentCents]);
-
   const todayYmd = useMemo(() => calendarYmdInZone(Date.now(), venueTz), [venueTz]);
 
   useEffect(() => {
@@ -334,6 +328,40 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   const isEventBooking = effectiveKind === "event" && guestModes.includes("event");
   /** Never show native `<input type="date">` while a hosted listing is tied to the enquiry — use the violet calendar or a strict YYYY-MM-DD fallback instead. */
   const suppressGenericPreferredDateGuestsRow = isEventBooking && pickedHostedEvent != null;
+
+  const eventTicketCents = useMemo(() => {
+    if (effectiveKind !== "event" || !pickedHostedEvent) return null;
+    const gc = Number.parseInt(partySize, 10);
+    if (!Number.isFinite(gc) || gc < 1) return null;
+    return computeEventTicketCents({
+      ticketPriceCents: pickedHostedEvent.ticket_price_cents,
+      guestCount: gc,
+    });
+  }, [effectiveKind, partySize, pickedHostedEvent]);
+
+  const submitPaymentCents = useMemo(() => {
+    if (!paymentsReady) return null;
+    if (effectiveKind === "appointment" && appointmentCheckoutCents > 0) return appointmentCheckoutCents;
+    if (effectiveKind === "table" && tableDepositCents && tableDepositCents > 0) return tableDepositCents;
+    if (effectiveKind === "event" && eventTicketCents && eventTicketCents > 0) return eventTicketCents;
+    return null;
+  }, [paymentsReady, effectiveKind, appointmentCheckoutCents, tableDepositCents, eventTicketCents]);
+
+  const pricedWithoutStripe =
+    !paymentsReady &&
+    ((effectiveKind === "appointment" && appointmentCheckoutCents > 0) ||
+      (effectiveKind === "table" && Boolean(tableDepositCents && tableDepositCents > 0)) ||
+      (effectiveKind === "event" && Boolean(eventTicketCents && eventTicketCents > 0)));
+
+  const submitButtonLabel = useMemo(() => {
+    if (pricedWithoutStripe) return "Send booking request";
+    if (submitPaymentCents) return `Continue · pay ${formatMoneyDisplay(submitPaymentCents)}`;
+    if (effectiveKind === "appointment") return "Request appointment";
+    if (effectiveKind === "event") return paymentsReady && eventTicketCents ? "Continue · pay for tickets" : "Request event seats";
+    if (effectiveKind === "table") return "Request table";
+    if (effectiveKind === "walk_in") return "Send walk-in enquiry";
+    return "Send booking request";
+  }, [effectiveKind, eventTicketCents, paymentsReady, submitPaymentCents, pricedWithoutStripe]);
 
   useEffect(() => {
     setHostedOccurrenceSel(null);
@@ -506,14 +534,22 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
   }
 
   if (depositFlash === "success") {
+    const paymentCopy =
+      depositSuccessKind === "appointment"
+        ? "Thank you — your appointment payment was processed securely."
+        : depositSuccessKind === "table"
+          ? "Thank you — your table deposit was processed securely."
+          : depositSuccessKind === "event"
+            ? "Thank you — your event tickets were paid securely."
+            : "Thank you — your payment was processed securely.";
     return (
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ecfdf5] text-emerald-600 ring-1 ring-emerald-100">
           <CalendarCheck className="h-8 w-8" aria-hidden />
         </span>
-        <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Deposit received</h2>
+        <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Payment received</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
-          Thank you — your table deposit was processed securely. {businessName} will confirm your booking using the contact details you shared.
+          {paymentCopy} {businessName} will confirm your booking using the contact details you shared.
         </p>
         <p className="mt-8 text-center text-sm text-[#94a3b8]">
           Powered by{" "}
@@ -535,7 +571,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Request received</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
           {state.emailSent
-            ? `${businessName} has your details — check your email for a confirmation with the summary below.`
+            ? `${businessName} has your details — check your email for a confirmation with the summary below (check spam if you don't see it).`
             : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
         </p>
         {s ? (
@@ -574,8 +610,8 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         ) : null}
         <p className="mt-4 text-sm text-[#64748b]">What happens next: {businessName} reviews your request and confirms by email or phone.</p>
         {!state.emailSent ? (
-          <p className="mt-3 text-sm text-amber-900/90">
-            Automatic email isn&apos;t configured on this deployment yet — your request was still saved.
+          <p className="mt-3 text-sm text-[#64748b]">
+            We couldn&apos;t send an automatic confirmation email — your request was still saved.
           </p>
         ) : null}
         <p className="mt-8 text-center text-sm text-[#94a3b8]">
@@ -671,8 +707,10 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
                 const showSeats = evt.show_remaining_seats !== false;
                 const priceLabel =
                   typeof evt.ticket_price_cents === "number" && evt.ticket_price_cents > 0
-                    ? ` · €${(evt.ticket_price_cents / 100).toFixed(evt.ticket_price_cents % 100 === 0 ? 0 : 2)}`
-                    : "";
+                    ? paymentsReady
+                      ? ` · ${formatMoneyDisplay(evt.ticket_price_cents)} / person`
+                      : ` · from ${formatMoneyDisplay(evt.ticket_price_cents)} (request only)`
+                    : " · Free RSVP";
                 const seatLabel =
                   remaining === null
                     ? ""
@@ -693,9 +731,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               if (!selected) return null;
               const priceCents = selected.ticket_price_cents;
               const isPaid = typeof priceCents === "number" && priceCents > 0;
-              const priceStr = isPaid
-                ? `€${(priceCents! / 100).toFixed(priceCents! % 100 === 0 ? 0 : 2)}`
-                : null;
+              const priceStr = isPaid ? formatMoneyDisplay(priceCents!) : null;
               const remaining =
                 typeof selected.capacity === "number" && selected.capacity > 0
                   ? Math.max(0, selected.capacity - selected.booked_count)
@@ -712,16 +748,24 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               return (
                 <div className="mt-2 space-y-2">
                   {isPaid ? (
-                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-950">
-                      Ticket price shown for reference — online payment isn&apos;t live yet. Submit your request and{" "}
-                      {businessName} will confirm how to pay.
-                    </p>
-                  ) : null}
-                  {isPaid ? (
+                    paymentsReady && eventTicketCents ? (
+                      <p className="rounded-xl border border-[#ddd6fe] bg-[#f5f3ff] px-3 py-2 text-[13px] leading-relaxed text-[#4c1d95]">
+                        Tickets are <span className="font-semibold">{priceStr}</span> per person — pay{" "}
+                        <span className="font-semibold">{formatMoneyDisplay(eventTicketCents)}</span> total at checkout to
+                        secure your seats.
+                      </p>
+                    ) : (
+                      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-950">
+                        <span className="font-semibold">Request only</span> — tickets are{" "}
+                        <span className="font-semibold">{priceStr}</span> per person. Pay at the venue or by reply after{" "}
+                        {businessName} confirms your seats.
+                      </p>
+                    )
+                  ) : (
                     <p className="rounded-xl border border-[#ddd6fe] bg-[#f5f3ff] px-3 py-2 text-[13px] font-medium text-[#5b21b6]">
-                      🎟️ From <span className="font-semibold">{priceStr}</span> per person (pay at venue / by reply)
+                      Free RSVP — submit your request and {businessName} will confirm by email or phone.
                     </p>
-                  ) : null}
+                  )}
                   {remaining !== null && showSeats ? (
                     (() => {
                       const tone =
@@ -842,14 +886,15 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         {structuredAppointmentBooking && hasAppointmentServices ? (
           <FormSection step={appointmentSteps.service!} title="Choose a service">
             <input type="hidden" name="selected_service" value={selectedService} />
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Choose a service">
               {context.appointment_services.map((svc) => {
-                const priceEur = (svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2);
+                const priceLabel = svc.price_cents > 0 ? formatMoneyDisplay(svc.price_cents) : null;
                 const isSelected = selectedService === svc.id;
                 return (
                   <button
                     key={svc.id}
                     type="button"
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedService(svc.id)}
                     className={cn(
                       "relative rounded-xl border-2 p-4 text-left transition-all",
@@ -868,8 +913,8 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
                         <p className="font-semibold text-[#0f172a]">{svc.name}</p>
                         <p className="mt-0.5 text-[13px] text-[#64748b]">{svc.duration_minutes} min</p>
                       </div>
-                      {svc.price_cents > 0 ? (
-                        <p className="shrink-0 font-semibold text-[#7c3aed]">€{priceEur}</p>
+                      {priceLabel ? (
+                        <p className="shrink-0 font-semibold text-[#7c3aed]">{priceLabel}</p>
                       ) : (
                         <p className="shrink-0 text-[12px] font-medium text-[#64748b]">Free</p>
                       )}
@@ -1157,7 +1202,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
                     <div>
                       <p className="font-semibold text-[#0f172a]">{t.label}</p>
                       <p className="text-[13px] text-[#64748b]">
-                        Seats {t.capacity} · {formatPublicTablePriceEUR(t.price_cents, t.pricing_mode)}
+                        Seats {t.capacity} · {formatPublicTablePrice(t.price_cents, t.pricing_mode)}
                       </p>
                     </div>
                   </div>
@@ -1246,6 +1291,9 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           className="border-[#f1eefc] bg-[#fafbff]"
         >
           <div className="space-y-3">
+            <label htmlFor="customer_name" className="text-sm font-semibold text-[#0f172a]">
+              Your name
+            </label>
             <input
               id="customer_name"
               name="customer_name"
@@ -1254,6 +1302,9 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               className="h-12 w-full rounded-xl border border-[#ebe7f7] bg-white px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               placeholder="Your name"
             />
+            <label htmlFor="email" className="text-sm font-semibold text-[#0f172a]">
+              Email
+            </label>
             <input
               id="email"
               name="email"
@@ -1273,6 +1324,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
               id="notes"
               name="notes"
               rows={3}
+              aria-label="Notes or special requests"
               className="w-full resize-none rounded-xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
               placeholder="Notes — allergies, accessibility, special requests…"
             />
@@ -1314,7 +1366,13 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </div>
         ) : null}
 
-        {structuredAppointmentBooking && appointmentCheckoutCents > 0 ? (
+        {pricedWithoutStripe ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
+            Online payment isn&apos;t set up yet — submit your request and {businessName} will confirm how to pay.
+          </p>
+        ) : null}
+
+        {paymentsReady && structuredAppointmentBooking && appointmentCheckoutCents > 0 ? (
           <p className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3 text-[13px] leading-relaxed text-[#4c1d95]">
             After you submit, you&apos;ll pay{" "}
             <span className="font-semibold">{formatMoneyDisplay(appointmentCheckoutCents)}</span> securely via Stripe for{" "}
@@ -1322,10 +1380,18 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
           </p>
         ) : null}
 
-        {effectiveKind === "table" && tableDepositCents && tableDepositCents > 0 ? (
+        {paymentsReady && effectiveKind === "table" && tableDepositCents && tableDepositCents > 0 ? (
           <p className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3 text-[13px] leading-relaxed text-[#4c1d95]">
             After you submit, you&apos;ll pay{" "}
             <span className="font-semibold">{formatMoneyDisplay(tableDepositCents)}</span> securely via Stripe to hold your table.
+          </p>
+        ) : null}
+
+        {paymentsReady && effectiveKind === "event" && eventTicketCents && eventTicketCents > 0 ? (
+          <p className="rounded-xl border border-[#ddd6fe] bg-[#faf7ff] px-4 py-3 text-[13px] leading-relaxed text-[#4c1d95]">
+            After you submit, you&apos;ll pay{" "}
+            <span className="font-semibold">{formatMoneyDisplay(eventTicketCents)}</span> securely via Stripe for your event
+            tickets.
           </p>
         ) : null}
 
@@ -1362,8 +1428,7 @@ export function BookingPublicForm({ slug, context, guestModes, depositFlash = nu
         By submitting, you agree {businessName} may contact you about this request.
         {context.venue_time_zone && context.venue_time_zone !== "UTC" ? (
           <span className="block pt-1">
-            Booking times you pick are local to you — confirmations email in the venue&apos;s window (
-            {context.venue_time_zone}).
+            All booking times are shown in the venue&apos;s timezone ({context.venue_time_zone}).
           </span>
         ) : null}{" "}
         Hosted on{" "}

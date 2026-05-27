@@ -15,7 +15,7 @@ function fromAddr(): string {
   return (
     process.env.SOLVIO_MAIL_FROM?.trim() ||
     process.env.RESEND_MAIL_FROM?.trim() ||
-    "Solvio <onboarding@resend.dev>"
+    "Solvio Bookings <hello@solviosystems.com>"
   );
 }
 

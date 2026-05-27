@@ -204,7 +204,7 @@ export function AppointmentMonthCalendar({
               }
               onClick={() => onSelectDate(summary.dateYmd)}
               className={cn(
-                "flex min-h-[4.5rem] flex-col items-center justify-start rounded-lg border px-0.5 py-1.5 text-[13px] font-semibold transition md:min-h-[5.25rem] md:px-1 md:py-2",
+                "flex min-h-[3rem] flex-col items-center justify-start rounded-lg border px-0.5 py-2 text-[13px] font-semibold transition sm:min-h-[4.5rem] md:min-h-[5.25rem] md:px-1 md:py-2",
                 isPast || isNoHours
                   ? "cursor-not-allowed border-transparent bg-[#f1f5f9] text-[#cbd5e1]"
                   : isClosed
@@ -216,7 +216,7 @@ export function AppointmentMonthCalendar({
             >
               <span>{domNum}</span>
               {staffPreview && isBookable ? (
-                <span className="mt-0.5 line-clamp-2 w-full px-0.5 text-center text-[8px] font-medium normal-case leading-tight text-[#6d28d9]/90 md:text-[9px]">
+                <span className="mt-0.5 hidden line-clamp-2 w-full px-0.5 text-center text-[9px] font-medium normal-case leading-tight text-[#6d28d9]/90 sm:block md:text-[10px]">
                   {staffPreview}
                 </span>
               ) : null}

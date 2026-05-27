@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 
 import { MarketingSiteVoice } from "@/components/home/marketing-site-voice";
+import { StripeConnectRequiredCallout } from "@/components/dashboard/stripe-connect-required-callout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -160,6 +161,10 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
   }
 
   async function finishLaunch() {
+    if (!props.bookingSetupComplete) {
+      setErr("Finish booking setup first — choose which guest modes you offer, then return here to go live.");
+      return;
+    }
     const aiRes = await saveOnboardingCapabilities(caps);
     if (!aiRes.ok) throw new Error(aiRes.message);
     const done = await completePlatformOnboarding();
@@ -544,12 +549,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             <p className="text-[15px] leading-relaxed text-[#64748b]">
               Apple&nbsp;Pay and Google&nbsp;Pay are included via Stripe Checkout once connected.
             </p>
-            <Link
-              href="/dashboard/payments"
-              className="inline-flex h-11 w-full items-center justify-center rounded-full bg-[#7c3aed] px-6 text-sm font-semibold text-white shadow-lg shadow-[#7c3aed]/25 hover:bg-[#6d28d9]"
-            >
-              Connect Stripe
-            </Link>
+            <StripeConnectRequiredCallout businessId={props.businessId} />
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(2)}>
                 Back
@@ -570,8 +570,10 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
       {stepIdx === 4 ? (
         <Card className="rounded-[24px] border border-[#ebe7f7] bg-white shadow-sm">
           <CardHeader className="space-y-1 text-center md:text-center">
-            <CardTitle className="text-2xl text-[#0f172a]">Your AI business system is ready</CardTitle>
-            <CardDescription>Ship the essentials now — deepen automations anytime.</CardDescription>
+            <CardTitle className="text-2xl text-[#0f172a]">You&apos;re ready to go live</CardTitle>
+            <CardDescription>
+              Finish booking setup, connect Stripe for deposits, and share your public link — AI voice is optional.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pb-8">
             <div className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-5 py-4 text-sm leading-relaxed text-[#475569]">
@@ -609,6 +611,15 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
               </Link>
             </div>
 
+            {!props.bookingSetupComplete ? (
+              <p className="text-center text-sm text-amber-900/90">
+                Complete{" "}
+                <Link href="/dashboard/setup/bookings?from=onboarding" className="font-semibold underline underline-offset-2">
+                  booking setup
+                </Link>{" "}
+                before going live.
+              </p>
+            ) : null}
             <div className="flex flex-wrap justify-center gap-3">
               <Button type="button" variant="outline" className="h-11 rounded-full font-semibold" onClick={() => setStepIdx(3)}>
                 Back
@@ -616,7 +627,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
               <Button
                 type="button"
                 className="h-11 rounded-full px-10 text-base font-semibold shadow-xl shadow-[#7c3aed]/35"
-                disabled={pending}
+                disabled={pending || !props.bookingSetupComplete}
                 onClick={() => {
                   setErr(null);
                   startTransition(() => {

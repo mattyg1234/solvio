@@ -6,10 +6,11 @@ import { parseBookingModeQuery } from "@/lib/booking-public-links";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
 import type { AppointmentBreak } from "@/lib/booking-appointment-slots";
+import { verifyBookingDepositReturn } from "@/lib/verify-booking-deposit-return";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<{ deposit?: string | string[]; mode?: string | string[] }>;
+  searchParams?: Promise<{ deposit?: string | string[]; mode?: string | string[]; session_id?: string | string[] }>;
 };
 
 function parseDepositFlash(raw: string | string[] | undefined): "success" | "cancel" | null {
@@ -17,6 +18,11 @@ function parseDepositFlash(raw: string | string[] | undefined): "success" | "can
   if (v === "success") return "success";
   if (v === "cancel") return "cancel";
   return null;
+}
+
+function parseSessionId(raw: string | string[] | undefined): string | null {
+  const v = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
+  return v?.trim() || null;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -37,7 +43,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PublicBookingPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const sp = searchParams ? await searchParams : {};
-  const depositFlash = parseDepositFlash(sp.deposit);
+  const sessionId = parseSessionId(sp.session_id);
+  let depositFlash = parseDepositFlash(sp.deposit);
+  let depositSuccessKind: string | null = null;
+
+  if (depositFlash === "success") {
+    if (!sessionId) {
+      depositFlash = null;
+    } else {
+      const verified = await verifyBookingDepositReturn({ sessionId, slug: slug.trim() });
+      if (!verified.ok) {
+        depositFlash = null;
+      } else {
+        depositSuccessKind = verified.bookingKind;
+      }
+    }
+  }
+
   if (!slug?.trim()) {
     notFound();
   }
@@ -46,7 +68,11 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
   const admin = createSupabaseServiceRoleClient();
   const [{ data, error }, { data: bizRow }] = await Promise.all([
     supabase.rpc("get_booking_public_context", { p_slug: slug.trim() }),
-    admin.from("businesses").select("id").eq("booking_slug", slug.trim()).maybeSingle(),
+    admin
+      .from("businesses")
+      .select("id,stripe_connect_account_id,stripe_connect_charges_enabled")
+      .eq("booking_slug", slug.trim())
+      .maybeSingle(),
   ]);
 
   if (error) {
@@ -56,9 +82,8 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
         <div className="max-w-md rounded-[24px] border border-rose-100 bg-white p-8 text-center shadow-sm">
           <h1 className="text-lg font-semibold text-[#0f172a]">Booking page temporarily unavailable</h1>
           <p className="mt-3 text-sm leading-relaxed text-[#64748b]">
-            We couldn&apos;t load this venue&apos;s booking setup. If you&apos;re the owner, open Supabase → SQL Editor
-            and run the latest migrations (including{" "}
-            <code className="font-mono text-xs">20260621180000_repair_event_custom_questions.sql</code>), then try again.
+            We couldn&apos;t load this venue&apos;s booking page right now. If you&apos;re the owner, sign in to your
+            Solvio dashboard to check your booking link and setup — or try again in a few minutes.
           </p>
         </div>
       </div>
@@ -70,6 +95,10 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
   if (!ctx) {
     notFound();
   }
+
+  const paymentsReady = Boolean(
+    bizRow?.stripe_connect_account_id?.trim() && bizRow?.stripe_connect_charges_enabled,
+  );
 
   let publicBreaks: AppointmentBreak[] = [];
   if (bizRow?.id) {
@@ -100,6 +129,8 @@ export default async function PublicBookingPage({ params, searchParams }: PagePr
             context={ctx}
             guestModes={activeGuestModes}
             depositFlash={depositFlash}
+            depositSuccessKind={depositSuccessKind}
+            paymentsReady={paymentsReady}
             breaks={publicBreaks}
           />
         </div>

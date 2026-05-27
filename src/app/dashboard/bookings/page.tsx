@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
+import { BookingsCalendarCollapsible } from "@/components/dashboard/bookings-calendar-collapsible";
 import { guestModesFromFlowDetails } from "@/lib/booking-public-links";
-import { BookingsOverviewCalendar } from "@/components/dashboard/bookings-overview-calendar";
 import {
   BookingOperationsHub,
   type AppointmentWeekRow,
@@ -102,6 +102,10 @@ export default async function DashboardBookingsPage({
   const bizNameById = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
   const primaryBizId = businesses[0]?.id ?? null;
   const primaryBizName = businesses[0]?.name ?? null;
+  const primaryBookingSlug = businesses[0]?.booking_slug?.trim() || null;
+  const publicBookingUrl = primaryBookingSlug
+    ? `${siteUrl.replace(/\/$/, "")}/book/${encodeURIComponent(primaryBookingSlug)}`
+    : null;
   const primaryVenueTz = coerceValidIanaTimeZone(businessesRaw?.[0]?.time_zone ?? "");
 
   const primaryBookingFlowComplete = Boolean(businessesRaw?.[0]?.booking_flow_completed_at);
@@ -275,7 +279,7 @@ export default async function DashboardBookingsPage({
 
       {primaryBizId && primaryBizName ? (
         <div id="booking-calendar" className="scroll-mt-6">
-          <BookingsOverviewCalendar
+          <BookingsCalendarCollapsible
             businessId={primaryBizId}
             businessName={primaryBizName}
             venueTimeZone={primaryVenueTz}
@@ -340,6 +344,7 @@ export default async function DashboardBookingsPage({
           initialOfferingsSub={hub.offeringsSub}
           bookingRequestHighlight={hub.bookingHighlight}
           stripeReadyByBizId={stripeReadyByBizId}
+          publicBookingUrl={publicBookingUrl}
           staffMembers={staffMembers}
           appointmentQuestions={appointmentQuestions}
           appointmentServices={appointmentServices}

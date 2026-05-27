@@ -4,6 +4,7 @@ import {
   type CallBookingDetails,
 } from "@/lib/booking-from-phone-call";
 import { computeTableDepositCentsFromTableRow } from "@/lib/booking-deposit-pricing";
+import { formatMoney } from "@/lib/checkout-money";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
 import { parseBookingPublicContext } from "@/lib/booking-public-context";
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
@@ -15,8 +16,8 @@ function preferredTableFromIntake(extras: unknown): string {
   return typeof o.preferred_table === "string" ? o.preferred_table.trim() : "";
 }
 
-function formatEuro(cents: number): string {
-  return `€${(cents / 100).toFixed(2)}`;
+function formatDepositLabel(cents: number): string {
+  return formatMoney(cents);
 }
 
 export type SendGuestDepositPaymentLinkResult =
@@ -255,7 +256,7 @@ export async function sendGuestDepositPaymentLink(params: {
     return {
       ok: true,
       amountCents: req.deposit_amount_cents ?? 0,
-      amountLabel: req.deposit_amount_cents ? formatEuro(req.deposit_amount_cents) : "paid",
+      amountLabel: req.deposit_amount_cents ? formatDepositLabel(req.deposit_amount_cents) : "paid",
       smsSent: false,
       alreadyPaid: true,
       checkoutUrl: "",
@@ -273,7 +274,7 @@ export async function sendGuestDepositPaymentLink(params: {
     return {
       ok: false,
       message:
-        "Set table pricing under Bookings → Tables, or tell the AI an exact deposit amount in euros when placing the call.",
+        "Set table pricing under Bookings → Tables, or tell the AI an exact deposit amount when placing the call.",
     };
   }
 
@@ -307,7 +308,7 @@ export async function sendGuestDepositPaymentLink(params: {
 
   const smsSent = (await sendBookingSms({ phoneE164: guestPhone, body: smsBody })).ok;
 
-  const logBody = `Deposit link (${formatEuro(amountCents)})${smsSent ? " sent by SMS" : " created — SMS not configured on deployment"}.`;
+  const logBody = `Deposit link (${formatDepositLabel(amountCents)})${smsSent ? " sent by SMS" : " created — SMS not configured on deployment"}.`;
 
   if (linkedBookingRequestId) {
     await admin.from("booking_messages").insert({
@@ -344,7 +345,7 @@ export async function sendGuestDepositPaymentLink(params: {
   return {
     ok: true,
     amountCents,
-    amountLabel: formatEuro(amountCents),
+    amountLabel: formatDepositLabel(amountCents),
     smsSent,
     alreadyPaid: false,
     checkoutUrl,
@@ -352,5 +353,5 @@ export async function sendGuestDepositPaymentLink(params: {
 }
 
 export function buildDepositSmsPreview(businessName: string, amountCents: number, checkoutUrl: string): string {
-  return `${businessName} — secure deposit ${formatEuro(amountCents)}. Pay here to confirm your booking: ${checkoutUrl}`;
+  return `${businessName} — secure deposit ${formatDepositLabel(amountCents)}. Pay here to confirm your booking: ${checkoutUrl}`;
 }

@@ -7,6 +7,7 @@ import { LaunchChecklist } from "@/components/dashboard/launch-checklist";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
@@ -94,9 +95,9 @@ export default async function DashboardOverviewPage() {
 
   const todayRevenueLabel =
     todayDepositRevenueCents > 0
-      ? new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" }).format(todayDepositRevenueCents / 100)
+      ? formatMoneyDisplay(todayDepositRevenueCents)
       : stripeChargesEnabled
-        ? "€0"
+        ? formatMoneyDisplay(0)
         : "—";
 
   let recentSignals: {
@@ -128,7 +129,7 @@ export default async function DashboardOverviewPage() {
         <div className="pointer-events-none absolute -right-24 top-0 h-56 w-56 rounded-full bg-[#a78bfa]/15 blur-3xl" aria-hidden />
         <div className="relative max-w-2xl space-y-5">
           <Badge className="rounded-full bg-[#ede9fe] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#5b21b6] hover:bg-[#ede9fe]">
-            Ops pulse
+            Today at a glance
           </Badge>
           <h2 className="text-[clamp(1.65rem,4vw,2.35rem)] font-semibold tracking-tight text-[#0f172a] leading-tight">
             Calmer shifts, fuller books — without living on the phone.
@@ -180,6 +181,7 @@ export default async function DashboardOverviewPage() {
       </section>
 
       <LaunchChecklist
+        businessId={primaryBiz?.id ?? null}
         hasBusiness={Boolean(businesses?.length)}
         businessName={primaryBusinessName}
         bookingFlowComplete={bookingFlowComplete}
@@ -242,7 +244,7 @@ export default async function DashboardOverviewPage() {
         </Card>
         <Card className="rounded-[20px] border border-[#ebe7f7] bg-white shadow-sm sm:col-span-2 xl:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[13px] font-semibold text-[#64748b]">Pipeline depth</CardTitle>
+            <CardTitle className="text-[13px] font-semibold text-[#64748b]">Open requests</CardTitle>
             <Radar className="h-4 w-4 text-[#7c3aed]" aria-hidden />
           </CardHeader>
           <CardContent className="pb-5 pt-1 space-y-1">
@@ -255,8 +257,8 @@ export default async function DashboardOverviewPage() {
       <section className="grid gap-5 lg:grid-cols-2">
         <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg text-[#0f172a]">Living activity</CardTitle>
-            <CardDescription>Latest guest signals — merges with AI transcripts later.</CardDescription>
+            <CardTitle className="text-lg text-[#0f172a]">Recent activity</CardTitle>
+            <CardDescription>Latest guest requests — AI call transcripts join here later.</CardDescription>
           </CardHeader>
           <CardContent className="pb-6">
             {!recentSignals.length ? (

@@ -172,7 +172,7 @@ export default async function DashboardCallsPage() {
                 </div>
                 <p className="mt-2 text-xs text-[#64748b]">
                   {over > 0
-                    ? `${over.toFixed(0)} min over cap · overage billed at €0.40/min`
+                    ? `${over.toFixed(0)} min over cap · overage billed at £0.40/min`
                     : `${u.call_count} call${u.call_count === 1 ? "" : "s"} this month`}
                 </p>
               </div>

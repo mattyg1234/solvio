@@ -13,6 +13,7 @@ export async function createBookingDepositCheckoutSession(args: {
   guestEmail: string;
   description: string;
   slug: string;
+  checkoutKind?: "appointment" | "table" | "event";
 }): Promise<string | null> {
   const stripe = stripeClient();
   if (!stripe) return null;
@@ -67,8 +68,9 @@ export async function createBookingDepositCheckoutSession(args: {
         solvio_business_id: args.businessId,
         solvio_booking_slug: args.slug,
         solvio_platform_fee_cents: String(platformFeeCents),
+        ...(args.checkoutKind ? { solvio_checkout_kind: args.checkoutKind } : {}),
       },
-      success_url: `${siteUrl}/book/${encodeURIComponent(args.slug)}?deposit=success`,
+      success_url: `${siteUrl}/book/${encodeURIComponent(args.slug)}?deposit=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/book/${encodeURIComponent(args.slug)}?deposit=cancel`,
     },
     { stripeAccount: args.connectAccountId },

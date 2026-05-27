@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { SUPPORT_EMAIL, supportMailtoHref } from "@/lib/site-contact";
+
+export const metadata: Metadata = {
+  title: "Terms of service · Solvio",
+  description: "Terms for merchants and guests using Solvio booking pages and Stripe Connect deposits.",
+};
 
 export default function TermsPage() {
   return (
@@ -28,6 +35,17 @@ export default function TermsPage() {
           <h2 className="text-lg font-semibold text-[#0f172a]">Limitation</h2>
           <p>
             Solvio is provided as-is during early access. We strive for reliability but do not guarantee uninterrupted service.
+          </p>
+          <p>
+            Questions:{" "}
+            <a href={supportMailtoHref()} className="font-semibold text-[#7c3aed] hover:underline">
+              {SUPPORT_EMAIL}
+            </a>
+          </p>
+          <p>
+            <Link href="/privacy" className="font-semibold text-[#7c3aed] hover:underline">
+              Privacy policy
+            </Link>
           </p>
           <p>
             <Link href="/" className="font-semibold text-[#7c3aed] hover:underline">

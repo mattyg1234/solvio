@@ -7,7 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isStaleAuthSessionError } from "@/lib/supabase/auth-errors";
 
 /**
- * Clears broken Supabase cookies client-side (e.g. after Volvio reset or Tipsi → Volvio cutover).
+ * Clears broken Supabase cookies client-side (e.g. after project reset or auth migration).
  */
 export function AuthSessionRecovery() {
   const router = useRouter();

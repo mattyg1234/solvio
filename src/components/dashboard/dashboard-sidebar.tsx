@@ -14,6 +14,8 @@ import {
   Megaphone,
   MessageCircleQuestion,
   Mic2,
+  Phone,
+  PhoneCall,
   Radar,
   Settings2,
   Sparkles,
@@ -58,6 +60,8 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
       icon: Mic2,
       key: "receptionist",
     });
+    items.push({ href: "/dashboard/calls", label: "Call history", icon: PhoneCall, key: "calls" });
+    items.push({ href: "/dashboard/phone", label: "Phone numbers", icon: Phone, key: "phone" });
   }
 
   if (cap.lead_generation) {

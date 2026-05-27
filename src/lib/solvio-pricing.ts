@@ -12,6 +12,8 @@ export const PRO_ANNUAL_GBP = Math.round(PRO_MONTHLY_GBP * 12 * 0.9); // 10% off
 export const SCALE_MONTHLY_GBP = 499;
 
 export const TRIAL_AI_MINUTES = 50;
+/** Platform fee on guest deposits during the free trial (1000 = 10%). */
+export const TRIAL_PLATFORM_FEE_BPS = 1000;
 export const PRO_AI_MINUTES = 1000;
 export const SCALE_AI_MINUTES = 3000;
 

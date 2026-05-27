@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { computeTableDepositCentsFromTableRow } from "@/lib/booking-deposit-pricing";
+import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
 import { parseBookingPublicContext } from "@/lib/booking-public-context";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -105,7 +106,7 @@ export async function createDepositCheckoutForBookingRequest(params: {
 
   if (amountCents == null || amountCents < 50) {
     throw new Error(
-      "Set a deposit amount (minimum €0.50) or configure table pricing under Dashboard → Bookings → Tables.",
+      `Set a deposit amount (minimum ${formatMoneyDisplay(50)}) or configure table pricing under Dashboard → Bookings → Tables.`,
     );
   }
 

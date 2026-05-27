@@ -32,7 +32,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { data: primaryBiz } = await supabase
     .from("businesses")
-    .select("platform_capabilities,onboarding_completed_at,campaigns_enabled")
+    .select(
+      "platform_capabilities,onboarding_completed_at,campaigns_enabled,stripe_connect_account_id,stripe_connect_charges_enabled",
+    )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -41,6 +43,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const capabilities = resolvePlatformCapabilities(primaryBiz?.platform_capabilities);
   const needsOnboarding = businessNeedsOnboarding(primaryBiz ?? null);
   const campaignsEnabled = Boolean((primaryBiz as { campaigns_enabled?: boolean } | null)?.campaigns_enabled);
+  const stripePaymentsReady = Boolean(
+    primaryBiz?.stripe_connect_account_id?.trim() && primaryBiz?.stripe_connect_charges_enabled,
+  );
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -51,7 +56,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col pb-[5.75rem] md:pb-0">
-          <DashboardHeader email={user.email ?? ""} greetingName={greetingName} />
+          <DashboardHeader
+            email={user.email ?? ""}
+            greetingName={greetingName}
+            stripePaymentsReady={stripePaymentsReady}
+          />
           <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-10">{children}</main>
 
           <DashboardMobileNav capabilities={capabilities} campaignsEnabled={campaignsEnabled} />

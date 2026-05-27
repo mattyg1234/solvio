@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
 import { Button } from "@/components/ui/button";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type LoginFormProps = {
   authCallbackError?: string | null;
@@ -56,7 +58,7 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
     setResetLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard/settings`;
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent("/dashboard/settings?password=reset")}`;
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (resetErr) {
         setError(resetErr.message);
@@ -88,7 +90,7 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
           type="email"
           autoComplete="email"
           required
-          placeholder="you@business.es"
+          placeholder={SIGNUP_EMAIL_PLACEHOLDER}
           className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
         />
       </div>
@@ -102,25 +104,17 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
             type="button"
             disabled={resetLoading}
             onClick={() => void onForgotPassword()}
-            className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7c3aed] hover:underline disabled:opacity-50"
+            className="text-sm font-semibold text-[#7c3aed] hover:underline disabled:opacity-50"
           >
-            Forgot?
+            {resetLoading ? "Sending…" : "Forgot password?"}
           </button>
         </div>
-        <input
-          id="login-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          placeholder="••••••••"
-          className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
-        />
+        <PasswordInput id="login-password" autoComplete="current-password" required placeholder="Your password" />
       </div>
 
       {resetSent ? (
         <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-relaxed text-emerald-900">
-          Password reset link sent — check your inbox.
+          Password reset link sent — check your inbox, then choose a new password on Settings.
         </p>
       ) : null}
 

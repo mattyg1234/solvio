@@ -40,6 +40,17 @@ function centsFromTablePricing(
   return table.price_cents;
 }
 
+/** Ticket total for hosted events (price × party size), in cents. */
+export function computeEventTicketCents(args: {
+  ticketPriceCents: number | null | undefined;
+  guestCount: number;
+}): number | null {
+  const unit = args.ticketPriceCents;
+  if (typeof unit !== "number" || unit <= 0) return null;
+  const guests = Math.max(1, Math.min(999, Math.floor(args.guestCount)));
+  return unit * guests;
+}
+
 /** Guide deposit for table enquiries from public booking context (cents). */
 export function computeTableDepositCents(args: {
   ctx: BookingPublicContextPayload;

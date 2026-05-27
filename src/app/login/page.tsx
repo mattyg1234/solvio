@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { SiteAuthFooter } from "@/components/site/site-auth-footer";
 import { SiteHeader } from "@/components/site/site-header";
 import {
   Card,
@@ -64,6 +65,7 @@ export default async function LoginPage({
           </Card>
         </div>
       </main>
+      <SiteAuthFooter />
     </>
   );
 }

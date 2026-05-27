@@ -230,7 +230,7 @@ export default async function DashboardCampaignsPage() {
                           <p className="font-semibold text-[#0f172a]">{c.name}</p>
                           <p className="text-xs text-[#64748b]">
                             {c.total_calls_attempted} attempted · {c.total_calls_answered} answered ·{" "}
-                            <span className="font-semibold text-[#5b21b6]">{conversionPct}%</span> conversion · €
+                            <span className="font-semibold text-[#5b21b6]">{conversionPct}%</span> conversion · £
                             {(c.total_cost_cents / 100).toFixed(2)} spent
                           </p>
                         </div>

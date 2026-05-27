@@ -1,6 +1,6 @@
 "use server";
 
-import { computeTableDepositCents } from "@/lib/booking-deposit-pricing";
+import { computeTableDepositCents, computeEventTicketCents } from "@/lib/booking-deposit-pricing";
 import { formatMoney } from "@/lib/checkout-money";
 import { validateBookingPhone } from "@/lib/normalize-phone";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
@@ -8,6 +8,7 @@ import { getBookingSubmitRateFingerprint } from "@/lib/booking-submit-fingerprin
 import { parseBookingPublicContext, parseGuestModesFromRpc } from "@/lib/booking-public-context";
 import { isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { validateHostedEventSubmission } from "@/lib/booking-hosted-submit";
+import { assertEventCapacityForSubmit } from "@/lib/booking-event-capacity";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
 import { dowSundayZeroInBusinessTZ, validateAppointmentSlotSelection, type AppointmentBreak } from "@/lib/booking-appointment-slots";
 import { isStaffWorkingOnWeekday } from "@/lib/staff-members";
@@ -36,6 +37,13 @@ function mergeGuestIntakeNotes(base: string, lines: string[]): string {
   const block = ["--- Guest intake extras ---", ...cleaned.map((l) => `• ${l}`)].join("\n");
   const trimmed = base.trim();
   return trimmed ? `${trimmed}\n\n${block}` : block;
+}
+
+function guestFriendlyPreferredTime(raw: string): string {
+  const trimmed = raw.trim();
+  const slotMatch = /·\s*(\d{2}:\d{2}[–-]\d{2}:\d{2})/.exec(trimmed);
+  if (slotMatch) return slotMatch[1];
+  return trimmed.replace(/^\d{4}-\d{2}-\d{2}\s·\s*/, "").replace(/\s*\(UTC\)\s*$/, "").trim();
 }
 
 export async function submitBookingRequestAction(
@@ -149,10 +157,12 @@ export async function submitBookingRequestAction(
     intakeExtras.selected_service_duration = selectedServiceMatch.duration_minutes;
     intakeExtras.selected_service_price_cents = selectedServiceMatch.price_cents;
     const priceStr =
-      selectedServiceMatch.price_cents > 0
-        ? ` · €${(selectedServiceMatch.price_cents / 100).toFixed(selectedServiceMatch.price_cents % 100 === 0 ? 0 : 2)}`
-        : "";
+      selectedServiceMatch.price_cents > 0 ? ` · ${formatMoney(selectedServiceMatch.price_cents)}` : "";
     intakeLines.push(`Service: ${selectedServiceMatch.name} (${selectedServiceMatch.duration_minutes} min)${priceStr}`);
+  }
+
+  if (hostedEventId) {
+    intakeExtras.hosted_event_id = hostedEventId;
   }
 
   if (preferredStaffId) {
@@ -281,21 +291,26 @@ export async function submitBookingRequestAction(
     return { ok: false, message: tableBookingCheck.message };
   }
 
-  // Event capacity guard: stop overbooking when the chosen event has a cap.
-  if (bookingKind === "event" && parsedCtx && hostedEventId) {
+  // Event capacity guard — fresh DB read to reduce overbooking races.
+  if (bookingKind === "event" && hostedEventId && parsedCtx) {
+    const admin = createSupabaseServiceRoleClient();
+    const { data: bizRow } = await admin
+      .from("businesses")
+      .select("id")
+      .ilike("booking_slug", slug.trim())
+      .maybeSingle();
     const evt = parsedCtx.events.find((e) => e.id === hostedEventId);
-    if (evt && typeof evt.capacity === "number" && evt.capacity > 0) {
-      const remaining = Math.max(0, evt.capacity - evt.booked_count);
-      const wantedParsed = parseInt(guestCount, 10);
-      const wanted = Number.isFinite(wantedParsed) && wantedParsed > 0 ? wantedParsed : 1;
-      if (remaining <= 0) {
-        return { ok: false, message: `${evt.title} is sold out — no seats remaining.` };
-      }
-      if (wanted > remaining) {
-        return {
-          ok: false,
-          message: `${evt.title} only has ${remaining} seat${remaining === 1 ? "" : "s"} left — adjust party size to ${remaining} or fewer.`,
-        };
+    const wantedParsed = parseInt(guestCount, 10);
+    const wanted = Number.isFinite(wantedParsed) && wantedParsed > 0 ? wantedParsed : 1;
+    if (bizRow?.id && evt) {
+      const capCheck = await assertEventCapacityForSubmit({
+        eventId: hostedEventId,
+        businessId: bizRow.id,
+        wantedGuests: wanted,
+        eventTitle: evt.title,
+      });
+      if (!capCheck.ok) {
+        return { ok: false, message: capCheck.message };
       }
     }
   }
@@ -373,6 +388,7 @@ export async function submitBookingRequestAction(
               guestEmail: email,
               description: `${parsedCtx.business_name} · ${label}`,
               slug: slug.trim(),
+              checkoutKind: "table",
             });
             if (url) depositCheckoutUrl = url;
           }
@@ -421,12 +437,67 @@ export async function submitBookingRequestAction(
             guestEmail: email,
             description: `${parsedCtx.business_name} · ${checkoutLabel}`,
             slug: slug.trim(),
+            checkoutKind: "appointment",
           });
           if (url) depositCheckoutUrl = url;
         }
       }
     } catch {
       /* additive — booking request is already saved as pending */
+    }
+  }
+
+  // Event ticket checkout — ticket price × party size when Stripe Connect is ready.
+  if (
+    parsedCtx &&
+    bookingId &&
+    typeof bookingId === "string" &&
+    bkLower === "event" &&
+    allowedKinds.includes("event") &&
+    !depositCheckoutUrl &&
+    hostedEventId
+  ) {
+    const evt = parsedCtx.events.find((e) => e.id === hostedEventId);
+    const ticketTotal = computeEventTicketCents({
+      ticketPriceCents: evt?.ticket_price_cents,
+      guestCount: gc,
+    });
+
+    if (ticketTotal && ticketTotal > 0) {
+      try {
+        const admin = createSupabaseServiceRoleClient();
+        const { data: bookingRow } = await admin
+          .from("booking_requests")
+          .select("business_id")
+          .eq("id", bookingId)
+          .maybeSingle();
+
+        if (bookingRow?.business_id) {
+          const { data: biz } = await admin
+            .from("businesses")
+            .select("id, stripe_connect_account_id, stripe_connect_charges_enabled")
+            .eq("id", bookingRow.business_id)
+            .maybeSingle();
+
+          const connectId = biz?.stripe_connect_account_id?.trim();
+          if (connectId && biz?.stripe_connect_charges_enabled && biz.id) {
+            const eventLabel = (evt?.title ?? eventTitle).trim() || "Event tickets";
+            const url = await createBookingDepositCheckoutSession({
+              bookingRequestId: bookingId,
+              businessId: biz.id,
+              connectAccountId: connectId,
+              amountCents: ticketTotal,
+              guestEmail: email,
+              description: `${parsedCtx.business_name} · ${eventLabel}`,
+              slug: slug.trim(),
+              checkoutKind: "event",
+            });
+            if (url) depositCheckoutUrl = url;
+          }
+        }
+      } catch {
+        /* additive — enquiry already saved */
+      }
     }
   }
 
@@ -442,19 +513,28 @@ export async function submitBookingRequestAction(
       bkLower === "table"
         ? computeTableDepositCents({ ctx: parsedCtx!, preferredTableLabel: preferredTable, guestCount: gc })
         : null;
+    const eventTicket =
+      bkLower === "event" && hostedEventId
+        ? computeEventTicketCents({
+            ticketPriceCents: parsedCtx!.events.find((e) => e.id === hostedEventId)?.ticket_price_cents,
+            guestCount: gc,
+          })
+        : null;
     const amountCents =
       selectedServiceMatch?.price_cents && selectedServiceMatch.price_cents > 0
         ? selectedServiceMatch.price_cents
         : tableDeposit && tableDeposit > 0
           ? tableDeposit
-          : null;
+          : eventTicket && eventTicket > 0
+            ? eventTicket
+            : null;
     if (amountCents) paymentLabel = `Complete ${formatMoney(amountCents)} on Stripe to secure your booking.`;
   }
 
   const summary: SubmitBookingSummary = {
     bookingKind: bkLower,
     requestedDate: requestedDate.trim() || undefined,
-    preferredTime: preferredTimeRaw.trim() || undefined,
+    preferredTime: preferredTimeRaw.trim() ? guestFriendlyPreferredTime(preferredTimeRaw) : undefined,
     serviceName: selectedServiceMatch?.name,
     staffName: staffMatch?.name,
     guestCount: guestCount.trim() || undefined,

@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/checkout-money";
 import { normalizePhoneE164 } from "@/lib/normalize-phone";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -12,8 +13,8 @@ export type CallBookingDetails = {
   eventTitle?: string;
 };
 
-function formatEuro(cents: number): string {
-  return `€${(cents / 100).toFixed(2)}`;
+function formatDepositLabel(cents: number): string {
+  return formatMoney(cents);
 }
 
 /** Best-effort parse "7:30pm" / "19:30" / "8 PM" → {hours, minutes}. */
@@ -281,7 +282,7 @@ export function buildDepositSmsBody(params: {
     `Hi ${guest} — ${biz}`,
     `${partyLine}${when}.`.replace(/\s+/g, " "),
     notesLine.trim(),
-    `Secure deposit ${formatEuro(params.amountCents)} to confirm:`,
+    `Secure deposit ${formatDepositLabel(params.amountCents)} to confirm:`,
     params.checkoutUrl,
     "Pay on Stripe — your table is held once payment completes.",
   ]
@@ -291,4 +292,4 @@ export function buildDepositSmsBody(params: {
     .trim();
 }
 
-export { formatEuro as formatDepositEuro };
+export { formatDepositLabel as formatDepositEuro };

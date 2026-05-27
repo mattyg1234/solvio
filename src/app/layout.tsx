@@ -20,24 +20,24 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.solviosystems.com"),
-  title: "Solvio · AI reception that grows your business",
+  title: "Solvio · Booking pages with Stripe deposits",
   description:
-    "Solvio answers calls, books reservations, collects deposits via Stripe Connect, syncs calendars and confirms guests — commerce-ready AI for local businesses.",
+    "Launch a public booking link in minutes. Guests pick appointments, tables or events and pay deposits straight to your Stripe account — optional AI receptionist on Pro.",
   applicationName: "Solvio",
   manifest: "/manifest.webmanifest",
   openGraph: {
     type: "website",
     siteName: "Solvio",
-    title: "Solvio · AI reception that grows your business",
+    title: "Solvio · Booking pages with Stripe deposits",
     description:
-      "AI receptionist that books, takes deposits and confirms guests — purpose-built for restaurants, salons and cafés.",
+      "Public /book pages for restaurants, salons and cafés — appointments, tables, events, and Stripe Connect checkout.",
     url: "https://www.solviosystems.com",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Solvio · AI reception that grows your business",
+    title: "Solvio · Booking pages with Stripe deposits",
     description:
-      "AI receptionist that books, takes deposits and confirms guests — purpose-built for restaurants, salons and cafés.",
+      "Public /book pages for restaurants, salons and cafés — appointments, tables, events, and Stripe Connect checkout.",
   },
 };
 

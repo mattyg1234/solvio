@@ -38,7 +38,13 @@ function revBookings() {
   revalidatePath("/dashboard/bookings");
 }
 
-async function assertStripeReadyForServicePrice(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>, businessId: string, priceCents: number) {
+const STRIPE_REQUIRED_FOR_PAID_MESSAGE = "To accept payments, connect Stripe first.";
+
+async function assertStripeReadyForPaidAmount(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  businessId: string,
+  priceCents: number,
+) {
   if (priceCents <= 0) return;
   const { data: biz } = await supabase
     .from("businesses")
@@ -47,8 +53,25 @@ async function assertStripeReadyForServicePrice(supabase: Awaited<ReturnType<typ
     .maybeSingle();
   const ready = Boolean(biz?.stripe_connect_account_id?.trim() && biz?.stripe_connect_charges_enabled);
   if (!ready) {
-    throw new Error("Connect Stripe under Payments before setting a service price.");
+    throw new Error(STRIPE_REQUIRED_FOR_PAID_MESSAGE);
   }
+}
+
+function maxTablePaidCents(params: {
+  priceCents: number;
+  groupPricing?: Record<string, unknown> | null;
+}): number {
+  let max = Math.max(0, params.priceCents);
+  const gp = params.groupPricing;
+  if (gp && typeof gp === "object" && !Array.isArray(gp)) {
+    for (const key of ["atOrAboveCents", "belowCents"] as const) {
+      const value = gp[key];
+      if (typeof value === "number" && Number.isFinite(value) && value > max) {
+        max = value;
+      }
+    }
+  }
+  return max;
 }
 
 /** Upsert weekly row for one weekday (0=Sun … 6=Sat). Times as HH:MM (24h). */
@@ -186,7 +209,7 @@ export async function createAppointmentService(params: {
   priceCents: number;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
-  await assertStripeReadyForServicePrice(supabase, params.businessId, params.priceCents);
+  await assertStripeReadyForPaidAmount(supabase, params.businessId, params.priceCents);
   const { error } = await supabase.from("appointment_services").insert({
     business_id: params.businessId,
     name: params.name.trim(),
@@ -207,7 +230,7 @@ export async function updateAppointmentService(params: {
   priceCents: number;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
-  await assertStripeReadyForServicePrice(supabase, params.businessId, params.priceCents);
+  await assertStripeReadyForPaidAmount(supabase, params.businessId, params.priceCents);
   const { error } = await supabase
     .from("appointment_services")
     .update({
@@ -387,6 +410,10 @@ export async function upsertBusinessEvent(params: {
     typeof params.ticketPriceCents === "number" && Number.isFinite(params.ticketPriceCents) && params.ticketPriceCents > 0
       ? Math.floor(params.ticketPriceCents)
       : null;
+
+  if (ticketPriceClean && ticketPriceClean > 0) {
+    await assertStripeReadyForPaidAmount(supabase, params.businessId, ticketPriceClean);
+  }
 
   const showRemainingSeats = typeof params.showRemainingSeats === "boolean" ? params.showRemainingSeats : true;
 
@@ -636,6 +663,11 @@ export async function upsertFloorPlanTable(params: {
   groupPricing?: Record<string, unknown> | null;
 }) {
   const supabase = await getOwnedSupabase(params.businessId);
+  await assertStripeReadyForPaidAmount(
+    supabase,
+    params.businessId,
+    maxTablePaidCents({ priceCents: params.priceCents, groupPricing: params.groupPricing ?? null }),
+  );
   const shape = params.shape ?? "rectangle";
   const dims = normalizeFloorTableDimensions(shape, params.width, params.height);
   const row = {

@@ -3,6 +3,7 @@ import { isBookingGuestMode, parseGuestModesJson } from "@/lib/booking-guest-mod
 import { coerceFloorPlanShape, normalizeFloorTableFillColor, type FloorPlanTableShape } from "@/lib/floor-plan-visuals";
 import { parseStaffMembers, type StaffMember } from "@/lib/staff-members";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
+import { formatMoney } from "@/lib/checkout-money";
 
 /** Matches Postgres `extract(dow)` convention used in dashboards: 0 = Sunday … 6 = Saturday */
 export const BOOKING_PUBLIC_WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -434,10 +435,9 @@ function parseEventQuestionsList(raw: unknown): EventCustomQuestion[] {
   return out;
 }
 
-export function formatPublicTablePriceEUR(priceCents: number, pricingMode: string): string {
+export function formatPublicTablePrice(priceCents: number, pricingMode: string): string {
   const safe = Number.isFinite(priceCents) ? Math.max(0, priceCents) : 0;
-  const euros = safe % 100 === 0 ? String(safe / 100) : (safe / 100).toFixed(2);
-  const base = `€${euros}`;
+  const base = formatMoney(safe);
   switch (pricingMode) {
     case "person":
       return `${base} / guest`;
@@ -447,6 +447,9 @@ export function formatPublicTablePriceEUR(priceCents: number, pricingMode: strin
       return `${base} / table`;
   }
 }
+
+/** @deprecated Use formatPublicTablePrice */
+export const formatPublicTablePriceEUR = formatPublicTablePrice;
 
 export function formatPublicRange(startIso: string, endIso: string): string {
   const start = new Date(startIso);

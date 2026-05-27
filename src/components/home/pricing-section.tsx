@@ -1,33 +1,38 @@
-"use client";
-
 import Link from "next/link";
-import { motion, useReducedMotion } from "framer-motion";
 
 import { buttonVariants } from "@/components/ui/button";
+import { bookingDemoHref } from "@/lib/marketing-links";
+import {
+  BOOKING_MONTHLY_GBP,
+  BOOKING_PLATFORM_FEE_BPS,
+  BOOKING_TRIAL_DAYS,
+  PRO_MONTHLY_GBP,
+  TRIAL_PLATFORM_FEE_BPS,
+} from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 const tiers = [
   {
     name: "Booking",
-    price: "£50",
+    price: `£${BOOKING_MONTHLY_GBP}`,
     period: "/mo",
-    badge: "Launch offer · first 50 venues",
+    badge: "For restaurants, salons & cafés",
     features: [
       "Public /book link for your venue",
       "Appointments, tables & events",
-      "Stripe Connect deposits",
+      "Stripe Connect deposits to your account",
       "Guest email confirmations",
       "Operations inbox & calendar",
     ],
-    cta: "Start 7-day trial",
+    cta: `Start ${BOOKING_TRIAL_DAYS}-day trial`,
     href: "/signup",
     highlight: true,
   },
   {
     name: "Pro",
-    price: "£150",
+    price: `£${PRO_MONTHLY_GBP}`,
     period: "/mo",
-    badge: "After launch",
+    badge: "Full AI receptionist",
     features: ["Everything in Booking", "AI receptionist", "Campaign tools", "Priority support"],
     cta: "Talk to us",
     href: "/#contact",
@@ -36,35 +41,25 @@ const tiers = [
 ];
 
 export function PricingSection() {
-  const reduce = useReducedMotion();
-
   return (
     <section id="pricing" className="border-b border-[#ebe7f7]/70 bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.35 }}
-          transition={{ duration: 0.45 }}
-          className="mx-auto max-w-2xl text-center"
-        >
+        <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">Simple pricing</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.75rem)] font-semibold tracking-tight text-[#0f172a]">
-            Go live with bookings for £50/month.
+            Go live with bookings for £{BOOKING_MONTHLY_GBP}/month.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            7-day trial · card on file · guest deposits go to your Stripe account. No per-booking platform fee at launch.
+            {BOOKING_TRIAL_DAYS}-day free trial — no card required to explore. Guest deposits go straight to your Stripe
+            account. Solvio takes a small platform fee on processed payments ({TRIAL_PLATFORM_FEE_BPS / 100}% during trial,{" "}
+            {BOOKING_PLATFORM_FEE_BPS / 100}% on the Booking plan).
           </p>
-        </motion.div>
+        </div>
 
         <div className="mt-14 grid gap-6 lg:grid-cols-2">
-          {tiers.map((tier, idx) => (
-            <motion.div
+          {tiers.map((tier) => (
+            <div
               key={tier.name}
-              initial={reduce ? false : { opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: reduce ? 0 : idx * 0.08 }}
               className={cn(
                 "rounded-[28px] border p-8 shadow-sm",
                 tier.highlight
@@ -97,13 +92,18 @@ export function PricingSection() {
               >
                 {tier.cta}
               </Link>
-            </motion.div>
+            </div>
           ))}
         </div>
 
         <p className="mx-auto mt-10 max-w-xl text-center text-sm text-[#94a3b8]">
+          Need multi-location or high-volume events?{" "}
+          <Link href="/#contact" className="font-semibold text-[#7c3aed] hover:underline">
+            Scale from £499/mo
+          </Link>
+          {" · "}
           Try the live guest experience:{" "}
-          <Link href="/book/solvio-d67c90cc" className="font-semibold text-[#7c3aed] hover:underline">
+          <Link href={bookingDemoHref()} className="font-semibold text-[#7c3aed] hover:underline">
             book demo →
           </Link>
         </p>

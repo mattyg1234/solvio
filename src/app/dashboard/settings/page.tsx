@@ -11,12 +11,30 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 import { BusinessProfileForm } from "./business-profile-form";
+import { UpdatePasswordForm } from "@/components/auth/update-password-form";
 
 export const metadata: Metadata = {
   title: "Settings · Dashboard · Solvio",
 };
 
-export default async function DashboardSettingsPage() {
+type SettingsSearchRaw = Record<string, string | string[] | undefined>;
+
+function firstQueryString(raw: SettingsSearchRaw, key: string): string | undefined {
+  const v = raw[key];
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return undefined;
+}
+
+export default async function DashboardSettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SettingsSearchRaw> | SettingsSearchRaw;
+}) {
+  const raw = searchParams != null && typeof (searchParams as Promise<unknown>).then === "function"
+    ? await (searchParams as Promise<SettingsSearchRaw>)
+    : ((searchParams as SettingsSearchRaw | undefined) ?? {});
+  const passwordResetFlow = firstQueryString(raw, "password") === "reset";
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -38,7 +56,7 @@ export default async function DashboardSettingsPage() {
   const profileMissingMessage =
     profileError?.message?.toLowerCase().includes("permission denied") ||
     businessesError?.message?.toLowerCase().includes("permission denied")
-      ? "Your account exists but the database could not read your rows — Supabase table grants were missing. This is now fixed on Volvio; hard-refresh the page."
+      ? "Your account exists but the database could not read your rows — Supabase table grants were missing. Hard-refresh the page or contact support if this persists."
       : "Your profile row wasn't created yet — run the database migration in Supabase (SQL file in supabase/migrations/), then sign up again or insert a profile for your user id.";
 
   return (
@@ -72,6 +90,20 @@ export default async function DashboardSettingsPage() {
             <span className="font-semibold text-[#0f172a]">Name:</span> {(profile?.full_name as string)?.trim() || "—"}
           </p>
           <p className="text-xs text-[#94a3b8]">User id: {user.id}</p>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg text-[#0f172a]">Password</CardTitle>
+          <CardDescription className="text-[#64748b]">
+            {passwordResetFlow
+              ? "You arrived from a reset link — set a new password below."
+              : "Update your sign-in password anytime."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UpdatePasswordForm highlight={passwordResetFlow} />
         </CardContent>
       </Card>
 

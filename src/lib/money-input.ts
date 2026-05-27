@@ -1,4 +1,4 @@
-/** Format stored cents for an editable € field (empty when zero). */
+/** Format stored cents for an editable currency field (empty when zero). */
 export function centsToEuroInputValue(cents: number): string {
   if (!Number.isFinite(cents) || cents <= 0) return "";
   const euros = cents / 100;

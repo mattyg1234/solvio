@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2,
@@ -32,6 +32,8 @@ import {
   upsertTableBookingQuestion,
 } from "@/app/dashboard/bookings/inventory-actions";
 import { AppointmentExceptionGrid } from "@/components/dashboard/appointment-exception-grid";
+import { SaveFlashBanner } from "@/components/dashboard/save-flash-banner";
+import { StripeConnectRequiredCallout } from "@/components/dashboard/stripe-connect-required-callout";
 import { AppointmentWeekGrid, type AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
 import { StaffWeekPlanner } from "@/components/dashboard/staff-week-planner";
 import { StaffWeekScheduleGrid } from "@/components/dashboard/staff-week-schedule-grid";
@@ -47,6 +49,7 @@ import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 export type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
 import { cn } from "@/lib/utils";
+import { formatMoneyDisplay, moneySymbol } from "@/lib/checkout-money";
 import {
   coerceFloorPlanShape,
   normalizeFloorTableDimensions,
@@ -62,6 +65,24 @@ import {
   parseOptionalEuroInputToCents,
   sanitizeEuroInput,
 } from "@/lib/money-input";
+
+const STRIPE_REQUIRED_MESSAGE = "To accept payments, connect Stripe first.";
+
+function scrollToStripeConnectPrompt() {
+  document.getElementById("stripe-connect-required")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function tableDepositCentsFromInputs(
+  pricingMode: "table" | "person" | "group_tier",
+  priceEuro: string,
+  aboveEuro: string,
+  belowEuro: string,
+): number {
+  if (pricingMode === "group_tier") {
+    return Math.max(parseEuroInputToCents(aboveEuro), parseEuroInputToCents(belowEuro));
+  }
+  return parseEuroInputToCents(priceEuro);
+}
 
 export type BusinessEventRow = {
   id: string;
@@ -168,6 +189,7 @@ type BookingOperationsHubProps = {
   businessId: string | null;
   businessName: string | null;
   venueTimeZone: string;
+  publicBookingUrl?: string | null;
   schedules: AppointmentWeekRow[];
   exceptions: SlotExceptionRow[];
   events: BusinessEventRow[];
@@ -192,6 +214,7 @@ export function BookingOperationsHub({
   businessId,
   businessName,
   venueTimeZone,
+  publicBookingUrl = null,
   schedules,
   exceptions,
   events,
@@ -216,6 +239,9 @@ export function BookingOperationsHub({
   const [primary, setPrimary] = useState<BookingHubPrimary>(initialPrimary ?? "guests");
   const [guestsSub, setGuestsSub] = useState<BookingGuestsSub>(initialGuestsSub ?? "inbox");
   const [offeringsSub, setOfferingsSub] = useState<BookingOfferingsSub>(initialOfferingsSub ?? "appointments");
+  const [saveFlash, setSaveFlash] = useState<string | null>(null);
+  const notifySaved = useCallback(() => setSaveFlash("Saved"), []);
+  const dismissSaveFlash = useCallback(() => setSaveFlash(null), []);
 
   useEffect(() => {
     setPrimary(initialPrimary ?? "guests");
@@ -319,11 +345,40 @@ export function BookingOperationsHub({
       ) : null}
 
       <div className="border-b border-[#f1eefc] bg-[#fafbff]/60 px-4 py-5 md:px-8 md:py-6">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setPrimary("guests");
+              pushBookingHubUrl("guests", guestsSub, offeringsSub);
+            }}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+              primary === "guests" ? "bg-[#7c3aed] text-white shadow-sm" : "bg-white text-[#64748b] ring-1 ring-[#ebe7f7] hover:text-[#0f172a]",
+            )}
+          >
+            Guest requests
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPrimary("offerings");
+              pushBookingHubUrl("offerings", guestsSub, offeringsSub);
+            }}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+              primary === "offerings" ? "bg-[#7c3aed] text-white shadow-sm" : "bg-white text-[#64748b] ring-1 ring-[#ebe7f7] hover:text-[#0f172a]",
+            )}
+          >
+            Inventory & pricing
+          </button>
+        </div>
         <h2 className="text-xl font-semibold tracking-tight text-[#0f172a]">{workspaceHeading.title}</h2>
         <p className="mt-1 max-w-3xl text-[14px] leading-relaxed text-[#64748b]">{workspaceHeading.subtitle}</p>
       </div>
 
-      <div className="px-4 py-7 md:px-6 md:py-10">
+      <div className="space-y-4 px-4 py-7 md:px-6 md:py-10">
+        <SaveFlashBanner message={saveFlash} onDismiss={dismissSaveFlash} />
         {primary === "guests" ? (
           <GuestsHubPanel
             guestsSub={guestsSub}
@@ -335,7 +390,7 @@ export function BookingOperationsHub({
             bizNameById={bizNameById}
             confirmedBookings={confirmedBookings}
             businessId={businessId}
-            businessName={businessName}
+            businessName={businessName ?? ""}
             venueTimeZone={venueTimeZone}
             tables={tables}
             events={events}
@@ -350,6 +405,8 @@ export function BookingOperationsHub({
             }}
             bookingRequestHighlight={bookingRequestHighlight}
             stripeReadyByBizId={stripeReadyByBizId}
+            publicBookingUrl={publicBookingUrl}
+            bookingFlowComplete={bookingFlowComplete}
           />
         ) : (
           <OfferingsHubPanel
@@ -370,6 +427,7 @@ export function BookingOperationsHub({
             appointmentServices={appointmentServices}
             breaks={breaks}
             stripeReadyByBizId={stripeReadyByBizId}
+            onSaved={notifySaved}
           />
         )}
       </div>
@@ -397,6 +455,8 @@ function GuestsHubPanel(props: {
   breaks: AppointmentBreakRow[];
   staffMembers: StaffMember[];
   stripeReadyByBizId?: Record<string, boolean>;
+  publicBookingUrl?: string | null;
+  bookingFlowComplete?: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -429,6 +489,8 @@ function GuestsHubPanel(props: {
           stripeReadyByBizId={props.stripeReadyByBizId}
           inventoryLinks={props.inventoryLinks}
           highlightBookingRequestId={props.bookingRequestHighlight ?? undefined}
+          publicBookingUrl={props.publicBookingUrl}
+          bookingFlowComplete={props.bookingFlowComplete}
         />
       ) : props.guestsSub === "planner" ? (
         <StaffWeekPlanner
@@ -468,6 +530,7 @@ function OfferingsHubPanel(props: {
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
   stripeReadyByBizId?: Record<string, boolean>;
+  onSaved?: () => void;
 }) {
   const inAppointmentArea = props.offeringsSub === "appointments" || props.offeringsSub === "staff";
 
@@ -506,6 +569,7 @@ function OfferingsHubPanel(props: {
           appointmentServices={props.appointmentServices}
           breaks={props.breaks ?? []}
           stripeReady={Boolean(props.stripeReadyByBizId?.[props.businessId])}
+          onSaved={props.onSaved}
         />
       ) : null}
 
@@ -518,11 +582,24 @@ function OfferingsHubPanel(props: {
       ) : null}
 
       {props.offeringsSub === "events" ? (
-        <EventsPanel businessId={props.businessId} events={props.events} venueTimeZone={props.venueTimeZone} />
+        <EventsPanel
+          businessId={props.businessId}
+          events={props.events}
+          venueTimeZone={props.venueTimeZone}
+          stripeReady={Boolean(props.stripeReadyByBizId?.[props.businessId])}
+          onSaved={props.onSaved}
+        />
       ) : null}
 
       {props.offeringsSub === "tables" ? (
-        <TablesPanel businessId={props.businessId} schedules={props.schedules} tables={props.tables} questions={props.questions} />
+        <TablesPanel
+          businessId={props.businessId}
+          schedules={props.schedules}
+          tables={props.tables}
+          questions={props.questions}
+          stripeReady={Boolean(props.stripeReadyByBizId?.[props.businessId])}
+          onSaved={props.onSaved}
+        />
       ) : null}
     </div>
   );
@@ -845,6 +922,7 @@ function AppointmentsPanel({
   appointmentServices = [],
   breaks = [],
   stripeReady = false,
+  onSaved,
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
@@ -854,6 +932,7 @@ function AppointmentsPanel({
   appointmentServices?: AppointmentServiceRow[];
   breaks?: AppointmentBreakRow[];
   stripeReady?: boolean;
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -867,6 +946,7 @@ function AppointmentsPanel({
   const [newServiceDuration, setNewServiceDuration] = useState(60);
   const [newServicePriceEuro, setNewServicePriceEuro] = useState("");
   const [questions, setQuestions] = useState<{ label: string; required: boolean }[]>(appointmentQuestions);
+  const [stripePromptHighlighted, setStripePromptHighlighted] = useState(false);
 
   const used = useMemo(() => new Set(schedules.map((s) => s.weekday)), [schedules]);
 
@@ -878,10 +958,6 @@ function AppointmentsPanel({
     setQuestions(appointmentQuestions);
   }, [appointmentQuestions]);
 
-  useEffect(() => {
-    if (!stripeReady) setNewServicePriceEuro("");
-  }, [stripeReady]);
-
   function saveNewService() {
     if (newServiceName.trim().length < 2) {
       setError("Service name must be at least 2 characters.");
@@ -891,9 +967,11 @@ function AppointmentsPanel({
       setError("Duration must be at least 5 minutes.");
       return;
     }
-    const priceCents = stripeReady ? parseEuroInputToCents(newServicePriceEuro) : 0;
-    if (!stripeReady && newServicePriceEuro.trim()) {
-      setError("Connect Stripe under Payments before setting a service price.");
+    const priceCents = parseEuroInputToCents(newServicePriceEuro);
+    if (!stripeReady && priceCents > 0) {
+      setError(STRIPE_REQUIRED_MESSAGE);
+      setStripePromptHighlighted(true);
+      scrollToStripeConnectPrompt();
       return;
     }
     run(async () => {
@@ -917,6 +995,7 @@ function AppointmentsPanel({
       void (async () => {
         try {
           await fn();
+          onSaved?.();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not save.");
         }
@@ -1053,18 +1132,11 @@ function AppointmentsPanel({
           <h3 className="text-base font-semibold text-[#0f172a]">Services</h3>
           <p className="mt-1 text-sm text-[#64748b]">
             Guests select a service (haircut, color, massage, etc.) with duration and price on the public form.
-            {!stripeReady ? (
-              <>
-                {" "}
-                Prices stay at €0 until{" "}
-                <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
-                  Stripe is connected
-                </Link>
-                .
-              </>
-            ) : null}
           </p>
         </header>
+        {!stripeReady ? (
+          <StripeConnectRequiredCallout businessId={businessId} highlighted={stripePromptHighlighted} />
+        ) : null}
         {services.length === 0 ? (
           <p className="text-sm text-[#94a3b8]">No services yet — guests will book a generic appointment slot.</p>
         ) : (
@@ -1077,7 +1149,7 @@ function AppointmentsPanel({
                 <div className="flex-1">
                   <span className="font-semibold text-[#0f172a]">{svc.name}</span>
                   <p className="text-[12px] text-[#64748b]">
-                    {svc.duration_minutes} min · €{(svc.price_cents / 100).toFixed(svc.price_cents % 100 === 0 ? 0 : 2)}
+                    {svc.duration_minutes} min · {formatMoneyDisplay(svc.price_cents)}
                   </p>
                 </div>
                 <button
@@ -1130,22 +1202,14 @@ function AppointmentsPanel({
               />
             </label>
             <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-              Price (€)
+              Price ({moneySymbol()})
               <input
                 type="text"
                 inputMode="decimal"
                 value={newServicePriceEuro}
-                onChange={(e) => {
-                  if (!stripeReady) return;
-                  setNewServicePriceEuro(sanitizeEuroInput(e.target.value));
-                }}
-                placeholder={stripeReady ? "10.50" : "Connect Stripe"}
-                disabled={!stripeReady}
-                title={stripeReady ? undefined : "Connect Stripe under Payments to set a price"}
-                className={cn(
-                  "h-11 w-full rounded-xl border border-[#ebe7f7] px-3 text-[15px] font-normal text-[#0f172a]",
-                  !stripeReady && "cursor-not-allowed bg-[#f8fafc] text-[#94a3b8]",
-                )}
+                onChange={(e) => setNewServicePriceEuro(sanitizeEuroInput(e.target.value))}
+                placeholder={stripeReady ? "10.50" : "Free until Stripe connected"}
+                className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
               />
             </label>
             <Button
@@ -1242,10 +1306,14 @@ function EventsPanel({
   businessId,
   events,
   venueTimeZone,
+  stripeReady = false,
+  onSaved,
 }: {
   businessId: string;
   events: BusinessEventRow[];
   venueTimeZone: string;
+  stripeReady?: boolean;
+  onSaved?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [manageCalendarFor, setManageCalendarFor] = useState<BusinessEventRow | null>(null);
@@ -1260,6 +1328,7 @@ function EventsPanel({
   const [showRemainingSeats, setShowRemainingSeats] = useState<boolean>(true);
   const [customQuestions, setCustomQuestions] = useState<{ label: string; required: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [stripePromptHighlighted, setStripePromptHighlighted] = useState(false);
 
   const visible = events.filter((e) => !e.deleted_at);
 
@@ -1275,6 +1344,7 @@ function EventsPanel({
       void (async () => {
         try {
           await fn();
+          onSaved?.();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not save.");
         }
@@ -1347,7 +1417,7 @@ function EventsPanel({
         </div>
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-            Ticket price <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(€ — leave blank for free / RSVP)</span>
+            Ticket price <span className="font-normal normal-case tracking-normal text-[#94a3b8]">({moneySymbol()} — leave blank for free / RSVP)</span>
           </label>
           <input
             type="text"
@@ -1361,6 +1431,9 @@ function EventsPanel({
             Paid events <span className="font-semibold">block free table bookings</span> on the same date — guests must buy a ticket
             instead. Free / RSVP events leave tables bookable.
           </p>
+          {!stripeReady ? (
+            <StripeConnectRequiredCallout businessId={businessId} highlighted={stripePromptHighlighted} className="mt-3" />
+          ) : null}
         </div>
         <div className="space-y-2 md:col-span-2">
           <div className="flex items-end justify-between gap-3">
@@ -1458,6 +1531,12 @@ function EventsPanel({
               run(async () => {
                 const capParsed = parseInt(capacity, 10);
                 const ticketCents = parseOptionalEuroInputToCents(ticketPriceEur);
+                if (!stripeReady && (ticketCents ?? 0) > 0) {
+                  setError(STRIPE_REQUIRED_MESSAGE);
+                  setStripePromptHighlighted(true);
+                  scrollToStripeConnectPrompt();
+                  return;
+                }
                 await upsertBusinessEvent({
                   businessId,
                   title,
@@ -1527,7 +1606,7 @@ function EventsPanel({
                   ) : null}
                   {typeof ev.ticket_price_cents === "number" && ev.ticket_price_cents > 0 ? (
                     <span className="ml-2 inline-flex shrink-0 rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#5b21b6] ring-1 ring-[#ddd6fe]">
-                      €{(ev.ticket_price_cents / 100).toFixed(ev.ticket_price_cents % 100 === 0 ? 0 : 2)} ticket
+                      {formatMoneyDisplay(ev.ticket_price_cents)} ticket
                     </span>
                   ) : null}
                 </p>
@@ -1645,7 +1724,17 @@ function tierEuroDefaults(table: FloorPlanTableRow): {
   return { threshold, aboveEuro, belowEuro };
 }
 
-function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; table: FloorPlanTableRow }) {
+function SavedFloorTableDetailForm({
+  businessId,
+  table,
+  stripeReady = false,
+  onPaidSaveBlocked,
+}: {
+  businessId: string;
+  table: FloorPlanTableRow;
+  stripeReady?: boolean;
+  onPaidSaveBlocked?: () => void;
+}) {
   const snapshotKey = `${table.id}|${table.label}|${table.capacity}|${coerceFloorPlanShape(table.shape)}|${normalizeFloorTableFillColor(table.fill_color) ?? ""}|${Math.round(table.width)}|${Math.round(table.height)}|${table.pricing_mode}|${table.price_cents}|${JSON.stringify(table.group_pricing ?? null)}`;
 
   const [pending, startTransition] = useTransition();
@@ -1761,14 +1850,14 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
             onChange={(e) => setPricingMode(e.target.value as typeof pricingMode)}
             className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3"
           >
-            <option value="table">Flat per table (€)</option>
-            <option value="person">Per person (€)</option>
+            <option value="table">Flat per table ({moneySymbol()})</option>
+            <option value="person">Per person ({moneySymbol()})</option>
             <option value="group_tier">Tier by group size</option>
           </select>
         </div>
         {pricingMode !== "group_tier" ? (
           <div className="space-y-2 md:col-span-2">
-            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount ({moneySymbol()})</label>
             <input
               type="text"
               inputMode="decimal"
@@ -1785,7 +1874,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
               <input value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748b]">Charge €</label>
+              <label className="text-xs font-semibold text-[#64748b]">Charge {moneySymbol()}</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -1796,7 +1885,7 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748b]">Else €</label>
+              <label className="text-xs font-semibold text-[#64748b]">Else {moneySymbol()}</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -1815,6 +1904,12 @@ function SavedFloorTableDetailForm({ businessId, table }: { businessId: string; 
         className="rounded-full font-semibold"
         onClick={() =>
           runSave(async () => {
+            const paidCents = tableDepositCentsFromInputs(pricingMode, priceEuro, aboveEuro, belowEuro);
+            if (!stripeReady && paidCents > 0) {
+              setError(STRIPE_REQUIRED_MESSAGE);
+              onPaidSaveBlocked?.();
+              return;
+            }
             const price_cents =
               pricingMode === "group_tier" ? parseEuroInputToCents(belowEuro) : parseEuroInputToCents(priceEuro);
             const group_pricing =
@@ -1859,12 +1954,16 @@ function SavedFloorTableRow({
   schedules,
   pending,
   run,
+  stripeReady = false,
+  onPaidSaveBlocked,
 }: {
   businessId: string;
   table: FloorPlanTableRow;
   schedules: AppointmentWeekRow[];
   pending: boolean;
   run: (fn: () => Promise<void>) => void;
+  stripeReady?: boolean;
+  onPaidSaveBlocked?: () => void;
 }) {
   const [labelDraft, setLabelDraft] = useState(table.label);
   const labelDirty = labelDraft.trim() !== table.label;
@@ -1927,11 +2026,16 @@ function SavedFloorTableRow({
         </button>
       </div>
       <p className="mt-2 text-xs text-[#64748b]">
-        {coerceFloorPlanShape(table.shape)} · cap {table.capacity} · {(table.price_cents / 100).toFixed(2)} € ·{" "}
+        {coerceFloorPlanShape(table.shape)} · cap {table.capacity} · {formatMoneyDisplay(table.price_cents)} ·{" "}
         {String(table.pricing_mode ?? "").replace(/_/g, " ")}
       </p>
       <FloorTableWeekHoursStrip businessId={businessId} table={table} venueSchedules={schedules} />
-      <SavedFloorTableDetailForm businessId={businessId} table={table} />
+      <SavedFloorTableDetailForm
+        businessId={businessId}
+        table={table}
+        stripeReady={stripeReady}
+        onPaidSaveBlocked={onPaidSaveBlocked}
+      />
     </li>
   );
 }
@@ -1941,11 +2045,15 @@ function TablesPanel({
   schedules,
   tables,
   questions,
+  stripeReady = false,
+  onSaved,
 }: {
   businessId: string;
   schedules: AppointmentWeekRow[];
   tables: FloorPlanTableRow[];
   questions: TableQuestionRow[];
+  stripeReady?: boolean;
+  onSaved?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -1967,6 +2075,12 @@ function TablesPanel({
   const [addWidth, setAddWidth] = useState(120);
   const [addHeight, setAddHeight] = useState(80);
   const [error, setError] = useState<string | null>(null);
+  const [stripePromptHighlighted, setStripePromptHighlighted] = useState(false);
+
+  function blockPaidSaveWithoutStripe() {
+    setStripePromptHighlighted(true);
+    scrollToStripeConnectPrompt();
+  }
 
   function run(fn: () => Promise<void>) {
     setError(null);
@@ -1974,6 +2088,7 @@ function TablesPanel({
       void (async () => {
         try {
           await fn();
+          onSaved?.();
         } catch (e) {
           setError(e instanceof Error ? e.message : "Could not save.");
         }
@@ -2001,6 +2116,9 @@ function TablesPanel({
           Drag tables on the canvas to mirror your room. Rename any saved table below — the floor preview updates after you save. Add optional weekday windows under each listing to override venue appointment grids for guests on that specific table only.
         </p>
       </header>
+      {!stripeReady ? (
+        <StripeConnectRequiredCallout businessId={businessId} highlighted={stripePromptHighlighted} />
+      ) : null}
 
       <div className="relative h-[340px] overflow-hidden rounded-2xl border border-[#ebe7f7] bg-[#f8fafc]">
         <p className="absolute left-3 top-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8]">Floor preview</p>
@@ -2100,14 +2218,14 @@ function TablesPanel({
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Pricing</label>
           <select value={pricingMode} onChange={(e) => setPricingMode(e.target.value as typeof pricingMode)} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3">
-            <option value="table">Flat per table (€)</option>
-            <option value="person">Per person (€)</option>
+            <option value="table">Flat per table ({moneySymbol()})</option>
+            <option value="person">Per person ({moneySymbol()})</option>
             <option value="group_tier">Tier by group size</option>
           </select>
         </div>
         {pricingMode !== "group_tier" ? (
           <div className="space-y-2 md:col-span-4">
-            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount (€)</label>
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Amount ({moneySymbol()})</label>
             <input
               type="text"
               inputMode="decimal"
@@ -2124,7 +2242,7 @@ function TablesPanel({
               <input value={threshold} onChange={(e) => setThreshold(e.target.value)} className="h-11 w-24 rounded-xl border border-[#ebe7f7] px-3" />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748b]">Charge €</label>
+              <label className="text-xs font-semibold text-[#64748b]">Charge {moneySymbol()}</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -2135,7 +2253,7 @@ function TablesPanel({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-[#64748b]">Else €</label>
+              <label className="text-xs font-semibold text-[#64748b]">Else {moneySymbol()}</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -2154,6 +2272,12 @@ function TablesPanel({
             className="rounded-full font-semibold shadow-md shadow-[#7c3aed]/20"
             onClick={() =>
               run(async () => {
+                const paidCents = tableDepositCentsFromInputs(pricingMode, priceEuro, aboveEuro, belowEuro);
+                if (!stripeReady && paidCents > 0) {
+                  setError(STRIPE_REQUIRED_MESSAGE);
+                  blockPaidSaveWithoutStripe();
+                  return;
+                }
                 const price_cents =
                   pricingMode === "group_tier"
                     ? parseEuroInputToCents(belowEuro)
@@ -2192,7 +2316,16 @@ function TablesPanel({
         <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#64748b]">Saved tables</h3>
         <ul className="space-y-4 text-sm">
           {tables.map((t) => (
-            <SavedFloorTableRow key={t.id} businessId={businessId} table={t} schedules={schedules} pending={pending} run={run} />
+            <SavedFloorTableRow
+              key={t.id}
+              businessId={businessId}
+              table={t}
+              schedules={schedules}
+              pending={pending}
+              run={run}
+              stripeReady={stripeReady}
+              onPaidSaveBlocked={blockPaidSaveWithoutStripe}
+            />
           ))}
           {tables.length === 0 ? <li className="text-[#94a3b8]">No tables saved.</li> : null}
         </ul>

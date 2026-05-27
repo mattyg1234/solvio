@@ -49,7 +49,7 @@ export function buildDepositPaymentLinkTool() {
           amountEuro: {
             type: "number",
             description:
-              "Deposit amount in euros (e.g. 20 for €20). Optional if table pricing is configured — omit to use the venue default.",
+              "Deposit amount in pounds (e.g. 20 for £20). Optional if table pricing is configured — omit to use the venue default.",
           },
         },
         required: ["guestName", "dateYmd", "timeLocal", "partySize"],
@@ -78,7 +78,7 @@ export function buildDepositPaymentLinkTool() {
 export function appendPaymentCollectionPrompt(basePrompt: string, ctx: GuestCallPaymentContext): string {
   const defaultAmt =
     ctx.defaultAmountEuro != null && ctx.defaultAmountEuro >= 0.5
-      ? ` Default deposit is about €${ctx.defaultAmountEuro.toFixed(2)} unless they agree a different amount.`
+      ? ` Default deposit is about £${ctx.defaultAmountEuro.toFixed(2)} unless they agree a different amount.`
       : "";
 
   return [

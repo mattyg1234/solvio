@@ -5,18 +5,26 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
+import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
 import { Button } from "@/components/ui/button";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function SignupForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setNeedsEmailConfirm(false);
+    if (!acceptedTerms) {
+      setError("Please accept the Terms and Privacy Policy to continue.");
+      return;
+    }
     setLoading(true);
 
     const fd = new FormData(e.currentTarget);
@@ -39,7 +47,7 @@ export function SignupForm() {
         password,
         options: {
           emailRedirectTo:
-            origin.length > 0 ? `${origin}/auth/callback?next=/dashboard` : undefined,
+            origin.length > 0 ? `${origin}/auth/callback?next=/dashboard/onboarding` : undefined,
           data: {
             business_name: businessName,
             ...(websiteUrl ? { website_url: websiteUrl } : {}),
@@ -55,7 +63,7 @@ export function SignupForm() {
       }
 
       if (data.session) {
-        router.push("/dashboard");
+        router.push("/dashboard/onboarding");
         router.refresh();
         return;
       }
@@ -142,7 +150,7 @@ export function SignupForm() {
           type="email"
           autoComplete="email"
           required
-          placeholder="you@business.es"
+          placeholder={SIGNUP_EMAIL_PLACEHOLDER}
           className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
         />
       </div>
@@ -151,15 +159,12 @@ export function SignupForm() {
         <label htmlFor="signup-password" className="text-sm font-semibold text-[#0f172a]">
           Password
         </label>
-        <input
+        <PasswordInput
           id="signup-password"
-          name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}
           placeholder="At least 8 characters"
-          className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
         />
       </div>
 
@@ -172,46 +177,41 @@ export function SignupForm() {
       {needsEmailConfirm ? (
         <div className="space-y-3 rounded-2xl border border-[#dbeafe] bg-[#eff6ff] px-4 py-4 text-sm leading-relaxed text-[#1e40af]">
           <p>
-            <strong>Confirmation email sent.</strong> Supabase sends this email — open the link to activate your account,
-            then{" "}
+            <strong>Check your inbox.</strong> We sent a confirmation link to activate your account — it may take a minute
+            to arrive. After confirming,{" "}
             <Link href="/login" className="font-semibold underline underline-offset-2">
               log in
-            </Link>
-            .
+            </Link>{" "}
+            to start your {BOOKING_TRIAL_DAYS}-day trial.
           </p>
-          <ul className="list-inside list-disc space-y-1 text-[13px] text-[#1e3a8a]/90">
-            <li>Check spam / promotions — the default sender domain is generic.</li>
-            <li>
-              In Supabase: <strong className="font-semibold">Authentication → Users</strong> — your email should appear as{" "}
-              <em>unconfirmed</em> until you click the link (proof the signup reached Auth).
-            </li>
-            <li>
-              For production-ready inbox delivery, configure{" "}
-              <strong className="font-semibold">custom SMTP</strong> (
-              <a
-                href="https://supabase.com/docs/guides/auth/auth-smtp"
-                className="font-semibold underline underline-offset-2"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Supabase SMTP docs
-              </a>
-              ) — Resend, SendGrid, SES, etc.
-            </li>
-            <li>
-              Add{" "}
-              <code className="rounded bg-white/80 px-1 py-0.5 text-[11px] text-[#1e40af]">
-                /auth/callback
-              </code>{" "}
-              under Authentication → URL Configuration → Redirect URLs (localhost + production).
-            </li>
-          </ul>
+          <p className="text-[13px] text-[#1e3a8a]/90">If you don&apos;t see it, check spam or promotions.</p>
         </div>
       ) : null}
 
+      <label className="flex items-start gap-3 text-sm leading-relaxed text-[#475569]">
+        <input
+          type="checkbox"
+          checked={acceptedTerms}
+          onChange={(e) => setAcceptedTerms(e.target.checked)}
+          className="mt-1 h-4 w-4 rounded border-[#cbd5e1] text-[#7c3aed]"
+          required
+        />
+        <span>
+          I agree to the{" "}
+          <Link href="/terms" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+            Privacy Policy
+          </Link>
+          . {BOOKING_TRIAL_DAYS}-day free trial — no card required to explore.
+        </span>
+      </label>
+
       <Button
         type="submit"
-        disabled={loading}
+        disabled={loading || !acceptedTerms}
         className="h-11 w-full rounded-full text-base font-semibold shadow-lg shadow-[#7c3aed]/25 disabled:opacity-60"
       >
         {loading ? "Creating account…" : "Create account"}

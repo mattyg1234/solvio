@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SignupForm } from "@/components/auth/signup-form";
+import { SiteAuthFooter } from "@/components/site/site-auth-footer";
 import { SiteHeader } from "@/components/site/site-header";
 import {
   Card,
@@ -46,6 +47,7 @@ export default function SignupPage() {
           </Card>
         </div>
       </main>
+      <SiteAuthFooter />
     </>
   );
 }

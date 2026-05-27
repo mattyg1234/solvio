@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
+import { bookingDemoHref } from "@/lib/marketing-links";
+import { SUPPORT_EMAIL, supportMailtoHref } from "@/lib/site-contact";
 
 export function SiteFooter() {
   return (
@@ -18,8 +20,8 @@ export function SiteFooter() {
             Booking infrastructure for restaurants, salons and cafés — voice reception, Stripe-ready deposits and confirmations without enterprise baggage.
           </p>
           <p className="text-sm font-medium text-[#7c3aed]">
-            <a href="mailto:hello@solvio.es" className="underline-offset-4 hover:underline">
-              hello@solvio.es
+            <a href={supportMailtoHref()} className="underline-offset-4 hover:underline">
+              {SUPPORT_EMAIL}
             </a>
           </p>
         </div>
@@ -59,7 +61,7 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/book/solvio-d67c90cc" className="hover:text-[#7c3aed]">
+                <Link href={bookingDemoHref()} className="hover:text-[#7c3aed]">
                   Live booking demo
                 </Link>
               </li>
@@ -79,10 +81,14 @@ export function SiteFooter() {
             <p className="font-semibold text-[#0f172a]">Company</p>
             <ul className="space-y-2 text-[#64748b]">
               <li>
-                <span className="cursor-default">EU hosting-ready</span>
+                <Link href="/privacy#subprocessors" className="hover:text-[#7c3aed]">
+                  EU-ready hosting
+                </Link>
               </li>
               <li>
-                <span className="cursor-default">Spanish & English</span>
+                <Link href="/privacy" className="hover:text-[#7c3aed]">
+                  English & Spanish product copy
+                </Link>
               </li>
             </ul>
           </div>

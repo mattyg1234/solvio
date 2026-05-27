@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type { BookingAnalyticsSnapshot } from "@/app/dashboard/analytics/booking-analytics";
 import type { StripeMerchantDashboardSnapshot } from "@/lib/stripe-connect-merchant";
+import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StripeMerchantBalanceDashboard } from "@/components/dashboard/stripe-merchant-balance-dashboard";
@@ -84,7 +85,7 @@ export function DashboardAnalyticsPanels({
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-semibold text-[#0f172a]">
-                  {new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(booking.bookingRevenueCents / 100)}
+                  {formatMoneyDisplay(booking.bookingRevenueCents)}
                 </p>
               </CardContent>
             </Card>

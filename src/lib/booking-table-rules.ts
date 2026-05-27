@@ -182,7 +182,7 @@ export function validateTableBookingSubmission(args: {
       : "";
     return {
       ok: false,
-      message: `${name}${tableHint} doesn't offer table bookings yet — tweak weekly hours under Dashboard → Bookings → Tables or pick another day.`,
+      message: `${name}${tableHint} isn't available for table bookings on that day — try another date.`,
     };
   }
 

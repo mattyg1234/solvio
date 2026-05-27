@@ -5,13 +5,15 @@ import { Moon } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
-import { MarketingSiteVoice } from "@/components/home/marketing-site-voice";
+import { MarketingSiteVoice, marketingSiteHasLiveVapi } from "@/components/home/marketing-site-voice";
 import { buttonVariants } from "@/components/ui/button";
 import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
+import { bookingDemoHref } from "@/lib/marketing-links";
 import { cn } from "@/lib/utils";
 
 export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }) {
   const reduce = useReducedMotion();
+  const liveVoice = marketingSiteHasLiveVapi(vapiConfig);
 
   return (
     <section className="relative overflow-hidden border-b border-[#ebe7f7]/70 bg-white">
@@ -34,8 +36,8 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               Your booking page live in 30 minutes — guests pay deposits straight to you.
             </h1>
             <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">
-              One calm `/book` link, purple calendars for events, appointment slots with stylist names, and Stripe Connect
-              checkout. AI receptionist when you&apos;re ready to upgrade.
+              Share one booking link with your customers. They pick a day, choose a stylist or table, and pay a deposit by
+              card — money goes straight to your Stripe account.
             </p>
           </div>
 
@@ -82,7 +84,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               See pricing · £50/mo
             </Link>
             <Link
-              href="/book/solvio-d67c90cc"
+              href={bookingDemoHref()}
               className={cn(
                 buttonVariants({ variant: "ghost", size: "lg" }),
                 "h-12 rounded-full px-6 text-base font-semibold text-[#475569] hover:bg-[#f8fafc] hover:text-[#0f172a]",
@@ -113,7 +115,9 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="relative scroll-mt-28 outline-none"
         >
           <p className="mb-4 text-center text-sm font-semibold text-[#475569] lg:text-left">
-            Click the purple microphone — you&apos;ll speak directly to our Vapi receptionist.
+            {liveVoice
+              ? "Click the purple microphone — you'll speak directly to our live AI receptionist demo."
+              : "Preview our AI receptionist — scripted demo while live voice is unavailable."}
           </p>
           <MarketingSiteVoice vapiConfig={vapiConfig} />
         </motion.div>

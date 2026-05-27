@@ -35,7 +35,7 @@ Work **top to bottom**. Do not skip to sales until **Phase C** (end-to-end test)
 
 - [ ] **Sell Booking only** for the next 30 days — not Pro, not Scale
 - [ ] **Promise:** `/book/[slug]`, operations hub, Stripe deposits, guest email
-- [ ] **Do not promise:** paid event ticket checkout (enquiries only), password reset, SMS (unless Twilio wired)
+- [ ] **Do not promise:** SMS (unless Twilio wired) — paid event tickets now checkout when Stripe Connect is live
 - [ ] **Launch price:** £50/mo for first 50 venues — then £89/mo
 - [ ] **First targets:** 1 bar, 1 restaurant, 1 salon you can onboard on a call
 

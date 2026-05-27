@@ -26,9 +26,12 @@ import { callBookingRequestGuestAction } from "@/app/dashboard/bookings/guest-ca
 import { createDepositCheckoutForBookingRequest } from "@/app/dashboard/bookings/payment-actions";
 import { createVenueCalendarBookingFromRequest } from "@/app/dashboard/bookings/calendar-actions";
 import { GuestAiCallButton } from "@/components/dashboard/guest-ai-call-dialog";
+import { InboxEmptyState } from "@/components/dashboard/inbox-empty-state";
+import { StripeConnectRequiredCallout } from "@/components/dashboard/stripe-connect-required-callout";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatMoneyDisplay, moneySymbol } from "@/lib/checkout-money";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { parseEuroInputToCents, sanitizeEuroInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
@@ -72,12 +75,10 @@ function paymentStatusBadge(
 ): { label: string; className: string } | null {
   const st = (status ?? "none").trim().toLowerCase();
   if (st === "paid") {
-    const euros =
-      typeof depositCents === "number" && depositCents > 0
-        ? `€${(depositCents / 100).toFixed(2)}`
-        : null;
+    const paidLabel =
+      typeof depositCents === "number" && depositCents > 0 ? formatMoneyDisplay(depositCents) : null;
     return {
-      label: euros ? `Deposit paid ${euros}` : "Deposit paid",
+      label: paidLabel ? `Deposit paid ${paidLabel}` : "Deposit paid",
       className: "rounded-full bg-emerald-50 px-2 py-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-100",
     };
   }
@@ -388,15 +389,12 @@ function BookingDepositSection({
 
   if (!stripeReady) {
     return (
-      <div className="rounded-2xl border border-dashed border-[#ddd6fe] bg-[#fafbff] px-4 py-4 text-sm text-[#64748b]">
-        <p className="font-semibold text-[#0f172a]">Collect a deposit</p>
-        <p className="mt-1 leading-relaxed">
-          Connect Stripe under{" "}
-          <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
-            Payments
-          </Link>{" "}
-          to send checkout links. Set table prices under Bookings → Tables.
+      <div className="space-y-3">
+        <p className="text-sm font-semibold text-[#0f172a]">Collect a deposit</p>
+        <p className="text-sm leading-relaxed text-[#64748b]">
+          Connect Stripe to send checkout links. Set table prices under Bookings → Tables.
         </p>
+        <StripeConnectRequiredCallout businessId={request.business_id} />
       </div>
     );
   }
@@ -407,7 +405,7 @@ function BookingDepositSection({
         <p className="font-semibold">Deposit collected</p>
         <p className="mt-1">
           {request.deposit_amount_cents
-            ? `€${(request.deposit_amount_cents / 100).toFixed(2)} marked paid via Stripe.`
+            ? `${formatMoneyDisplay(request.deposit_amount_cents)} marked paid via Stripe.`
             : "Payment recorded on this enquiry."}
         </p>
       </div>
@@ -420,7 +418,7 @@ function BookingDepositSection({
     const trimmed = amountEuro.trim();
     const overrideCents = trimmed.length ? parseEuroInputToCents(trimmed) : undefined;
     if (overrideCents != null && overrideCents < 50) {
-      setDepositError("Enter a valid amount of at least €0.50, or leave blank to use table pricing.");
+      setDepositError(`Enter a valid amount of at least ${formatMoneyDisplay(50)}, or leave blank to use table pricing.`);
       return;
     }
     startLocal(() => {
@@ -448,13 +446,13 @@ function BookingDepositSection({
             <p className="text-sm font-semibold text-[#0f172a]">Stripe deposit link</p>
             <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
               Creates a checkout on your connected Stripe account. Solvio retains your plan&apos;s platform fee (1–2.5% based on tier);
-              you receive the remainder. Leave amount blank to use the table price you configured — or enter a custom € amount below.
+              you receive the remainder. Leave amount blank to use the table price you configured — or enter a custom {moneySymbol()} amount below.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
               <label htmlFor={`dep-euro-${request.id}`} className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748b]">
-                Custom amount (€)
+                Custom amount ({moneySymbol()})
               </label>
               <input
                 id={`dep-euro-${request.id}`}
@@ -502,9 +500,19 @@ type BookingInboxProps = {
   };
   /** Opens the matching inbound card when navigating from elsewhere (e.g. confirmed bookings). */
   highlightBookingRequestId?: string | null;
+  publicBookingUrl?: string | null;
+  bookingFlowComplete?: boolean;
 };
 
-export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, inventoryLinks, highlightBookingRequestId }: BookingInboxProps) {
+export function BookingInbox({
+  requests,
+  bizNameById,
+  stripeReadyByBizId,
+  inventoryLinks,
+  highlightBookingRequestId,
+  publicBookingUrl,
+  bookingFlowComplete,
+}: BookingInboxProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -738,9 +746,7 @@ export function BookingInbox({ requests, bizNameById, stripeReadyByBizId, invent
           </div>
         ) : null}
         {!requests.length ? (
-          <p className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-8 text-center text-sm text-[#64748b]">
-            No submissions yet — drop your published link into Instagram, QR menus or SMS footers so diners land here first.
-          </p>
+          <InboxEmptyState publicBookingUrl={publicBookingUrl} bookingFlowComplete={bookingFlowComplete} />
         ) : !filteredRequests.length ? (
           <p className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-4 py-8 text-center text-sm text-[#64748b]">
             No guests match <span className="font-semibold text-[#0f172a]">&ldquo;{searchQuery}&rdquo;</span> — try a different name, phone, or email.

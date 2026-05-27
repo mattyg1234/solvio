@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { SUPPORT_EMAIL, supportMailtoHref } from "@/lib/site-contact";
+
+export const metadata: Metadata = {
+  title: "Privacy policy · Solvio",
+  description: "How Solvio collects and uses merchant and guest data for booking pages and payments.",
+};
 
 export default function PrivacyPage() {
   return (
@@ -27,11 +34,21 @@ export default function PrivacyPage() {
             To operate booking requests, send confirmation emails, process deposits to connected Stripe accounts, and provide
             merchant dashboards. We do not sell guest data to third parties.
           </p>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Cookies & analytics</h2>
+          <p>
+            We use essential cookies for sign-in sessions. We may use privacy-friendly analytics to understand product usage
+            — no ad tracking.
+          </p>
+          <h2 id="subprocessors" className="text-lg font-semibold text-[#0f172a]">Subprocessors</h2>
+          <p>
+            We rely on trusted providers to run Solvio, including Supabase (data hosting), Stripe (payments), Resend or
+            similar (transactional email), and optional voice providers when you enable AI receptionist features.
+          </p>
           <h2 className="text-lg font-semibold text-[#0f172a]">Contact</h2>
           <p>
             Questions:{" "}
-            <a href="mailto:hello@solvio.es" className="font-semibold text-[#7c3aed] hover:underline">
-              hello@solvio.es
+            <a href={supportMailtoHref()} className="font-semibold text-[#7c3aed] hover:underline">
+              {SUPPORT_EMAIL}
             </a>
           </p>
           <p>

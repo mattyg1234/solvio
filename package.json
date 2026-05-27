@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint src middleware.ts --max-warnings 0",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:resend": "node --env-file=.env.local scripts/test-resend-email.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

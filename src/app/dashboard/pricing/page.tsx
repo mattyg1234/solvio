@@ -100,7 +100,7 @@ const TIERS: TierSpec[] = [
     blurb: "Groups, event venues, and multi-location operators selling thousands of tickets a month.",
     bullets: [
       "Unlimited locations",
-      `${SCALE_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes (€0.30 / extra min)`,
+      `${SCALE_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes (£0.30 / extra min)`,
       "1% platform fee on guest deposits",
       "Priority provisioning + custom routing",
       "Solution engineering blocks",
@@ -138,7 +138,7 @@ const comparison: ComparisonRow[] = [
 const faqs = [
   {
     q: "What happens if I exceed my monthly AI minutes?",
-    a: "You're charged the overage rate per minute (€0.40 on Pro, €0.30 on Scale). You'll see usage live in the dashboard and we'll alert you at 80% of cap so there are no surprises.",
+    a: "You're charged the overage rate per minute (£0.40 on Pro, £0.30 on Scale). You'll see usage live in the dashboard and we'll alert you at 80% of cap so there are no surprises.",
   },
   {
     q: "Can I change tiers later?",

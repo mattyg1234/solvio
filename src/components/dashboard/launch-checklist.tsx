@@ -13,11 +13,13 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { StripeConnectRequiredCallout } from "@/components/dashboard/stripe-connect-required-callout";
 import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type LaunchChecklistProps = {
+  businessId: string | null;
   businessName: string | null;
   bookingFlowComplete: boolean;
   bookingFlowKind: string | null;
@@ -41,6 +43,7 @@ type Step = {
 };
 
 export function LaunchChecklist({
+  businessId,
   businessName,
   bookingFlowComplete,
   bookingFlowKind,
@@ -232,6 +235,11 @@ export function LaunchChecklist({
                     <span className="sr-only">{step.done ? "Complete" : "Not complete"}</span>
                   </p>
                   <p className="max-w-xl text-sm leading-relaxed text-[#64748b]">{step.body}</p>
+                  {step.id === "stripe" && !step.done && businessId ? (
+                    <div className="mt-3 max-w-xl">
+                      <StripeConnectRequiredCallout businessId={businessId} />
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <Link
