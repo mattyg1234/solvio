@@ -133,7 +133,7 @@ export function LaunchChecklist({
         ? "Your subscription is active — manage billing anytime under Plans."
         : trialExpired
           ? "Your free trial has ended. Add a card to keep your public /book link live."
-          : `Add a card before your trial ends (${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left). We won't charge until the trial ends.`,
+          : `Add your card for the free trial (${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left). We won't charge until the trial ends.`,
       done: onPaidPlan,
       required: planStepRequired,
       href: "/dashboard/pricing",

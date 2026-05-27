@@ -25,7 +25,7 @@ const stats = [
     icon: CalendarCheck,
     value: "−41%",
     label: "Fewer no-shows",
-    detail: "When guests prepay a deposit online",
+    detail: "Common when venues ask for a card deposit upfront",
   },
 ] as const;
 

@@ -29,26 +29,26 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="space-y-8"
         >
           <p className="inline-flex max-w-xl rounded-full border border-[#ebe7f7]/90 bg-[#f8fafc]/90 px-4 py-2 text-[13px] font-medium leading-snug text-[#475569] backdrop-blur-sm sm:text-sm">
-            Booking link + Stripe deposits for restaurants, salons & cafés
+            One booking link — optional card deposits
           </p>
 
           <div className="space-y-5">
             <h1 className="text-[clamp(2.35rem,5vw,3.65rem)] font-semibold tracking-tight text-[#0f172a] leading-[1.07]">
-              Your booking page live in 30 minutes — guests pay deposits straight to you.
+              Your booking page live in about 30 minutes — enquiries and deposits on one link.
             </h1>
             <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">
-              Share one booking link with your customers. They pick a day, choose a stylist or table, and pay a deposit by
-              card — money goes straight to your Stripe account.
+              Share one link with your customers. They pick a day, choose a stylist or table, and send a request — or pay
+              a deposit by card when you turn that on. Payouts go to you, not a booking marketplace.
             </p>
           </div>
 
           <div
             className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-[#ebe7f7]/80 bg-[#fafbff]/80 px-4 py-3 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] backdrop-blur-sm sm:inline-flex sm:max-w-xl"
-            aria-label="Solvio works twenty-four seven"
+            aria-label="Booking link availability"
           >
             <span className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
               <Moon className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden strokeWidth={2} />
-              Works 24/7
+              Book online 24/7
             </span>
             <span className="hidden h-4 w-px bg-[#ebe7f7] sm:block" aria-hidden />
             <span className="flex items-center gap-2 text-sm font-medium text-[#64748b]">
@@ -61,7 +61,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 ) : null}
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.15)]" />
               </span>
-              Answers after hours
+              Even when you&apos;re closed
             </span>
           </div>
 

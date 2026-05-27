@@ -17,7 +17,7 @@ export function SiteFooter() {
             <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={0.42} />
           </div>
           <p className="text-[15px] leading-relaxed text-[#64748b]">
-            Booking infrastructure for restaurants, salons and cafés — voice reception, Stripe-ready deposits and confirmations without enterprise baggage.
+            Booking infrastructure for restaurants, salons and cafés — one link, online bookings, and confirmations without enterprise baggage.
           </p>
           <p className="text-sm font-medium text-[#7c3aed]">
             <a href={supportMailtoHref()} className="underline-offset-4 hover:underline">
@@ -37,7 +37,7 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link href="/#commerce" className="hover:text-[#7c3aed]">
-                  Bookings & Stripe
+                  Bookings &amp; payments
                 </Link>
               </li>
               <li>

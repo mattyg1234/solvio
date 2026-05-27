@@ -285,7 +285,7 @@ export default async function DashboardPricingPage({
             {trialExpired
               ? `Your ${BOOKING_TRIAL_DAYS}-day trial has ended — add a card on Booking below to keep your link live (£${BOOKING_MONTHLY_GBP}/mo).`
               : onFreeTrial
-                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your free trial${trialEndLabel ? ` (ends ${trialEndLabel})` : ""}. No card needed yet.`
+                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your free trial${trialEndLabel ? ` (ends ${trialEndLabel})` : ""}. Add your card below — we won't charge until the trial ends.`
                 : "Choose a plan below to activate your subscription."}
           </p>
         )}

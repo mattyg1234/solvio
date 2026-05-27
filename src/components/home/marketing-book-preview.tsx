@@ -17,8 +17,8 @@ export function MarketingBookPreview() {
               One branded page — pick a service, pay a deposit, get confirmed.
             </h2>
             <p className="text-[17px] leading-relaxed text-[#64748b]">
-              Your logo, address, and phone at the top. Step-by-step booking for tables, appointments, or events. Stripe
-              checkout when you want deposits online.
+              Your logo, address, and phone at the top. Step-by-step booking for tables, appointments, or events. Card
+              deposits are optional — when on, guests pay the venue directly.
             </p>
             <Link
               href={bookingDemoHref()}
@@ -66,7 +66,7 @@ export function MarketingBookPreview() {
                 </div>
                 <p className="flex items-center justify-center gap-1.5 text-[11px] text-[#94a3b8]">
                   <CreditCard className="h-3 w-3" aria-hidden />
-                  Paid securely via Stripe
+                  Optional deposit · paid to the venue
                 </p>
               </div>
               <div className="border-t border-[#ebe7f7] bg-white px-4 py-3 text-center text-[10px] text-[#94a3b8]">

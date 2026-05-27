@@ -9,7 +9,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
 import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
-import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
+import { trialHeaderTagline } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -48,7 +48,7 @@ export function SiteHeader() {
           <div className="min-w-0">
             <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
             <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8] sm:block">
-              {BOOKING_TRIAL_DAYS}-day trial · no card
+              {trialHeaderTagline()}
             </p>
           </div>
         </Link>

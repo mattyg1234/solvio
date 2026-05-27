@@ -253,7 +253,7 @@ Capture:
 
 # How to handle common things
 
-- **"What does it cost?"** → "Seventy-nine euros a month, or seventy-nine pounds — depends on where you are. There's a 14-day free trial with no card needed, so you can try it on real calls first. Matty can walk you through it properly on the demo."
+- **"What does it cost?"** → "Fifty pounds a month for Booking after a seven-day free trial — add your card to start, we won't charge until the trial ends. Matty can walk you through it properly on the demo."
 
 - **"I already have a receptionist / system"** → "Oh, that's great! Solvio works alongside — picks up the calls your receptionist can't, like lunch, evenings, weekends, sick days. Worth a quick chat with Matty to see if it'd fit?"
 

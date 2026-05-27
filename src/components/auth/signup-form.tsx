@@ -173,7 +173,7 @@ export function SignupForm() {
       </label>
 
       <p className="rounded-2xl border border-[#ede9fe] bg-[#faf5ff] px-4 py-3 text-[13px] leading-relaxed text-[#5b21b6]">
-        Next: ~5-minute setup → connect Stripe (optional) → publish your <span className="font-semibold">/book</span> link.
+        Next: ~5-minute setup → optional deposits → publish your <span className="font-semibold">/book</span> link.
       </p>
 
       <Button

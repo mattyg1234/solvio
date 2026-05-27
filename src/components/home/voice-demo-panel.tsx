@@ -48,7 +48,7 @@ const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
       },
       {
         role: "assistant",
-        text: "Solvio picks up bookings, sends confirmations guests actually receive, and keeps deposits flowing through Stripe — calmly, even after hours.",
+        text: "Solvio picks up bookings, sends confirmations guests actually receive, and can take optional deposits for you — calmly, even after hours.",
       },
     ],
   },

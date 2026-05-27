@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { PlatformCapabilityKey } from "@/lib/platform-capabilities";
 import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
 import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
+import { BOOKING_MONTHLY_GBP } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 import {
@@ -599,7 +600,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                 <li>Open the launch checklist on Overview and finish each step</li>
                 <li>Publish your /book link and send yourself a test booking</li>
                 <li>Connect Stripe if you want deposit checkout</li>
-                <li>Add a card on Booking (£50/mo) before your trial ends</li>
+                <li>Add your card to start the free trial — £{BOOKING_MONTHLY_GBP}/mo after it ends unless you cancel</li>
               </ol>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

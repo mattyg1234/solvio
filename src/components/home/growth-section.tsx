@@ -11,8 +11,8 @@ import { Card } from "@/components/ui/card";
 const blocks = [
   {
     title: "Never miss a booking",
-    body: "AI answers calls 24/7 so tables stay full — even when your team is slammed.",
-    stat: "+28% more covers",
+    body: "Your /book link works 24/7 — guests enquire even when you're closed. Pro adds an AI receptionist on the phone.",
+    stat: "More after-hours requests",
     icon: PhoneIncoming,
   },
   {
@@ -23,20 +23,20 @@ const blocks = [
   },
   {
     title: "Automatic appointments",
-    body: "Bookings handled on the spot with confirmations guests actually receive.",
-    stat: "−35% admin back-and-forth",
+    body: "Guests pick slots on your link; you confirm from one inbox with email updates they actually receive.",
+    stat: "Less back-and-forth",
     icon: CalendarClock,
   },
   {
     title: "Less time on the phone",
-    body: "Free your crew to focus on hospitality, not repetitive phone loops.",
-    stat: "~6 hrs/week saved",
+    body: "Fewer repetitive calls when guests self-serve on your link — free your crew for the floor.",
+    stat: "~6 hrs/week saved (example)",
     icon: Hourglass,
   },
   {
     title: "One booking inbox",
-    body: "Requests, deposits and confirmations in one place — no spreadsheet chasing.",
-    stat: "£1.8k/mo deposits (example)",
+    body: "Requests, optional deposits, and confirmations in one place — no spreadsheet chasing.",
+    stat: "Deposits optional",
     icon: CalendarDays,
   },
 ];
@@ -51,8 +51,8 @@ export function GrowthSection() {
             Growth feels effortless — because the boring stuff disappears.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            No dashboards to babysit. Booking (£50/mo) gives you the public link, calendar, and Stripe deposits — Pro adds
-            the full AI receptionist for after-hours calls.
+            No dashboards to babysit. Booking (£50/mo) gives you the public link, calendar, and optional online deposits.
+            Pro adds the full AI receptionist for after-hours calls.
           </p>
         </div>
 

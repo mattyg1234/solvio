@@ -4,10 +4,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
 import {
   BOOKING_MONTHLY_GBP,
-  BOOKING_PLATFORM_FEE_BPS,
   BOOKING_TRIAL_DAYS,
   PRO_MONTHLY_GBP,
-  TRIAL_PLATFORM_FEE_BPS,
+  guestDepositPayoutLine,
   trialExploreLine,
 } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
@@ -21,7 +20,7 @@ const tiers = [
     features: [
       "Public /book link for your venue",
       "Appointments, tables & events",
-      "Stripe Connect deposits to your account",
+      "Optional card deposits — paid to you",
       "Guest email confirmations",
       "Operations inbox & calendar",
     ],
@@ -51,9 +50,7 @@ export function PricingSection() {
             Go live with bookings for £{BOOKING_MONTHLY_GBP}/month.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            {trialExploreLine()} Guest deposits go straight to your Stripe account. Solvio takes a small platform fee on
-            processed payments ({TRIAL_PLATFORM_FEE_BPS / 100}% during trial, {BOOKING_PLATFORM_FEE_BPS / 100}% on the Booking
-            plan).
+            {trialExploreLine()} £{BOOKING_MONTHLY_GBP}/mo for the booking page and inbox. {guestDepositPayoutLine()}
           </p>
         </div>
 

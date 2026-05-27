@@ -13,8 +13,8 @@ const steps = [
   },
   {
     icon: CreditCard,
-    title: "Connect Stripe",
-    body: "Guest deposits land in your account — optional for free enquiries.",
+    title: "Turn on deposits (optional)",
+    body: "Quick setup when you want card payments. Free booking requests work without them.",
   },
   {
     icon: Link2,

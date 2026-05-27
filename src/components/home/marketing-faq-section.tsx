@@ -15,15 +15,15 @@ const faqs = [
   },
   {
     q: "Who receives guest deposit payments?",
-    a: "Guests pay through Stripe Checkout. Funds go to your connected Stripe account — Solvio is not the merchant of record for table or appointment deposits.",
+    a: "You do. Guest deposits are paid to your business payout account — Solvio is not the merchant of record. We provide the booking page, inbox, and guest confirmations.",
   },
   {
     q: "What fees does Solvio charge?",
-    a: `Booking is £${BOOKING_MONTHLY_GBP}/month after your trial. On guest deposits, Solvio takes a platform fee (${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on the Booking plan) — shown before checkout.`,
+    a: `Booking is £${BOOKING_MONTHLY_GBP}/month after your trial. A small fee applies on guest deposits (${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on Booking) — always shown before guests pay.`,
   },
   {
     q: "Can I cancel?",
-    a: `Yes. Your ${BOOKING_TRIAL_DAYS}-day trial needs no card. After that, manage billing in the dashboard — cancel anytime and your subscription stops at the end of the paid period.`,
+    a: `Yes. Cancel anytime from the dashboard. Cancel before your ${BOOKING_TRIAL_DAYS}-day trial ends and you won't be charged £${BOOKING_MONTHLY_GBP}/mo.`,
   },
   {
     q: "Is this only for restaurants?",

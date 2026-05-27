@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const topics = [
   "How AI receptionists handle calls after hours",
   "Bookings, tables, and event nights on one page",
-  "Stripe deposits and Connect for your venue",
+  "Optional card deposits for your venue",
   "What setup looks like for restaurants, salons, and tours",
 ];
 

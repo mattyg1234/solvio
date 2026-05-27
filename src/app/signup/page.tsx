@@ -69,7 +69,7 @@ export default async function SignupPage({
               </CardTitle>
               <CardDescription className="text-[15px] leading-relaxed text-[#64748b]">
                 {scaleIntent
-                  ? "£50/mo after a 7-day trial — publish your /book link and take deposits with Stripe."
+                  ? "£50/mo after a 7-day trial — publish your /book link and take deposits online."
                   : "About two minutes — then a short setup wizard to publish your booking link."}
               </CardDescription>
               {!scaleIntent ? (

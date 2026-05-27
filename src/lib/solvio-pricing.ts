@@ -15,9 +15,19 @@ export const TRIAL_AI_MINUTES = 50;
 /** Platform fee on guest deposits during the free trial (1000 = 10%). */
 export const TRIAL_PLATFORM_FEE_BPS = 1000;
 
+/** Short tagline for header / badges — e.g. "7-day free trial". */
+export function trialHeaderTagline(): string {
+  return `${BOOKING_TRIAL_DAYS}-day free trial`;
+}
+
 /** Shared trial copy — marketing, signup, and dashboard should match. */
 export function trialExploreLine(): string {
-  return `${BOOKING_TRIAL_DAYS}-day free trial — explore without a card. Add a card on the Booking plan before your trial ends; £${BOOKING_MONTHLY_GBP}/mo starts after that unless you cancel.`;
+  return `${BOOKING_TRIAL_DAYS}-day free trial — add your card to get started. You won't be charged until the trial ends; £${BOOKING_MONTHLY_GBP}/mo after that unless you cancel.`;
+}
+
+/** One-line deposit payout copy for marketing (no Stripe brand on homepage). */
+export function guestDepositPayoutLine(): string {
+  return `Guest deposits go to your payout account. Solvio keeps a platform fee (${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on Booking) — always shown before guests pay.`;
 }
 
 export const PRO_AI_MINUTES = 1000;

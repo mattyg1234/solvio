@@ -14,7 +14,7 @@ const stories = [
   {
     biz: "Bark Barber Studio · Leeds",
     quote:
-      "Saturday used to be no-show chaos. Deposits at checkout changed everything — clients actually turn up.",
+      "Saturday used to be no-show chaos. Card deposits changed everything — clients actually turn up.",
     owner: "Priya M. · Studio manager",
     metric: "−41% no-shows",
     money: "~£680/mo recovered",
@@ -30,7 +30,7 @@ const stories = [
   {
     biz: "Riverside Bistro · Bristol",
     quote:
-      "After-hours enquiries used to die on the answerphone. Now guests book and pay while we're closed — real money on the bank feed.",
+      "After-hours enquiries used to die on the answerphone. Now guests can book from the link while we're closed — requests waiting when we open.",
     owner: "Tom H. · GM",
     metric: "+£2.1k/mo",
     money: "After-hours revenue",
