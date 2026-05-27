@@ -28,13 +28,21 @@ function decodeAuthError(raw: string | string[] | undefined): string | undefined
   }
 }
 
+function safeLoginRedirect(raw: string | string[] | undefined): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value?.startsWith("/") || value.startsWith("//")) return "/dashboard";
+  if (!value.startsWith("/dashboard")) return "/dashboard";
+  return value;
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[] }>;
+  searchParams: Promise<{ error?: string | string[]; next?: string | string[] }>;
 }) {
   const params = await searchParams;
   const authCallbackError = decodeAuthError(params.error);
+  const redirectTo = safeLoginRedirect(params.next);
 
   return (
     <>
@@ -60,7 +68,7 @@ export default async function LoginPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2 pb-6">
-              <LoginForm authCallbackError={authCallbackError} />
+              <LoginForm authCallbackError={authCallbackError} redirectTo={redirectTo} />
               <p className="mt-6 border-t border-[#ebe7f7] pt-6 text-center text-sm text-[#64748b]">
                 New here?{" "}
                 <Link href="/signup" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">

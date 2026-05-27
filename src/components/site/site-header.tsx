@@ -129,6 +129,13 @@ export function SiteHeader() {
               Start free trial
             </Link>
             <Link
+              href={bookingDemoHref()}
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-full font-semibold")}
+              onClick={() => setMobileOpen(false)}
+            >
+              Try booking demo
+            </Link>
+            <Link
               href="/login"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-full font-semibold")}
               onClick={() => setMobileOpen(false)}

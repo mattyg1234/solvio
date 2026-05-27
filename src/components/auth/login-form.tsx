@@ -12,9 +12,16 @@ import { PasswordInput } from "@/components/ui/password-input";
 
 type LoginFormProps = {
   authCallbackError?: string | null;
+  redirectTo?: string;
 };
 
-export function LoginForm({ authCallbackError }: LoginFormProps) {
+function safeDashboardRedirect(raw: string | undefined): string {
+  if (!raw?.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  if (!raw.startsWith("/dashboard")) return "/dashboard";
+  return raw;
+}
+
+export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: LoginFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,10 +42,10 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
       const supabase = createSupabaseBrowserClient();
       const { error: signErr } = await supabase.auth.signInWithPassword({ email, password });
       if (signErr) {
-        setError(signErr.message);
+        setError("Email or password incorrect — try again or reset your password.");
         return;
       }
-      router.push("/dashboard");
+      router.push(safeDashboardRedirect(redirectTo));
       router.refresh();
     } catch (err) {
       setError("Something went wrong — please try again or email hello@solviosystems.com.");

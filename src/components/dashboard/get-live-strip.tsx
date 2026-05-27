@@ -18,6 +18,14 @@ export function GetLiveStrip({ bookingFlowComplete, stripeChargesEnabled, slugPu
   if (!stripeChargesEnabled) missing.push("Stripe Connect");
   if (!slugPublished) missing.push("public link");
 
+  const nextStep = !bookingFlowComplete
+    ? { href: "/dashboard/setup/bookings", cta: "Complete booking setup" }
+    : !slugPublished
+      ? { href: "/dashboard/bookings#booking-links", cta: "Publish guest link" }
+      : !stripeChargesEnabled
+        ? { href: "/dashboard/payments", cta: "Connect Stripe" }
+        : { href: "/dashboard", cta: "Open launch checklist" };
+
   return (
     <div className="rounded-[20px] border border-[#ddd6fe] bg-gradient-to-r from-[#faf5ff] to-white px-5 py-4 md:flex md:items-center md:justify-between md:gap-6">
       <div className="space-y-1">
@@ -27,13 +35,13 @@ export function GetLiveStrip({ bookingFlowComplete, stripeChargesEnabled, slugPu
         </p>
       </div>
       <Link
-        href="/dashboard"
+        href={nextStep.href}
         className={cn(
           buttonVariants({ variant: "default" }),
           "mt-3 inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-5 text-sm font-semibold md:mt-0",
         )}
       >
-        Open launch checklist
+        {nextStep.cta}
         <ArrowRight className="h-4 w-4" aria-hidden />
       </Link>
     </div>
