@@ -3,9 +3,16 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
 import {
+  BOOKING_DEMO_AI_MINUTES,
   BOOKING_MONTHLY_GBP,
+  BOOKING_PLATFORM_FEE_BPS,
   BOOKING_TRIAL_DAYS,
+  ENTERPRISE_AI_MINUTES,
+  ENTERPRISE_MONTHLY_GBP,
+  ENTERPRISE_PLATFORM_FEE_BPS,
+  PRO_AI_MINUTES,
   PRO_MONTHLY_GBP,
+  PRO_PLATFORM_FEE_BPS,
   guestDepositPayoutLine,
   trialExploreLine,
 } from "@/lib/solvio-pricing";
@@ -16,13 +23,13 @@ const tiers = [
     name: "Booking",
     price: `£${BOOKING_MONTHLY_GBP}`,
     period: "/mo",
-    badge: "For restaurants, salons & cafés",
+    badge: "Start here",
     features: [
-      "Public /book link for your venue",
-      "Appointments, tables & events",
-      "Optional card deposits — paid to you",
-      "Guest email confirmations",
+      "Public /book link — tables, appointments & events",
       "Operations inbox & calendar",
+      "Optional card deposits — paid to you",
+      `${BOOKING_PLATFORM_FEE_BPS / 100}% fee on guest deposits`,
+      `${BOOKING_DEMO_AI_MINUTES} demo AI minutes to test a call`,
     ],
     cta: `Start ${BOOKING_TRIAL_DAYS}-day trial`,
     href: "/signup",
@@ -32,10 +39,32 @@ const tiers = [
     name: "Pro",
     price: `£${PRO_MONTHLY_GBP}`,
     period: "/mo",
-    badge: "Full AI receptionist",
-    features: ["Everything in Booking", "AI receptionist", "Campaign tools", "Priority support"],
+    badge: "AI receptionist",
+    features: [
+      "Everything in Booking",
+      `${PRO_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes / month`,
+      `${PRO_PLATFORM_FEE_BPS / 100}% fee on guest deposits`,
+      "Full voice configuration & call history",
+      "Ask Solvio + lead pipeline",
+    ],
     cta: "Start with Pro",
     href: "/signup?intent=pro",
+    highlight: false,
+  },
+  {
+    name: "Enterprise",
+    price: `£${ENTERPRISE_MONTHLY_GBP}`,
+    period: "/mo",
+    badge: "Multi-site & volume",
+    features: [
+      "Everything in Pro",
+      `${ENTERPRISE_AI_MINUTES.toLocaleString("en-GB")} AI minutes / month`,
+      `${ENTERPRISE_PLATFORM_FEE_BPS / 100}% fee on guest deposits`,
+      "Outbound campaigns + unlimited locations",
+      "Priority support & custom branding",
+    ],
+    cta: "Talk to us about Enterprise",
+    href: "/signup?intent=enterprise",
     highlight: false,
   },
 ];
@@ -47,19 +76,19 @@ export function PricingSection() {
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">Simple pricing</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.75rem)] font-semibold tracking-tight text-[#0f172a]">
-            Go live with bookings for £{BOOKING_MONTHLY_GBP}/month.
+            Booking from £{BOOKING_MONTHLY_GBP}/mo — add AI when you&apos;re ready.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            {trialExploreLine()} £{BOOKING_MONTHLY_GBP}/mo for the booking page and inbox. {guestDepositPayoutLine()}
+            {trialExploreLine()} {guestDepositPayoutLine()}
           </p>
         </div>
 
-        <div className="mt-14 grid gap-6 lg:grid-cols-2">
+        <div className="mt-14 grid gap-6 lg:grid-cols-3">
           {tiers.map((tier) => (
             <div
               key={tier.name}
               className={cn(
-                "rounded-[28px] border p-8 shadow-sm",
+                "flex flex-col rounded-[28px] border p-8 shadow-sm",
                 tier.highlight
                   ? "border-[#c4b5fd] bg-gradient-to-b from-[#faf7ff] to-white shadow-[0_28px_90px_-58px_rgba(124,58,237,0.35)]"
                   : "border-[#ebe7f7] bg-[#fafbff]/50",
@@ -71,7 +100,7 @@ export function PricingSection() {
                 <span className="text-4xl font-bold text-[#0f172a]">{tier.price}</span>
                 <span className="text-[#64748b]">{tier.period}</span>
               </p>
-              <ul className="mt-6 space-y-2 text-[15px] text-[#475569]">
+              <ul className="mt-6 flex-1 space-y-2 text-[15px] text-[#475569]">
                 {tier.features.map((f) => (
                   <li key={f} className="flex gap-2">
                     <span className="text-[#7c3aed]" aria-hidden>
@@ -95,14 +124,10 @@ export function PricingSection() {
         </div>
 
         <p className="mx-auto mt-10 max-w-xl text-center text-sm text-[#94a3b8]">
-          Need multi-location or high-volume events?{" "}
-          <Link href="/signup?intent=scale" className="font-semibold text-[#7c3aed] hover:underline">
-            Scale from £499/mo
-          </Link>
-          {" · "}
-          Try the live guest experience:{" "}
+          Pro includes {PRO_AI_MINUTES} AI minutes — enough for steady call volume; Enterprise adds{" "}
+          {ENTERPRISE_AI_MINUTES.toLocaleString("en-GB")}+ for groups and events.{" "}
           <Link href={bookingDemoHref()} className="font-semibold text-[#7c3aed] hover:underline">
-            book demo →
+            Try the live booking demo →
           </Link>
         </p>
       </div>

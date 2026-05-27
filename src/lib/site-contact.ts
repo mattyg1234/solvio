@@ -8,5 +8,8 @@ export function supportMailtoHref(): string {
 }
 
 export function scaleInquiryMailtoHref(): string {
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Solvio Scale enquiry")}`;
+  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Solvio Enterprise enquiry")}`;
 }
+
+/** @deprecated Use scaleInquiryMailtoHref — Enterprise replaces Scale in marketing copy. */
+export const enterpriseInquiryMailtoHref = scaleInquiryMailtoHref;

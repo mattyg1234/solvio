@@ -6,6 +6,7 @@ import {
   PhoneIncoming,
 } from "lucide-react";
 
+import { BOOKING_MONTHLY_GBP, PRO_MONTHLY_GBP } from "@/lib/solvio-pricing";
 import { Card } from "@/components/ui/card";
 
 const blocks = [
@@ -51,8 +52,8 @@ export function GrowthSection() {
             Growth feels effortless — because the boring stuff disappears.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            No dashboards to babysit. Booking (£50/mo) gives you the public link, calendar, and optional online deposits.
-            Pro adds the full AI receptionist for after-hours calls.
+            No dashboards to babysit. Booking (£{BOOKING_MONTHLY_GBP}/mo) gives you the public link, calendar, and optional
+            online deposits. Pro (£{PRO_MONTHLY_GBP}/mo) adds the AI receptionist with a limited monthly minute cap.
           </p>
         </div>
 

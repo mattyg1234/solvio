@@ -6,7 +6,7 @@ export const SOLVIO_VOICE_DEMO_SENTENCE =
 
 export type SolvioVoiceCategory = "system" | "solvio";
 
-export type SubscriptionTier = "trial" | "pro" | "business" | "scale" | "enterprise";
+export type SubscriptionTier = "trial" | "booking" | "pro" | "business" | "scale" | "enterprise";
 
 export type SolvioVoiceEntry = {
   id: string;
@@ -19,6 +19,7 @@ export type SolvioVoiceEntry = {
 
 const TIER_RANK: Record<SubscriptionTier, number> = {
   trial: 0,
+  booking: 0,
   pro: 1,
   business: 2,
   scale: 3,
@@ -219,6 +220,6 @@ export function planLabelForVoice(voice: SolvioVoiceEntry): string | null {
   if (voice.minTier === "trial") return null;
   if (voice.minTier === "pro") return "Pro";
   if (voice.minTier === "business") return "Business";
-  if (voice.minTier === "scale") return "Scale";
+  if (voice.minTier === "scale") return "Enterprise";
   return "Enterprise";
 }

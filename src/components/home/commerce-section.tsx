@@ -10,6 +10,11 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import {
+  BOOKING_MONTHLY_GBP,
+  ENTERPRISE_MONTHLY_GBP,
+  PRO_MONTHLY_GBP,
+} from "@/lib/solvio-pricing";
 
 const capabilities = [
   { title: "Takes enquiries", body: "Your /book link accepts requests 24/7 — tables, stylists, events, or walk-ins." },
@@ -74,11 +79,12 @@ export function CommerceSection() {
             </div>
             <h3 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Pricing that grows when you grow</h3>
             <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">
-              <span className="font-medium text-[#0f172a]">£50/month</span> launch pricing for the Booking tier — public link,
-              operations hub, online deposits, and guest email. Pro adds AI receptionist from £150/mo when you&apos;re ready.
+              <span className="font-medium text-[#0f172a]">£{BOOKING_MONTHLY_GBP}/month</span> for Booking — public link,
+              operations hub, optional deposits, and guest email. Pro (£{PRO_MONTHLY_GBP}/mo) adds AI receptionist; Enterprise
+              (£{ENTERPRISE_MONTHLY_GBP}/mo) adds high minute caps and campaigns.
             </p>
             <p className="mt-4 text-[14px] leading-relaxed text-[#94a3b8]">
-              Launch pricing £50/mo for early venues — £89/mo after the first 50 sign up.
+              Cancel anytime — deposit platform fees drop on higher tiers.
             </p>
           </Card>
         </div>

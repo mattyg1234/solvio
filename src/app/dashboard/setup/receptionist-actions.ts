@@ -30,7 +30,15 @@ export type ReceptionistStudioSaveInput = VoiceReceptionistSaveInput & {
 };
 
 function parseSubscriptionTier(raw: unknown): SubscriptionTier {
-  if (raw === "pro" || raw === "business" || raw === "scale" || raw === "enterprise") return raw;
+  if (
+    raw === "booking" ||
+    raw === "pro" ||
+    raw === "business" ||
+    raw === "scale" ||
+    raw === "enterprise"
+  ) {
+    return raw;
+  }
   return "trial";
 }
 

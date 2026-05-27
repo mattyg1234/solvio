@@ -30,9 +30,9 @@ const PLANS = [
     env: "STRIPE_PRICE_PRO",
   },
   {
-    name: "Solvio Scale",
-    description: "Multi-location operators. £499/mo GBP.",
-    unitAmount: 49900,
+    name: "Solvio Enterprise",
+    description: "Multi-location operators — full platform + 1,500 AI min/mo. £399/mo GBP.",
+    unitAmount: 39900,
     env: "STRIPE_PRICE_SCALE",
   },
 ];

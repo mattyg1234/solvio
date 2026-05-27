@@ -4,26 +4,25 @@
  * Each business carries its own platform_fee_bps (basis points: 500 = 5%).
  * Default for new businesses on the trial tier is 5%. Higher tiers pay less:
  *   Pro:      250 bps (2.5%)
- *   Business: 150 bps (1.5%)
- *   Scale:    100 bps (1.0%)
- *   Enterprise: negotiated per deal
+ *   Enterprise (scale): 100 bps (1.0%)
  *
  * Always read the bps from the business row — never assume 5%.
  */
 
 export const DEFAULT_PLATFORM_FEE_BPS = 500;
 
-export type SubscriptionTier = "trial" | "pro" | "business" | "scale" | "enterprise";
+export type SubscriptionTier = "trial" | "booking" | "pro" | "business" | "scale" | "enterprise";
 
 export const TIER_DEFAULTS: Record<
   SubscriptionTier,
-  { feeBps: number; monthlyAiMinutes: number; includedLocations: number; monthlyPriceEur: number }
+  { feeBps: number; monthlyAiMinutes: number; includedLocations: number; monthlyPriceGbp: number }
 > = {
-  trial:      { feeBps: 500, monthlyAiMinutes: 50,    includedLocations: 1, monthlyPriceEur: 0 },
-  pro:        { feeBps: 250, monthlyAiMinutes: 300,   includedLocations: 1, monthlyPriceEur: 79 },
-  business:   { feeBps: 150, monthlyAiMinutes: 1000,  includedLocations: 3, monthlyPriceEur: 199 },
-  scale:      { feeBps: 100, monthlyAiMinutes: 3000,  includedLocations: 999, monthlyPriceEur: 399 },
-  enterprise: { feeBps: 50,  monthlyAiMinutes: 10000, includedLocations: 999, monthlyPriceEur: 0 },
+  trial: { feeBps: 1000, monthlyAiMinutes: 50, includedLocations: 1, monthlyPriceGbp: 0 },
+  booking: { feeBps: 500, monthlyAiMinutes: 10, includedLocations: 1, monthlyPriceGbp: 50 },
+  pro: { feeBps: 250, monthlyAiMinutes: 300, includedLocations: 2, monthlyPriceGbp: 150 },
+  business: { feeBps: 250, monthlyAiMinutes: 300, includedLocations: 3, monthlyPriceGbp: 150 },
+  scale: { feeBps: 100, monthlyAiMinutes: 1500, includedLocations: 999, monthlyPriceGbp: 399 },
+  enterprise: { feeBps: 50, monthlyAiMinutes: 10000, includedLocations: 999, monthlyPriceGbp: 0 },
 };
 
 /**

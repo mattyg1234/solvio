@@ -4,6 +4,8 @@ import {
   BOOKING_MONTHLY_GBP,
   BOOKING_TRIAL_DAYS,
   BOOKING_PLATFORM_FEE_BPS,
+  ENTERPRISE_PLATFORM_FEE_BPS,
+  PRO_PLATFORM_FEE_BPS,
   TRIAL_PLATFORM_FEE_BPS,
   trialExploreLine,
 } from "@/lib/solvio-pricing";
@@ -19,7 +21,7 @@ const faqs = [
   },
   {
     q: "What fees does Solvio charge?",
-    a: `Booking is £${BOOKING_MONTHLY_GBP}/month after your trial. A small fee applies on guest deposits (${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on Booking) — always shown before guests pay.`,
+    a: `Booking is £${BOOKING_MONTHLY_GBP}/month after your trial. Deposit fees: ${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on Booking, ${PRO_PLATFORM_FEE_BPS / 100}% on Pro, ${ENTERPRISE_PLATFORM_FEE_BPS / 100}% on Enterprise — always shown before guests pay.`,
   },
   {
     q: "Can I cancel?",

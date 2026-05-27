@@ -13,7 +13,7 @@ const TIER_PRICE_GBP: Record<string, number> = {
   booking: 50,
   pro: 150,
   business: 150,
-  scale: 499,
+  scale: 399,
   enterprise: 0,
 };
 const TIER_PRICE_EUR: Record<string, number> = TIER_PRICE_GBP;
@@ -86,7 +86,7 @@ export default async function AdminCostsPage() {
     const t = (row.subscription_tier as string | null)?.trim() || "trial";
     tierCounts.set(t, (tierCounts.get(t) ?? 0) + 1);
   }
-  const tierBreakdown: TierCount[] = ["pro", "business", "scale", "enterprise", "trial"].map((tier) => ({
+  const tierBreakdown: TierCount[] = ["booking", "pro", "business", "scale", "enterprise", "trial"].map((tier) => ({
     tier,
     count: tierCounts.get(tier) ?? 0,
     price: TIER_PRICE_EUR[tier] ?? 0,

@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
+import {
+  BOOKING_DEMO_AI_MINUTES,
+  BOOKING_PLATFORM_FEE_BPS,
+  ENTERPRISE_AI_MINUTES,
+  ENTERPRISE_PLATFORM_FEE_BPS,
+  PRO_AI_MINUTES,
+  PRO_PLATFORM_FEE_BPS,
+} from "@/lib/solvio-pricing";
 import { stripeClient } from "@/lib/stripe-client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -155,10 +163,26 @@ async function creditOutboundBundle(session: Stripe.Checkout.Session) {
 }
 
 const TIER_SETTINGS = {
-  booking:  { platform_fee_bps: 500,  monthly_ai_minutes_included: 10,    included_locations: 1   },
-  pro:      { platform_fee_bps: 250,  monthly_ai_minutes_included: 1000,  included_locations: 2   },
-  business: { platform_fee_bps: 200,  monthly_ai_minutes_included: 2000,  included_locations: 5   },
-  scale:    { platform_fee_bps: 100,  monthly_ai_minutes_included: 10000, included_locations: 999 },
+  booking: {
+    platform_fee_bps: BOOKING_PLATFORM_FEE_BPS,
+    monthly_ai_minutes_included: BOOKING_DEMO_AI_MINUTES,
+    included_locations: 1,
+  },
+  pro: {
+    platform_fee_bps: PRO_PLATFORM_FEE_BPS,
+    monthly_ai_minutes_included: PRO_AI_MINUTES,
+    included_locations: 2,
+  },
+  business: {
+    platform_fee_bps: PRO_PLATFORM_FEE_BPS,
+    monthly_ai_minutes_included: PRO_AI_MINUTES,
+    included_locations: 3,
+  },
+  scale: {
+    platform_fee_bps: ENTERPRISE_PLATFORM_FEE_BPS,
+    monthly_ai_minutes_included: ENTERPRISE_AI_MINUTES,
+    included_locations: 999,
+  },
 } as const;
 type PaidTier = keyof typeof TIER_SETTINGS;
 

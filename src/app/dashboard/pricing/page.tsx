@@ -11,11 +11,16 @@ import {
   BOOKING_MONTHLY_GBP,
   BOOKING_PLATFORM_FEE_BPS,
   BOOKING_TRIAL_DAYS,
+  ENTERPRISE_AI_MINUTES,
+  ENTERPRISE_AI_OVERAGE_GBP,
+  ENTERPRISE_ANNUAL_GBP,
+  ENTERPRISE_MONTHLY_GBP,
+  ENTERPRISE_PLATFORM_FEE_BPS,
   PRO_AI_MINUTES,
+  PRO_AI_OVERAGE_GBP,
   PRO_ANNUAL_GBP,
   PRO_MONTHLY_GBP,
-  SCALE_AI_MINUTES,
-  SCALE_MONTHLY_GBP,
+  PRO_PLATFORM_FEE_BPS,
   TRIAL_AI_MINUTES,
   TRIAL_PLATFORM_FEE_BPS,
   formatTrialEndDate,
@@ -53,8 +58,8 @@ const TIERS: TierSpec[] = [
     bullets: [
       "1 location",
       "Full booking microsite (tables, appointments, events)",
-      "Stripe Connect payouts",
-      `${BOOKING_DEMO_AI_MINUTES} demo AI receptionist minutes to test calls`,
+      "Payouts to your account",
+      `${BOOKING_DEMO_AI_MINUTES} demo AI minutes to test calls`,
       `${BOOKING_PLATFORM_FEE_BPS / 100}% platform fee on guest deposits`,
       "Email confirmations to guests",
     ],
@@ -68,12 +73,12 @@ const TIERS: TierSpec[] = [
     monthlyDisplay: `£${PRO_MONTHLY_GBP}`,
     cadence: "/month",
     annualNote: `Annual billing available — £${PRO_ANNUAL_GBP.toLocaleString("en-GB")}/year (save 10% vs monthly).`,
-    blurb: "Every working venue — bars, restaurants, salons, ticketed events — with the full AI receptionist and operations hub.",
+    blurb: "Full AI receptionist for busy venues — limited monthly minutes with overage if you grow past the cap.",
     bullets: [
       "Up to 2 locations",
       `${PRO_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes / month`,
-      "2.5% platform fee on guest deposits",
-      "Stripe Connect payouts",
+      `${PRO_PLATFORM_FEE_BPS / 100}% platform fee on guest deposits`,
+      `£${PRO_AI_OVERAGE_GBP.toFixed(2)} / extra AI minute`,
       "Full Operations Hub + floor plan",
       "Lead pipeline + Ask Solvio AI",
     ],
@@ -81,20 +86,20 @@ const TIERS: TierSpec[] = [
     checkoutAction: checkoutProAction,
   },
   {
-    name: "Scale",
-    monthlyDisplay: `£${SCALE_MONTHLY_GBP}`,
+    name: "Enterprise",
+    monthlyDisplay: `£${ENTERPRISE_MONTHLY_GBP}`,
     cadence: "/month",
-    annualNote: "Annual billing available — £5,388/year (save 10% vs monthly).",
-    blurb: "Groups, event venues, and multi-location operators selling thousands of tickets a month.",
+    annualNote: `Annual billing available — £${ENTERPRISE_ANNUAL_GBP.toLocaleString("en-GB")}/year (save 10% vs monthly).`,
+    blurb: "Groups, event venues, and multi-location operators — full platform access with high AI minute caps.",
     bullets: [
       "Unlimited locations",
-      `${SCALE_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes (£0.30 / extra min)`,
-      "1% platform fee on guest deposits",
-      "Priority provisioning + custom routing",
-      "Solution engineering blocks",
-      "Custom branding (logo, colour)",
+      `${ENTERPRISE_AI_MINUTES.toLocaleString("en-GB")} AI receptionist minutes / month`,
+      `${ENTERPRISE_PLATFORM_FEE_BPS / 100}% platform fee on guest deposits`,
+      `£${ENTERPRISE_AI_OVERAGE_GBP.toFixed(2)} / extra AI minute`,
+      "Outbound voice campaigns",
+      "Custom branding + priority support",
     ],
-    ctaLabel: "Start with Scale",
+    ctaLabel: "Upgrade to Enterprise",
     checkoutAction: checkoutScaleAction,
   },
 ];
@@ -104,29 +109,44 @@ type ComparisonRow = {
   feature: string;
   booking: ComparisonCell;
   pro: ComparisonCell;
-  scale: ComparisonCell;
+  enterprise: ComparisonCell;
 };
 
 const comparison: ComparisonRow[] = [
-  { feature: "Public booking microsite", booking: true, pro: true, scale: true },
-  { feature: "AI receptionist minutes / month", booking: `${BOOKING_DEMO_AI_MINUTES} demo`, pro: PRO_AI_MINUTES.toLocaleString("en-GB"), scale: SCALE_AI_MINUTES.toLocaleString("en-GB") },
-  { feature: "Overage rate (per extra minute)", booking: "n/a", pro: "£0.40", scale: "£0.30" },
-  { feature: "Platform fee on guest deposits", booking: "5%", pro: "2.5%", scale: "1%" },
-  { feature: "Locations included", booking: "1", pro: "2", scale: "Unlimited" },
-  { feature: "Stripe Connect payouts", booking: true, pro: true, scale: true },
-  { feature: "Operations hub (appointments / events / tables)", booking: true, pro: true, scale: true },
-  { feature: "Floor plan + tiered pricing modes", booking: true, pro: true, scale: true },
-  { feature: "Full AI receptionist (unlimited config)", booking: false, pro: true, scale: true },
-  { feature: "Ask Solvio AI (chat with your bookings + calls)", booking: false, pro: true, scale: true },
-  { feature: "Outbound voice campaigns", booking: false, pro: false, scale: true },
-  { feature: "Custom branding (logo, colour)", booking: false, pro: false, scale: true },
-  { feature: "Priority support + solution design", booking: false, pro: false, scale: true },
+  { feature: "Public booking microsite", booking: true, pro: true, enterprise: true },
+  {
+    feature: "AI receptionist minutes / month",
+    booking: `${BOOKING_DEMO_AI_MINUTES} demo`,
+    pro: PRO_AI_MINUTES.toLocaleString("en-GB"),
+    enterprise: ENTERPRISE_AI_MINUTES.toLocaleString("en-GB"),
+  },
+  {
+    feature: "Overage rate (per extra minute)",
+    booking: "n/a",
+    pro: `£${PRO_AI_OVERAGE_GBP.toFixed(2)}`,
+    enterprise: `£${ENTERPRISE_AI_OVERAGE_GBP.toFixed(2)}`,
+  },
+  {
+    feature: "Platform fee on guest deposits",
+    booking: `${BOOKING_PLATFORM_FEE_BPS / 100}%`,
+    pro: `${PRO_PLATFORM_FEE_BPS / 100}%`,
+    enterprise: `${ENTERPRISE_PLATFORM_FEE_BPS / 100}%`,
+  },
+  { feature: "Locations included", booking: "1", pro: "2", enterprise: "Unlimited" },
+  { feature: "Payouts to your account", booking: true, pro: true, enterprise: true },
+  { feature: "Operations hub (appointments / events / tables)", booking: true, pro: true, enterprise: true },
+  { feature: "Floor plan + tiered pricing modes", booking: true, pro: true, enterprise: true },
+  { feature: "Full AI receptionist (unlimited config)", booking: false, pro: true, enterprise: true },
+  { feature: "Ask Solvio AI (chat with your bookings + calls)", booking: false, pro: true, enterprise: true },
+  { feature: "Outbound voice campaigns", booking: false, pro: false, enterprise: true },
+  { feature: "Custom branding (logo, colour)", booking: false, pro: false, enterprise: true },
+  { feature: "Priority support + solution design", booking: false, pro: false, enterprise: true },
 ];
 
 const faqs = [
   {
     q: "What happens if I exceed my monthly AI minutes?",
-    a: "You're charged the overage rate per minute (£0.40 on Pro, £0.30 on Scale). You'll see usage live in the dashboard and we'll alert you at 80% of cap so there are no surprises.",
+    a: `You're charged £${PRO_AI_OVERAGE_GBP.toFixed(2)} per extra minute on Pro, or £${ENTERPRISE_AI_OVERAGE_GBP.toFixed(2)} on Enterprise. Usage shows live in the dashboard and we alert you at 80% of your included cap.`,
   },
   {
     q: "Can I change tiers later?",
@@ -134,7 +154,7 @@ const faqs = [
   },
   {
     q: "Can I pay annually instead of monthly?",
-    a: `Yes — on Pro and Scale you can prepay 12 months and save 10% (e.g. £${PRO_ANNUAL_GBP.toLocaleString("en-GB")}/year on Pro vs £${PRO_MONTHLY_GBP}/mo). Monthly billing is the default; switch anytime in the billing portal or ask us to set up annual invoicing.`,
+    a: `Yes — on Pro and Enterprise you can prepay 12 months and save 10% (e.g. £${PRO_ANNUAL_GBP.toLocaleString("en-GB")}/year on Pro vs £${PRO_MONTHLY_GBP}/mo). Monthly billing is the default.`,
   },
   {
     q: "Is there a free trial?",
@@ -168,9 +188,9 @@ const TIER_LABELS: Record<string, string> = {
   trial: `Free Trial · ${BOOKING_TRIAL_DAYS} days`,
   booking: `Booking · £${BOOKING_MONTHLY_GBP}/mo`,
   pro: `Pro · £${PRO_MONTHLY_GBP}/mo`,
-  business: "Business · £399/mo",
-  scale: "Scale · £499/mo",
-  enterprise: "Enterprise",
+  business: `Pro · £${PRO_MONTHLY_GBP}/mo`,
+  scale: `Enterprise · £${ENTERPRISE_MONTHLY_GBP}/mo`,
+  enterprise: "Enterprise · custom",
 };
 
 export default async function DashboardPricingPage({
@@ -353,7 +373,7 @@ export default async function DashboardPricingPage({
           Keep your booking link live — from £{BOOKING_MONTHLY_GBP}/month
         </h1>
         <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-          {trialExploreLine()} Pro and Scale add AI receptionist minutes and lower deposit fees.
+          {trialExploreLine()} Pro and Enterprise add AI receptionist minutes and lower deposit fees.
         </p>
       </header>
 
@@ -421,7 +441,7 @@ export default async function DashboardPricingPage({
                 <th className="px-6 py-4">Capability</th>
                 <th className="px-4 py-4 text-center">Booking</th>
                 <th className="px-4 py-4 text-center">Pro</th>
-                <th className="px-4 py-4 text-center">Scale</th>
+                <th className="px-4 py-4 text-center">Enterprise</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f8fafc] bg-white">
@@ -430,7 +450,7 @@ export default async function DashboardPricingPage({
                   <td className="px-6 py-4 font-medium text-[#0f172a]">{row.feature}</td>
                   <td className="px-4 py-4 text-center"><Cell value={row.booking} /></td>
                   <td className="px-4 py-4 text-center"><Cell value={row.pro} /></td>
-                  <td className="px-4 py-4 text-center"><Cell value={row.scale} /></td>
+                  <td className="px-4 py-4 text-center"><Cell value={row.enterprise} /></td>
                 </tr>
               ))}
             </tbody>
