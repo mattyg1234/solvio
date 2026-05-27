@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { signUpAction } from "@/app/signup/actions";
 import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
 import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
 import { Button } from "@/components/ui/button";
@@ -36,32 +36,21 @@ export function SignupForm() {
     const businessCategory = String(fd.get("business_category") ?? "").trim();
 
     try {
-      const origin =
-        typeof window !== "undefined"
-          ? window.location.origin
-          : (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
-
-      const supabase = createSupabaseBrowserClient();
-      const { data, error: signErr } = await supabase.auth.signUp({
+      const result = await signUpAction({
         email,
         password,
-        options: {
-          emailRedirectTo: origin.length > 0 ? `${origin}/auth/confirm` : undefined,
-          data: {
-            business_name: businessName,
-            ...(websiteUrl ? { website_url: websiteUrl } : {}),
-            ...(logoUrl ? { logo_url: logoUrl } : {}),
-            ...(businessCategory ? { business_category: businessCategory } : {}),
-          },
-        },
+        businessName,
+        websiteUrl,
+        logoUrl,
+        businessCategory,
       });
 
-      if (signErr) {
-        setError(signErr.message);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
 
-      if (data.session) {
+      if (!result.needsEmailConfirm) {
         router.push("/dashboard/onboarding");
         router.refresh();
         return;

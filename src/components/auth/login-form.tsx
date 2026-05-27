@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { requestPasswordResetAction } from "@/app/login/actions";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
 import { Button } from "@/components/ui/button";
@@ -57,11 +58,9 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
     }
     setResetLoading(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/confirm`;
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-      if (resetErr) {
-        setError(resetErr.message);
+      const result = await requestPasswordResetAction(email);
+      if (!result.ok) {
+        setError(result.message);
         return;
       }
       setResetSent(true);
