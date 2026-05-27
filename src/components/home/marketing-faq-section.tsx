@@ -29,6 +29,10 @@ const faqs = [
     q: "Is this only for restaurants?",
     a: "No — salons, cafés, bars and ticketed events use the same /book link. Pick tables, appointments, events or a mix when you set up.",
   },
+  {
+    q: "Will this actually increase my bookings?",
+    a: "Results vary by venue — but teams typically share one /book link everywhere (Google, Instagram, voicemail) so guests can book when you're busy or closed. Deposits also cut no-shows. Our homepage shows illustrative examples, not verified case studies.",
+  },
 ];
 
 export function MarketingFaqSection() {

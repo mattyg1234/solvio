@@ -72,6 +72,12 @@ export default async function SignupPage({
                   ? "£50/mo after a 7-day trial — publish your /book link and take deposits with Stripe."
                   : "About two minutes — then a short setup wizard to publish your booking link."}
               </CardDescription>
+              {!scaleIntent ? (
+                <p className="text-[13px] leading-relaxed text-[#94a3b8]">
+                  Venues like yours aim for more bookings, fewer no-shows, and hours back each week — illustrative
+                  examples on our homepage.
+                </p>
+              ) : null}
             </CardHeader>
             <CardContent className="pt-2 pb-6">
               <SignupForm />

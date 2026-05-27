@@ -6,6 +6,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { AmbientOrbs } from "@/components/site/ambient-orbs";
 import { MarketingSiteVoice, marketingSiteHasLiveVapi } from "@/components/home/marketing-site-voice";
+import { MarketingTrustStats } from "@/components/home/marketing-trust-stats";
 import { buttonVariants } from "@/components/ui/button";
 import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { bookingDemoHref } from "@/lib/marketing-links";
@@ -95,6 +96,8 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               Restaurants, salons, cafés &amp; events
             </span>
           </div>
+
+          <MarketingTrustStats compact className="max-w-xl pt-2" />
         </motion.div>
 
         <motion.div
