@@ -1,27 +1,25 @@
+import { type EmailOtpType } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 /**
- * Handles the magic link / email-confirm redirect from Supabase (PKCE `?code=`).
- * Add these to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs:
- *   http://localhost:3000/**
- *   https://www.solviosystems.com/**
- * Or exact paths: /auth/callback, /auth/callback/signup, /auth/callback/reset, /auth/confirm
- * Site URL must include https:// → https://www.solviosystems.com
+ * Handles Supabase email links that use token_hash (default templates) instead of PKCE ?code=.
+ * Redirect URLs in Dashboard must include https://www.solviosystems.com/auth/confirm
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const nextPath = url.searchParams.get("next") ?? "/dashboard";
+  const tokenHash = url.searchParams.get("token_hash");
+  const type = url.searchParams.get("type") as EmailOtpType | null;
+  const nextPath = url.searchParams.get("next") ?? "/dashboard/onboarding";
   const origin = url.origin;
 
   const destinationPath = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
   const redirectTarget = `${origin}${destinationPath}`;
 
-  if (!code) {
+  if (!tokenHash || !type) {
     return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Missing confirmation code — open the latest email link.")}`,
+      `${origin}/login?error=${encodeURIComponent("Invalid confirmation link — request a new email.")}`,
     );
   }
 
@@ -35,8 +33,6 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = await cookies();
-
-  /** Redirect response receives Set-Cookie from Supabase during exchangeCodeForSession */
   const response = NextResponse.redirect(redirectTarget);
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -52,10 +48,14 @@ export async function GET(request: Request) {
     },
   });
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
 
   if (error) {
     return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (type === "recovery") {
+    return NextResponse.redirect(`${origin}/dashboard/settings?password=reset`);
   }
 
   return response;

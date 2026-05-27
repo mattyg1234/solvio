@@ -114,9 +114,11 @@ supabase db push
 
 In Supabase → Authentication → URL Configuration (`aasfahcrdcoqxwnlkdnv`):
 
-- [ ] Site URL = `https://www.solviosystems.com`
-- [ ] Redirect URLs include `https://www.solviosystems.com/auth/callback`
-- [ ] Localhost callback kept for dev
+- [ ] Site URL = `https://www.solviosystems.com` (**must include `https://`**, not `www.solviosystems.com` alone)
+- [ ] Redirect URLs include wildcard `https://www.solviosystems.com/**` (covers `/auth/callback`, `/auth/callback/signup`, `/auth/callback/reset`, `/auth/confirm`)
+- [ ] Redirect URLs include `http://localhost:3000/**` for local dev
+- [ ] Email templates use `{{ .ConfirmationURL }}` (Authentication → Email Templates) — not custom `/login?error=...` URLs
+- [ ] After changing URLs, **request a fresh** signup or reset email (old links stay broken)
 
 ### A4. Vercel production
 

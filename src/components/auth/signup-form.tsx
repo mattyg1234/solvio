@@ -47,7 +47,7 @@ export function SignupForm() {
         password,
         options: {
           emailRedirectTo:
-            origin.length > 0 ? `${origin}/auth/callback?next=/dashboard/onboarding` : undefined,
+            origin.length > 0 ? `${origin}/auth/callback/signup` : undefined,
           data: {
             business_name: businessName,
             ...(websiteUrl ? { website_url: websiteUrl } : {}),
