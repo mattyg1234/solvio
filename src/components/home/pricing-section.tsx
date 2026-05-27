@@ -8,6 +8,7 @@ import {
   BOOKING_TRIAL_DAYS,
   PRO_MONTHLY_GBP,
   TRIAL_PLATFORM_FEE_BPS,
+  trialExploreLine,
 } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
@@ -50,9 +51,9 @@ export function PricingSection() {
             Go live with bookings for £{BOOKING_MONTHLY_GBP}/month.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            {BOOKING_TRIAL_DAYS}-day free trial — no card required to explore. Guest deposits go straight to your Stripe
-            account. Solvio takes a small platform fee on processed payments ({TRIAL_PLATFORM_FEE_BPS / 100}% during trial,{" "}
-            {BOOKING_PLATFORM_FEE_BPS / 100}% on the Booking plan).
+            {trialExploreLine()} Guest deposits go straight to your Stripe account. Solvio takes a small platform fee on
+            processed payments ({TRIAL_PLATFORM_FEE_BPS / 100}% during trial, {BOOKING_PLATFORM_FEE_BPS / 100}% on the Booking
+            plan).
           </p>
         </div>
 

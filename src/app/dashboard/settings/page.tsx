@@ -11,6 +11,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 import { BusinessProfileForm } from "./business-profile-form";
+import { SettingsTestEmailButton } from "./settings-test-email-button";
 import { UpdatePasswordForm } from "@/components/auth/update-password-form";
 
 export const metadata: Metadata = {
@@ -104,6 +105,18 @@ export default async function DashboardSettingsPage({
         </CardHeader>
         <CardContent>
           <UpdatePasswordForm highlight={passwordResetFlow} />
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg text-[#0f172a]">Email delivery</CardTitle>
+          <CardDescription className="text-[#64748b]">
+            Guest booking confirmations and account emails send through Resend from hello@solviosystems.com.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SettingsTestEmailButton email={profile?.email ?? user.email ?? ""} />
         </CardContent>
       </Card>
 

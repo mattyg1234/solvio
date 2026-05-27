@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { trialExploreLine } from "@/lib/solvio-pricing";
 import { SUPPORT_EMAIL, supportMailtoHref } from "@/lib/site-contact";
 
 export const metadata: Metadata = {
@@ -25,7 +26,7 @@ export default function TermsPage() {
           <h2 className="text-lg font-semibold text-[#0f172a]">Merchants</h2>
           <p>
             You are responsible for your availability, pricing, cancellations, and compliance with local laws. Subscription fees
-            are billed monthly unless cancelled. The Booking tier includes a 7-day trial where stated at signup.
+            are billed monthly unless cancelled. {trialExploreLine()}
           </p>
           <h2 className="text-lg font-semibold text-[#0f172a]">Guests</h2>
           <p>

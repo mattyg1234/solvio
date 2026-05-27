@@ -14,6 +14,12 @@ export const SCALE_MONTHLY_GBP = 499;
 export const TRIAL_AI_MINUTES = 50;
 /** Platform fee on guest deposits during the free trial (1000 = 10%). */
 export const TRIAL_PLATFORM_FEE_BPS = 1000;
+
+/** Shared trial copy — marketing, signup, and dashboard should match. */
+export function trialExploreLine(): string {
+  return `${BOOKING_TRIAL_DAYS}-day free trial — explore without a card. Add a card on the Booking plan before your trial ends; £${BOOKING_MONTHLY_GBP}/mo starts after that unless you cancel.`;
+}
+
 export const PRO_AI_MINUTES = 1000;
 export const SCALE_AI_MINUTES = 3000;
 

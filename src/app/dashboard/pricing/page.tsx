@@ -17,9 +17,11 @@ import {
   SCALE_AI_MINUTES,
   SCALE_MONTHLY_GBP,
   TRIAL_AI_MINUTES,
+  TRIAL_PLATFORM_FEE_BPS,
   formatTrialEndDate,
   isTrialExpired,
   trialDaysRemaining,
+  trialExploreLine,
 } from "@/lib/solvio-pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -150,7 +152,7 @@ const faqs = [
   },
   {
     q: "Is there a free trial?",
-    a: `Yes — every account gets ${BOOKING_TRIAL_DAYS} days free. Start the Booking plan with your card on file; after ${BOOKING_TRIAL_DAYS} days you're charged £${BOOKING_MONTHLY_GBP}/mo unless you cancel. During the trial you get ${TRIAL_AI_MINUTES} AI minutes and a 10% platform fee on guest deposits.`,
+    a: `${trialExploreLine()} During the trial you get ${TRIAL_AI_MINUTES} AI receptionist minutes and a ${TRIAL_PLATFORM_FEE_BPS / 100}% platform fee on guest deposits.`,
   },
   {
     q: "Do guests need an account?",

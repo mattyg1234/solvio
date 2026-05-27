@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { isValidBookingSlug } from "@/lib/booking-slug";
 import { pickUniqueBookingSlug } from "@/lib/booking-slug-server";
+import { sendAuthTestEmail } from "@/lib/notifications/auth-emails";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type SettingsActionResult = { ok: true } | { ok: false; message: string };
@@ -48,8 +49,6 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<S
     updated_at: new Date().toISOString(),
   };
 
-  // Auto-create the booking slug from the (possibly-updated) name if the business has none yet.
-  // Once a slug exists we leave it alone — slugs are permanent so customer-facing links never break.
   if (!auth.row.booking_slug?.trim()) {
     patch.booking_slug = await pickUniqueBookingSlug(auth.supabase, name, businessId);
   }
@@ -67,19 +66,11 @@ export type EnsureBookingSlugResult =
   | { ok: true; slug: string }
   | { ok: false; message: string };
 
-/**
- * Make sure a business has a booking_slug. If it already has one, return it
- * unchanged. If not, derive one from the business name (with `-2`, `-3`, …
- * collision fallback) and persist it. Slugs are immutable once set — public
- * /book/[slug] URLs are forever, so this action never overwrites an existing
- * value, only fills in a missing one.
- */
 export async function ensureBookingSlugAction(businessId: string): Promise<EnsureBookingSlugResult> {
   const auth = await ownedBusiness(businessId);
   if (!auth.ok) return auth;
 
   const existing = auth.row.booking_slug?.trim().toLowerCase() ?? "";
-  // Already has a valid permanent slug — return it unchanged. Immutability gate.
   if (existing && isValidBookingSlug(existing)) return { ok: true, slug: existing };
 
   const writeSlug = async (candidate: string) => {
@@ -106,7 +97,6 @@ export async function ensureBookingSlugAction(businessId: string): Promise<Ensur
   } else if (first.error) {
     return { ok: false, message: first.error.message };
   } else {
-    // Row updated 0 rows (typically RLS narrowing or stale auth) — re-read to recover.
     const { data: refreshed } = await auth.supabase
       .from("businesses")
       .select("booking_slug")
@@ -121,4 +111,23 @@ export async function ensureBookingSlugAction(businessId: string): Promise<Ensur
   revalidatePath("/dashboard/bookings");
   revalidatePath(`/book/${encodeURIComponent(written)}`);
   return { ok: true, slug: written };
+}
+
+export async function sendSettingsTestEmailAction(): Promise<SettingsActionResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const to = user?.email?.trim();
+  if (!to) {
+    return { ok: false, message: "No email on your account." };
+  }
+
+  const sent = await sendAuthTestEmail({ to });
+  if (!sent.ok) {
+    return { ok: false, message: sent.message };
+  }
+
+  return { ok: true };
 }

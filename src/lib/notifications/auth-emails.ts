@@ -81,3 +81,26 @@ export async function sendSignupConfirmEmail(opts: {
   }
   return { ok: true, id: data?.id };
 }
+
+export async function sendAuthTestEmail(opts: { to: string }): Promise<NotificationSendResult> {
+  const client = resendClient();
+  const to = opts.to.trim();
+  if (!client) {
+    return { ok: false, reason: "not_configured", message: "SOLVIO_RESEND_API_KEY is not set on this deployment." };
+  }
+  if (!to.includes("@")) {
+    return { ok: false, reason: "invalid_recipient", message: "Invalid email address." };
+  }
+
+  const subject = "Solvio email test";
+  const text =
+    "This is a test email from your Solvio dashboard. Guest booking confirmations and account emails use the same sender.";
+  const html = `<p style="font-family:system-ui,sans-serif;color:#0f172a">${text}</p>`;
+
+  const { data, error } = await client.emails.send({ from: fromAddr(), to, subject, html, text });
+  if (error) {
+    console.error("[auth-email] test:", error.message);
+    return { ok: false, reason: "provider_error", message: error.message };
+  }
+  return { ok: true, id: data?.id };
+}

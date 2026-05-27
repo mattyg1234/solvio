@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { signUpAction } from "@/app/signup/actions";
-import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
+import { BOOKING_TRIAL_DAYS, trialExploreLine } from "@/lib/solvio-pricing";
 import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -193,7 +193,7 @@ export function SignupForm() {
           <Link href="/privacy" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
             Privacy Policy
           </Link>
-          . {BOOKING_TRIAL_DAYS}-day free trial — no card required to explore.
+          . {trialExploreLine()}
         </span>
       </label>
 

@@ -131,7 +131,14 @@ In Supabase → Authentication → URL Configuration (`aasfahcrdcoqxwnlkdnv`):
 <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a></p>
 ```
 
-- [ ] After changing URLs or templates, **request a fresh** signup or reset email (old links stay broken)
+- [ ] After changing URLs, **request a fresh** signup or reset email (old links stay broken)
+
+**Note:** Solvio now sends **signup confirm** and **password reset** emails itself via Resend (`/auth/confirm?token_hash=…`). Supabase email templates above are optional fallback — auth works without editing templates if `SOLVIO_RESEND_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are set on Vercel.
+
+### A3b. Supabase Auth SMTP (optional backup)
+
+- [ ] Custom SMTP → Resend (`smtp.resend.com`, user `resend`, password = API key) if you want Supabase-native mail as backup
+- [ ] Raise Authentication → Rate Limits after enabling custom SMTP
 
 ### A4. Vercel production
 
@@ -167,11 +174,14 @@ Set in **Vercel → Production**. See `.env.example` for full list.
 - [ ] Merchant completes Connect in Dashboard → Payments (you — confirm charges enabled)
 - [ ] Test guest deposit on `/book/[slug]`
 
-### B4. Guest email
+### B4. Email (guest + auth)
 
 - [x] `SOLVIO_RESEND_API_KEY` on Vercel Production
-- [x] `SOLVIO_MAIL_FROM` = `Solvio <bookings@solviosystems.com>`
-- [ ] Test confirmation email on booking submit (you)
+- [x] `SOLVIO_MAIL_FROM` = `Solvio Bookings <hello@solviosystems.com>`
+- [x] `SUPABASE_SERVICE_ROLE_KEY` on Vercel (required for signup/reset links)
+- [ ] Settings → **Send test email** succeeds
+- [ ] Guest `/book` submit → confirmation email received
+- [ ] Forgot password → link opens on phone → Settings password form
 
 ### B5. Recommended
 
@@ -210,10 +220,10 @@ Run on **production** before any sale.
 
 ## Phase D — Legal & trust
 
-- [ ] Privacy policy + terms (footer links)
-- [ ] Honest scope: event tickets = enquiry only today
-- [ ] Password reset: implement or “email support@…”
-- [ ] One live demo slug on homepage
+- [x] Privacy policy + terms (footer links)
+- [x] Password reset + signup confirm via Resend
+- [ ] Honest scope: event tickets checkout when Stripe Connect live; otherwise request-only
+- [ ] One live demo slug on homepage (`NEXT_PUBLIC_BOOKING_DEMO_SLUG` or default)
 
 ---
 
