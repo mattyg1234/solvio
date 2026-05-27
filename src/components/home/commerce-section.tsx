@@ -17,10 +17,9 @@ import {
 } from "@/lib/solvio-pricing";
 
 const capabilities = [
-  { title: "Takes enquiries", body: "Your /book link accepts requests 24/7 — tables, stylists, events, or walk-ins." },
-  { title: "Takes bookings", body: "Guests pick slots; you confirm from one inbox with your team." },
+  { title: "Takes bookings", body: "Guests pick a slot — confirmed straight into your diary when you're not charging a deposit." },
   { title: "Collects deposits", body: "Optional card prepayments when you enable them — shown clearly to guests." },
-  { title: "Confirms visits", body: "Email confirmations guests actually open." },
+  { title: "Confirms visits", body: "Email and text reminders when guests are booked in — so they show up on time." },
   { title: "Handles changes", body: "Cancellations and closed days stay in sync on your calendar." },
 ];
 

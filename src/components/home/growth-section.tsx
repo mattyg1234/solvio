@@ -24,7 +24,7 @@ const blocks = [
   },
   {
     title: "Automatic appointments",
-    body: "Guests pick slots on your link; you confirm from one inbox with email updates they actually receive.",
+    body: "Guests pick slots on your link — confirmed in your diary with email and text when you're not charging a deposit.",
     stat: "Less back-and-forth",
     icon: CalendarClock,
   },

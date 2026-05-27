@@ -555,7 +555,7 @@ export function BookingPublicForm({
         </span>
         <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Payment received</h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
-          {paymentCopy} {businessName} will confirm your booking using the contact details you shared.
+          {paymentCopy} Check your email and phone — {businessName} has confirmed your booking.
         </p>
         <p className="mt-8 text-center text-sm text-[#94a3b8]">
           Powered by{" "}
@@ -569,16 +569,23 @@ export function BookingPublicForm({
 
   if (state?.ok && !("depositCheckoutUrl" in state && state.depositCheckoutUrl)) {
     const s = state.summary;
+    const confirmed = Boolean(state.autoConfirmed);
     return (
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#ebe7f7] bg-white p-8 text-center shadow-[0_28px_90px_-58px_rgba(124,58,237,0.28)] md:p-10">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ecfdf5] text-emerald-600 ring-1 ring-emerald-100">
           <CalendarCheck className="h-8 w-8" aria-hidden />
         </span>
-        <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Request received</h2>
+        <h2 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">
+          {confirmed ? "You're booked in" : "Request received"}
+        </h2>
         <p className="mt-3 text-[15px] leading-relaxed text-[#64748b]">
-          {state.emailSent
-            ? `${businessName} has your details — check your email for a confirmation with the summary below (check spam if you don't see it).`
-            : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
+          {confirmed
+            ? state.emailSent || state.smsSent
+              ? `${businessName} has confirmed your booking — check your email${state.smsSent ? " and phone" : ""} for the details (check spam if you don't see the email).`
+              : `${businessName} has confirmed your booking. We couldn't send an automatic email or text — your slot is still saved in their diary.`
+            : state.emailSent
+              ? `${businessName} has your details — check your email for a summary (check spam if you don't see it). They'll confirm your slot soon.`
+              : `${businessName} has your booking on file and will confirm using the email or phone you shared.`}
         </p>
         {s ? (
           <ul className="mx-auto mt-6 max-w-sm space-y-2 rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-4 text-left text-sm text-[#0f172a]">
@@ -614,8 +621,12 @@ export function BookingPublicForm({
             ) : null}
           </ul>
         ) : null}
-        <p className="mt-4 text-sm text-[#64748b]">What happens next: {businessName} reviews your request and confirms by email or phone.</p>
-        {!state.emailSent ? (
+        {!confirmed ? (
+          <p className="mt-4 text-sm text-[#64748b]">
+            What happens next: {businessName} reviews your request and confirms by email or phone.
+          </p>
+        ) : null}
+        {!state.emailSent && !confirmed ? (
           <p className="mt-3 text-sm text-[#64748b]">
             We couldn&apos;t send an automatic confirmation email — your request was still saved.
           </p>

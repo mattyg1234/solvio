@@ -1,6 +1,8 @@
 "use server";
 
 import { computeTableDepositCents, computeEventTicketCents } from "@/lib/booking-deposit-pricing";
+import { autoConfirmBookingRequest } from "@/lib/auto-confirm-booking-request";
+import { expandHostedEventForSubmit } from "@/lib/booking-hosted-submit";
 import { formatMoney } from "@/lib/checkout-money";
 import { validateBookingPhone } from "@/lib/normalize-phone";
 import { createBookingDepositCheckoutSession } from "@/lib/booking-deposit-checkout";
@@ -28,7 +30,14 @@ export type SubmitBookingSummary = {
 };
 
 export type SubmitBookingState =
-  | { ok: true; depositCheckoutUrl?: string; emailSent?: boolean; smsSent?: boolean; summary?: SubmitBookingSummary }
+  | {
+      ok: true;
+      depositCheckoutUrl?: string;
+      autoConfirmed?: boolean;
+      emailSent?: boolean;
+      smsSent?: boolean;
+      summary?: SubmitBookingSummary;
+    }
   | { ok: false; message: string };
 
 function mergeGuestIntakeNotes(base: string, lines: string[]): string {
@@ -163,6 +172,25 @@ export async function submitBookingRequestAction(
 
   if (hostedEventId) {
     intakeExtras.hosted_event_id = hostedEventId;
+  }
+
+  if (hostedEventId && hostedOccurrenceStartsAt.trim() && parsedCtx) {
+    const evt = parsedCtx.events.find((e) => e.id === hostedEventId);
+    if (evt) {
+      const tz = parsedCtx.venue_time_zone?.trim() || "UTC";
+      const hit = expandHostedEventForSubmit(evt, tz).find((o) => o.starts_at === hostedOccurrenceStartsAt.trim());
+      if (hit) {
+        intakeExtras.hosted_occurrence_starts_at = hit.starts_at;
+        intakeExtras.hosted_occurrence_ends_at = hit.ends_at;
+      }
+    }
+  }
+
+  const preferredTableMatch = preferredTable
+    ? parsedCtx?.tables.find((t) => t.label.trim() === preferredTable.trim())
+    : undefined;
+  if (preferredTableMatch?.id) {
+    intakeExtras.floor_plan_table_id = preferredTableMatch.id;
   }
 
   if (preferredStaffId) {
@@ -504,8 +532,10 @@ export async function submitBookingRequestAction(
 
   let emailSent = false;
   let smsSent = false;
+  let autoConfirmed = false;
   const siteUrl = getDeploymentSiteUrl();
   const merchantName = parsedCtx?.business_name?.trim();
+  const venueTimeZone = parsedCtx?.venue_time_zone?.trim() || "UTC";
 
   const staffMatch = preferredStaffId ? parsedCtx?.staff_members.find((s) => s.id === preferredStaffId) : null;
   let paymentLabel: string | undefined;
@@ -542,7 +572,37 @@ export async function submitBookingRequestAction(
     paymentLabel,
   };
 
-  if (merchantName && email) {
+  if (!depositCheckoutUrl && bookingId && typeof bookingId === "string") {
+    let hostedOccEnds: string | undefined;
+    if (hostedEventId && hostedOccurrenceStartsAt.trim() && parsedCtx) {
+      const evt = parsedCtx.events.find((e) => e.id === hostedEventId);
+      if (evt) {
+        const hit = expandHostedEventForSubmit(evt, venueTimeZone).find(
+          (o) => o.starts_at === hostedOccurrenceStartsAt.trim(),
+        );
+        hostedOccEnds = hit?.ends_at;
+      }
+    }
+
+    const confirmResult = await autoConfirmBookingRequest({
+      bookingRequestId: bookingId,
+      hints: {
+        hostedOccurrenceStartsAt: hostedOccurrenceStartsAt.trim() || undefined,
+        hostedOccurrenceEndsAt: hostedOccEnds,
+        businessEventId: hostedEventId || null,
+        floorPlanTableId: preferredTableMatch?.id ?? null,
+        serviceDurationMinutes: selectedServiceMatch?.duration_minutes,
+        venueTimeZone,
+      },
+    });
+    autoConfirmed = confirmResult.ok;
+    if (autoConfirmed) {
+      emailSent = Boolean(email);
+      smsSent = Boolean(phone);
+    }
+  }
+
+  if (!autoConfirmed && merchantName && email) {
     const guestEmailResult = await sendBookingRequestReceivedEmail({
       guestEmail: email,
       guestName: customerName,
@@ -562,7 +622,7 @@ export async function submitBookingRequestAction(
     }
   }
 
-  if (merchantName && phone) {
+  if (!autoConfirmed && merchantName && phone) {
     const guestSmsResult = await sendBookingRequestReceivedSms({
       phoneE164: phone,
       merchantName,
@@ -612,6 +672,7 @@ export async function submitBookingRequestAction(
     ok: true,
     emailSent,
     smsSent,
+    autoConfirmed,
     summary,
     ...(depositCheckoutUrl ? { depositCheckoutUrl } : {}),
   };

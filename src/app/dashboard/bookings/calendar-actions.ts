@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
 import { sendBookingConfirmedEmail } from "@/lib/notifications/booking-emails";
-import { sendBookingSms } from "@/lib/notifications/booking-sms";
+import { sendBookingConfirmedSms } from "@/lib/notifications/booking-sms";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -150,8 +150,12 @@ export async function createVenueCalendarBookingFromRequest(params: {
   }).catch(() => {});
 
   if (req.phone?.trim()) {
-    const sms = `Confirmed: ${merchantName.slice(0, 60)} · ${safeTitle.slice(0, 80)}. Details emailed (${tz}).`;
-    await sendBookingSms({ phoneE164: req.phone.trim(), body: sms }).catch(() => {});
+    await sendBookingConfirmedSms({
+      phoneE164: req.phone.trim(),
+      merchantName,
+      title: safeTitle,
+      timeZone: tz,
+    }).catch(() => {});
   }
 }
 

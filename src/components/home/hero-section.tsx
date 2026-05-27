@@ -37,8 +37,8 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               Your booking page live in about 30 minutes — enquiries and deposits on one link.
             </h1>
             <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">
-              Share one link with your customers. They pick a day, choose a stylist or table, and send a request — or pay
-              a deposit by card when you turn that on. Payouts go to you, not a booking marketplace.
+              Share one link with your customers. They pick a day, choose a stylist or table, and get booked in — with
+              email and text confirmation. Turn on optional card deposits when you want to hold a table or ticket.
             </p>
           </div>
 

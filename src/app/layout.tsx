@@ -14,30 +14,36 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { SITE_METADATA_DESCRIPTION, SITE_METADATA_TITLE, SITE_OG_DESCRIPTION } from "@/lib/site-metadata-copy";
+
 export const viewport: Viewport = {
   themeColor: "#7c3aed",
 };
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.solviosystems.com"),
-  title: "Solvio · Booking pages with Stripe deposits",
-  description:
-    "Launch a public booking link in minutes. Guests pick appointments, tables or events and pay deposits straight to your Stripe account — optional AI receptionist on Pro.",
+  title: SITE_METADATA_TITLE,
+  description: SITE_METADATA_DESCRIPTION,
   applicationName: "Solvio",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   openGraph: {
     type: "website",
     siteName: "Solvio",
-    title: "Solvio · Booking pages with Stripe deposits",
-    description:
-      "Public /book pages for restaurants, salons and cafés — appointments, tables, events, and Stripe Connect checkout.",
+    title: SITE_METADATA_TITLE,
+    description: SITE_OG_DESCRIPTION,
     url: "https://www.solviosystems.com",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Solvio · Booking pages with Stripe deposits",
-    description:
-      "Public /book pages for restaurants, salons and cafés — appointments, tables, events, and Stripe Connect checkout.",
+    title: SITE_METADATA_TITLE,
+    description: SITE_OG_DESCRIPTION,
   },
 };
 

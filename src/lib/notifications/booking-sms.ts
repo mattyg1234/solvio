@@ -69,6 +69,22 @@ export async function sendBookingRequestReceivedSms(opts: {
   });
 }
 
+export async function sendBookingConfirmedSms(opts: {
+  phoneE164: string;
+  merchantName: string;
+  title: string;
+  timeZone?: string;
+}): Promise<NotificationSendResult> {
+  const merchant = opts.merchantName.trim() || "your venue";
+  const title = opts.title.trim() || "your booking";
+  const tz = opts.timeZone?.trim();
+  const tzNote = tz ? ` (${tz})` : "";
+  return sendBookingSms({
+    phoneE164: opts.phoneE164,
+    body: `Confirmed: ${merchant.slice(0, 60)} · ${title.slice(0, 72)}${tzNote}. Details emailed. — Solvio`,
+  });
+}
+
 export function isTwilioConfigured(): boolean {
   const { sid, token, from } = twilioConfig();
   return Boolean(sid && token && from);

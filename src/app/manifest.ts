@@ -1,10 +1,12 @@
 import type { MetadataRoute } from "next";
 
+import { SITE_METADATA_DESCRIPTION } from "@/lib/site-metadata-copy";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Solvio",
+    name: "Solvio — booking solutions for your business",
     short_name: "Solvio",
-    description: "AI reception that grows your business.",
+    description: SITE_METADATA_DESCRIPTION,
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
