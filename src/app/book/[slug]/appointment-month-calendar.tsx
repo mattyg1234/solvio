@@ -34,6 +34,8 @@ export type AppointmentMonthCalendarProps = {
   bookedSlots: PublicAppointmentBookedSlot[];
   staffMembers: StaffMember[];
   breaks?: AppointmentBreak[];
+  /** When set, only days with a full service-length window count as bookable. */
+  serviceDurationMinutes?: number | null;
   selectedDateYmd: string;
   onSelectDate: (dateYmd: string) => void;
 };
@@ -46,6 +48,7 @@ export function AppointmentMonthCalendar({
   bookedSlots,
   staffMembers,
   breaks = [],
+  serviceDurationMinutes = null,
   selectedDateYmd,
   onSelectDate,
 }: AppointmentMonthCalendarProps) {
@@ -80,6 +83,7 @@ export function AppointmentMonthCalendar({
           breaks,
           bookedSlots,
           staffMembers,
+          serviceDurationMinutes,
         }),
       );
     }
@@ -91,6 +95,7 @@ export function AppointmentMonthCalendar({
     cursor.month,
     cursor.year,
     exceptions,
+    serviceDurationMinutes,
     staffMembers,
     timeZone,
     todayYmd,
@@ -137,6 +142,7 @@ export function AppointmentMonthCalendar({
         breaks,
         bookedSlots,
         staffMembers,
+        serviceDurationMinutes,
       })
     : null;
 
@@ -269,7 +275,7 @@ export function AppointmentMonthCalendar({
 
       <p className="text-[11px] leading-relaxed text-[#94a3b8]">
         Grey days aren&apos;t open for appointments —{" "}
-        <span className="font-semibold text-[#5b21b6]">purple dates</span> are bookable.{" "}
+        <span className="font-semibold text-[#5b21b6]">highlighted dates</span> are bookable.{" "}
         <span className="font-semibold text-rose-700">Struck-through rose dates</span> are closed or fully booked. Team names show who&apos;s scheduled that day.
       </p>
     </div>

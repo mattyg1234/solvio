@@ -7,6 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { coerceValidIanaTimeZone } from "@/lib/safe-timezone";
+import {
+  BOOKING_MONTHLY_GBP,
+  formatTrialEndDate,
+  isTrialExpired,
+  trialDaysRemaining,
+} from "@/lib/solvio-pricing";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -48,11 +54,13 @@ export default async function DashboardSettingsPage({
   const { data: profile, error: profileError } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   const { data: businesses, error: businessesError } = await supabase
     .from("businesses")
-    .select("id,name,website_url,logo_url,time_zone,booking_slug,stripe_connect_account_id")
+    .select("id,name,website_url,logo_url,time_zone,booking_slug,stripe_connect_account_id,subscription_tier,created_at,stripe_customer_id")
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true });
 
   const primaryBusiness = businesses?.[0] ?? null;
+  const subscriptionTier = (primaryBusiness as { subscription_tier?: string } | null)?.subscription_tier ?? "trial";
+  const businessCreatedAt = (primaryBusiness as { created_at?: string } | null)?.created_at ?? null;
 
   const profileMissingMessage =
     profileError?.message?.toLowerCase().includes("permission denied") ||
@@ -77,6 +85,36 @@ export default async function DashboardSettingsPage({
           {profileMissingMessage}
         </p>
       ) : null}
+
+      <Card className="rounded-[22px] border border-[#c4b5fd] bg-gradient-to-br from-[#faf5ff] to-white shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg text-[#0f172a]">Plan &amp; billing</CardTitle>
+          <CardDescription className="text-[#64748b]">
+            Your Solvio subscription is separate from guest Stripe deposits.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-[15px] text-[#475569]">
+            <span className="font-semibold text-[#0f172a]">Current plan:</span>{" "}
+            {subscriptionTier === "trial"
+              ? "Free trial"
+              : subscriptionTier.charAt(0).toUpperCase() + subscriptionTier.slice(1)}
+          </p>
+          {subscriptionTier === "trial" && businessCreatedAt ? (
+            <p className="text-sm text-[#64748b]">
+              {isTrialExpired(businessCreatedAt)
+                ? `Trial ended — add Booking (£${BOOKING_MONTHLY_GBP}/mo) to keep your link live.`
+                : `${trialDaysRemaining(businessCreatedAt)} day${trialDaysRemaining(businessCreatedAt) === 1 ? "" : "s"} left${formatTrialEndDate(businessCreatedAt) ? ` (ends ${formatTrialEndDate(businessCreatedAt)})` : ""}.`}
+            </p>
+          ) : null}
+          <Link
+            href="/dashboard/pricing"
+            className={cn(buttonVariants({ variant: "default" }), "inline-flex h-10 rounded-full px-6 text-sm font-semibold")}
+          >
+            {subscriptionTier === "trial" ? `Add card · Booking £${BOOKING_MONTHLY_GBP}/mo →` : "Manage plan →"}
+          </Link>
+        </CardContent>
+      </Card>
 
       <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
         <CardHeader>

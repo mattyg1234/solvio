@@ -4,7 +4,10 @@ import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
 import { CommerceSection } from "@/components/home/commerce-section";
 import { GrowthSection } from "@/components/home/growth-section";
+import { HeroGoLiveStrip } from "@/components/home/hero-go-live-strip";
 import { HeroSection } from "@/components/home/hero-section";
+import { MarketingBookPreview } from "@/components/home/marketing-book-preview";
+import { MarketingFaqSection } from "@/components/home/marketing-faq-section";
 import { PricingSection } from "@/components/home/pricing-section";
 import { SocialProofSection } from "@/components/home/social-proof-section";
 import { loadMarketingVapiConfig } from "@/lib/marketing-vapi-server";
@@ -33,9 +36,12 @@ export default async function Home() {
       <SiteHeader />
       <main className="bg-white">
         <HeroSection vapiConfig={vapiConfig} />
+        <HeroGoLiveStrip />
         <GrowthSection />
         <CommerceSection />
+        <MarketingBookPreview />
         <PricingSection />
+        <MarketingFaqSection />
         <SocialProofSection />
         <LiveDemoSection liveVoice={liveVoice} />
       </main>

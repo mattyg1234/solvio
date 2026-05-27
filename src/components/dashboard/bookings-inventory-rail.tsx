@@ -27,7 +27,7 @@ const OFFER_LINKS = [
     eyebrow: "Shows & nights",
     label: "Hosted events",
     detail:
-      "Ticket-style listings — guests match your listing then tap coloured nights on the calendar (purple = bookable performances).",
+      "Ticket-style listings — guests match your listing then tap highlighted nights on the calendar.",
     Icon: PartyPopper,
   },
 ] as const;

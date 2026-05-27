@@ -56,11 +56,17 @@ export default async function LoginPage({
                 Welcome back
               </CardTitle>
               <CardDescription className="text-[15px] leading-relaxed text-[#64748b]">
-                Pick up where you left off — bookings, scripts and voice settings stay synced for your team.
+                Bookings, payments, and your AI receptionist in one place.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2 pb-6">
               <LoginForm authCallbackError={authCallbackError} />
+              <p className="mt-6 border-t border-[#ebe7f7] pt-6 text-center text-sm text-[#64748b]">
+                New here?{" "}
+                <Link href="/signup" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                  Start your free trial
+                </Link>
+              </p>
             </CardContent>
           </Card>
         </div>

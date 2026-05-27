@@ -307,7 +307,7 @@ export function EventOccurrenceMonthCalendar({
       ) : null}
       <p className="text-[11px] leading-relaxed text-[#94a3b8]">
         Grey days do not run this listing —{" "}
-        <span className="font-semibold text-[#5b21b6]">purple dates</span> are bookable show nights.{" "}
+        <span className="font-semibold text-[#5b21b6]">highlighted dates</span> are bookable show nights.{" "}
         <span className="font-semibold text-rose-700">Struck-through rose dates</span> were cancelled by the venue.
       </p>
     </div>

@@ -29,16 +29,13 @@ export function CommerceSection() {
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Commerce-ready assistant</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Bookings &amp; payments</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            AI-powered booking infrastructure — calls, calendars and checkout working together.
+            Guest picks a slot → pays a deposit → money lands in your Stripe account.
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            Think reception plus scheduling plus deposits in one workflow — closer to Calendly than an enterprise dashboard,
-            tuned for storefronts that live on walk-ins and reservations.{" "}
-            <span className="font-medium text-[#475569]">
-              Booking (£50/mo) is your public link + Stripe deposits; Pro adds the full AI receptionist.
-            </span>
+            One booking link for your venue — tables, stylists or ticketed nights. Booking (£50/mo) is the public page and
+            calendar; Pro adds the full AI receptionist for after-hours calls.
           </p>
         </div>
 
@@ -112,7 +109,7 @@ export function CommerceSection() {
               </p>
               <p>
                 <span className="font-semibold text-[#0f172a]">Solvio:</span> checks live availability → locks the seating →
-                sends a deposit link → confirms once paid → notifies your maître team.
+                sends a deposit link → confirms once paid → notifies your front-of-house team.
               </p>
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#64748b]">
                 <Phone className="h-4 w-4 text-[#7c3aed]" aria-hidden />
@@ -141,8 +138,8 @@ export function CommerceSection() {
                 <span className="font-semibold text-[#0f172a]">Caller:</span> “Haircut tomorrow afternoon.”
               </p>
               <p>
-                <span className="font-semibold text-[#0f172a]">Solvio:</span> shows purple calendar days → guest picks stylist
-                &amp; time → pays a £10 deposit via Stripe → email confirmation lands instantly.
+                <span className="font-semibold text-[#0f172a]">Solvio:</span> shows available calendar days → guest picks stylist
+                &amp; time → pays a deposit via Stripe → email confirmation lands instantly.
               </p>
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#64748b]">
                 <CreditCard className="h-4 w-4 text-[#7c3aed]" aria-hidden />

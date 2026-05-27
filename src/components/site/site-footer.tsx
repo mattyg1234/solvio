@@ -42,7 +42,12 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link href="/#live-ai-receptionist" className="hover:text-[#7c3aed]">
-                  Talk to us
+                  Try AI demo
+                </Link>
+              </li>
+              <li>
+                <Link href="/#faq" className="hover:text-[#7c3aed]">
+                  FAQ
                 </Link>
               </li>
               <li>

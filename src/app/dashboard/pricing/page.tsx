@@ -60,20 +60,8 @@ const TIERS: TierSpec[] = [
     ],
     ctaLabel: "Add card · continue on Booking",
     checkoutAction: checkoutBookingAction,
-  },
-  {
-    name: "Trial",
-    monthlyDisplay: "Free",
-    cadence: "",
-    blurb: `${BOOKING_TRIAL_DAYS}-day trial on us — explore the dashboard and publish your booking link. After ${BOOKING_TRIAL_DAYS} days, add a card on the Booking plan to keep going (£${BOOKING_MONTHLY_GBP}/mo).`,
-    bullets: [
-      "1 location",
-      `${TRIAL_AI_MINUTES} AI receptionist minutes during trial`,
-      "10% platform fee on guest deposits",
-      "Public booking microsite",
-      "Email confirmations for guests",
-    ],
-    ctaLabel: "Current free trial",
+    featured: true,
+    badge: "Start here",
   },
   {
     name: "Pro",
@@ -89,8 +77,6 @@ const TIERS: TierSpec[] = [
       "Full Operations Hub + floor plan",
       "Lead pipeline + Ask Solvio AI",
     ],
-    featured: true,
-    badge: "Most popular",
     ctaLabel: "Upgrade to Pro",
     checkoutAction: checkoutProAction,
   },
@@ -204,7 +190,7 @@ export default async function DashboardPricingPage({
       case "price_mismatch":
         return {
           tone: "error" as const,
-          text: "Stripe price ID does not match your platform account. In Vercel (project solvio), set STRIPE_SECRET_KEY and STRIPE_PRICE_* from mattygale2023@gmail.com — account acct_1TbSEyEMUQyVybDT (dashboard.stripe.com/acct_1TbSEyEMUQyVybDT/apikeys).",
+          text: "Stripe checkout could not start — your plan price may be misconfigured. Email hello@solviosystems.com and we'll fix it.",
         };
       case "stripe_error":
         return { tone: "error" as const, text: "Stripe checkout failed — check that live keys and price IDs are from the same account, then try again." };
@@ -345,18 +331,29 @@ export default async function DashboardPricingPage({
         <div className="rounded-[20px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
           <p className="font-semibold">Your free trial has ended</p>
           <p className="mt-1">
-            Add a card on Booking below (£{BOOKING_MONTHLY_GBP}/mo starts immediately).
+            Add a card on Booking below (£{BOOKING_MONTHLY_GBP}/mo starts immediately) to keep your public /book link live.
           </p>
+          <form action={checkoutBookingAction} className="mt-4">
+            <button
+              type="submit"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "h-11 rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+              )}
+            >
+              Add card · continue on Booking · £{BOOKING_MONTHLY_GBP}/mo →
+            </button>
+          </form>
         </div>
       ) : null}
 
       <header className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.26em] text-[#94a3b8]">Pricing</p>
         <h1 className="text-[clamp(1.6rem,3vw,2.15rem)] font-semibold tracking-tight text-[#0f172a]">
-          AI receptionist + bookings, priced like a part-time team member
+          Keep your booking link live — from £{BOOKING_MONTHLY_GBP}/month
         </h1>
         <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
-          Free trial · Booking £{BOOKING_MONTHLY_GBP}/mo · Pro £{PRO_MONTHLY_GBP}/mo · Scale £{SCALE_MONTHLY_GBP}/mo · tier-based platform fee on guest deposits.
+          {trialExploreLine()} Pro and Scale add AI receptionist minutes and lower deposit fees.
         </p>
       </header>
 
@@ -407,27 +404,7 @@ export default async function DashboardPricingPage({
                   {t.ctaLabel}
                 </button>
               </form>
-            ) : (
-              <button
-                type="button"
-                disabled
-                className={cn(
-                  buttonVariants({ variant: "outline" }),
-                  "mt-8 h-11 w-full rounded-full px-6 font-semibold opacity-60",
-                )}
-              >
-                {t.ctaLabel}
-              </button>
-            )}
-            <Link
-              href="/dashboard/setup/voice"
-              className={cn(
-                buttonVariants({ variant: "ghost" }),
-                "inline-flex h-10 w-full items-center justify-center rounded-full text-sm font-semibold text-[#7c3aed]",
-              )}
-            >
-              Continue product setup →
-            </Link>
+            ) : null}
           </article>
         ))}
       </div>

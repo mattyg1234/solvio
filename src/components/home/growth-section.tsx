@@ -16,7 +16,7 @@ const blocks = [
   },
   {
     title: "Speak multiple languages",
-    body: "Perfect for tourist-heavy streets in Spain — greet guests in their language instantly.",
+    body: "Perfect for busy high streets in the UK and Ireland — greet guests in English (and more with Pro).",
     icon: Globe2,
   },
   {

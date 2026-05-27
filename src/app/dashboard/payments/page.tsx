@@ -184,20 +184,24 @@ export default async function DashboardPaymentsPage({
 
         <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm ring-1 ring-[#ede9fe]/40">
           <CardHeader>
-            <CardTitle className="text-base text-[#0f172a]">Solvio subscription</CardTitle>
+            <CardTitle className="text-base text-[#0f172a]">Solvio platform subscription</CardTitle>
             <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              Platform plans (Pro / Business / Scale) bill separately via{" "}
-              <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
-                Plans
-              </Link>
-              .
+              Guest deposits (above) are separate from your Solvio plan. Booking is £50/mo after your free trial.
             </CardDescription>
           </CardHeader>
-          <CardContent className="pb-6">
+          <CardContent className="space-y-4 pb-6">
             <p className="text-sm text-[#64748b]">
-              Guest deposits use your Connect account with a tier-based platform fee (1–5% — lower fees on higher plans).
-              Solvio SaaS subscriptions bill separately via the platform Stripe account configured in env.
+              Connect Stripe for guest payments — then add a card on the Booking plan so your public /book link stays live.
             </p>
+            <Link
+              href="/dashboard/pricing"
+              className={cn(
+                buttonVariants({ variant: "default" }),
+                "inline-flex h-10 rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+              )}
+            >
+              View plans · Booking from £50/mo →
+            </Link>
           </CardContent>
         </Card>
       </div>

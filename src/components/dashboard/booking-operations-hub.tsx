@@ -287,7 +287,7 @@ export function BookingOperationsHub({
     if (offeringsSub === "events") {
       return {
         title: "Event manager",
-        subtitle: "Add or edit show listings — purple calendar dates on your guest link come from here.",
+        subtitle: "Add or edit show listings — highlighted calendar dates on your guest link come from here.",
       };
     }
     if (offeringsSub === "tables") {

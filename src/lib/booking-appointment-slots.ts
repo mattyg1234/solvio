@@ -409,6 +409,8 @@ export function summarizeAppointmentDayForCalendar(params: {
   breaks?: AppointmentBreak[];
   bookedSlots?: PublicAppointmentBookedSlot[];
   staffMembers: StaffMember[];
+  /** When set, days need enough contiguous time for the full service window. */
+  serviceDurationMinutes?: number | null;
 }): AppointmentDayCalendarSummary {
   const dateYmd = params.dateYmd.trim();
   if (dateYmd < params.todayYmd.trim()) {
@@ -438,6 +440,7 @@ export function summarizeAppointmentDayForCalendar(params: {
     bookedSlots: params.bookedSlots,
     preferredStaffName: null,
     staffWorkingThatDay: staffNames.length ? staffNames : params.staffMembers.map((m) => m.name),
+    serviceDurationMinutes: params.serviceDurationMinutes ?? null,
   });
 
   const availableCount = slots.filter((s) => s.status === "available").length;

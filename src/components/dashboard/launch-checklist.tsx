@@ -11,10 +11,12 @@ import {
   Link2,
   Mic2,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 
 import { StripeConnectRequiredCallout } from "@/components/dashboard/stripe-connect-required-callout";
 import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
+import { BOOKING_MONTHLY_GBP, isTrialExpired, trialDaysRemaining } from "@/lib/solvio-pricing";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +31,8 @@ export type LaunchChecklistProps = {
   hasInventory: boolean;
   voiceComplete: boolean;
   hasBusiness: boolean;
+  subscriptionTier?: string;
+  businessCreatedAt?: string | null;
 };
 
 type Step = {
@@ -53,6 +57,8 @@ export function LaunchChecklist({
   hasInventory,
   voiceComplete,
   hasBusiness,
+  subscriptionTier = "trial",
+  businessCreatedAt = null,
 }: LaunchChecklistProps) {
   const [copied, setCopied] = useState(false);
 
@@ -78,6 +84,10 @@ export function LaunchChecklist({
 
   const slugPublished = Boolean(bookingSlug?.trim());
   const flowLabel = bookingFlowKindLabel(bookingFlowKind);
+  const onPaidPlan = subscriptionTier !== "trial";
+  const trialExpired = businessCreatedAt ? isTrialExpired(businessCreatedAt) : false;
+  const trialDaysLeft = businessCreatedAt ? trialDaysRemaining(businessCreatedAt) : 7;
+  const planStepRequired = !onPaidPlan && (trialExpired || trialDaysLeft <= 3);
 
   const steps: Step[] = [
     {
@@ -117,11 +127,27 @@ export function LaunchChecklist({
       Icon: Link2,
     },
     {
+      id: "plan",
+      title: `Add Booking plan · £${BOOKING_MONTHLY_GBP}/mo`,
+      body: onPaidPlan
+        ? "Your subscription is active — manage billing anytime under Plans."
+        : trialExpired
+          ? "Your free trial has ended. Add a card to keep your public /book link live."
+          : `Add a card before your trial ends (${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left). We won't charge until the trial ends.`,
+      done: onPaidPlan,
+      required: planStepRequired,
+      href: "/dashboard/pricing",
+      cta: onPaidPlan ? "Manage plan" : "Add card · £50/mo",
+      Icon: Wallet,
+    },
+    {
       id: "inventory",
       title: "Add something to book",
       body: hasInventory
         ? "Inventory is in place — guests can pick tables, events, or slots on your link."
-        : "Add at least one table, hosted event, or appointment window in Bookings so guests have something to choose.",
+        : slugPublished
+          ? "Your link is live but empty — add at least one table, event, or appointment window so guests have something to choose."
+          : "Add at least one table, hosted event, or appointment window in Bookings so guests have something to choose.",
       done: hasInventory,
       required: false,
       href: "/dashboard/bookings?tab=offerings",
@@ -256,6 +282,15 @@ export function LaunchChecklist({
           );
         })}
       </ol>
+
+      {publicBookingUrl && slugPublished && !hasInventory ? (
+        <div className="border-t border-amber-100 bg-amber-50/80 px-6 py-4 md:px-8">
+          <p className="text-sm font-semibold text-amber-950">Link is live — but guests will see an empty page</p>
+          <p className="mt-1 text-sm text-amber-900/90">
+            Add a table, event, or appointment hours before sharing widely.
+          </p>
+        </div>
+      ) : null}
 
       {publicBookingUrl && slugPublished ? (
         <div className="border-t border-[#f1eefc] bg-[#fafbff]/60 px-6 py-5 md:px-8">

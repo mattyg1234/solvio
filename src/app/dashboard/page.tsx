@@ -11,6 +11,7 @@ import { formatMoneyDisplay } from "@/lib/checkout-money";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
+import { isTrialExpired, trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -30,7 +31,7 @@ export default async function DashboardOverviewPage() {
   const { data: businesses } = await supabase
     .from("businesses")
     .select(
-      "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind",
+      "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind,subscription_tier,created_at,time_zone",
     )
     .eq("owner_id", user.id);
 
@@ -45,6 +46,12 @@ export default async function DashboardOverviewPage() {
   const voiceComplete = Boolean(primaryBiz?.voice_receptionist_completed_at);
   const bookingFlowComplete = Boolean(primaryBiz?.booking_flow_completed_at);
   const bookingFlowKind = (primaryBiz?.booking_flow_kind as string | null | undefined) ?? null;
+  const subscriptionTier = (primaryBiz as { subscription_tier?: string } | null)?.subscription_tier ?? "trial";
+  const businessCreatedAt = (primaryBiz as { created_at?: string } | null)?.created_at ?? null;
+  const onFreeTrial = subscriptionTier === "trial";
+  const trialExpired = businessCreatedAt ? isTrialExpired(businessCreatedAt) : false;
+  const trialDaysLeft = businessCreatedAt ? trialDaysRemaining(businessCreatedAt) : 0;
+  const setupComplete = bookingFlowComplete && Boolean(bookingSlug) && stripeChargesEnabled;
 
   let hasInventory = false;
   if (primaryBiz?.id) {
@@ -85,7 +92,6 @@ export default async function DashboardOverviewPage() {
         .gte("created_at", startIso),
     ]);
     inboundBookingCount = count ?? 0;
-    /** UTC-midnight “today”; swap to merchant `businesses.time_zone` when analytics ship. */
     todayInboundCount = todayCount ?? 0;
     todayDepositRevenueCents = (paidTodayRows ?? []).reduce(
       (sum, row) => sum + (typeof row.deposit_amount_cents === "number" ? row.deposit_amount_cents : 0),
@@ -148,16 +154,51 @@ export default async function DashboardOverviewPage() {
             )}
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
-            <Link
-              href="/dashboard/bookings"
-              className={cn(
-                buttonVariants({ variant: "default" }),
-                "inline-flex h-11 items-center gap-2 rounded-full px-6 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
-              )}
-            >
-              Review bookings
-              <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
+            {!bookingFlowComplete ? (
+              <Link
+                href="/dashboard/setup/bookings"
+                className={cn(
+                  buttonVariants({ variant: "default" }),
+                  "inline-flex h-11 items-center gap-2 rounded-full px-6 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
+                )}
+              >
+                Guest booking setup
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            ) : onFreeTrial && setupComplete ? (
+              <Link
+                href="/dashboard/pricing"
+                className={cn(
+                  buttonVariants({ variant: "default" }),
+                  "inline-flex h-11 items-center gap-2 rounded-full px-6 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
+                )}
+              >
+                {trialExpired ? "Add card · keep link live" : `Add card · ${trialDaysLeft}d left on trial`}
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            ) : inboundBookingCount > 0 ? (
+              <Link
+                href="/dashboard/bookings"
+                className={cn(
+                  buttonVariants({ variant: "default" }),
+                  "inline-flex h-11 items-center gap-2 rounded-full px-6 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
+                )}
+              >
+                Review bookings
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            ) : (
+              <Link
+                href="/dashboard/bookings"
+                className={cn(
+                  buttonVariants({ variant: "default" }),
+                  "inline-flex h-11 items-center gap-2 rounded-full px-6 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
+                )}
+              >
+                Open bookings hub
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            )}
             <Link
               href={bookingFlowComplete ? "/dashboard/bookings" : "/dashboard/setup/bookings"}
               className={cn(
@@ -165,17 +206,19 @@ export default async function DashboardOverviewPage() {
                 "inline-flex h-11 items-center rounded-full px-6 text-base font-semibold text-[#5b21b6] hover:bg-[#ede9fe]",
               )}
             >
-              {bookingFlowComplete ? "Edit or create bookings" : "Guest booking setup"}
+              {bookingFlowComplete ? "Edit booking setup" : "Continue setup"}
             </Link>
-            <Link
-              href="/dashboard/payments"
-              className={cn(
-                buttonVariants({ variant: "outline" }),
-                "inline-flex h-11 items-center rounded-full border-[#ebe7f7] px-6 text-base font-semibold text-[#0f172a]",
-              )}
-            >
-              Payments & Stripe
-            </Link>
+            {!stripeChargesEnabled ? (
+              <Link
+                href="/dashboard/payments"
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "inline-flex h-11 items-center rounded-full border-[#ebe7f7] px-6 text-base font-semibold text-[#0f172a]",
+                )}
+              >
+                Connect Stripe
+              </Link>
+            ) : null}
           </div>
         </div>
       </section>
@@ -191,6 +234,8 @@ export default async function DashboardOverviewPage() {
         publicBookingUrl={publicBookingUrl}
         hasInventory={hasInventory}
         voiceComplete={voiceComplete}
+        subscriptionTier={subscriptionTier}
+        businessCreatedAt={businessCreatedAt}
       />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

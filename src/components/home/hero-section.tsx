@@ -75,33 +75,24 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
               Start free trial
             </Link>
             <Link
-              href="/#pricing"
+              href={bookingDemoHref()}
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "h-12 rounded-full border-[#ebe7f7] px-8 text-base font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
               )}
             >
-              See pricing · £50/mo
-            </Link>
-            <Link
-              href={bookingDemoHref()}
-              className={cn(
-                buttonVariants({ variant: "ghost", size: "lg" }),
-                "h-12 rounded-full px-6 text-base font-semibold text-[#475569] hover:bg-[#f8fafc] hover:text-[#0f172a]",
-              )}
-            >
-              Try live booking demo
+              See live booking demo
             </Link>
           </div>
 
           <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-medium text-[#64748b]">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-[#7c3aed]" aria-hidden />
-              One inbox for AI calls, bookings and leads
+              Bookings and calls in one place
             </span>
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-[#a78bfa]" aria-hidden />
-              Restaurants, salons, tours & lounges
+              Restaurants, salons, cafés &amp; events
             </span>
           </div>
         </motion.div>

@@ -31,8 +31,8 @@ export function SignupForm() {
     const businessName = String(fd.get("business") ?? "").trim();
     const email = String(fd.get("email") ?? "").trim();
     const password = String(fd.get("password") ?? "");
-    const websiteUrl = String(fd.get("website_url") ?? "").trim();
-    const logoUrl = String(fd.get("logo_url") ?? "").trim();
+    const websiteUrl = "";
+    const logoUrl = "";
     const businessCategory = String(fd.get("business_category") ?? "").trim();
 
     try {
@@ -57,8 +57,8 @@ export function SignupForm() {
       }
 
       setNeedsEmailConfirm(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Missing Supabase env vars — check .env.local.");
+    } catch {
+      setError("Something went wrong — please try again or email hello@solviosystems.com.");
     } finally {
       setLoading(false);
     }
@@ -98,34 +98,9 @@ export function SignupForm() {
           <option value="professional">Professional services</option>
           <option value="other">Other hospitality / venue</option>
         </select>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <label htmlFor="signup-www" className="text-sm font-semibold text-[#0f172a]">
-            Website URL <span className="font-normal text-[#94a3b8]">(optional)</span>
-          </label>
-          <input
-            id="signup-www"
-            name="website_url"
-            type="url"
-            autoComplete="url"
-            placeholder="https://yourvenue.com"
-            className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
-          />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="signup-logo" className="text-sm font-semibold text-[#0f172a]">
-            Logo URL <span className="font-normal text-[#94a3b8]">(optional)</span>
-          </label>
-          <input
-            id="signup-logo"
-            name="logo_url"
-            type="url"
-            placeholder="https://cdn…/logo.png"
-            className="w-full rounded-2xl border border-[#ebe7f7] bg-white px-4 py-3 text-[15px] text-[#0f172a] shadow-inner shadow-black/[0.03] outline-none ring-[#a78bfa]/35 transition-[box-shadow,border-color] placeholder:text-[#94a3b8] focus:border-[#c4b5fd] focus:ring-4"
-          />
-        </div>
+        <p className="text-[13px] leading-relaxed text-[#64748b]">
+          Helps us tailor your booking setup — you can change this later.
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -196,6 +171,10 @@ export function SignupForm() {
           . {trialExploreLine()}
         </span>
       </label>
+
+      <p className="rounded-2xl border border-[#ede9fe] bg-[#faf5ff] px-4 py-3 text-[13px] leading-relaxed text-[#5b21b6]">
+        Next: ~5-minute setup → connect Stripe (optional) → publish your <span className="font-semibold">/book</span> link.
+      </p>
 
       <Button
         type="submit"

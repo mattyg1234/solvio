@@ -35,8 +35,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Book · Solvio" };
   }
   return {
-    title: `Book ${name} · Solvio`,
-    description: `Request a reservation or appointment with ${name} through Solvio.`,
+    title: `Book at ${name}`,
+    description: `Request a reservation or appointment with ${name}.`,
   };
 }
 

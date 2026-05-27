@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
+import { trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -28,6 +29,7 @@ type NavItem = {
   icon: LucideIcon;
   exact?: boolean;
   key: string;
+  badge?: string;
 };
 
 function buildPrimaryNav(
@@ -49,10 +51,20 @@ function buildPrimaryNav(
   return items;
 }
 
-function buildMoreLinks(cap: ResolvedPlatformCapabilities, campaignsEnabled: boolean): NavItem[] {
+function buildMoreLinks(
+  cap: ResolvedPlatformCapabilities,
+  campaignsEnabled: boolean,
+  plansBadge?: string | null,
+): NavItem[] {
   const links: NavItem[] = [
     { href: "/dashboard/setup/bookings", label: "Booking setup", icon: ClipboardList, key: "setup" },
-    { href: "/dashboard/pricing", label: "Plans & billing", icon: CreditCard, key: "pricing" },
+    {
+      href: "/dashboard/pricing",
+      label: "Plans & billing",
+      icon: CreditCard,
+      key: "pricing",
+      badge: plansBadge ?? undefined,
+    },
     { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" },
     { href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" },
     { href: "/dashboard/ask", label: "Ask Solvio", icon: Sparkles, key: "ask" },
@@ -75,13 +87,24 @@ function buildMoreLinks(cap: ResolvedPlatformCapabilities, campaignsEnabled: boo
 export type DashboardMobileNavProps = {
   capabilities: ResolvedPlatformCapabilities;
   campaignsEnabled?: boolean;
+  subscriptionTier?: string;
+  businessCreatedAt?: string | null;
 };
 
-export function DashboardMobileNav({ capabilities, campaignsEnabled = false }: DashboardMobileNavProps) {
+export function DashboardMobileNav({
+  capabilities,
+  campaignsEnabled = false,
+  subscriptionTier = "trial",
+  businessCreatedAt = null,
+}: DashboardMobileNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const plansBadge =
+    subscriptionTier === "trial" && businessCreatedAt
+      ? `${trialDaysRemaining(businessCreatedAt)}d left`
+      : undefined;
   const primary = buildPrimaryNav(capabilities, campaignsEnabled);
-  const moreLinks = buildMoreLinks(capabilities, campaignsEnabled);
+  const moreLinks = buildMoreLinks(capabilities, campaignsEnabled, plansBadge);
 
   function navActive(href: string, exact?: boolean) {
     const pathOnly = href.split("#")[0] ?? href;
@@ -115,7 +138,14 @@ export function DashboardMobileNav({ capabilities, campaignsEnabled = false }: D
                     onClick={() => setMoreOpen(false)}
                   >
                     <Icon className="h-4 w-4" aria-hidden />
-                    {item.label}
+                    <span className="flex flex-1 items-center justify-between gap-2">
+                      {item.label}
+                      {item.badge ? (
+                        <span className="rounded-full bg-[#ede9fe] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#5b21b6]">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </span>
                   </Link>
                 </li>
               );

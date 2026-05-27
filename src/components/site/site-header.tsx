@@ -9,15 +9,15 @@ import { motion, useReducedMotion } from "framer-motion";
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
 import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
-import { supportMailtoHref } from "@/lib/site-contact";
+import { BOOKING_TRIAL_DAYS } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/#growth", label: "Growth" },
   { href: "/#pricing", label: "Pricing" },
   { href: "/#commerce", label: "Commerce" },
+  { href: "/#faq", label: "FAQ" },
   { href: bookingDemoHref(), label: "Live demo" },
-  { href: supportMailtoHref(), label: "Email us" },
 ];
 
 export function SiteHeader() {
@@ -29,12 +29,12 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:h-[4.25rem] sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 rounded-xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]"
+          className="flex min-w-0 items-center gap-2 rounded-xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]"
           onClick={() => setMobileOpen(false)}
         >
           <motion.span
             aria-hidden
-            className="block h-9 w-9 overflow-hidden rounded-xl shadow-sm shadow-[#7c3aed]/25"
+            className="block h-9 w-9 shrink-0 overflow-hidden rounded-xl shadow-sm shadow-[#7c3aed]/25"
             initial={{ opacity: reduce ? 1 : 0, scale: reduce ? 1 : 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{
@@ -45,7 +45,12 @@ export function SiteHeader() {
           >
             <Image src="/brand/icon-192.png" alt="" width={72} height={72} className="h-full w-full" priority />
           </motion.span>
-          <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
+          <div className="min-w-0">
+            <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
+            <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8] sm:block">
+              {BOOKING_TRIAL_DAYS}-day trial · no card
+            </p>
+          </div>
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
@@ -65,28 +70,28 @@ export function SiteHeader() {
             href="/login"
             className={cn(
               buttonVariants({ variant: "ghost", size: "sm" }),
-              "rounded-full px-3 font-semibold text-[#64748b] hover:text-[#0f172a]",
+              "hidden rounded-full px-3 font-semibold text-[#64748b] hover:text-[#0f172a] sm:inline-flex",
             )}
           >
             Log in
           </Link>
           <Link
-            href="/signup"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "rounded-full border-[#ebe7f7] px-4 font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
-            )}
-          >
-            Sign up
-          </Link>
-          <Link
             href={bookingDemoHref()}
             className={cn(
-              buttonVariants({ variant: "default", size: "sm" }),
-              "hidden rounded-full px-4 font-semibold shadow-md shadow-[#7c3aed]/20 sm:inline-flex sm:px-5",
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "hidden rounded-full border-[#ebe7f7] px-4 font-semibold text-[#0f172a] hover:bg-[#f8fafc] lg:inline-flex",
             )}
           >
             Try booking demo
+          </Link>
+          <Link
+            href="/signup"
+            className={cn(
+              buttonVariants({ variant: "default", size: "sm" }),
+              "rounded-full px-4 font-semibold shadow-md shadow-[#7c3aed]/20 sm:px-5",
+            )}
+          >
+            Start free trial
           </Link>
           <button
             type="button"

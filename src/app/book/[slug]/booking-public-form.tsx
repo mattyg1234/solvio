@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { CalendarCheck, Check, Loader2, MapPin, PartyPopper, Scissors, Sparkles, UtensilsCrossed } from "lucide-react";
+import { CalendarCheck, Check, Loader2, Lock, MapPin, PartyPopper, Phone, Scissors, Sparkles, UtensilsCrossed } from "lucide-react";
 
 import { submitBookingRequestAction, type SubmitBookingState } from "./actions";
 import {
@@ -66,7 +66,7 @@ const MODE_PICKER: {
   blurb: string;
   Icon: typeof PartyPopper;
 }[] = [
-  { mode: "event", label: "Events", blurb: "Hosted shows — pick the act, then a purple calendar date", Icon: PartyPopper },
+  { mode: "event", label: "Events", blurb: "Hosted shows — pick the act, then an available date", Icon: PartyPopper },
   { mode: "table", label: "Tables", blurb: "Reserve seating for a regular visit", Icon: UtensilsCrossed },
   { mode: "appointment", label: "Appointments", blurb: "Choose a service, team member, and time", Icon: Scissors },
   { mode: "walk_in", label: "Walk-in", blurb: "Ask about availability or send a walk-in enquiry", Icon: Sparkles },
@@ -287,6 +287,10 @@ export function BookingPublicForm({
     setSelectedSlotValue("");
   }, [requestedDate, preferredStaff, selectedService]);
 
+  useEffect(() => {
+    setRequestedDate("");
+  }, [selectedService]);
+
   const sortedQuestions = useMemo(
     () => [...context.table_questions].sort((a, b) => a.sort_order - b.sort_order || a.question_label.localeCompare(b.question_label)),
     [context.table_questions],
@@ -469,7 +473,7 @@ export function BookingPublicForm({
     if (inside === false) {
       const dow = BOOKING_PUBLIC_WEEKDAY_SHORT[dowSundayZeroInBusinessTZ(d, venueTz)];
       const labelTail = preferredTable.trim() ? ` for ${preferredTable.trim()}` : "";
-      return `${dow}${labelTail} isn’t accepting table enquiries — pick another evening or widen custom hours inside Solvio bookings.`;
+      return `${dow}${labelTail} isn’t accepting table enquiries — please try another evening.`;
     }
     return null;
   }, [
@@ -635,8 +639,34 @@ export function BookingPublicForm({
       ) : null}
 
       <div className="mb-6 text-center">
+        {context.logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- merchant-supplied external logo URLs
+          <img
+            src={context.logo_url}
+            alt=""
+            className="mx-auto mb-4 h-16 w-16 rounded-2xl object-cover ring-1 ring-[#ebe7f7]"
+          />
+        ) : null}
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Book with {businessName}</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#0f172a]">{pageTitle}</h1>
+        {context.venue_address || context.venue_phone ? (
+          <p className="mt-3 flex flex-col items-center gap-1 text-[13px] leading-relaxed text-[#64748b] sm:flex-row sm:justify-center sm:gap-3">
+            {context.venue_address ? (
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-[#94a3b8]" aria-hidden />
+                {context.venue_address}
+              </span>
+            ) : null}
+            {context.venue_phone ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 shrink-0 text-[#94a3b8]" aria-hidden />
+                <a href={`tel:${context.venue_phone.replace(/\s+/g, "")}`} className="font-semibold text-[#5b21b6] hover:underline">
+                  {context.venue_phone}
+                </a>
+              </span>
+            ) : null}
+          </p>
+        ) : null}
         {guestMessage ? (
           <p className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-[#64748b]">{guestMessage}</p>
         ) : (
@@ -830,7 +860,7 @@ export function BookingPublicForm({
         {hostedCalendarMode ? (
           <FormSection step={primaryKind ? 2 : 3} title="Pick your show night" className="border-[#ddd6fe] bg-[#fafbff]">
             <p className="text-[13px] leading-relaxed text-[#64748b]">
-              Only <span className="font-semibold text-[#5b21b6]">purple dates</span> are bookable for this event. Grey days are not running this show.
+              Only <span className="font-semibold text-[#5b21b6]">highlighted dates</span> are bookable for this event. Grey days are not running this show.
             </p>
             <input type="hidden" name="requested_date" value={hostedOccurrenceSel?.dateYmd ?? ""} required />
             <input
@@ -852,7 +882,7 @@ export function BookingPublicForm({
             ) : null}
             {!hostedOccurrenceSel ? (
               <p className="rounded-xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] text-[#92400e]">
-                Tap a purple date to continue.
+                Tap a highlighted date to continue.
               </p>
             ) : null}
           </FormSection>
@@ -954,18 +984,28 @@ export function BookingPublicForm({
           >
             {structuredAppointmentBooking ? (
               <>
-                <input type="hidden" name="requested_date" value={requestedDate} required />
-                <AppointmentMonthCalendar
-                  timeZone={venueTz}
-                  todayYmd={todayYmd}
-                  appointmentHours={context.appointment_hours}
-                  exceptions={context.appointment_slot_exceptions}
-                  bookedSlots={context.appointment_booked_slots}
-                  staffMembers={context.staff_members}
-                  breaks={breaks}
-                  selectedDateYmd={requestedDate}
-                  onSelectDate={setRequestedDate}
-                />
+                <input type="hidden" name="requested_date" value={requestedDate} required={!hasAppointmentServices || Boolean(selectedService)} />
+                {hasAppointmentServices && !selectedService ? (
+                  <div className="rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-4 text-[14px] leading-relaxed text-[#64748b]">
+                    <p className="font-semibold text-[#0f172a]">Pick a service first</p>
+                    <p className="mt-1">
+                      We need your service length to show which days have enough time — choose one above, then pick a date.
+                    </p>
+                  </div>
+                ) : (
+                  <AppointmentMonthCalendar
+                    timeZone={venueTz}
+                    todayYmd={todayYmd}
+                    appointmentHours={context.appointment_hours}
+                    exceptions={context.appointment_slot_exceptions}
+                    bookedSlots={context.appointment_booked_slots}
+                    staffMembers={context.staff_members}
+                    breaks={breaks}
+                    serviceDurationMinutes={selectedServiceRow?.duration_minutes ?? null}
+                    selectedDateYmd={requestedDate}
+                    onSelectDate={setRequestedDate}
+                  />
+                )}
               </>
             ) : (
               <>
@@ -1428,19 +1468,30 @@ export function BookingPublicForm({
               Sending…
             </>
           ) : (
-            submitButtonLabel
+            <>
+              {submitPaymentCents ? <Lock className="mr-2 inline h-4 w-4" aria-hidden /> : null}
+              {submitButtonLabel}
+            </>
           )}
         </button>
       </form>
 
-      <p className="mt-8 text-center text-xs text-[#94a3b8]">
-        By submitting, you agree {businessName} may contact you about this request.
+      <p className="mt-8 text-center text-xs leading-relaxed text-[#94a3b8]">
+        By submitting, you agree {businessName} may contact you about this request.{" "}
+        <Link href="/privacy" className="font-semibold text-[#7c3aed] hover:underline">
+          Privacy
+        </Link>
+        {submitPaymentCents ? (
+          <span className="block pt-1">
+            Deposits are paid to {businessName} securely via Stripe. Refunds follow the venue&apos;s policy.
+          </span>
+        ) : null}
         {context.venue_time_zone && context.venue_time_zone !== "UTC" ? (
           <span className="block pt-1">
             All booking times are shown in the venue&apos;s timezone ({context.venue_time_zone}).
           </span>
         ) : null}{" "}
-        Hosted on{" "}
+        Powered by{" "}
         <Link href="/" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
           Solvio
         </Link>

@@ -53,7 +53,7 @@ export default async function DashboardPlatformOnboardingPage({ searchParams }: 
   if (!biz?.id) {
     return (
       <div className="mx-auto max-w-lg space-y-6 rounded-[24px] border border-[#ebe7f7] bg-white p-8 text-[15px] text-[#64748b] shadow-sm">
-        <p>You don&apos;t have a workspace yet — add a business from signup metadata or create one manually in Supabase.</p>
+        <p>No workspace found — finish signup with your venue name, or contact hello@solviosystems.com if this persists.</p>
         <SignOutButton className="w-full rounded-full border-[#ebe7f7] font-semibold" />
       </div>
     );

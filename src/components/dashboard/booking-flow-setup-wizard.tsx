@@ -190,7 +190,7 @@ export function BookingFlowSetupWizard({
           if (fromOnboarding) {
             router.push("/dashboard/onboarding?step=2&booking=done");
           } else {
-            router.push(bookingsHubPostSetupPath(kind));
+            router.push(`${bookingsHubPostSetupPath(kind)}&saved=1`);
           }
           router.refresh();
         } catch (e) {
@@ -414,17 +414,26 @@ export function BookingFlowSetupWizard({
               <ol className="mt-2 list-decimal space-y-1.5 pl-5">
                 <li>
                   Add your tables, events, or time slots in{" "}
-                  <Link href="/dashboard/bookings" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                  <Link href={bookingsHubPostSetupPath(kind)} className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
                     Bookings
                   </Link>
                 </li>
-                <li>Share your booking link with customers</li>
+                <li>
+                  Copy your guest link in{" "}
+                  <Link href="/dashboard/bookings#booking-links" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                    Bookings → Guest link
+                  </Link>
+                </li>
                 <li>
                   Optional:{" "}
                   <Link href="/dashboard/payments" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
                     Connect Stripe
                   </Link>{" "}
-                  if you want deposits online
+                  for deposits ·{" "}
+                  <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+                    add card
+                  </Link>{" "}
+                  before trial ends
                 </li>
               </ol>
             </div>

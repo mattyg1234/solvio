@@ -31,11 +31,19 @@ export default function TermsPage() {
           <h2 className="text-lg font-semibold text-[#0f172a]">Guests</h2>
           <p>
             Submitting a booking request does not guarantee confirmation until the venue accepts it. Deposit payments are subject
-            to the venue&apos;s policies and Stripe&apos;s terms.
+            to the venue&apos;s policies and Stripe&apos;s terms. See our{" "}
+            <Link href="/privacy" className="font-semibold text-[#7c3aed] hover:underline">
+              Privacy policy
+            </Link>{" "}
+            for how guest data is handled.
           </p>
           <h2 className="text-lg font-semibold text-[#0f172a]">Limitation</h2>
           <p>
-            Solvio is provided as-is during early access. We strive for reliability but do not guarantee uninterrupted service.
+            We strive for reliable booking and email delivery. If something breaks, contact us at{" "}
+            <a href={supportMailtoHref()} className="font-semibold text-[#7c3aed] hover:underline">
+              {SUPPORT_EMAIL}
+            </a>{" "}
+            and we will help resolve it promptly.
           </p>
           <p>
             Questions:{" "}

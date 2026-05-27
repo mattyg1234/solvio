@@ -112,6 +112,9 @@ export function BusinessProfileForm({
           placeholder="https://…"
           className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] font-normal outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
         />
+        <p className="text-[13px] font-normal text-[#64748b]">
+          Shown at the top of your public <span className="font-medium">/book</span> page — use a square image URL.
+        </p>
       </label>
 
       {bookingSlug ? (

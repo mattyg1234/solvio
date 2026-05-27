@@ -23,11 +23,16 @@ import {
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
+import { trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean; key: string; badge?: string };
 
-function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: boolean): NavItem[] {
+function buildSidebarNav(
+  cap: ResolvedPlatformCapabilities,
+  campaignsEnabled: boolean,
+  plansBadge?: string | null,
+): NavItem[] {
   const items: NavItem[] = [];
 
   items.push({
@@ -81,7 +86,13 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
   items.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: MessageCircleQuestion, key: "ask" });
   items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
   items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
-  items.push({ href: "/dashboard/pricing", label: "Plans", icon: Euro, key: "plans" });
+  items.push({
+    href: "/dashboard/pricing",
+    label: "Plans",
+    icon: Euro,
+    key: "plans",
+    badge: plansBadge ?? undefined,
+  });
   items.push({ href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" });
 
   return items;
@@ -90,11 +101,24 @@ function buildSidebarNav(cap: ResolvedPlatformCapabilities, campaignsEnabled: bo
 export type DashboardSidebarProps = {
   capabilities: ResolvedPlatformCapabilities;
   campaignsEnabled?: boolean;
+  subscriptionTier?: string;
+  businessCreatedAt?: string | null;
 };
 
-export function DashboardSidebar({ capabilities, campaignsEnabled = false }: DashboardSidebarProps) {
+export function DashboardSidebar({
+  capabilities,
+  campaignsEnabled = false,
+  subscriptionTier = "trial",
+  businessCreatedAt = null,
+}: DashboardSidebarProps) {
   const pathname = usePathname();
-  const nav = buildSidebarNav(capabilities, campaignsEnabled);
+  const plansBadge =
+    subscriptionTier === "trial" && businessCreatedAt
+      ? `${trialDaysRemaining(businessCreatedAt)}d left`
+      : subscriptionTier !== "trial"
+        ? null
+        : null;
+  const nav = buildSidebarNav(capabilities, campaignsEnabled, plansBadge);
 
   function active(href: string, exact?: boolean) {
     if (exact) return pathname === href;
@@ -133,7 +157,14 @@ export function DashboardSidebar({ capabilities, campaignsEnabled = false }: Das
               <span className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="truncate">{item.label}</span>
                 {item.badge ? (
-                  <span className="shrink-0 rounded-full bg-[#f1f5f9] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#64748b]">
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                      item.key === "plans" && subscriptionTier === "trial"
+                        ? "bg-amber-100 text-amber-900"
+                        : "bg-[#f1f5f9] text-[#64748b]",
+                    )}
+                  >
                     {item.badge}
                   </span>
                 ) : null}

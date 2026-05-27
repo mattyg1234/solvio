@@ -33,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: primaryBiz } = await supabase
     .from("businesses")
     .select(
-      "platform_capabilities,onboarding_completed_at,campaigns_enabled,stripe_connect_account_id,stripe_connect_charges_enabled",
+      "platform_capabilities,onboarding_completed_at,campaigns_enabled,stripe_connect_account_id,stripe_connect_charges_enabled,subscription_tier,created_at,booking_flow_completed_at,booking_slug",
     )
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
@@ -46,13 +46,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const stripePaymentsReady = Boolean(
     primaryBiz?.stripe_connect_account_id?.trim() && primaryBiz?.stripe_connect_charges_enabled,
   );
+  const subscriptionTier = (primaryBiz as { subscription_tier?: string } | null)?.subscription_tier ?? "trial";
+  const businessCreatedAt = (primaryBiz as { created_at?: string } | null)?.created_at ?? null;
+  const bookingFlowComplete = Boolean((primaryBiz as { booking_flow_completed_at?: string } | null)?.booking_flow_completed_at);
+  const slugPublished = Boolean((primaryBiz as { booking_slug?: string } | null)?.booking_slug?.trim());
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
       <OnboardingGate needsOnboarding={needsOnboarding} />
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-[17rem] shrink-0 overflow-hidden border-r border-[#ebe7f7]/90 md:block">
-          <DashboardSidebar capabilities={capabilities} campaignsEnabled={campaignsEnabled} />
+          <DashboardSidebar
+            capabilities={capabilities}
+            campaignsEnabled={campaignsEnabled}
+            subscriptionTier={subscriptionTier}
+            businessCreatedAt={businessCreatedAt}
+          />
         </aside>
 
         <div className="flex min-h-screen flex-1 flex-col pb-[5.75rem] md:pb-0">
@@ -60,10 +69,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
             email={user.email ?? ""}
             greetingName={greetingName}
             stripePaymentsReady={stripePaymentsReady}
+            subscriptionTier={subscriptionTier}
+            businessCreatedAt={businessCreatedAt}
+            bookingFlowComplete={bookingFlowComplete}
+            slugPublished={slugPublished}
           />
           <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-10">{children}</main>
 
-          <DashboardMobileNav capabilities={capabilities} campaignsEnabled={campaignsEnabled} />
+          <DashboardMobileNav
+            capabilities={capabilities}
+            campaignsEnabled={campaignsEnabled}
+            subscriptionTier={subscriptionTier}
+            businessCreatedAt={businessCreatedAt}
+          />
         </div>
       </div>
     </div>

@@ -38,7 +38,7 @@ export default function SignupPage() {
                 Start with Solvio
               </CardTitle>
               <CardDescription className="text-[15px] leading-relaxed text-[#64748b]">
-                A short form — onboarding tailors dashboards, prompts and bookings to what your venue actually sells.
+                About two minutes — then a short setup wizard to publish your booking link.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-2 pb-6">

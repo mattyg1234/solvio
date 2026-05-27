@@ -23,9 +23,13 @@ export default function PrivacyPage() {
             explains what we collect and why.
           </p>
           <h2 className="text-lg font-semibold text-[#0f172a]">What we collect</h2>
+          <p>
+            When a guest books on a venue&apos;s public booking page, that venue is responsible for the guest&apos;s booking data.
+            Solvio processes it on their behalf to deliver confirmations and payments.
+          </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>Account details (name, email) when merchants sign up.</li>
-            <li>Guest booking details submitted on public `/book` pages (name, email, phone, party size, preferences).</li>
+            <li>Guest booking details on public booking pages (name, email, phone, party size, preferences).</li>
             <li>Payment metadata via Stripe Connect — card data is handled by Stripe, not stored on our servers.</li>
             <li>Usage logs for security, rate limiting, and product improvement.</li>
           </ul>

@@ -67,7 +67,7 @@ export function tableBlockedByHostedShowMessage(args: {
   const titles = hostedEventTitlesOnDate(args.dateYmd, args.events, args.venueTz);
   const label = titles.length === 1 ? titles[0] : titles.length > 1 ? titles.join(", ") : "a hosted show";
   const tail = args.eventsTabAvailable
-    ? "Switch to Events at the top of this form, pick the show, then tap a purple date on the calendar."
+    ? "Switch to Events at the top of this form, pick the show, then tap a highlighted date on the calendar."
     : "This date is reserved for a hosted performance — choose another evening for table seating.";
   return `You can't book a table on this date — ${label} is on that night. ${tail}`;
 }

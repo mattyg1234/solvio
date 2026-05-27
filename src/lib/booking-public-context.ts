@@ -98,6 +98,10 @@ export type PublicTableQuestion = {
 
 export type BookingPublicContextPayload = {
   business_name: string;
+  logo_url: string;
+  venue_phone: string;
+  venue_address: string;
+  website_url: string;
   guest_message: string;
   booking_flow_kind: string;
   venue_time_zone: string;
@@ -404,6 +408,10 @@ export function parseBookingPublicContext(raw: unknown): BookingPublicContextPay
 
   return {
     business_name: businessName,
+    logo_url: typeof root.logo_url === "string" ? root.logo_url.trim() : "",
+    venue_phone: typeof root.venue_phone === "string" ? root.venue_phone.trim() : "",
+    venue_address: typeof root.venue_address === "string" ? root.venue_address.trim() : "",
+    website_url: typeof root.website_url === "string" ? root.website_url.trim() : "",
     guest_message: typeof root.guest_message === "string" ? root.guest_message.trim() : "",
     booking_flow_kind:
       typeof root.booking_flow_kind === "string" ? root.booking_flow_kind.trim() : "",

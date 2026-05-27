@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ArrowLeft } from "lucide-react";
 
 import { BookingLinkManager } from "@/components/dashboard/booking-link-manager";
@@ -18,8 +19,9 @@ import {
 } from "@/components/dashboard/booking-operations-hub";
 import type { AppointmentBreakRow } from "@/components/dashboard/appointment-week-grid";
 import type { BookingRequestRow } from "@/components/dashboard/booking-inbox";
+import { BookingsFirstRunBanner } from "@/components/dashboard/bookings-first-run-banner";
 import { BookingsCommandCenter } from "@/components/dashboard/bookings-command-center";
-import { GetLiveStrip } from "@/components/dashboard/get-live-strip";
+import { BookingsSetupSavedBanner } from "@/components/dashboard/bookings-setup-saved-banner";
 import { buttonVariants } from "@/components/ui/button";
 import { parseBookingsHubQuery } from "@/lib/bookings-hub-query";
 import { parseStaffMembers } from "@/lib/staff-members";
@@ -40,7 +42,10 @@ async function resolveBookingSearchParams(
   return raw as BookingPageSearchRaw;
 }
 
-function firstQueryString(raw: BookingPageSearchRaw, key: "tab" | "view" | "booking"): string | undefined {
+function firstQueryString(
+  raw: BookingPageSearchRaw,
+  key: "tab" | "view" | "booking" | "saved",
+): string | undefined {
   const v = raw[key];
   if (typeof v === "string") return v;
   if (Array.isArray(v) && typeof v[0] === "string") return v[0];
@@ -267,6 +272,21 @@ export default async function DashboardBookingsPage({
   });
 
   const confirmedActiveCount = confirmedBookings.filter((b) => b.status !== "cancelled").length;
+  const hasInventory = schedules.length + hostedEvents.length + floorTables.length > 0;
+  const showFirstRun = primaryBookingFlowComplete && inboxRequests.length === 0 && !hasInventory;
+  const primaryFlowKind = (businessesRaw?.[0] as { booking_flow_kind?: string | null } | undefined)?.booking_flow_kind ?? null;
+  const firstRunPostSetupPath = (() => {
+    switch (primaryFlowKind) {
+      case "restaurant_tables":
+        return "/dashboard/bookings?tab=offerings&view=tables#bookings-workspace";
+      case "salon_appointments":
+        return "/dashboard/bookings?tab=offerings&view=appointments#bookings-workspace";
+      case "hosted_events":
+        return "/dashboard/bookings?tab=offerings&view=events#bookings-workspace";
+      default:
+        return "/dashboard/bookings?tab=offerings&view=appointments#bookings-workspace";
+    }
+  })();
 
   return (
     <div className="space-y-8">
@@ -281,13 +301,27 @@ export default async function DashboardBookingsPage({
         Overview
       </Link>
 
-      <GetLiveStrip
-        bookingFlowComplete={primaryBookingFlowComplete}
-        stripeChargesEnabled={primaryStripeChargesEnabled}
-        slugPublished={Boolean(primaryBookingSlug)}
-      />
+      <Suspense fallback={null}>
+        <BookingsSetupSavedBanner />
+      </Suspense>
 
-      {primaryBizId && primaryBizName ? (
+      {showFirstRun ? (
+        <BookingsFirstRunBanner postSetupPath={firstRunPostSetupPath} publicBookingUrl={publicBookingUrl} />
+      ) : null}
+
+      {showFirstRun && primaryBizId ? (
+        <section id="booking-links" className="scroll-mt-28 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[#0f172a]">Guest booking link</h2>
+            <p className="mt-1 text-[14px] text-[#64748b]">
+              Copy your link — add inventory below before sharing widely.
+            </p>
+          </div>
+          <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
+        </section>
+      ) : null}
+
+      {!showFirstRun && primaryBizId && primaryBizName ? (
         <div id="booking-calendar" className="scroll-mt-6">
           <BookingsCalendarCollapsible
             businessId={primaryBizId}
@@ -362,15 +396,17 @@ export default async function DashboardBookingsPage({
         />
       </div>
 
-      <section id="booking-links" className="scroll-mt-28 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-[#0f172a]">Guest booking link</h2>
-          <p className="mt-1 text-[14px] text-[#64748b]">
-            Your link is permanent and generated from your business name — copy it to share with customers.
-          </p>
-        </div>
-        <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
-      </section>
+      {!showFirstRun ? (
+        <section id="booking-links" className="scroll-mt-28 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[#0f172a]">Guest booking link</h2>
+            <p className="mt-1 text-[14px] text-[#64748b]">
+              Your link is permanent and generated from your business name — copy it to share with customers.
+            </p>
+          </div>
+          <BookingLinkManager businesses={businesses} siteUrl={siteUrl} />
+        </section>
+      ) : null}
     </div>
   );
 }

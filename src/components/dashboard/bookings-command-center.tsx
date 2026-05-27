@@ -54,14 +54,18 @@ function CommandTile({ href, label, hint, Icon, active, badge, disabled }: TileD
 
   const className = cn(
     "flex min-h-[7.5rem] items-start gap-4 rounded-[22px] border px-5 py-5 text-left transition-all md:min-h-[8rem] md:px-6 md:py-6",
-    disabled && "pointer-events-none opacity-50",
+    disabled && "opacity-90",
     active
       ? "border-[#7c3aed] bg-[#f5f3ff] shadow-md shadow-[#ede9fe]/70 ring-2 ring-[#ddd6fe]/80"
       : "border-[#ebe7f7] bg-white hover:border-[#c4b5fd] hover:bg-[#fafbff] hover:shadow-md hover:shadow-[#f5f3ff]/80",
   );
 
   if (disabled) {
-    return <div className={className}>{inner}</div>;
+    return (
+      <Link href="/dashboard/setup/bookings" className={cn(className, "opacity-100 hover:border-[#c4b5fd]")}>
+        {inner}
+      </Link>
+    );
   }
 
   return (
@@ -124,7 +128,7 @@ export function BookingsCommandCenter({
     {
       href: "/dashboard/bookings?tab=offerings&view=events#bookings-workspace",
       label: "Event manager",
-      hint: "Shows and nights — guests choose your listing, then tap purple dates on the calendar.",
+      hint: "Shows and nights — guests choose your listing, then pick a highlighted date on the calendar.",
       Icon: PartyPopper,
       active: activePrimary === "offerings" && activeOfferingsSub === "events",
       disabled: !bookingFlowComplete,

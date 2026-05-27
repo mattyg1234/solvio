@@ -1,29 +1,27 @@
-import { Star } from "lucide-react";
-
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
 const stories = [
   {
-    biz: "La Terraza · Valencia",
+    biz: "The Corner Table · Manchester",
     quote:
-      "Bookings jumped 32% in eight weeks — mostly tourists calling after hours. Our staff finally eats dinner uninterrupted.",
-    owner: "Marina · Owner",
+      "Bookings jumped after we shared one /book link — mostly guests booking after hours when nobody was on the phone.",
+    owner: "Example outcome",
     metric: "+32% bookings",
   },
   {
-    biz: "Bark Barber Studio · Madrid",
+    biz: "Bark Barber Studio · Leeds",
     quote:
-      "Missed calls basically vanished. Clients pick slots in Spanish or English and show up knowing the price.",
-    owner: "Jonás · Founder",
-    metric: "Fewer missed calls",
+      "Clients pick stylist slots online and pay a deposit before they arrive — fewer no-shows on Saturday.",
+    owner: "Example outcome",
+    metric: "Fewer no-shows",
   },
   {
-    biz: "Glow Salon Collective · Palma",
+    biz: "Glow Salon · Dublin",
     quote:
-      "Feels premium like Apple — guests hear a calm voice, not a robot. Weekend chaos finally feels manageable.",
-    owner: "Leila · GM",
-    metric: "English & Spanish",
+      "Weekend chaos finally feels manageable — one calendar for the team instead of DMs and missed calls.",
+    owner: "Example outcome",
+    metric: "Calmer weekends",
   },
 ];
 
@@ -47,10 +45,7 @@ export function SocialProofSection() {
               Example: +32% bookings
             </Badge>
             <Badge variant="outline" className="rounded-full border-[#ebe7f7] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#64748b]">
-              Missed calls reduced
-            </Badge>
-            <Badge variant="secondary" className="rounded-full px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#5b21b6]">
-              EN / ES conversations
+              Fewer no-shows
             </Badge>
           </div>
         </div>
@@ -64,12 +59,7 @@ export function SocialProofSection() {
               <span className="absolute right-4 top-4 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8] ring-1 ring-[#ebe7f7]">
                 Illustrative
               </span>
-              <div className="flex items-center gap-1 text-[#fbbf24]" aria-hidden>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="h-4 w-4 fill-current opacity-40" />
-                ))}
-              </div>
-              <p className="mt-6 text-[15px] leading-relaxed text-[#0f172a]">&ldquo;{story.quote}&rdquo;</p>
+              <p className="mt-6 text-[15px] leading-relaxed text-[#0f172a]">{story.quote}</p>
               <div className="mt-auto pt-8">
                 <p className="text-sm font-semibold text-[#0f172a]">{story.biz}</p>
                 <p className="text-xs uppercase tracking-[0.26em] text-[#94a3b8]">{story.owner}</p>

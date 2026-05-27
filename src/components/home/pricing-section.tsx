@@ -35,8 +35,8 @@ const tiers = [
     period: "/mo",
     badge: "Full AI receptionist",
     features: ["Everything in Booking", "AI receptionist", "Campaign tools", "Priority support"],
-    cta: "Talk to us",
-    href: "/#contact",
+    cta: "Start with Pro",
+    href: "/signup?intent=pro",
     highlight: false,
   },
 ];
@@ -99,7 +99,7 @@ export function PricingSection() {
 
         <p className="mx-auto mt-10 max-w-xl text-center text-sm text-[#94a3b8]">
           Need multi-location or high-volume events?{" "}
-          <Link href="/#contact" className="font-semibold text-[#7c3aed] hover:underline">
+          <Link href="/signup?intent=scale" className="font-semibold text-[#7c3aed] hover:underline">
             Scale from £499/mo
           </Link>
           {" · "}

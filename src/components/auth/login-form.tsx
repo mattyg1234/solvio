@@ -41,7 +41,7 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Missing Supabase env vars — check .env.local.");
+      setError("Something went wrong — please try again or email hello@solviosystems.com.");
     } finally {
       setLoading(false);
     }

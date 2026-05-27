@@ -90,6 +90,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
   const [postcode, setPostcode] = useState(props.merchantProfile.postcode ?? "");
   const [country, setCountry] = useState(props.merchantProfile.country ?? "");
   const [social, setSocial] = useState(props.merchantProfile.social ?? "");
+  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
 
   const [caps, setCaps] = useState<Record<PlatformCapabilityKey, boolean>>({
     appointments: true,
@@ -220,7 +221,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl text-[#0f172a]">Business profile & modules</CardTitle>
             <CardDescription className="text-[14px] leading-relaxed">
-              Basics first — then tick what applies. Only those areas surface in your sidebar.
+              Name and timezone first — logo and address can wait (they show on your public /book page when added).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pb-8">
@@ -250,6 +251,18 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   ))}
                 </select>
               </label>
+            </div>
+
+            <button
+              type="button"
+              className="text-sm font-semibold text-[#7c3aed] hover:underline"
+              onClick={() => setShowOptionalDetails((v) => !v)}
+            >
+              {showOptionalDetails ? "Hide logo & address (optional)" : "Add logo, phone & address for guests (optional)"}
+            </button>
+
+            {showOptionalDetails ? (
+              <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-logo">
                 Logo URL{" "}
                 <span className="font-normal text-[#94a3b8]">(optional)</span>
@@ -260,6 +273,9 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   placeholder="https://…"
                   className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
+                <p className="text-[13px] font-normal text-[#64748b]">
+                  Shown on your public <span className="font-medium">/book</span> page.
+                </p>
               </label>
               <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-www">
                 Website{" "}
@@ -349,7 +365,8 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   className="w-full resize-none rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
               </label>
-            </div>
+              </div>
+            ) : null}
 
             <div className="space-y-3 rounded-2xl border border-[#f1eefc] bg-[#fafbff]/80 px-4 py-4">
               <p className="text-sm font-semibold text-[#0f172a]">What does your business need?</p>
@@ -579,9 +596,10 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
             <div className="rounded-2xl border border-[#f1eefc] bg-[#fafbff] px-5 py-4 text-sm leading-relaxed text-[#475569]">
               <p className="font-semibold text-[#0f172a]">After you open the dashboard</p>
               <ol className="mt-3 list-decimal space-y-2 pl-5">
-                <li>Finish booking setup and publish your /book link</li>
+                <li>Open the launch checklist on Overview and finish each step</li>
+                <li>Publish your /book link and send yourself a test booking</li>
                 <li>Connect Stripe if you want deposit checkout</li>
-                <li>Add tables, events, or slots so guests have something to book</li>
+                <li>Add a card on Booking (£50/mo) before your trial ends</li>
               </ol>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -592,22 +610,28 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                 Start booking setup →
               </Link>
               <Link
+                href="/dashboard"
+                className="flex flex-col rounded-2xl border border-[#a78bfa]/40 bg-gradient-to-br from-[#faf5ff] to-white p-5 text-[15px] font-semibold text-[#5b21b6] hover:shadow-sm"
+              >
+                Launch checklist on Overview →
+              </Link>
+              <Link
                 href="/dashboard/payments"
                 className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
               >
                 Connect Stripe →
               </Link>
               <Link
-                href="/dashboard/setup/voice"
+                href="/dashboard/pricing"
                 className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm"
               >
-                Train AI receptionist →
+                Add Booking plan · £50/mo →
               </Link>
               <Link
-                href="/dashboard"
-                className="flex flex-col rounded-2xl border border-[#a78bfa]/40 bg-gradient-to-br from-[#faf5ff] to-white p-5 text-[15px] font-semibold text-[#5b21b6] hover:shadow-sm"
+                href="/dashboard/setup/voice"
+                className="flex flex-col rounded-2xl border border-[#ebe7f7] bg-[#fafbff] p-5 text-[15px] font-semibold text-[#0f172a] transition hover:bg-white hover:shadow-sm sm:col-span-2"
               >
-                Open dashboard home →
+                Train AI receptionist (optional) →
               </Link>
             </div>
 
