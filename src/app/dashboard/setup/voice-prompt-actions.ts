@@ -8,7 +8,7 @@ import {
 } from "@/lib/compose-voice-agent-prompt";
 import { logLlmUsage } from "@/lib/llm-usage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getSolvioOpenAiApiKey } from "@/lib/voice-platform-env";
+import { getSolvioOpenAiApiKey, getVapiAgentOpenAiModel } from "@/lib/voice-platform-env";
 
 /** Deterministic starter prompt — replaces manual drafting when merchants click Generate from brief. */
 export async function composeVoiceAgentPromptAction(fields: VoicePromptComposeFields): Promise<string> {
@@ -69,6 +69,8 @@ export async function generateVoiceAgentPromptOpenAIAction(
     .filter(Boolean)
     .join("\n");
 
+  const model = getVapiAgentOpenAiModel();
+
   let res: Response;
   try {
     res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -78,7 +80,7 @@ export async function generateVoiceAgentPromptOpenAIAction(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model,
         temperature: 0.5,
         messages: [
           {
@@ -116,7 +118,7 @@ export async function generateVoiceAgentPromptOpenAIAction(
   const content = typeof choices[0]?.message?.content === "string" ? choices[0].message.content.trim() : "";
   logLlmUsage({
     feature: "voice_prompt_generate",
-    model: "gpt-4o-mini",
+    model,
     usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
   });
   if (!content) {
@@ -180,6 +182,8 @@ export async function extractReceptionistFromBriefAction(input: {
 
   const userPayload = `Business name: ${input.businessName.trim() || "(unspecified)"}\n\nMerchant brief:\n${brief}`;
 
+  const model = getVapiAgentOpenAiModel();
+
   let res: Response;
   try {
     res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -189,7 +193,7 @@ export async function extractReceptionistFromBriefAction(input: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model,
         temperature: 0.3,
         response_format: { type: "json_object" },
         messages: [
@@ -227,7 +231,7 @@ export async function extractReceptionistFromBriefAction(input: {
   const content = typeof choices[0]?.message?.content === "string" ? choices[0].message.content.trim() : "";
   logLlmUsage({
     feature: "brief_extract",
-    model: "gpt-4o-mini",
+    model,
     usage: (body as { usage?: unknown }).usage as Parameters<typeof logLlmUsage>[0]["usage"],
   });
   if (!content) return { ok: false, message: "AI returned an empty draft — add more detail and retry." };

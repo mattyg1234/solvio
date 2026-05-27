@@ -353,6 +353,9 @@ export function BookingPublicForm({
     return null;
   }, [paymentsReady, effectiveKind, appointmentCheckoutCents, tableDepositCents, eventTicketCents]);
 
+  /** No Stripe checkout on submit — server auto-confirms into the diary when a slot resolves. */
+  const instantBooking = !submitPaymentCents && effectiveKind !== "walk_in";
+
   const pricedWithoutStripe =
     !paymentsReady &&
     ((effectiveKind === "appointment" && appointmentCheckoutCents > 0) ||
@@ -360,14 +363,20 @@ export function BookingPublicForm({
       (effectiveKind === "event" && Boolean(eventTicketCents && eventTicketCents > 0)));
 
   const submitButtonLabel = useMemo(() => {
-    if (pricedWithoutStripe) return "Send booking request";
     if (submitPaymentCents) return `Continue · pay ${formatMoneyDisplay(submitPaymentCents)}`;
+    if (instantBooking) {
+      if (effectiveKind === "appointment") return "Confirm appointment";
+      if (effectiveKind === "event") return "Confirm RSVP";
+      if (effectiveKind === "table") return "Confirm table";
+      return "Confirm booking";
+    }
+    if (pricedWithoutStripe) return "Send booking request";
     if (effectiveKind === "appointment") return "Request appointment";
-    if (effectiveKind === "event") return paymentsReady && eventTicketCents ? "Continue · pay for tickets" : "Request event seats";
+    if (effectiveKind === "event") return "Request event seats";
     if (effectiveKind === "table") return "Request table";
     if (effectiveKind === "walk_in") return "Send walk-in enquiry";
     return "Send booking request";
-  }, [effectiveKind, eventTicketCents, paymentsReady, submitPaymentCents, pricedWithoutStripe]);
+  }, [effectiveKind, instantBooking, pricedWithoutStripe, submitPaymentCents]);
 
   useEffect(() => {
     setHostedOccurrenceSel(null);
@@ -799,14 +808,14 @@ export function BookingPublicForm({
                       </p>
                     ) : (
                       <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-950">
-                        <span className="font-semibold">Request only</span> — tickets are{" "}
-                        <span className="font-semibold">{priceStr}</span> per person. Pay at the venue or by reply after{" "}
-                        {businessName} confirms your seats.
+                        <span className="font-semibold">Pay at the venue</span> — tickets are{" "}
+                        <span className="font-semibold">{priceStr}</span> per person. You&apos;ll be booked in with email
+                        and text confirmation; pay when you arrive or by reply from {businessName}.
                       </p>
                     )
                   ) : (
                     <p className="rounded-xl border border-[#ddd6fe] bg-[#f5f3ff] px-3 py-2 text-[13px] font-medium text-[#5b21b6]">
-                      Free RSVP — submit your request and {businessName} will confirm by email or phone.
+                      Free RSVP — you&apos;ll be booked in straight away with email and text confirmation.
                     </p>
                   )}
                   {remaining !== null && showSeats ? (
@@ -1428,7 +1437,14 @@ export function BookingPublicForm({
 
         {pricedWithoutStripe ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-950">
-            Online payment isn&apos;t set up yet — submit your request and {businessName} will confirm how to pay.
+            Online card payment isn&apos;t set up yet — you&apos;ll still be booked in with email and text confirmation.
+            {businessName} will arrange payment separately.
+          </p>
+        ) : null}
+
+        {instantBooking && !pricedWithoutStripe ? (
+          <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-[13px] leading-relaxed text-emerald-900">
+            No deposit required — you&apos;ll be booked in straight away with email and text confirmation.
           </p>
         ) : null}
 

@@ -658,6 +658,7 @@ export async function submitBookingRequestAction(
           guestCount,
           notes,
           dashboardUrl: siteUrl,
+          autoConfirmed,
         });
         if (!merchantEmailResult.ok) {
           console.error("[booking-submit] merchant email failed:", merchantEmailResult.message);

@@ -151,6 +151,8 @@ export async function sendNewBookingNotificationEmail(opts: {
   guestCount?: string;
   notes?: string;
   dashboardUrl: string;
+  /** Guest was auto-confirmed into the diary (no deposit checkout). */
+  autoConfirmed?: boolean;
 }): Promise<NotificationSendResult> {
   const kindLabel = opts.bookingKind
     ? opts.bookingKind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
@@ -166,12 +168,17 @@ export async function sendNewBookingNotificationEmail(opts: {
 
   return sendViaResend({
     to: opts.merchantEmail,
-    subject: `New ${kindLabel} request — ${escapeHtml(opts.guestName)}`,
+    subject: opts.autoConfirmed
+      ? `Booking confirmed — ${escapeHtml(opts.guestName)}`
+      : `New ${kindLabel} request — ${escapeHtml(opts.guestName)}`,
     html: `
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
         <p style="font-size:15px;color:#0f172a">
-          <strong>${escapeHtml(opts.guestName)}</strong> just submitted a
-          <strong>${escapeHtml(kindLabel.toLowerCase())}</strong> request via your Solvio booking page.
+          <strong>${escapeHtml(opts.guestName)}</strong> ${
+            opts.autoConfirmed
+              ? `is <strong>confirmed</strong> in your diary`
+              : `just submitted a <strong>${escapeHtml(kindLabel.toLowerCase())}</strong> request`
+          } via your Solvio booking page.
         </p>
         <table style="border-collapse:collapse;margin:16px 0 24px;width:100%">
           ${detailRows}
@@ -185,7 +192,9 @@ export async function sendNewBookingNotificationEmail(opts: {
         </p>
       </div>
     `,
-    text: `New ${kindLabel} request from ${opts.guestName}\n\nDate: ${opts.requestedDate || "—"}\nTime: ${opts.preferredTime || "—"}\nGuests: ${opts.guestCount || "—"}\nEmail: ${opts.guestEmail}\nNotes: ${opts.notes || "—"}\n\nReview: ${opts.dashboardUrl}/dashboard/bookings`,
+    text: opts.autoConfirmed
+      ? `Booking confirmed — ${opts.guestName}\n\nDate: ${opts.requestedDate || "—"}\nTime: ${opts.preferredTime || "—"}\nGuests: ${opts.guestCount || "—"}\n\nView diary: ${opts.dashboardUrl}/dashboard/bookings`
+      : `New ${kindLabel} request from ${opts.guestName}\n\nDate: ${opts.requestedDate || "—"}\nTime: ${opts.preferredTime || "—"}\nGuests: ${opts.guestCount || "—"}\nEmail: ${opts.guestEmail}\nNotes: ${opts.notes || "—"}\n\nReview: ${opts.dashboardUrl}/dashboard/bookings`,
   });
 }
 
