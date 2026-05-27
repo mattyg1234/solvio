@@ -9,18 +9,22 @@ import { motion, useReducedMotion } from "framer-motion";
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
 import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
+import { alternateMarketingPath, marketingHashHref } from "@/lib/marketing-locale";
 import { trialHeaderTagline } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
-const nav = [
-  { href: "/#growth", label: "Growth" },
-  { href: "/#pricing", label: "Pricing" },
-  { href: "/#commerce", label: "Commerce" },
-  { href: "/#faq", label: "FAQ" },
-  { href: bookingDemoHref(), label: "Live demo" },
-];
-
-export function SiteHeader() {
+export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
+  const copy = getMarketingCopy(locale);
+  const nav = [
+    { href: marketingHashHref(locale, "growth"), label: copy.header.nav.growth },
+    { href: marketingHashHref(locale, "pricing"), label: copy.header.nav.pricing },
+    { href: marketingHashHref(locale, "commerce"), label: copy.header.nav.commerce },
+    { href: marketingHashHref(locale, "faq"), label: copy.header.nav.faq },
+    { href: bookingDemoHref(), label: copy.header.nav.liveDemo },
+  ];
+  const homeHref = locale === "es" ? "/es" : "/";
   const reduce = useReducedMotion();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -28,7 +32,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 border-b border-[#ebe7f7]/90 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/65">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:h-[4.25rem] sm:px-6">
         <Link
-          href="/"
+          href={homeHref}
           className="flex min-w-0 items-center gap-2 rounded-xl outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]"
           onClick={() => setMobileOpen(false)}
         >
@@ -48,8 +52,8 @@ export function SiteHeader() {
           <div className="min-w-0">
             <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
             <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8] sm:block">
-              {trialHeaderTagline()}
-            </p>
+            {trialHeaderTagline()}
+          </p>
           </div>
         </Link>
 
@@ -63,9 +67,26 @@ export function SiteHeader() {
               {item.label}
             </Link>
           ))}
+          <Link
+            href={alternateMarketingPath(locale)}
+            className="rounded-xl px-3 py-2 text-sm font-semibold text-[#7c3aed] transition-colors hover:bg-[#faf5ff]"
+            hrefLang={locale === "es" ? "en" : "es"}
+          >
+            {copy.header.languageSwitch}
+          </Link>
         </nav>
 
         <div className="flex flex-shrink-0 items-center gap-1 sm:gap-2">
+          <Link
+            href={alternateMarketingPath(locale)}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "rounded-full px-3 font-semibold text-[#7c3aed] hover:bg-[#faf5ff] md:hidden",
+            )}
+            hrefLang={locale === "es" ? "en" : "es"}
+          >
+            {copy.header.languageSwitch}
+          </Link>
           <Link
             href="/login"
             className={cn(
@@ -73,7 +94,7 @@ export function SiteHeader() {
               "hidden rounded-full px-3 font-semibold text-[#64748b] hover:text-[#0f172a] sm:inline-flex",
             )}
           >
-            Log in
+            {copy.header.login}
           </Link>
           <Link
             href={bookingDemoHref()}
@@ -82,7 +103,7 @@ export function SiteHeader() {
               "hidden rounded-full border-[#ebe7f7] px-4 font-semibold text-[#0f172a] hover:bg-[#f8fafc] lg:inline-flex",
             )}
           >
-            Try booking demo
+            {copy.header.tryBookingDemo}
           </Link>
           <Link
             href="/signup"
@@ -91,14 +112,14 @@ export function SiteHeader() {
               "rounded-full px-4 font-semibold shadow-md shadow-[#7c3aed]/20 sm:px-5",
             )}
           >
-            Start free trial
+            {copy.header.signup}
           </Link>
           <button
             type="button"
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#ebe7f7] text-[#475569] md:hidden"
             aria-expanded={mobileOpen}
             aria-controls="site-mobile-nav"
-            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-label={mobileOpen ? copy.header.closeMenu : copy.header.openMenu}
             onClick={() => setMobileOpen((o) => !o)}
           >
             {mobileOpen ? <X className="h-5 w-5" aria-hidden /> : <Menu className="h-5 w-5" aria-hidden />}
@@ -119,6 +140,14 @@ export function SiteHeader() {
                 {item.label}
               </Link>
             ))}
+            <Link
+              href={alternateMarketingPath(locale)}
+              className="rounded-xl px-3 py-3 text-[15px] font-semibold text-[#7c3aed] hover:bg-[#faf5ff]"
+              hrefLang={locale === "es" ? "en" : "es"}
+              onClick={() => setMobileOpen(false)}
+            >
+              {copy.header.languageSwitch}
+            </Link>
           </nav>
           <div className="mt-4 grid gap-2 border-t border-[#ebe7f7] pt-4">
             <Link
@@ -126,21 +155,21 @@ export function SiteHeader() {
               className={cn(buttonVariants({ variant: "default", size: "lg" }), "h-11 rounded-full font-semibold")}
               onClick={() => setMobileOpen(false)}
             >
-              Start free trial
+              {copy.header.signup}
             </Link>
             <Link
               href={bookingDemoHref()}
               className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-full font-semibold")}
               onClick={() => setMobileOpen(false)}
             >
-              Try booking demo
+              {copy.header.tryBookingDemo}
             </Link>
             <Link
               href="/login"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-full font-semibold")}
               onClick={() => setMobileOpen(false)}
             >
-              Log in
+              {copy.header.login}
             </Link>
           </div>
         </div>

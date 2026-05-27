@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
-import { MarketingHomePage } from "@/components/marketing/marketing-home-page";
+import { MarketingHomePage, marketingLoadingDemoLabel } from "@/components/marketing/marketing-home-page";
 import { getMarketingCopy } from "@/lib/marketing-copy";
 
-const copy = getMarketingCopy("en");
+const copy = getMarketingCopy("es");
 
 export const metadata: Metadata = {
   title: copy.meta.title,
@@ -11,15 +11,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: copy.meta.title,
     description: copy.meta.ogDescription,
-    url: "https://www.solviosystems.com",
-    locale: "en_GB",
+    url: "https://www.solviosystems.com/es",
+    locale: "es_ES",
   },
   twitter: {
     title: copy.meta.title,
     description: copy.meta.ogDescription,
   },
   alternates: {
-    canonical: "https://www.solviosystems.com",
+    canonical: "https://www.solviosystems.com/es",
     languages: {
       en: "https://www.solviosystems.com",
       es: "https://www.solviosystems.com/es",
@@ -27,6 +27,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function Home() {
-  return <MarketingHomePage locale="en" />;
+export default function SpanishHomePage() {
+  return <MarketingHomePage locale="es" />;
 }
+
+export { marketingLoadingDemoLabel };

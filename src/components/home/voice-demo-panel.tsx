@@ -1,11 +1,6 @@
 "use client";
 
-/**
- * Scripted conversation lines call `/api/voice-demo/tts` (hosted synthesis on the server).
- * Fallback: browser speech when upstream synthesis is unavailable.
- */
-
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Mic, Sparkles } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -13,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { VoiceSessionWaveform } from "@/components/home/voice-session-waveform";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "listening" | "thinking" | "speaking";
@@ -32,49 +29,6 @@ type ScenarioMeta = {
 };
 
 type ScriptedLine = Omit<Bubble, "id">;
-
-const SCENARIOS: Record<VoiceDemoScenario, ScenarioMeta> = {
-  default: {
-    productLine: "Solvio Voice",
-    eyebrowAssistant: "Quick peek",
-    idleBadge: "Tap mic — hear preview",
-    emptyHint: "Short preview — Solvio answering for your storefront.",
-    footer: "Hosted voice preview—matching what callers hear once your workspace is wired in.",
-    assistantLabel: "Your reception",
-    lines: [
-      {
-        role: "user",
-        text: "What does Solvio do for busy venues?",
-      },
-      {
-        role: "assistant",
-        text: "Solvio picks up bookings, sends confirmations guests actually receive, and can take optional deposits for you — calmly, even after hours.",
-      },
-    ],
-  },
-  personal_voice: {
-    productLine: "AI receptionist",
-    eyebrowAssistant: "Speak with us",
-    idleBadge: "Tap the purple microphone",
-    emptyHint: "Tap the purple microphone to talk live once voice keys are set on this deployment.",
-    footer: "Allow microphone access when your browser asks.",
-    assistantLabel: "Receptionist",
-    lines: [
-      {
-        role: "assistant",
-        text: "Tap the purple microphone once live voice is configured — your assistant speaks from the prompt you've saved.",
-      },
-      {
-        role: "user",
-        text: "What can you help me with?",
-      },
-      {
-        role: "assistant",
-        text: "Configure your assistant in Solvio; this site connects to it directly when keys are set.",
-      },
-    ],
-  },
-};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -170,23 +124,27 @@ export function VoiceDemoPanel({
   className,
   autoPlay = false,
   scenario = "personal_voice",
+  locale = "en",
 }: {
   className?: string;
   autoPlay?: boolean;
   scenario?: VoiceDemoScenario;
+  locale?: MarketingLocale;
 }) {
   const reduce = useReducedMotion();
+  const scenarios = useMemo(() => getMarketingCopy(locale).voice.scenarios, [locale]);
+  const baseMeta = scenarios[scenario];
+
   const [phase, setPhase] = useState<Phase>("idle");
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const ranAuto = useRef(false);
   const running = useRef(false);
   const scenarioRef = useRef(scenario);
   const demoAudioRef = useRef<HTMLAudioElement | null>(null);
-  const linesRef = useRef<ScriptedLine[]>([...SCENARIOS[scenario].lines]);
+  const linesRef = useRef<ScriptedLine[]>([...baseMeta.lines]);
 
   scenarioRef.current = scenario;
-  const baseMeta = SCENARIOS[scenario];
-  const [scriptLines, setScriptLines] = useState<ScriptedLine[]>(() => [...SCENARIOS[scenario].lines]);
+  const [scriptLines, setScriptLines] = useState<ScriptedLine[]>(() => [...baseMeta.lines]);
   const [openingFromVapi, setOpeningFromVapi] = useState(false);
 
   const meta: ScenarioMeta = {
@@ -198,8 +156,6 @@ export function VoiceDemoPanel({
         : baseMeta.footer,
   };
 
-  /** Bumps whenever `/api/voice-demo/scenario` resolves (personal_voice only) — lets hero autoplay wait for Vapi-aligned lines. */
-
   const [scenarioRevision, setScenarioRevision] = useState(0);
 
   useEffect(() => {
@@ -208,13 +164,13 @@ export function VoiceDemoPanel({
 
   useEffect(() => {
     setOpeningFromVapi(false);
-    setScriptLines([...SCENARIOS[scenario].lines]);
+    setScriptLines([...scenarios[scenario].lines]);
     if (scenario !== "personal_voice") return;
 
     setScenarioRevision(0);
     let cancelled = false;
 
-    fetch("/api/voice-demo/scenario")
+    fetch(`/api/voice-demo/scenario?locale=${encodeURIComponent(locale)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((payload: unknown) => {
         if (cancelled || !payload || typeof payload !== "object") return;
@@ -242,7 +198,7 @@ export function VoiceDemoPanel({
     return () => {
       cancelled = true;
     };
-  }, [scenario]);
+  }, [scenario, locale, scenarios]);
 
   const clearAndPlay = useCallback(async () => {
     if (running.current) return;
@@ -318,9 +274,8 @@ export function VoiceDemoPanel({
       demoAudioRef.current = null;
     }
     cancelBrowserSpeech();
-  }, [scenario]);
+  }, [scenario, locale]);
 
-  /** Hero autoplay: on `personal_voice`, wait for `/api/voice-demo/scenario` so the opener can match Vapi `firstMessage`. */
   useEffect(() => {
     if (!autoPlay || ranAuto.current) return;
     const waitForScenario = scenario === "personal_voice" && scenarioRevision < 1;
@@ -351,9 +306,7 @@ export function VoiceDemoPanel({
               <Sparkles className="h-5 w-5" aria-hidden />
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">
-                {meta.productLine}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">{meta.productLine}</p>
               <p className="text-sm font-semibold text-[#0f172a]">{meta.eyebrowAssistant}</p>
             </div>
           </div>

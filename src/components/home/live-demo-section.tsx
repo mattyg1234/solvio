@@ -1,17 +1,21 @@
 import Link from "next/link";
 
 import { buttonVariants } from "@/components/ui/button";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
+import { marketingHashHref } from "@/lib/marketing-locale";
 import { bookingDemoHref } from "@/lib/marketing-links";
 import { cn } from "@/lib/utils";
 
-const topics = [
-  "How AI receptionists handle calls after hours",
-  "Bookings, tables, and event nights on one page",
-  "Optional card deposits for your venue",
-  "What setup looks like for restaurants, salons, and tours",
-];
+export function LiveDemoSection({
+  liveVoice = false,
+  locale = "en",
+}: {
+  liveVoice?: boolean;
+  locale?: MarketingLocale;
+}) {
+  const copy = getMarketingCopy(locale).liveDemo;
 
-export function LiveDemoSection({ liveVoice = false }: { liveVoice?: boolean }) {
   return (
     <section
       id="demo"
@@ -21,19 +25,17 @@ export function LiveDemoSection({ liveVoice = false }: { liveVoice?: boolean }) 
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">How we help</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">{copy.eyebrow}</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            {liveVoice ? "Ask our receptionist anything about Solvio." : "See how Solvio fits your venue."}
+            {liveVoice ? copy.titleLive : copy.titlePreview}
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            {liveVoice
-              ? "Tap the purple microphone at the top of the page — you'll talk live to our AI receptionist demo."
-              : "Try the live booking demo below, or scroll up for a scripted voice preview when live AI isn't configured."}
+            {liveVoice ? copy.subtitleLive : copy.subtitlePreview}
           </p>
         </div>
 
         <ul className="mx-auto mt-12 grid max-w-2xl gap-3 sm:grid-cols-2">
-          {topics.map((topic) => (
+          {copy.topics.map((topic) => (
             <li
               key={topic}
               className="rounded-2xl border border-[#ebe7f7]/90 bg-white/80 px-5 py-4 text-left text-sm font-medium leading-relaxed text-[#475569] shadow-sm"
@@ -51,16 +53,16 @@ export function LiveDemoSection({ liveVoice = false }: { liveVoice?: boolean }) 
               "h-12 rounded-full px-9 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
             )}
           >
-            Try live booking demo
+            {copy.ctaBooking}
           </Link>
           <Link
-            href="/#live-ai-receptionist"
+            href={marketingHashHref(locale, "live-ai-receptionist")}
             className={cn(
               buttonVariants({ variant: "outline", size: "lg" }),
               "h-12 rounded-full px-6 text-base font-semibold text-[#64748b] hover:bg-white/70",
             )}
           >
-            {liveVoice ? "Talk to AI receptionist" : "Voice preview"}
+            {liveVoice ? copy.ctaVoiceLive : copy.ctaVoicePreview}
           </Link>
         </div>
       </div>

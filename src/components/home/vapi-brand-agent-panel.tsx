@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { VoiceSessionWaveform } from "@/components/home/voice-session-waveform";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "connecting" | "live" | "error";
@@ -21,6 +23,8 @@ type VapiBrandAgentPanelProps = {
   /** When set, replaces static starter copy with your Vapi assistant opening line. */
   firstMessage?: string;
   surface?: "marketing" | "onboarding";
+  /** Marketing homepage locale — only affects copy when surface is marketing. */
+  locale?: MarketingLocale;
   className?: string;
   /** Fired on every transcript bubble update. Use for live-tracking transcripts in parent. */
   onBubblesChange?: (bubbles: { role: "user" | "assistant"; text: string }[]) => void;
@@ -28,17 +32,7 @@ type VapiBrandAgentPanelProps = {
   onCallEnded?: (transcript: string) => void;
 };
 
-const copy = {
-  marketing: {
-    productLine: "AI receptionist",
-    eyebrowAssistant: "Speak with us",
-    idleBadge: "Tap the purple microphone",
-    starterBubbleLabel: "Your AI receptionist",
-    starterBubbleIntro: "",
-    starterBubbleMicCta: "Tap the purple microphone to start talking.",
-    footer: "Allow microphone access when your browser asks.",
-    assistantLabel: "Receptionist",
-  },
+const onboardingCopy = {
   onboarding: {
     productLine: "Try Solvio Voice",
     eyebrowAssistant: "Live conversational AI",
@@ -93,11 +87,13 @@ export function VapiBrandAgentPanel({
   assistantId,
   firstMessage,
   surface = "marketing",
+  locale = "en",
   className,
   onBubblesChange,
   onCallEnded,
 }: VapiBrandAgentPanelProps) {
-  const meta = copy[surface];
+  const meta =
+    surface === "marketing" ? getMarketingCopy(locale).voice.panel : onboardingCopy.onboarding;
   const vapiGreeting = firstMessage?.trim() ?? "";
   const openerText = vapiGreeting || meta.starterBubbleMicCta;
   const showOpenerLabel = Boolean(vapiGreeting);

@@ -1,41 +1,21 @@
 import { CalendarCheck, Clock3, PoundSterling, TrendingUp } from "lucide-react";
 
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 import { cn } from "@/lib/utils";
 
-const stats = [
-  {
-    icon: TrendingUp,
-    value: "+34%",
-    label: "More bookings",
-    detail: "Illustrative avg. after sharing one /book link",
-  },
-  {
-    icon: PoundSterling,
-    value: "£1.8k",
-    label: "Deposit revenue / mo",
-    detail: "Example recovery from no-shows & after-hours",
-  },
-  {
-    icon: Clock3,
-    value: "6 hrs",
-    label: "Saved each week",
-    detail: "Less phone tag — team stays on the floor",
-  },
-  {
-    icon: CalendarCheck,
-    value: "−41%",
-    label: "Fewer no-shows",
-    detail: "Common when venues ask for a card deposit upfront",
-  },
-] as const;
+const statIcons = [TrendingUp, PoundSterling, Clock3, CalendarCheck] as const;
 
 type MarketingTrustStatsProps = {
   compact?: boolean;
   className?: string;
+  locale?: MarketingLocale;
 };
 
 /** Illustrative outcome stats — not verified customer data. */
-export function MarketingTrustStats({ compact = false, className }: MarketingTrustStatsProps) {
+export function MarketingTrustStats({ compact = false, className, locale = "en" }: MarketingTrustStatsProps) {
+  const copy = getMarketingCopy(locale).trustStats;
+
   return (
     <div className={cn("space-y-3", className)}>
       <div
@@ -44,8 +24,8 @@ export function MarketingTrustStats({ compact = false, className }: MarketingTru
           compact ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 lg:grid-cols-4",
         )}
       >
-        {stats.map((stat) => {
-          const Icon = stat.icon;
+        {copy.stats.map((stat, idx) => {
+          const Icon = statIcons[idx] ?? TrendingUp;
           return (
             <div
               key={stat.label}
@@ -68,9 +48,7 @@ export function MarketingTrustStats({ compact = false, className }: MarketingTru
           );
         })}
       </div>
-      <p className={cn("text-[#94a3b8]", compact ? "text-[11px]" : "text-xs")}>
-        Illustrative examples — your results will vary. Not verified reviews.
-      </p>
+      <p className={cn("text-[#94a3b8]", compact ? "text-[11px]" : "text-xs")}>{copy.disclaimer}</p>
     </div>
   );
 }

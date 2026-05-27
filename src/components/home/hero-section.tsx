@@ -8,11 +8,20 @@ import { AmbientOrbs } from "@/components/site/ambient-orbs";
 import { MarketingSiteVoice, marketingSiteHasLiveVapi } from "@/components/home/marketing-site-voice";
 import { MarketingTrustStats } from "@/components/home/marketing-trust-stats";
 import { buttonVariants } from "@/components/ui/button";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 import type { MarketingVapiConfig } from "@/lib/marketing-vapi-config";
 import { bookingDemoHref } from "@/lib/marketing-links";
 import { cn } from "@/lib/utils";
 
-export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }) {
+export function HeroSection({
+  vapiConfig,
+  locale = "en",
+}: {
+  vapiConfig?: MarketingVapiConfig;
+  locale?: MarketingLocale;
+}) {
+  const copy = getMarketingCopy(locale);
   const reduce = useReducedMotion();
   const liveVoice = marketingSiteHasLiveVapi(vapiConfig);
 
@@ -29,17 +38,14 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="space-y-8"
         >
           <p className="inline-flex max-w-xl rounded-full border border-[#ebe7f7]/90 bg-[#f8fafc]/90 px-4 py-2 text-[13px] font-medium leading-snug text-[#475569] backdrop-blur-sm sm:text-sm">
-            One booking link — optional card deposits
+            {copy.hero.eyebrow}
           </p>
 
           <div className="space-y-5">
             <h1 className="text-[clamp(2.35rem,5vw,3.65rem)] font-semibold tracking-tight text-[#0f172a] leading-[1.07]">
-              Your booking page live in about 30 minutes — enquiries and deposits on one link.
+              {copy.hero.title}
             </h1>
-            <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">
-              Share one link with your customers. They pick a day, choose a stylist or table, and get booked in — with
-              email and text confirmation. Turn on optional card deposits when you want to hold a table or ticket.
-            </p>
+            <p className="max-w-xl text-[17px] leading-relaxed text-[#64748b] sm:text-[18px]">{copy.hero.subtitle}</p>
           </div>
 
           <div
@@ -48,7 +54,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           >
             <span className="flex items-center gap-2 text-sm font-semibold text-[#0f172a]">
               <Moon className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden strokeWidth={2} />
-              Book online 24/7
+              {copy.hero.book247}
             </span>
             <span className="hidden h-4 w-px bg-[#ebe7f7] sm:block" aria-hidden />
             <span className="flex items-center gap-2 text-sm font-medium text-[#64748b]">
@@ -61,7 +67,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 ) : null}
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.15)]" />
               </span>
-              Even when you&apos;re closed
+              {copy.hero.evenClosed}
             </span>
           </div>
 
@@ -73,7 +79,7 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 "h-12 rounded-full px-8 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
               )}
             >
-              Start free trial
+              {copy.hero.ctaTrial}
             </Link>
             <Link
               href={bookingDemoHref()}
@@ -82,22 +88,22 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
                 "h-12 rounded-full border-[#ebe7f7] px-8 text-base font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
               )}
             >
-              See live booking demo
+              {copy.hero.ctaDemo}
             </Link>
           </div>
 
           <div className="flex flex-wrap gap-x-8 gap-y-3 text-sm font-medium text-[#64748b]">
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-[#7c3aed]" aria-hidden />
-              Bookings and calls in one place
+              {copy.hero.bullet1}
             </span>
             <span className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-[#a78bfa]" aria-hidden />
-              Restaurants, salons, cafés &amp; events
+              {copy.hero.bullet2}
             </span>
           </div>
 
-          <MarketingTrustStats compact className="max-w-xl pt-2" />
+          <MarketingTrustStats compact className="max-w-xl pt-2" locale={locale} />
         </motion.div>
 
         <motion.div
@@ -109,11 +115,9 @@ export function HeroSection({ vapiConfig }: { vapiConfig?: MarketingVapiConfig }
           className="relative scroll-mt-28 outline-none"
         >
           <p className="mb-4 text-center text-sm font-semibold text-[#475569] lg:text-left">
-            {liveVoice
-              ? "Click the purple microphone — you'll speak directly to our live AI receptionist demo."
-              : "Preview our AI receptionist — scripted demo while live voice is unavailable."}
+            {liveVoice ? copy.hero.voiceLive : copy.hero.voicePreview}
           </p>
-          <MarketingSiteVoice vapiConfig={vapiConfig} />
+          <MarketingSiteVoice vapiConfig={vapiConfig} locale={locale} />
         </motion.div>
       </div>
     </section>

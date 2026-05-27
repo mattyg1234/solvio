@@ -10,20 +10,12 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  BOOKING_MONTHLY_GBP,
-  ENTERPRISE_MONTHLY_GBP,
-  PRO_MONTHLY_GBP,
-} from "@/lib/solvio-pricing";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 
-const capabilities = [
-  { title: "Takes bookings", body: "Guests pick a slot — confirmed straight into your diary when you're not charging a deposit." },
-  { title: "Collects deposits", body: "Optional card prepayments when you enable them — shown clearly to guests." },
-  { title: "Confirms visits", body: "Email and text reminders when guests are booked in — so they show up on time." },
-  { title: "Handles changes", body: "Cancellations and closed days stay in sync on your calendar." },
-];
+export function CommerceSection({ locale = "en" }: { locale?: MarketingLocale }) {
+  const copy = getMarketingCopy(locale).commerce;
 
-export function CommerceSection() {
   return (
     <section
       id="commerce"
@@ -33,19 +25,16 @@ export function CommerceSection() {
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">Bookings &amp; payments</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#94a3b8]">{copy.eyebrow}</p>
           <h2 className="mt-4 text-[clamp(1.95rem,4vw,2.85rem)] font-semibold tracking-tight text-[#0f172a]">
-            Guest books a slot → optional deposit → payout to you.
+            {copy.title}
           </h2>
-          <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">
-            One booking link for your venue — tables, stylists or ticketed nights. Start with free enquiries; turn on card
-            deposits when you&apos;re ready. Pro adds the full AI receptionist for after-hours calls.
-          </p>
+          <p className="mt-5 text-[17px] leading-relaxed text-[#64748b]">{copy.subtitle}</p>
         </div>
 
         <div className="mx-auto mt-10 flex justify-center">
           <Badge className="rounded-full bg-[#ede9fe] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#5b21b6] hover:bg-[#ede9fe]">
-            Payouts go to you
+            {copy.badge}
           </Badge>
         </div>
 
@@ -54,21 +43,15 @@ export function CommerceSection() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f3ff] text-[#7c3aed] ring-1 ring-[#ebe7f7]">
               <CreditCard className="h-6 w-6" aria-hidden />
             </div>
-            <h3 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Guests pay you directly</h3>
-            <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">
-              Guests book with <span className="font-medium text-[#0f172a]">your venue</span>, not a third-party marketplace.
-              When deposits are on, card payments route to your payout account — Solvio runs the page, calendar, and
-              confirmations and keeps a small platform fee on each deposit.
-            </p>
+            <h3 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">{copy.card1Title}</h3>
+            <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">{copy.card1Body}</p>
             <ul className="mt-6 space-y-3 text-[15px] leading-relaxed text-[#64748b]">
-              <li className="flex gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#7c3aed]" aria-hidden />
-                Share one link — Instagram, Google, voicemail, wherever guests find you.
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#a78bfa]" aria-hidden />
-                Deposits are optional — start with free enquiries if you prefer.
-              </li>
+              {copy.card1Bullets.map((bullet) => (
+                <li key={bullet} className="flex gap-3">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#7c3aed]" aria-hidden />
+                  {bullet}
+                </li>
+              ))}
             </ul>
           </Card>
 
@@ -76,20 +59,13 @@ export function CommerceSection() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f3ff] text-[#7c3aed] ring-1 ring-[#ebe7f7]">
               <Sparkles className="h-6 w-6" aria-hidden />
             </div>
-            <h3 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">Pricing that grows when you grow</h3>
-            <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">
-              <span className="font-medium text-[#0f172a]">£{BOOKING_MONTHLY_GBP}/month</span> for Booking — public link,
-              operations hub, optional deposits, and guest email. Pro (£{PRO_MONTHLY_GBP}/mo) adds AI receptionist; Enterprise
-              (£{ENTERPRISE_MONTHLY_GBP}/mo) adds high minute caps and campaigns.
-            </p>
-            <p className="mt-4 text-[14px] leading-relaxed text-[#94a3b8]">
-              Cancel anytime — deposit platform fees drop on higher tiers.
-            </p>
+            <h3 className="mt-6 text-xl font-semibold tracking-tight text-[#0f172a]">{copy.card2Title}</h3>
+            <p className="mt-4 text-[15px] leading-relaxed text-[#64748b]">{copy.card2Body}</p>
           </Card>
         </div>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {capabilities.map((item) => (
+          {copy.capabilities.map((item) => (
             <Card
               key={item.title}
               className="h-full rounded-[22px] border border-[#ebe7f7]/90 bg-white/90 p-6 shadow-none ring-1 ring-[#f5f3ff]"
@@ -104,29 +80,32 @@ export function CommerceSection() {
           <Card className="h-full rounded-[26px] border border-[#ebe7f7] bg-[#fafbff] p-8 ring-1 ring-[#ede9fe]/80">
             <div className="flex items-center gap-3 text-[#7c3aed]">
               <UtensilsCrossed className="h-6 w-6 shrink-0" aria-hidden />
-              <span className="text-xs font-semibold uppercase tracking-[0.26em] text-[#64748b]">Restaurant flow</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.26em] text-[#64748b]">
+                {copy.restaurantFlow.label}
+              </span>
             </div>
             <div className="mt-6 space-y-5 text-[15px] leading-relaxed text-[#475569]">
               <p>
-                <span className="font-semibold text-[#0f172a]">Caller:</span> “Table for four tonight at eight.”
+                <span className="font-semibold text-[#0f172a]">{copy.restaurantFlow.callerLabel}</span>{" "}
+                {copy.restaurantFlow.callerQuote}
               </p>
               <p>
-                <span className="font-semibold text-[#0f172a]">Solvio:</span> checks live availability → holds the request →
-                can send a deposit link if you use them → confirms and notifies your front-of-house team.
+                <span className="font-semibold text-[#0f172a]">{copy.restaurantFlow.solvioLabel}</span>{" "}
+                {copy.restaurantFlow.solvioBody}
               </p>
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#64748b]">
                 <Phone className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Voice booking
+                {copy.restaurantFlow.tags[0]}
                 <span aria-hidden className="text-[#cbd5e1]">
                   ·
                 </span>
                 <CreditCard className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Paid to you
+                {copy.restaurantFlow.tags[1]}
                 <span aria-hidden className="text-[#cbd5e1]">
                   ·
                 </span>
                 <Mail className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Guest confirmation
+                {copy.restaurantFlow.tags[2]}
               </p>
             </div>
           </Card>
@@ -134,40 +113,42 @@ export function CommerceSection() {
           <Card className="h-full rounded-[26px] border border-[#ebe7f7] bg-[#fafbff] p-8 ring-1 ring-[#ede9fe]/80">
             <div className="flex items-center gap-3 text-[#7c3aed]">
               <Scissors className="h-6 w-6 shrink-0" aria-hidden />
-              <span className="text-xs font-semibold uppercase tracking-[0.26em] text-[#64748b]">Salon flow</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.26em] text-[#64748b]">
+                {copy.salonFlow.label}
+              </span>
             </div>
             <div className="mt-6 space-y-5 text-[15px] leading-relaxed text-[#475569]">
               <p>
-                <span className="font-semibold text-[#0f172a]">Caller:</span> “Haircut tomorrow afternoon.”
+                <span className="font-semibold text-[#0f172a]">{copy.salonFlow.callerLabel}</span>{" "}
+                {copy.salonFlow.callerQuote}
               </p>
               <p>
-                <span className="font-semibold text-[#0f172a]">Solvio:</span> shows available calendar days → guest picks stylist
-                &amp; time → can pay an optional deposit → email confirmation lands instantly.
+                <span className="font-semibold text-[#0f172a]">{copy.salonFlow.solvioLabel}</span>{" "}
+                {copy.salonFlow.solvioBody}
               </p>
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#64748b]">
                 <CreditCard className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Online deposit
+                {copy.salonFlow.tags[0]}
                 <span aria-hidden className="text-[#cbd5e1]">
                   ·
                 </span>
                 <Mail className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Email confirm
+                {copy.salonFlow.tags[1]}
                 <span aria-hidden className="text-[#cbd5e1]">
                   ·
                 </span>
                 <CalendarX className="h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Closed days blocked
+                {copy.salonFlow.tags[2]}
               </p>
             </div>
           </Card>
         </div>
 
         <div className="mx-auto mt-14 max-w-2xl rounded-[22px] border border-[#ebe7f7] bg-white px-6 py-8 text-center shadow-[0_18px_60px_-44px_rgba(124,58,237,0.35)] sm:px-10">
-          <p className="text-[15px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Dashboard layer</p>
-          <p className="mt-4 text-[17px] leading-relaxed text-[#475569]">
-            Operators still deserve clarity — every booking, payment and confirmation in one calm workspace while Solvio
-            handles the phone lines.
+          <p className="text-[15px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">
+            {copy.dashboardLayer.eyebrow}
           </p>
+          <p className="mt-4 text-[17px] leading-relaxed text-[#475569]">{copy.dashboardLayer.body}</p>
         </div>
       </div>
     </section>

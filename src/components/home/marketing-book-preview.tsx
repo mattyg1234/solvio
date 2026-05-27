@@ -2,24 +2,25 @@ import Link from "next/link";
 import { CalendarCheck, CreditCard, Lock } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { getMarketingCopy } from "@/lib/marketing-copy";
+import type { MarketingLocale } from "@/lib/marketing-locale";
 import { bookingDemoHref } from "@/lib/marketing-links";
 import { cn } from "@/lib/utils";
 
 /** Static mockup — shows merchants what guests see on /book (no screenshot asset required). */
-export function MarketingBookPreview() {
+export function MarketingBookPreview({ locale = "en" }: { locale?: MarketingLocale }) {
+  const copy = getMarketingCopy(locale).bookPreview;
+
   return (
     <section className="border-b border-[#ebe7f7]/70 bg-white py-16 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
           <div className="space-y-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">What guests see</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.32em] text-[#94a3b8]">{copy.eyebrow}</p>
             <h2 className="text-[clamp(1.75rem,3.5vw,2.35rem)] font-semibold tracking-tight text-[#0f172a]">
-              One branded page — pick a service, pay a deposit, get confirmed.
+              {copy.title}
             </h2>
-            <p className="text-[17px] leading-relaxed text-[#64748b]">
-              Your logo, address, and phone at the top. Step-by-step booking for tables, appointments, or events. Card
-              deposits are optional — when on, guests pay the venue directly.
-            </p>
+            <p className="text-[17px] leading-relaxed text-[#64748b]">{copy.subtitle}</p>
             <Link
               href={bookingDemoHref()}
               className={cn(
@@ -27,7 +28,7 @@ export function MarketingBookPreview() {
                 "inline-flex h-11 rounded-full border-[#c4b5fd] px-6 font-semibold text-[#5b21b6] hover:bg-[#ede9fe]",
               )}
             >
-              Open live booking demo →
+              {copy.cta}
             </Link>
           </div>
 
@@ -38,20 +39,16 @@ export function MarketingBookPreview() {
                 <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ede9fe] text-lg font-bold text-[#5b21b6]">
                   CA
                 </div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#94a3b8]">Book with Café Aurora</p>
-                <p className="mt-1 text-lg font-semibold text-[#0f172a]">Request an appointment</p>
-                <p className="mt-1 text-[12px] text-[#64748b]">12 High Street · +44 7700 900123</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#94a3b8]">{copy.mockVenue}</p>
+                <p className="mt-1 text-lg font-semibold text-[#0f172a]">{copy.mockHeading}</p>
+                <p className="mt-1 text-[12px] text-[#64748b]">{copy.mockAddress}</p>
               </div>
               <div className="space-y-3 p-4">
-                {[
-                  { step: "1", title: "Choose a service", body: "Haircut · 45 min · £35" },
-                  { step: "2", title: "Which day?", body: "Highlighted dates available" },
-                  { step: "3", title: "Your details", body: "Name, email, phone" },
-                ].map((row) => (
-                  <div key={row.step} className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
+                {copy.mockSteps.map((row, idx) => (
+                  <div key={row.title} className="rounded-xl border border-[#ebe7f7] bg-white px-4 py-3">
                     <div className="flex items-center gap-3">
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ede9fe] text-xs font-bold text-[#5b21b6]">
-                        {row.step}
+                        {idx + 1}
                       </span>
                       <div>
                         <p className="text-[13px] font-semibold text-[#0f172a]">{row.title}</p>
@@ -62,16 +59,16 @@ export function MarketingBookPreview() {
                 ))}
                 <div className="flex items-center justify-center gap-2 rounded-full bg-[#7c3aed] px-4 py-3 text-[13px] font-semibold text-white shadow-md shadow-[#7c3aed]/25">
                   <Lock className="h-3.5 w-3.5" aria-hidden />
-                  Continue · pay £10 deposit
+                  {copy.mockContinue}
                 </div>
                 <p className="flex items-center justify-center gap-1.5 text-[11px] text-[#94a3b8]">
                   <CreditCard className="h-3 w-3" aria-hidden />
-                  Optional deposit · paid to the venue
+                  {copy.trustLine}
                 </p>
               </div>
               <div className="border-t border-[#ebe7f7] bg-white px-4 py-3 text-center text-[10px] text-[#94a3b8]">
                 <CalendarCheck className="mx-auto mb-1 h-4 w-4 text-[#7c3aed]" aria-hidden />
-                Email confirmation after submit
+                {copy.mockConfirmation}
               </div>
             </div>
           </div>

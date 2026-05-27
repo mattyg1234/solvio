@@ -1,5 +1,7 @@
 /** Server + client resolution for the marketing homepage live Vapi agent. */
 
+import type { MarketingLocale } from "@/lib/marketing-locale";
+
 export type MarketingVapiConfig = {
   publicKey: string;
   assistantId: string;
@@ -22,7 +24,12 @@ export function resolveMarketingVapiPublicKey(): string {
  * Assistant id — NEXT_PUBLIC for client bundle, or server-only fallback
  * (homepage passes id from server component as props).
  */
-export function resolveMarketingVapiAssistantId(): string {
+export function resolveMarketingVapiAssistantId(locale?: MarketingLocale): string {
+  if (locale === "es") {
+    return (
+      trimEnv("NEXT_PUBLIC_VAPI_ASSISTANT_ID_ES") || trimEnv("SOLVIO_MARKETING_VAPI_ASSISTANT_ID_ES")
+    );
+  }
   return trimEnv("NEXT_PUBLIC_VAPI_ASSISTANT_ID") || trimEnv("SOLVIO_MARKETING_VAPI_ASSISTANT_ID");
 }
 
@@ -30,4 +37,9 @@ export function marketingVapiIsLive(publicKey?: string, assistantId?: string): b
   const pk = (publicKey ?? resolveMarketingVapiPublicKey()).trim();
   const aid = (assistantId ?? resolveMarketingVapiAssistantId()).trim();
   return Boolean(pk && aid);
+}
+
+/** Sales assistant shown in the "Ask our AI" section — separate from the receptionist demo. */
+export function resolveSalesVapiAssistantId(): string {
+  return trimEnv("NEXT_PUBLIC_VAPI_SALES_ASSISTANT_ID") || trimEnv("SOLVIO_SALES_VAPI_ASSISTANT_ID");
 }
