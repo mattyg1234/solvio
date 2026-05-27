@@ -115,10 +115,23 @@ supabase db push
 In Supabase → Authentication → URL Configuration (`aasfahcrdcoqxwnlkdnv`):
 
 - [ ] Site URL = `https://www.solviosystems.com` (**must include `https://`**, not `www.solviosystems.com` alone)
-- [ ] Redirect URLs include wildcard `https://www.solviosystems.com/**` (covers `/auth/callback`, `/auth/callback/signup`, `/auth/callback/reset`, `/auth/confirm`)
+- [ ] Redirect URLs include wildcard `https://www.solviosystems.com/**` (covers `/auth/confirm`, `/auth/callback`)
 - [ ] Redirect URLs include `http://localhost:3000/**` for local dev
-- [ ] Email templates use `{{ .ConfirmationURL }}` (Authentication → Email Templates) — not custom `/login?error=...` URLs
-- [ ] After changing URLs, **request a fresh** signup or reset email (old links stay broken)
+- [ ] **Email templates use token links** (not `{{ .ConfirmationURL }}` alone — that PKCE flow breaks if the user opens email on another device). In Authentication → Email Templates:
+
+**Confirm signup:**
+```html
+<h2>Confirm your signup</h2>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup">Confirm your email</a></p>
+```
+
+**Reset password:**
+```html
+<h2>Reset password</h2>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Choose a new password</a></p>
+```
+
+- [ ] After changing URLs or templates, **request a fresh** signup or reset email (old links stay broken)
 
 ### A4. Vercel production
 

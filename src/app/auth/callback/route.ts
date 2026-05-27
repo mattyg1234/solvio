@@ -1,23 +1,15 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-/**
- * Handles the magic link / email-confirm redirect from Supabase (PKCE `?code=`).
- * Add these to Supabase Dashboard → Authentication → URL Configuration → Redirect URLs:
- *   http://localhost:3000/**
- *   https://www.solviosystems.com/**
- * Or exact paths: /auth/callback, /auth/callback/signup, /auth/callback/reset, /auth/confirm
- * Site URL must include https:// → https://www.solviosystems.com
- */
+import { exchangeAuthCode } from "@/lib/supabase/auth-email-exchange";
+
+/** Legacy PKCE callback — prefer /auth/confirm with token_hash email templates. */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const type = url.searchParams.get("type") as EmailOtpType | null;
   const nextPath = url.searchParams.get("next") ?? "/dashboard";
   const origin = url.origin;
-
-  const destinationPath = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
-  const redirectTarget = `${origin}${destinationPath}`;
 
   if (!code) {
     return NextResponse.redirect(
@@ -25,38 +17,6 @@ export async function GET(request: Request) {
     );
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return NextResponse.redirect(
-      `${origin}/login?error=${encodeURIComponent("Server missing Supabase env configuration.")}`,
-    );
-  }
-
-  const cookieStore = await cookies();
-
-  /** Redirect response receives Set-Cookie from Supabase during exchangeCodeForSession */
-  const response = NextResponse.redirect(redirectTarget);
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
-
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error) {
-    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
-  }
-
-  return response;
+  const result = await exchangeAuthCode(code, type, nextPath, origin);
+  return "errorRedirect" in result ? result.errorRedirect : result.response;
 }

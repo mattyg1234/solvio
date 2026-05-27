@@ -58,7 +58,7 @@ export function LoginForm({ authCallbackError }: LoginFormProps) {
     setResetLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
-      const redirectTo = `${window.location.origin}/auth/callback/reset`;
+      const redirectTo = `${window.location.origin}/auth/confirm`;
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (resetErr) {
         setError(resetErr.message);

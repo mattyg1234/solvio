@@ -46,8 +46,7 @@ export function SignupForm() {
         email,
         password,
         options: {
-          emailRedirectTo:
-            origin.length > 0 ? `${origin}/auth/callback/signup` : undefined,
+          emailRedirectTo: origin.length > 0 ? `${origin}/auth/confirm` : undefined,
           data: {
             business_name: businessName,
             ...(websiteUrl ? { website_url: websiteUrl } : {}),
