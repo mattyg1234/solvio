@@ -261,6 +261,7 @@ export async function submitBookingRequestAction(
         bookedSlots: parsedCtx!.appointment_booked_slots ?? [],
         preferredStaffName: staffMatch?.name ?? null,
         staffWorkingThatDay: staffWorking,
+        serviceDurationMinutes: selectedServiceMatch?.duration_minutes ?? null,
       });
       if (!slotCheck.ok) {
         return { ok: false, message: slotCheck.message };

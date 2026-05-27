@@ -8,6 +8,7 @@ type AppointmentTimeSlotPickerProps = {
   value: string;
   onChange: (value: string) => void;
   slotMinutes: number;
+  serviceDurationMinutes?: number | null;
 };
 
 const STATUS_HINT: Record<AppointmentSlotDisplay["status"], string> = {
@@ -17,8 +18,16 @@ const STATUS_HINT: Record<AppointmentSlotDisplay["status"], string> = {
   blocked: "Closed",
 };
 
-export function AppointmentTimeSlotPicker({ slots, value, onChange, slotMinutes }: AppointmentTimeSlotPickerProps) {
+export function AppointmentTimeSlotPicker({
+  slots,
+  value,
+  onChange,
+  slotMinutes,
+  serviceDurationMinutes,
+}: AppointmentTimeSlotPickerProps) {
   const availableCount = slots.filter((s) => s.status === "available").length;
+  const duration =
+    typeof serviceDurationMinutes === "number" && serviceDurationMinutes > 0 ? serviceDurationMinutes : slotMinutes;
 
   if (slots.length === 0) return null;
 
@@ -43,7 +52,7 @@ export function AppointmentTimeSlotPicker({ slots, value, onChange, slotMinutes 
               title={STATUS_HINT[slot.status]}
               onClick={() => onChange(slot.value)}
               className={cn(
-                "relative min-h-[52px] rounded-xl border-2 px-2 py-2.5 text-center text-[13px] font-semibold tabular-nums transition-all",
+                "relative min-h-[44px] rounded-xl border-2 px-2 py-2.5 text-center text-[12px] font-semibold tabular-nums transition-all sm:min-h-[52px] sm:text-[13px]",
                 disabled &&
                   "cursor-not-allowed border-[#e2e8f0] bg-[#f8fafc] text-[#94a3b8] line-through decoration-rose-400/90 decoration-2",
                 slot.status === "booked" && disabled && "bg-rose-50/80 text-rose-400",
@@ -64,7 +73,7 @@ export function AppointmentTimeSlotPicker({ slots, value, onChange, slotMinutes 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[#64748b]">
         <span>
           <span className="font-semibold text-[#475569]">{availableCount}</span> of{" "}
-          <span className="font-semibold text-[#475569]">{slots.length}</span> slots free · {slotMinutes} min each
+          <span className="font-semibold text-[#475569]">{slots.length}</span> start times · {duration} min appointments
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm border-2 border-[#7c3aed] bg-[#f5f3ff]" aria-hidden />

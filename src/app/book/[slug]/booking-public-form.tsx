@@ -218,6 +218,11 @@ export function BookingPublicForm({
     return context.staff_members.filter((member) => isStaffWorkingOnWeekday(member, dow));
   }, [context.staff_members, requestedDate, structuredAppointmentBooking, venueTz]);
 
+  const selectedServiceRow = useMemo(
+    () => context.appointment_services.find((s) => s.id === selectedService) ?? null,
+    [context.appointment_services, selectedService],
+  );
+
   const appointmentSchedule = useMemo((): {
     hourRow: PublicAppointmentHour | undefined;
     slots: ReturnType<typeof buildAppointmentSlotGrid>;
@@ -241,6 +246,7 @@ export function BookingPublicForm({
       bookedSlots: context.appointment_booked_slots,
       preferredStaffName,
       staffWorkingThatDay,
+      serviceDurationMinutes: selectedServiceRow?.duration_minutes ?? null,
     });
     return { hourRow, slots };
   }, [
@@ -251,6 +257,7 @@ export function BookingPublicForm({
     context.staff_members,
     preferredStaff,
     requestedDate,
+    selectedServiceRow?.duration_minutes,
     staffForSelectedDate,
     structuredAppointmentBooking,
     venueTz,
@@ -258,11 +265,6 @@ export function BookingPublicForm({
 
   const appointmentSlotsList = appointmentSchedule.slots;
   const appointmentSlotsAvailable = appointmentSlotsList.filter((s) => s.status === "available");
-
-  const selectedServiceRow = useMemo(
-    () => context.appointment_services.find((s) => s.id === selectedService) ?? null,
-    [context.appointment_services, selectedService],
-  );
 
   const appointmentCheckoutCents = selectedServiceRow?.price_cents ?? 0;
 
@@ -1061,6 +1063,12 @@ export function BookingPublicForm({
 
         {structuredAppointmentBooking ? (
           <FormSection step={appointmentSteps.time} title="Pick a time">
+            {selectedServiceRow && selectedServiceRow.duration_minutes > (appointmentSchedule.hourRow?.slot_minutes ?? 30) ? (
+              <p className="mb-3 rounded-xl border border-[#dbeafe] bg-[#eff6ff]/80 px-4 py-3 text-[13px] leading-relaxed text-[#1e40af]">
+                Times show the full {selectedServiceRow.duration_minutes}-minute window for{" "}
+                <span className="font-semibold">{selectedServiceRow.name}</span>.
+              </p>
+            ) : null}
             {!requestedDate.trim() ? (
               <p className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/80 px-4 py-3 text-[13px] leading-relaxed text-[#1e40af]">
                 Choose a day above — we&apos;ll show every slot, with booked times crossed out.
@@ -1083,6 +1091,7 @@ export function BookingPublicForm({
                   value={selectedSlotValue}
                   onChange={setSelectedSlotValue}
                   slotMinutes={appointmentSchedule.hourRow?.slot_minutes ?? 30}
+                  serviceDurationMinutes={selectedServiceRow?.duration_minutes ?? null}
                 />
               </>
             ) : null}

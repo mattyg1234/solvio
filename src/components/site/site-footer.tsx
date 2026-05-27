@@ -82,12 +82,12 @@ export function SiteFooter() {
             <ul className="space-y-2 text-[#64748b]">
               <li>
                 <Link href="/privacy#subprocessors" className="hover:text-[#7c3aed]">
-                  EU-ready hosting
+                  Data hosting (Supabase EU)
                 </Link>
               </li>
               <li>
                 <Link href="/privacy" className="hover:text-[#7c3aed]">
-                  English & Spanish product copy
+                  Privacy & subprocessors
                 </Link>
               </li>
             </ul>

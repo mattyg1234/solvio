@@ -9,6 +9,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { SolvioWordmark } from "@/components/brand/solvio-wordmark";
 import { buttonVariants } from "@/components/ui/button";
 import { bookingDemoHref } from "@/lib/marketing-links";
+import { supportMailtoHref } from "@/lib/site-contact";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -16,7 +17,7 @@ const nav = [
   { href: "/#pricing", label: "Pricing" },
   { href: "/#commerce", label: "Commerce" },
   { href: bookingDemoHref(), label: "Live demo" },
-  { href: "/#contact", label: "Contact" },
+  { href: supportMailtoHref(), label: "Email us" },
 ];
 
 export function SiteHeader() {

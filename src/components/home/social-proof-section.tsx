@@ -44,7 +44,7 @@ export function SocialProofSection() {
 
           <div className="flex flex-wrap gap-3">
             <Badge className="rounded-full bg-[#7c3aed] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-white hover:bg-[#7c3aed]">
-              Bookings up to +32%
+              Example: +32% bookings
             </Badge>
             <Badge variant="outline" className="rounded-full border-[#ebe7f7] px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#64748b]">
               Missed calls reduced

@@ -82,11 +82,11 @@ export function InboxEmptyState({
         </p>
       ) : (
         <p className="mt-4 text-sm text-[#64748b]">
-          Finish{" "}
-          <Link href="/dashboard/setup/bookings" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
-            booking setup
-          </Link>{" "}
-          to publish your link.
+          Finish setup on{" "}
+          <Link href="/dashboard" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+            Overview → launch checklist
+          </Link>
+          , then share your link.
         </p>
       )}
     </div>

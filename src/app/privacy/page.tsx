@@ -39,7 +39,14 @@ export default function PrivacyPage() {
             We use essential cookies for sign-in sessions. We may use privacy-friendly analytics to understand product usage
             — no ad tracking.
           </p>
-          <h2 id="subprocessors" className="text-lg font-semibold text-[#0f172a]">Subprocessors</h2>
+          <h2 className="text-lg font-semibold text-[#0f172a]">Retention</h2>
+          <p>
+            Merchant account data is kept while your subscription is active. Guest booking requests are retained for your
+            operations inbox — delete or export via dashboard workflows as you define your venue policies.
+          </p>
+          <h2 id="subprocessors" className="text-lg font-semibold text-[#0f172a]">
+            Subprocessors
+          </h2>
           <p>
             We rely on trusted providers to run Solvio, including Supabase (data hosting), Stripe (payments), Resend or
             similar (transactional email), and optional voice providers when you enable AI receptionist features.
