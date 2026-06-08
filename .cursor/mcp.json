@@ -3,6 +3,9 @@
     "supabase": {
       "url": "https://mcp.supabase.com/mcp?project_ref=aasfahcrdcoqxwnlkdnv",
       "headers": {}
+    },
+    "stripe": {
+      "url": "https://mcp.stripe.com"
     }
   }
 }
