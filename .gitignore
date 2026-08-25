@@ -6,8 +6,12 @@ out/
 
 # Secrets & local env (never commit)
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
+*.pem
+*.key
 
 # Vercel CLI link
 .vercel
