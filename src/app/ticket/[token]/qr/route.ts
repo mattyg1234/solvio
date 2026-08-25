@@ -23,7 +23,8 @@ export async function GET(
     margin: 1,
     errorCorrectionLevel: "M",
   });
-  return new Response(png, {
+  // Buffer is not a valid BodyInit under the DOM lib; hand Response a plain view.
+  return new Response(new Uint8Array(png), {
     headers: {
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=86400",
