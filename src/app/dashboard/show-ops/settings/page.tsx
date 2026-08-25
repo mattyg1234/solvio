@@ -1,6 +1,8 @@
 import {
   importCsvAction,
   createShowOpsStaffAction,
+  resetShowOpsStaffPasswordAction,
+  updateShowOpsMemberPagesAction,
   inviteSellerPortalAction,
   inviteShowOpsMemberAction,
   removeShowOpsMemberAction,
@@ -10,7 +12,7 @@ import {
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS } from "@/lib/show-ops/nav";
+import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS } from "@/lib/show-ops/nav";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 
@@ -25,7 +27,7 @@ export default async function ShowOpsSettingsPage({
   const [{ data: members }, { data: suppliers }] = await Promise.all([
     ctx.supabase
       .from("show_ops_members")
-      .select("id,user_id,role,supplier_id,created_at")
+      .select("id,user_id,role,supplier_id,created_at,allowed_pages,display_name")
       .eq("business_id", ctx.business.id)
       .order("created_at"),
     ctx.supabase.from("show_suppliers").select("id,name").eq("business_id", ctx.business.id).eq("active", true).order("name"),
@@ -162,8 +164,12 @@ export default async function ShowOpsSettingsPage({
           {(staffMembers ?? []).map((m) => {
             const p = profileById.get(m.user_id);
             return (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span>{p?.full_name || p?.email || m.user_id.slice(0, 8)}</span>
+              <li key={m.id} className="py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {(m as { display_name?: string | null }).display_name || p?.full_name || p?.email || m.user_id.slice(0, 8)}
+                  {p?.email ? <span className="ml-2 text-xs text-slate-500">{p.email}</span> : null}
+                </span>
                 <span className="flex items-center gap-3">
                   <span className="font-medium">{m.role}</span>
                   {(ctx.isOwner || ctx.role === "admin" || ctx.role === "owner") && m.user_id !== ctx.user.id ? (
@@ -175,6 +181,48 @@ export default async function ShowOpsSettingsPage({
                     </form>
                   ) : null}
                 </span>
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-slate-500 hover:underline">
+                    Can open:{" "}
+                    {showOpsAllowedPages(m.role, (m as { allowed_pages?: string[] | null }).allowed_pages)
+                      .map((k) => SHOW_OPS_PAGE_LABELS[k])
+                      .join(", ") || "nothing"}
+                  </summary>
+                  <form action={updateShowOpsMemberPagesAction} className="mt-2 rounded-xl bg-slate-50 p-3">
+                    <input type="hidden" name="member_id" value={m.id} />
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {SHOW_OPS_PAGE_KEYS.filter((k) => k !== "settings").map((key) => (
+                        <label key={key} className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            name="pages"
+                            value={key}
+                            defaultChecked={showOpsAllowedPages(
+                              m.role,
+                              (m as { allowed_pages?: string[] | null }).allowed_pages,
+                            ).includes(key)}
+                            className="h-4 w-4"
+                          />
+                          {SHOW_OPS_PAGE_LABELS[key]}
+                        </label>
+                      ))}
+                    </div>
+                    <button type="submit" className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
+                      Save pages
+                    </button>
+                  </form>
+                  <form action={resetShowOpsStaffPasswordAction} className="mt-2 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="member_id" value={m.id} />
+                    <label className="text-xs">
+                      New password
+                      <input name="password" type="text" minLength={8} required className="mt-1 block rounded-lg border px-2 py-1.5 text-sm" />
+                    </label>
+                    <button type="submit" className="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800">
+                      Reset password
+                    </button>
+                  </form>
+                </details>
               </li>
             );
           })}
