@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Somewhere in Queens Park — Hair &amp; Beauty · London NW6</title>
+  <meta name="description" content="Hair, colour, nails and skin in the heart of Queen's Park mews — 4B Lonsdale Road, London NW6 6RD." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* From somewhereinqp.com Wix theme (nav + menu CSS) */
+    :root {
+      --qp-sand: #e8b796;
+      --qp-mauve: #8a5251;
+      --qp-pink: #e33292;
+      --qp-bg: #e8e6e6;
+      --qp-ink: #080808;
+      --qp-muted: #767676;
+    }
+    body { font-family: 'DM Sans', system-ui, sans-serif; color: var(--qp-ink); background: var(--qp-bg); }
+    h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; color: var(--qp-mauve); }
+
+    nav {
+      background: rgba(232, 230, 230, 0.97);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(138, 82, 81, 0.15);
+    }
+    nav a.nav-link {
+      color: var(--qp-sand);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    nav a.nav-link:hover { color: var(--qp-mauve); }
+    .wordmark {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-style: italic;
+      font-size: 1.15rem;
+      color: var(--qp-mauve);
+      line-height: 1.2;
+      text-decoration: none;
+    }
+    .wordmark span { display: block; font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; font-style: normal; color: var(--qp-sand); font-family: 'DM Sans', sans-serif; }
+
+    .hero {
+      background-image: linear-gradient(to bottom, rgba(138, 82, 81, 0.25), rgba(8, 8, 8, 0.55)),
+        url('https://static.wixstatic.com/media/06295c_a2007b0bfae74ea298df21385490831c~mv2.jpg/v1/fill/w_1400,h_800,fp_0.47_0.21,q_90,enc_auto/file.jpg');
+      background-size: cover;
+      background-position: center;
+    }
+
+    .btn-main {
+      background: var(--qp-pink);
+      color: #fff;
+      font-weight: 600;
+      border-radius: 4px;
+      padding: 0.75rem 1.5rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      letter-spacing: 0.04em;
+    }
+    .btn-main:hover { background: #c92a7f; }
+
+    .btn-wa {
+      border: 1px solid var(--qp-sand);
+      color: var(--qp-sand);
+      background: rgba(8, 8, 8, 0.25);
+      border-radius: 4px;
+      padding: 0.75rem 1.5rem;
+      text-decoration: none;
+      font-weight: 500;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn-wa:hover { border-color: #fff; color: #fff; }
+    .btn-wa-solid {
+      border: 1px solid var(--qp-mauve);
+      color: var(--qp-mauve);
+      background: transparent;
+    }
+    .btn-wa-solid:hover { background: var(--qp-mauve); color: #fff; }
+
+    .price-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid rgba(138, 82, 81, 0.12);
+      font-size: 0.95rem;
+    }
+    .price-row strong { color: var(--qp-pink); }
+    .gallery img {
+      width: 100%;
+      aspect-ratio: 3/4;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid rgba(138, 82, 81, 0.12);
+    }
+    #book { background: #fff; }
+    a.underline-link { color: var(--qp-pink); }
+    a.underline-link:hover { color: var(--qp-mauve); }
+  </style>
+</head>
+<body>
+
+  <nav class="sticky top-0 z-50 px-5 py-4" aria-label="Main">
+    <div class="max-w-5xl mx-auto flex items-center justify-between gap-4">
+      <a href="#" class="wordmark">
+        Somewhere in Queens Park
+        <span>Hair &amp; beauty · NW6</span>
+      </a>
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#about" class="nav-link">About</a>
+        <a href="#prices" class="nav-link">Prices</a>
+        <a href="#book" class="btn-main text-sm py-2 px-4">Book online</a>
+      </div>
+      <a href="#book" class="md:hidden btn-main text-sm py-2 px-3">Book</a>
+    </div>
+  </nav>
+
+  <header class="hero text-white text-center px-5 py-24 md:py-32">
+    <p class="text-sm tracking-[0.2em] uppercase mb-4 text-white/85">Queen's Park · Lonsdale Road mews</p>
+    <h1 class="text-4xl md:text-6xl italic mb-6 max-w-2xl mx-auto leading-tight">
+      Neighbourhood salon,<br />high-end expertise
+    </h1>
+    <p class="text-lg text-white/90 max-w-lg mx-auto mb-10">
+      Cutting, colour, styling, nails &amp; skin — book online or on WhatsApp.
+    </p>
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <a href="#book" class="btn-main">Book appointment</a>
+      <a href="https://wa.me/447784156801?text=Hi%20%E2%80%94%20I%27d%20like%20to%20book%20at%20Somewhere%20in%20Queens%20Park." class="btn-wa">WhatsApp us</a>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 py-16">
+
+    <section id="about" class="mb-20 text-center max-w-3xl mx-auto">
+      <h2 class="text-3xl md:text-4xl mb-6">Somewhere you can feel good</h2>
+      <p class="text-[var(--qp-muted)] leading-relaxed mb-4">
+        Started as a small studio on Salusbury Road; since 2023 we've been in the mews on <strong>Lonsdale Road</strong> — a team of
+        hairdressers plus freelance specialists for men's grooming, nails and facials. Think neighbourhood salon meets high-end expertise.
+      </p>
+      <p class="text-sm text-[var(--qp-muted)]">
+        <a href="https://www.somewhereinqp.com/about" class="underline-link">Our story</a> ·
+        <a href="https://www.somewhereinqp.com/team" class="underline-link">Meet the team</a>
+      </p>
+    </section>
+
+    <section class="gallery grid grid-cols-2 md:grid-cols-4 gap-3 mb-20" aria-label="Salon photos from our website">
+      <img src="https://static.wixstatic.com/media/06295c_02eb713080b54440820f2a2d9ca79e7f~mv2.jpg/v1/fill/w_400,h_520,fp_0.52_0.23,q_90,enc_auto/file.jpg" alt="" loading="lazy" />
+      <img src="https://static.wixstatic.com/media/06295c_75e77e30610141d5ba55e99aafb8b4c3~mv2.jpeg/v1/fill/w_400,h_520,fp_0.48_0.32,q_90,enc_auto/file.jpeg" alt="" loading="lazy" />
+      <img src="https://static.wixstatic.com/media/06295c_8ff0b0f6614744c1b64ce510b346555e~mv2.jpg/v1/fill/w_400,h_520,fp_0.49_0.3,q_90,enc_auto/file.jpg" alt="" loading="lazy" />
+      <img src="https://static.wixstatic.com/media/06295c_bd9743745af44318b6d86f757ee9b7c4~mv2.jpg/v1/fill/w_400,h_520,fp_0.57_0.27,q_90,enc_auto/file.jpg" alt="" loading="lazy" />
+    </section>
+
+    <section id="prices" class="mb-20 grid md:grid-cols-2 gap-12">
+      <div>
+        <h2 class="text-3xl mb-6">Cutting &amp; styling</h2>
+        <p class="text-sm text-[var(--qp-muted)] mb-4">From <a href="https://www.somewhereinqp.com/prices" class="underline-link">our price list</a>. Extra charge for thick/extra long hair &amp; restyles.</p>
+        <div class="price-row"><span>Cut and blowdry (junior)</span><strong>from £65</strong></div>
+        <div class="price-row"><span>Cut and blowdry (stylist)</span><strong>from £80</strong></div>
+        <div class="price-row"><span>Cut and blowdry (senior)</span><strong>from £95</strong></div>
+        <div class="price-row"><span>Cut and blowdry (head stylist Stevie)</span><strong>£125</strong></div>
+        <div class="price-row"><span>Blowdry</span><strong>from £45</strong></div>
+        <div class="price-row"><span>Blowdry extra / smooth dry</span><strong>£50 / +£15</strong></div>
+      </div>
+      <div>
+        <h2 class="text-3xl mb-6">Colour</h2>
+        <p class="text-sm text-[var(--qp-muted)] mb-4">
+          <strong class="text-[var(--qp-mauve)]">New colour clients:</strong> consultation &amp; patch test required before booking (per our site).
+        </p>
+        <div class="price-row"><span>Face frame highlights</span><strong>from £95</strong></div>
+        <div class="price-row"><span>Half head highlights</span><strong>from £135</strong></div>
+        <div class="price-row"><span>Full head highlights</span><strong>from £185</strong></div>
+        <div class="price-row"><span>Balayage refresh</span><strong>from £130</strong></div>
+        <div class="price-row"><span>Full balayage</span><strong>from £170</strong></div>
+        <p class="text-sm text-[var(--qp-muted)] mt-6">
+          Barbering, nails &amp; skin — see links on
+          <a href="https://www.somewhereinqp.com/prices" class="underline-link">somewhereinqp.com/prices</a>
+        </p>
+      </div>
+    </section>
+
+    <section class="mb-20 rounded-lg panel p-8 md:p-10">
+      <h2 class="text-2xl mb-4">How to book</h2>
+      <ul class="space-y-3 text-[var(--qp-muted)] text-sm leading-relaxed">
+        <li>All bookings via WhatsApp <a href="https://wa.me/447784156801" class="underline-link font-medium">07784 156801</a></li>
+        <li>New colour clients: consultation &amp; patch test first (WhatsApp)</li>
+        <li>Styling appointments: WhatsApp or online below</li>
+        <li>Barbering, nails &amp; skin: booking links on <a href="https://www.somewhereinqp.com/contact-us" class="underline-link">contact page</a></li>
+      </ul>
+    </section>
+
+    <section id="book" class="py-12 -mx-5 px-5 md:mx-0 md:px-0 md:rounded-xl md:border md:border-black/5" aria-label="Book online">
+      <h2 class="text-3xl text-center mb-2">Book online — preview</h2>
+      <p class="text-center text-[var(--qp-muted)] mb-8 max-w-md mx-auto text-sm">
+        Try Solvio booking — same services &amp; prices; optional deposit when you go live.
+      </p>
+      <iframe
+        src="https://www.solviosystems.com/book/preview?lang=en&amp;mode=appointment&amp;name=Somewhere%20in%20Queens%20Park&amp;wa=447784156801"
+        width="100%"
+        height="920"
+        style="border:none;border-radius:8px;display:block;max-width:100%;background:#fafafa;"
+        title="Book appointment — Somewhere in Queens Park"
+        loading="lazy"
+      ></iframe>
+      <p class="text-center text-xs text-[var(--qp-muted)] mt-6">
+        Demo · Photos &amp; copy from <a href="https://www.somewhereinqp.com/" class="underline-link">somewhereinqp.com</a> ·
+        Powered by <a href="https://www.solviosystems.com" class="underline-link">Solvio</a>
+      </p>
+    </section>
+
+    <section id="visit" class="text-center py-12 border-t border-black/10">
+      <h2 class="text-2xl mb-4">Find us</h2>
+      <p class="font-medium">4B Lonsdale Road, London NW6 6RD</p>
+      <p class="text-sm text-[var(--qp-muted)] mt-2">
+        Queen's Park Underground · 5 min walk · Brondesbury Park Overground · 7 min<br />
+        Paid parking on surrounding roads (free weekends)
+      </p>
+      <p class="text-sm text-[var(--qp-muted)] mt-6">
+        <strong class="text-[var(--qp-mauve)]">Hours</strong> (from Fresha listing): Mon closed · Tue 10am–9pm · Wed 10am–8pm · Thu 9am–7pm · Fri &amp; Sat 10am–6pm · Sun closed
+      </p>
+      <div class="flex flex-wrap justify-center gap-3 mt-8">
+        <a href="https://wa.me/447784156801" class="btn-main text-sm">WhatsApp</a>
+        <a href="https://www.somewhereinqp.com/contact-us" class="btn-wa-solid text-sm py-2 px-4 rounded">Contact page</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="py-8 text-center text-xs text-[var(--qp-muted)]">
+    Somewhere in Queens Park · Solvio booking preview
+  </footer>
+
+</body>
+</html>

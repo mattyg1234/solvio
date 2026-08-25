@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MS Beauty Salon — Ladies Beauty Salon · Luton</title>
+  <meta name="description" content="Hair, waxing, laser, nails, facials and bridal makeup in Luton &amp; Leagrave. Ladies-only salon — book your appointment online." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+    :root {
+      --cream: #fdf8f6;
+      --blush: #f5e6e8;
+      --rose: #b76e79;
+      --rose-deep: #8b4a56;
+      --charcoal: #2d2426;
+      --muted: #6b5d60;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Source Sans 3', system-ui, sans-serif; color: var(--charcoal); background: var(--cream); }
+    h1, h2, h3 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      background: rgba(253, 248, 246, 0.92); backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(183, 110, 121, 0.15);
+    }
+
+    .hero {
+      min-height: 92vh;
+      background:
+        linear-gradient(105deg, rgba(45,36,38,0.55) 0%, rgba(139,74,86,0.35) 50%, rgba(45,36,38,0.5) 100%),
+        url('https://images.unsplash.com/photo-1560066984-138dadb4c035?w=1600&q=80') center/cover no-repeat;
+      padding-top: 5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--rose-deep), var(--rose));
+      color: #fff;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 0.875rem 1.75rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(139, 74, 86, 0.35);
+    }
+
+    .btn-outline {
+      border: 1px solid rgba(255,255,255,0.7);
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 0.75rem 1.5rem;
+      text-decoration: none;
+      font-weight: 500;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .service-card {
+      background: #fff;
+      border: 1px solid rgba(183, 110, 121, 0.15);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .service-card:hover {
+      box-shadow: 0 16px 40px rgba(45, 36, 38, 0.08);
+      transform: translateY(-2px);
+    }
+
+    #book {
+      background: linear-gradient(180deg, var(--blush) 0%, var(--cream) 100%);
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 999px;
+      padding: 0.35rem 0.9rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .anim { animation: fadeUp 0.65s ease both; }
+    @media (prefers-reduced-motion: reduce) { .anim { animation: none; } }
+  </style>
+</head>
+<body>
+
+  <nav aria-label="Main navigation">
+    <div class="max-w-6xl mx-auto px-5 flex items-center justify-between h-16">
+      <a href="#" class="text-xl font-semibold" style="font-family: Cormorant Garamond, serif; color: var(--rose-deep);">
+        MS Beauty Salon
+      </a>
+      <div class="hidden md:flex items-center gap-8 text-sm font-medium" style="color: var(--muted);">
+        <a href="#services" class="hover:text-[#2d2426] transition-colors">Services</a>
+        <a href="#about" class="hover:text-[#2d2426] transition-colors">About</a>
+        <a href="#book" class="btn-primary text-sm py-2 px-5" style="min-height: 40px;">Book online</a>
+      </div>
+      <a href="#book" class="md:hidden btn-primary text-sm py-2 px-4">Book</a>
+    </div>
+  </nav>
+
+  <section class="hero flex items-center px-5 text-white">
+    <div class="max-w-3xl mx-auto text-center py-16 md:py-20">
+      <p class="anim badge mb-5">Luton &amp; Leagrave · Ladies only</p>
+      <h1 class="anim text-4xl md:text-6xl leading-tight mb-5" style="animation-delay: 0.06s;">
+        Hair, waxing, laser<br />&amp; beauty — under one roof
+      </h1>
+      <p class="anim text-lg text-white/90 max-w-xl mx-auto mb-8" style="animation-delay: 0.12s;">
+        Trusted by thousands across Luton. Book your treatment online — open 7 days, 8:30am–7:30pm.
+      </p>
+      <div class="anim flex flex-wrap justify-center gap-3 mb-10 text-sm text-white/85" style="animation-delay: 0.18s;">
+        <span>★ 4.8 Google</span>
+        <span aria-hidden="true">·</span>
+        <span>348+ reviews</span>
+        <span aria-hidden="true">·</span>
+        <span>Hygienic · all-female team</span>
+      </div>
+      <div class="anim flex flex-col sm:flex-row gap-4 justify-center" style="animation-delay: 0.24s;">
+        <a href="#book" class="btn-primary">Book appointment</a>
+        <a href="https://wa.me/447397111110?text=Hi%20%E2%80%94%20I%27d%20like%20to%20book%20at%20MS%20Beauty%20Salon%20Luton." class="btn-outline" rel="noopener noreferrer">WhatsApp us</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="py-16 px-5">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl mb-4" style="color: var(--rose-deep);">Your salon in Luton</h2>
+      <p class="text-lg leading-relaxed" style="color: var(--muted);">
+        Professional hair, laser hair removal, waxing, facials, lashes, nails and bridal makeup —
+        in a private ladies-only salon with fully sanitised tools and flexible appointments.
+      </p>
+      <p class="mt-6 font-medium" style="color: var(--charcoal);">
+        3 Archway Rd, Marsh Rd, Luton LU3 2RW · Free parking nearby
+      </p>
+    </div>
+  </section>
+
+  <section id="services" class="py-16 px-5" style="background: #fff;">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl text-center mb-3" style="color: var(--rose-deep);">Popular treatments</h2>
+      <p class="text-center mb-12 max-w-lg mx-auto" style="color: var(--muted);">Full menu on book — threading, gel nails, laser, bridal and more when live.</p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Hair cutting &amp; colour</h3>
+          <p class="text-sm" style="color: var(--muted);">Cuts, blow-dries, highlights, balayage and colour correction.</p>
+        </article>
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Laser &amp; waxing</h3>
+          <p class="text-sm" style="color: var(--muted);">Laser hair removal and full-body waxing for all skin types.</p>
+        </article>
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Nails &amp; lashes</h3>
+          <p class="text-sm" style="color: var(--muted);">Gel manicure, nail art, lash extensions and brow lamination.</p>
+        </article>
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Facials &amp; massage</h3>
+          <p class="text-sm" style="color: var(--muted);">Deep cleansing, hydrating facials and relaxing massage.</p>
+        </article>
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Threading &amp; brows</h3>
+          <p class="text-sm" style="color: var(--muted);">Precise eyebrow shaping and facial threading.</p>
+        </article>
+        <article class="service-card">
+          <h3 class="text-xl mb-2">Bridal makeup</h3>
+          <p class="text-sm" style="color: var(--muted);">Wedding and Asian bridal packages by experienced artists.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="book" class="py-20 px-5" aria-label="Book online">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-3xl text-center mb-2" style="color: var(--rose-deep);">Book online — try it now</h2>
+      <p class="text-center mb-8 max-w-md mx-auto" style="color: var(--muted);">
+        Pick your treatment and time in a few taps — with optional deposit to cut no-shows (demo preview).
+      </p>
+      <iframe
+        src="https://www.solviosystems.com/book/preview?lang=en&amp;mode=appointment&amp;name=MS%20Beauty%20Salon&amp;wa=447397111110"
+        width="100%"
+        height="720"
+        style="border:none;border-radius:16px;display:block;max-width:100%;background:#fff;box-shadow:0 20px 50px rgba(45,36,38,0.08);"
+        title="Book appointment — MS Beauty Salon Luton"
+        loading="lazy"
+      ></iframe>
+      <p class="text-center text-sm mt-6" style="color: var(--muted);">
+        Preview by <a href="https://www.solviosystems.com" class="underline" style="color: var(--rose);">Solvio</a> — demo only until you activate live booking.
+      </p>
+    </div>
+  </section>
+
+  <section id="contact" class="py-16 px-5 border-t" style="border-color: rgba(183,110,121,0.2); background: #fff;">
+    <div class="max-w-xl mx-auto text-center">
+      <h2 class="text-2xl mb-6" style="color: var(--rose-deep);">Visit us</h2>
+      <p class="mb-2 font-medium">3 Archway Rd, Marsh Rd, Luton LU3 2RW</p>
+      <p class="mb-6" style="color: var(--muted);">Open daily 8:30am – 7:30pm</p>
+      <div class="flex flex-wrap justify-center gap-3">
+        <a href="https://wa.me/447397111110" class="btn-primary text-sm" rel="noopener noreferrer">WhatsApp</a>
+        <a href="tel:+447397111110" class="btn-outline text-sm" style="color: var(--rose-deep); border-color: var(--rose); background: transparent;">07397 111110</a>
+        <a href="mailto:info@msbeautysalon.co.uk" class="btn-outline text-sm" style="color: var(--rose-deep); border-color: var(--rose); background: transparent;">Email</a>
+      </div>
+      <p class="text-xs mt-8" style="color: var(--muted);">
+        Demo preview · Current site: <a href="https://msbeautysalon.co.uk/" class="underline" rel="noopener">msbeautysalon.co.uk</a>
+      </p>
+    </div>
+  </section>
+
+  <footer class="py-8 px-5 text-center text-xs" style="color: var(--muted); background: var(--cream);">
+    <p>MS Beauty Salon Luton · Booking preview powered by Solvio</p>
+  </footer>
+
+</body>
+</html>

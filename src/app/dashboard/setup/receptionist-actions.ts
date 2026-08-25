@@ -176,6 +176,7 @@ export async function saveReceptionistStudioAction(
       firstMessage,
       systemPrompt,
       includeDepositTool: bookingContext.depositSmsEnabled,
+      includeBookingTools: Boolean(bookingContext.publicBookingUrl),
       ...voicePatch,
     });
     if (!created.ok) return { ok: false, message: created.message };
@@ -186,6 +187,7 @@ export async function saveReceptionistStudioAction(
       firstMessage,
       systemPrompt,
       includeDepositTool: bookingContext.depositSmsEnabled,
+      includeBookingTools: Boolean(bookingContext.publicBookingUrl),
       ...voicePatch,
     });
     if (!synced.ok) return { ok: false, message: synced.message };

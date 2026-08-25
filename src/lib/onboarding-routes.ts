@@ -7,6 +7,7 @@ export const ONBOARDING_ALLOWED_PATH_PREFIXES = [
   "/dashboard/settings",
   "/dashboard/bookings",
   "/dashboard/pricing",
+  "/dashboard/show-ops",
 ] as const;
 
 export function isPathAllowedDuringOnboarding(pathname: string): boolean {

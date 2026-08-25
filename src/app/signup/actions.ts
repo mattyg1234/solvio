@@ -8,6 +8,8 @@ export type SignUpActionInput = {
   email: string;
   password: string;
   businessName: string;
+  /** E.164 mobile for booking-alert SMS (required). */
+  merchantPhone: string;
   websiteUrl?: string;
   logoUrl?: string;
   businessCategory?: string;
@@ -38,6 +40,11 @@ export async function signUpAction(input: SignUpActionInput): Promise<SignUpActi
     return { ok: false, message: "Enter your business name." };
   }
 
+  const merchantPhone = input.merchantPhone.trim();
+  if (!merchantPhone.startsWith("+") || merchantPhone.length < 10) {
+    return { ok: false, message: "Enter a valid mobile number for booking alerts." };
+  }
+
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || (await getSiteUrl())).replace(/\/$/, "");
   const admin = createSupabaseServiceRoleClient();
 
@@ -47,6 +54,7 @@ export async function signUpAction(input: SignUpActionInput): Promise<SignUpActi
     email_confirm: false,
     user_metadata: {
       business_name: businessName,
+      merchant_phone: merchantPhone,
       ...(input.websiteUrl?.trim() ? { website_url: input.websiteUrl.trim() } : {}),
       ...(input.logoUrl?.trim() ? { logo_url: input.logoUrl.trim() } : {}),
       ...(input.businessCategory?.trim() ? { business_category: input.businessCategory.trim() } : {}),

@@ -1,3 +1,9 @@
+import {
+  CHECK_BOOKING_AVAILABILITY_TOOL_NAME,
+  CREATE_BOOKING_REQUEST_TOOL_NAME,
+  SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME,
+} from "@/lib/booking-guest-call-tools";
+
 export type ReceptionistBookingContext = {
   publicBookingUrl: string | null;
   bookingFlowLabel: string;
@@ -41,31 +47,40 @@ export function appendBookingContextToPrompt(base: string, ctx: ReceptionistBook
   const trimmed = base.trim();
   if (!trimmed) return trimmed;
 
+  const hasBookingPage = Boolean(ctx.publicBookingUrl);
+
   const lines = [
     "## Solvio booking context",
     ctx.bookingFlowLabel ? `This venue runs ${ctx.bookingFlowLabel}.` : null,
     ctx.guestBookingModes.length
       ? `Online guests can request: ${labelGuestBookingModes(ctx.guestBookingModes)}.`
       : null,
-    ctx.depositSmsEnabled
-      ? "Deposits are live — you can secure bookings on this call and text a Stripe payment link (never read URLs aloud)."
-      : ctx.publicBookingUrl
-        ? `Public booking page (only if they insist on self-serve): ${ctx.publicBookingUrl}`
+    hasBookingPage
+      ? [
+          "You have live booking tools wired to the same calendar as the public booking page:",
+          `1. ${CHECK_BOOKING_AVAILABILITY_TOOL_NAME} — ALWAYS call this before offering a date or time. Read the JSON message back in plain language.`,
+          `2. ${CREATE_BOOKING_REQUEST_TOOL_NAME} — after the guest confirms name, date, time, and party size AND availability was true. Free bookings confirm instantly; deposit bookings return pending_deposit.`,
+          ctx.depositSmsEnabled
+            ? `3. ${SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME} — when create_booking_request returns pending_deposit, text the Stripe link (pass bookingRequestId). Never read URLs aloud.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : ctx.depositSmsEnabled
+        ? "Deposits are live — capture details on the call; booking page not published yet."
         : "No public booking link is published yet — capture details on the call and tell the team you logged the enquiry.",
     "",
-    "When someone wants a table or appointment:",
-    "- Ask party size, preferred date and time, name, phone, and any notes (allergies, occasion, accessibility).",
-    "- Repeat details back before ending the call.",
+    "Booking flow on every call:",
+    "- Ask party size, preferred date and time, name, and any notes (allergies, occasion, accessibility).",
+    "- Call check_booking_availability with bookingKind and dateYmd (and timeLocal for tables/appointments).",
+    "- Only offer times returned as available — never guess.",
+    "- Repeat details back, then call create_booking_request.",
     ctx.depositSmsEnabled
-      ? [
-          "- When they agree to pay a deposit to confirm, call send_deposit_payment_link with their name, date (YYYY-MM-DD), time, party size, and notes.",
-          "- That creates their booking and texts them a secure payment link with all details — do NOT read URLs or tell them to visit a website.",
-          "- Say: 'I've texted you your booking details and a secure payment link — open the text when you're ready.'",
-        ].join("\n")
-      : "- Offer the booking page link when they want to confirm online or pay a deposit.",
-    "- Never invent availability or prices — if unsure, offer to have the team call back.",
+      ? "- If status is pending_deposit, call send_deposit_payment_link with bookingRequestId. Say: 'I've texted you your booking details and a secure payment link — open the text when you're ready.'"
+      : "- If no deposit is required, tell them they're confirmed once create_booking_request returns confirmed.",
+    "- Never invent availability, prices, or bookings — tools are the source of truth.",
     "",
-    "Dashboard purple-mic preview: role-play as a guest (e.g. “table for four Friday at eight”) so the venue owner hears how you handle their flow.",
+    "Dashboard purple-mic preview: role-play as a guest (e.g. “table for four Friday at eight”) so the venue owner hears the live calendar flow.",
   ];
 
   return `${trimmed}\n\n${lines.filter((l) => l !== null).join("\n")}`;

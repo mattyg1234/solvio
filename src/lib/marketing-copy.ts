@@ -56,6 +56,13 @@ export type MarketingCopy = {
     voiceLive: string;
     voicePreview: string;
   };
+  backOffice: {
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    pillars: { title: string; body: string }[];
+    cta: string;
+  };
   goLive: {
     eyebrow: string;
     title: string;
@@ -179,14 +186,14 @@ export type MarketingCopy = {
 
 const EN: MarketingCopy = {
   meta: {
-    title: "Solvio · Booking solutions for your business",
+    title: "Solvio · Booking + back office for your business",
     description:
-      "Launch your booking link in minutes. Guests pick appointments, tables, or events — confirmed by email and text, with optional deposits when you want them.",
+      "Guest booking on the front — invoices, payments, lists, reports and email on the back. One system for venues, tours and operators who are done re-keying spreadsheets.",
     ogDescription:
-      "Online booking for restaurants, salons, bars, and service businesses — one link, automatic confirmations, optional card deposits.",
+      "Bookings, invoices, payment chasing, live ops data and guest email — Solvio runs the back office so your team stops copy-pasting between tools.",
   },
   header: {
-    nav: { growth: "Growth", pricing: "Pricing", commerce: "Commerce", faq: "FAQ", liveDemo: "Live demo" },
+    nav: { growth: "Ops", pricing: "Pricing", commerce: "Bookings", faq: "FAQ", liveDemo: "Live demo" },
     login: "Log in",
     signup: "Start free trial",
     tryBookingDemo: "Try booking demo",
@@ -196,7 +203,7 @@ const EN: MarketingCopy = {
   },
   footer: {
     blurb:
-      "Booking infrastructure for restaurants, salons and cafés — one link, online bookings, and confirmations without enterprise baggage.",
+      "Front-of-house booking and full back office — lists, invoices, payment chasing, reports and email — without enterprise clutter.",
     product: "Product",
     company: "Company",
     links: {
@@ -214,96 +221,129 @@ const EN: MarketingCopy = {
       dataHosting: "Data hosting (Supabase EU)",
       privacySub: "Privacy & subprocessors",
     },
-    copyright: "Built for busy shop floors — not dashboards.",
+    copyright: "Built for busy operators — not dashboard theatre.",
   },
   hero: {
-    eyebrow: "One booking link — optional card deposits",
-    title: "Your booking page live in about 30 minutes — enquiries and deposits on one link.",
+    eyebrow: "Booking page + full back office",
+    title: "Guests book online. Solvio runs the office behind them.",
     subtitle:
-      "Share one link with your customers. They pick a day, choose a stylist or table, and get booked in — with email and text confirmation. Turn on optional card deposits when you want to hold a table or ticket.",
+      "Keep the clean booking link guests already love — then stop re-keying into spreadsheets. Solvio raises invoices, chases payments, emails confirmations, and shows live ops data so your team runs one system, not five tabs.",
     book247: "Book online 24/7",
-    evenClosed: "Even when you're closed",
+    evenClosed: "Back office stays in sync",
     ctaTrial: "Start free trial",
     ctaDemo: "See live booking demo",
-    bullet1: "Bookings and calls in one place",
-    bullet2: "Restaurants, salons, cafés & events",
+    bullet1: "Booking, invoices, payments & reports",
+    bullet2: "Venues, tours, shows & service businesses",
     voiceLive: "Click the purple microphone — you'll speak directly to our live AI receptionist demo.",
     voicePreview: "Preview our AI receptionist — scripted demo while live voice is unavailable.",
   },
+  backOffice: {
+    eyebrow: "Whole back office",
+    title: "Not just a booking page — the system behind the business.",
+    subtitle:
+      "One booking becomes office lists, bus lists, invoices, payment clearing and commercial stats. Connect the tools you already use; Solvio keeps the real data and emails guests and partners for you.",
+    pillars: [
+      {
+        title: "Send & collect invoices",
+        body: "Build supplier invoice packs from reservations, attach Verifactu numbers and terms, track due dates, and mark paid when money lands.",
+      },
+      {
+        title: "Chase deposits & balances",
+        body: "Pull every deposit due for a show night, take cash or card, and update balances live — no more handwritten payment sheets.",
+      },
+      {
+        title: "Live ops data, not stale sheets",
+        body: "Office lists, bus guides, dietary sheets, weekly outlook and YoY trackers all come from the same bookings — always current.",
+      },
+      {
+        title: "Email that actually goes out",
+        body: "Guest confirmations and operator alerts send automatically so the desk isn’t copy-pasting the same message twenty times.",
+      },
+      {
+        title: "Connect the sites you already use",
+        body: "Share your /book link on Google and Instagram, white-label your ops workspace, and import master data by CSV when you migrate off spreadsheets.",
+      },
+      {
+        title: "One backend for the whole floor",
+        body: "Suppliers, hotels, bus stops, pricing and permissions live behind the scenes — amend once, every list and total updates.",
+      },
+    ],
+    cta: "See how bookings feed the office →",
+  },
   goLive: {
     eyebrow: "Go live in ~30 minutes",
-    title: "Three steps from signup to your first guest booking.",
-    subtitle: "See what guests experience on a real booking page — then start your free trial and publish your own link.",
+    title: "Bookings first. Back office included.",
+    subtitle: "Publish a guest booking page, then turn on lists, payments and invoices when you’re ready — same account, same clean workspace.",
     cta: "Preview live booking demo",
     stepLabel: (n) => `Step ${n}`,
     steps: [
-      { title: "Set up your flow", body: "Tables, appointments or events — about 5 minutes in the dashboard." },
-      { title: "Turn on deposits (optional)", body: "Quick setup when you want card payments. Free booking requests work without them." },
-      { title: "Share your /book link", body: "One link for Google, Instagram and your AI receptionist." },
+      { title: "Publish your booking link", body: "Tables, appointments, events or show tickets — guests book without calling." },
+      { title: "Switch on back office", body: "Master data, nightly lists, deposits, invoices and reports — no re-keying." },
+      { title: "Email + real data", body: "Confirmations go out; dashboards stay live. Connect your site and share one link everywhere." },
     ],
   },
   growth: {
     eyebrow: "Built for outcomes",
-    title: "Growth feels effortless — because the boring stuff disappears.",
-    subtitle: `No dashboards to babysit. Booking (£${BOOKING_MONTHLY_GBP}/mo) gives you the public link, calendar, and optional online deposits. Pro (£${PRO_MONTHLY_GBP}/mo) adds the AI receptionist with a limited monthly minute cap.`,
+    title: "Growth feels effortless when the office stops fighting itself.",
+    subtitle: `Booking from £${BOOKING_MONTHLY_GBP}/mo covers the public link and guest confirmations. Layer on ops and finance when you need lists, invoice packs and commercial trackers — still one clean product.`,
     examplePrefix: "Example:",
     blocks: [
-      { title: "Never miss a booking", body: "Your /book link works 24/7 — guests enquire even when you're closed. Pro adds an AI receptionist on the phone.", stat: "More after-hours requests" },
-      { title: "Speak multiple languages", body: "Perfect for busy high streets in the UK and Ireland — greet guests in English (and more with Pro).", stat: "More inbound captured" },
-      { title: "Automatic appointments", body: "Guests pick slots on your link — confirmed in your diary with email and text when you're not charging a deposit.", stat: "Less back-and-forth" },
-      { title: "Less time on the phone", body: "Fewer repetitive calls when guests self-serve on your link — free your crew for the floor.", stat: "~6 hrs/week saved (example)" },
-      { title: "One booking inbox", body: "Requests, optional deposits, and confirmations in one place — no spreadsheet chasing.", stat: "Deposits optional" },
+      { title: "Never miss a booking", body: "Your /book link works 24/7 — guests enquire even when you're closed. Optional AI receptionist on Pro.", stat: "More after-hours requests" },
+      { title: "Invoices without re-keying", body: "Invoice-mode suppliers pull into packs with nett totals, ticket numbers and due dates.", stat: "Hours saved each month" },
+      { title: "Payments that clear", body: "Deposit due lists for each show night — cash or card recorded, balances update instantly.", stat: "Less till-night chaos" },
+      { title: "Lists the floor can trust", body: "Office, bus and dietary lists print from live bookings — sorted the way the show works.", stat: "One source of truth" },
+      { title: "Commercial truth, automated", body: "Capacity, tour op vs direct, top partners and bus cost-per-head — without rebuilding the Google Sheet every Monday.", stat: "YoY without the grind" },
     ],
   },
   commerce: {
-    eyebrow: "Bookings & payments",
-    title: "Guest books a slot → optional deposit → payout to you.",
+    eyebrow: "Bookings & money",
+    title: "Guest books → optional deposit → back office already knows.",
     subtitle:
-      "One booking link for your venue — tables, stylists or ticketed nights. Start with free enquiries; turn on card deposits when you're ready. Pro adds the full AI receptionist for after-hours calls.",
+      "One booking link for your venue or tour. Start with free enquiries; turn on card deposits when you're ready. Every reservation feeds lists, invoices and reports automatically.",
     badge: "Payouts go to you",
     card1Title: "Guests pay you directly",
     card1Body:
-      "Guests book with your venue, not a third-party marketplace. When deposits are on, card payments route to your payout account — Solvio runs the page, calendar, and confirmations and keeps a small platform fee on each deposit.",
+      "Guests book with your business, not a marketplace. When deposits are on, card payments route to your payout account — Solvio runs the page, calendar, confirmations and the ops layer behind them.",
     card1Bullets: [
-      "Share one link — Instagram, Google, voicemail, wherever guests find you.",
-      "Deposits are optional — start with free enquiries if you prefer.",
+      "Share one link — Instagram, Google, voicemail, partner sites.",
+      "Deposits optional — start free, add cards when no-shows hurt.",
     ],
     card2Title: "Pricing that grows when you grow",
-    card2Body: `Booking from £${BOOKING_MONTHLY_GBP}/mo — Pro adds AI receptionist from £${PRO_MONTHLY_GBP}/mo. Enterprise for groups and volume from £${ENTERPRISE_MONTHLY_GBP}/mo.`,
+    card2Body: `Booking from £${BOOKING_MONTHLY_GBP}/mo — Pro adds AI receptionist from £${PRO_MONTHLY_GBP}/mo. Show Ops is included for design partners — bookings, lists, invoices and reports.`,
     capabilities: [
-      { title: "Takes bookings", body: "Guests pick a slot — confirmed straight into your diary when you're not charging a deposit." },
+      { title: "Takes bookings", body: "Guests pick a slot — confirmed into your diary with email and text." },
       { title: "Collects deposits", body: "Optional card prepayments when you enable them — shown clearly to guests." },
-      { title: "Confirms visits", body: "Email and text reminders when guests are booked in — so they show up on time." },
-      { title: "Handles changes", body: "Cancellations and closed days stay in sync on your calendar." },
+      { title: "Raises invoices", body: "Supplier packs from reservations — Verifactu #, terms, overdue chasing." },
+      { title: "Runs the lists", body: "Office, bus and dietary sheets regenerate from the same booking brain." },
     ],
     restaurantFlow: {
-      label: "Restaurant flow",
+      label: "Venue flow",
       callerLabel: "Caller:",
       callerQuote: "“Table for four tonight at eight.”",
       solvioLabel: "Solvio:",
       solvioBody:
-        "checks live availability → holds the request → can send a deposit link if you use them → confirms and notifies your front-of-house team.",
-      tags: ["Voice booking", "Paid to you", "Guest confirmation"],
+        "checks live availability → holds the request → can send a deposit link → confirms by email and notifies the team.",
+      tags: ["Voice booking", "Paid to you", "Guest email"],
     },
     salonFlow: {
-      label: "Salon flow",
-      callerLabel: "Caller:",
-      callerQuote: "“Haircut tomorrow afternoon.”",
+      label: "Tour / show flow",
+      callerLabel: "Desk:",
+      callerQuote: "“Two adults, hotel pickup, invoice agency.”",
       solvioLabel: "Solvio:",
       solvioBody:
-        "shows available calendar days → guest picks stylist & time → can pay an optional deposit → email confirmation lands instantly.",
-      tags: ["Online deposit", "Email confirm", "Closed days blocked"],
+        "creates the booking → autofills bus stop → stamps deposit or invoice → feeds office list, bus guide and invoice pack.",
+      tags: ["Ops lists", "Invoice pack", "Live totals"],
     },
     dashboardLayer: {
       eyebrow: "Dashboard layer",
-      body: "Operators still deserve clarity — every booking, payment and confirmation in one calm workspace while Solvio handles the phone lines.",
+      body: "Operators get one calm workspace — bookings, payments, invoices and reports — while guests still see a simple booking page.",
     },
   },
   bookPreview: {
     eyebrow: "What guests see",
     title: "One branded page — pick a service, pay a deposit, get confirmed.",
     subtitle:
-      "Your logo, address, and phone at the top. Step-by-step booking for tables, appointments, or events. Card deposits are optional — when on, guests pay the venue directly.",
+      "Your logo, address, and phone at the top. Step-by-step booking for tables, appointments, or events. Card deposits are optional — when on, guests pay the venue directly. Behind the scenes, Solvio feeds your back office.",
     cta: "Open live booking demo →",
     mockVenue: "Book with Café Aurora",
     mockHeading: "Request an appointment",
@@ -367,28 +407,28 @@ const EN: MarketingCopy = {
     title: "Common questions before you sign up",
     items: [
       {
+        q: "Is Solvio only a booking page?",
+        a: "No. Guests still get a clean booking link — and the same system runs your back office: lists, deposits, invoices, reports and email confirmations so you stop re-keying.",
+      },
+      {
         q: "Do I need a card to start?",
         a: `${BOOKING_TRIAL_DAYS}-day free trial — add your card to get started. You won't be charged until the trial ends; £${BOOKING_MONTHLY_GBP}/mo after that unless you cancel.`,
       },
       {
         q: "Who receives guest deposit payments?",
-        a: "You do. Guest deposits are paid to your business payout account — Solvio is not the merchant of record. We provide the booking page, inbox, and guest confirmations.",
+        a: "You do. Guest deposits are paid to your business payout account — Solvio is not the merchant of record. We provide the booking page, inbox, confirmations and ops tools.",
       },
       {
-        q: "What fees does Solvio charge?",
-        a: `Booking is £${BOOKING_MONTHLY_GBP}/month after your trial. Deposit fees: ${TRIAL_PLATFORM_FEE_BPS / 100}% during trial, ${BOOKING_PLATFORM_FEE_BPS / 100}% on Booking, ${PRO_PLATFORM_FEE_BPS / 100}% on Pro, ${ENTERPRISE_PLATFORM_FEE_BPS / 100}% on Enterprise — always shown before guests pay.`,
+        q: "Can you send invoices and chase overdue?",
+        a: "Yes in Show Ops — generate supplier invoice packs from reservations, add Verifactu numbers and payment terms, then mark paid or pull overdue as of any date.",
+      },
+      {
+        q: "Will this replace our spreadsheets?",
+        a: "That’s the point. Master data and bookings feed office lists, bus lists, payments and commercial reports automatically. Import suppliers/hotels/stops by CSV when you migrate.",
       },
       {
         q: "Can I cancel?",
         a: `Yes. Cancel anytime from the dashboard. Cancel before your ${BOOKING_TRIAL_DAYS}-day trial ends and you won't be charged £${BOOKING_MONTHLY_GBP}/mo.`,
-      },
-      {
-        q: "Is this only for restaurants?",
-        a: "No — salons, cafés, bars and ticketed events use the same /book link. Pick tables, appointments, events or a mix when you set up.",
-      },
-      {
-        q: "Will this actually increase my bookings?",
-        a: "Results vary by venue — but teams typically share one /book link everywhere (Google, Instagram, voicemail) so guests can book when you're busy or closed. Deposits also cut no-shows. Our homepage shows illustrative examples, not verified case studies.",
       },
     ],
     legalPrefix: "More detail in our",
@@ -484,14 +524,14 @@ const EN: MarketingCopy = {
 
 const ES: MarketingCopy = {
   meta: {
-    title: "Solvio · Soluciones de reservas para tu negocio",
+    title: "Solvio · Reservas + back office para tu negocio",
     description:
-      "Publica tu enlace de reservas en minutos. Tus clientes eligen cita, mesa o evento — confirmación por email y SMS, con depósitos opcionales cuando quieras.",
+      "Reservas para el cliente — facturas, cobros, listas, informes y email en el back office. Un sistema para locales, tours y operadores cansados de Excel.",
     ogDescription:
-      "Reservas online para restaurantes, salones, bares y negocios de servicios — un enlace, confirmaciones automáticas y depósitos opcionales.",
+      "Reservas, facturas, cobro de depósitos, datos en vivo y email — Solvio gestiona el back office para que no copies datos entre herramientas.",
   },
   header: {
-    nav: { growth: "Crecimiento", pricing: "Precios", commerce: "Reservas", faq: "FAQ", liveDemo: "Demo en vivo" },
+    nav: { growth: "Ops", pricing: "Precios", commerce: "Reservas", faq: "FAQ", liveDemo: "Demo en vivo" },
     login: "Iniciar sesión",
     signup: "Prueba gratis",
     tryBookingDemo: "Probar demo de reservas",
@@ -522,18 +562,51 @@ const ES: MarketingCopy = {
     copyright: "Hecho para locales con mucho movimiento — no para dashboards.",
   },
   hero: {
-    eyebrow: "Un enlace de reservas — depósitos con tarjeta opcionales",
-    title: "Tu página de reservas en unos 30 minutos — consultas y depósitos en un solo enlace.",
+    eyebrow: "Página de reservas + back office completo",
+    title: "El cliente reserva online. Solvio gestiona la oficina detrás.",
     subtitle:
-      "Comparte un enlace con tus clientes. Eligen día, estilista o mesa y quedan reservados — con confirmación por email y SMS. Activa depósitos con tarjeta cuando quieras asegurar mesa o entrada.",
+      "Mantén el enlace de reservas limpio que ya gusta a tus clientes — y deja de copiar datos en hojas. Solvio emite facturas, cobra depósitos, envía emails y muestra datos en vivo para que tu equipo use un solo sistema.",
     book247: "Reserva online 24/7",
-    evenClosed: "Incluso cuando cierras",
+    evenClosed: "El back office se sincroniza",
     ctaTrial: "Prueba gratis",
     ctaDemo: "Ver demo de reservas",
-    bullet1: "Reservas y llamadas en un solo sitio",
-    bullet2: "Restaurantes, salones, cafés y eventos",
+    bullet1: "Reservas, facturas, cobros e informes",
+    bullet2: "Locales, tours, espectáculos y servicios",
     voiceLive: "Pulsa el micrófono morado — hablarás con nuestra recepcionista IA de demostración en vivo.",
     voicePreview: "Vista previa de la recepcionista IA — demo guiada mientras la voz en vivo no está disponible.",
+  },
+  backOffice: {
+    eyebrow: "Back office completo",
+    title: "No solo una página de reservas — el sistema detrás del negocio.",
+    subtitle:
+      "Una reserva alimenta listas de oficina, guías de bus, facturas, cobros e informes comerciales. Conecta las herramientas que ya usas; Solvio mantiene los datos reales y envía emails.",
+    pillars: [
+      {
+        title: "Emitir y cobrar facturas",
+        body: "Packs de factura desde reservas, número Verifactu, plazos y seguimiento de vencidos.",
+      },
+      {
+        title: "Cobrar depósitos y saldos",
+        body: "Lista de pagos pendientes por noche — efectivo o tarjeta — saldos al día.",
+      },
+      {
+        title: "Datos en vivo, no hojas viejas",
+        body: "Listas de oficina, bus, dietas, outlook semanal y trackers YoY desde las mismas reservas.",
+      },
+      {
+        title: "Email que sí se envía",
+        body: "Confirmaciones a clientes y avisos al equipo sin copiar el mismo mensaje veinte veces.",
+      },
+      {
+        title: "Conecta lo que ya usas",
+        body: "Comparte /book en Google e Instagram, white-label tu ops, importa maestros por CSV.",
+      },
+      {
+        title: "Un backend para toda la operación",
+        body: "Proveedores, hoteles, paradas, precios y permisos — cambias una vez y todo se actualiza.",
+      },
+    ],
+    cta: "Ver cómo las reservas alimentan la oficina →",
   },
   goLive: {
     eyebrow: "En línea en ~30 minutos",

@@ -17,6 +17,7 @@ import {
   type PublicFloorTable,
 } from "@/lib/booking-public-context";
 import { coerceFloorPlanShape, normalizeFloorTableDimensions, normalizeFloorTableFillColor } from "@/lib/floor-plan-visuals";
+import { NumberInput } from "@/components/ui/number-input";
 import type { ExpandedOccurrence } from "@/lib/business-event-occurrences";
 import { expandHostedEventOccurrences, formatHostedOccurrencePreferredSummary } from "@/lib/booking-hosted-submit";
 import {
@@ -1218,16 +1219,14 @@ export function BookingPublicForm({
             <label htmlFor="guest_count" className="sr-only">
               How many are coming?
             </label>
-            <input
+            <NumberInput
               id="guest_count"
               name="guest_count"
-              type="number"
-              inputMode="numeric"
               min={1}
               max={999}
               required
               value={partySize}
-              onChange={(e) => setPartySize(e.target.value)}
+              onValueChange={(n) => setPartySize(n === "" ? "" : String(n))}
               placeholder="e.g. 4"
               className="h-12 w-full max-w-xs rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] text-[#0f172a] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
             />

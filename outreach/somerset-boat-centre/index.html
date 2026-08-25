@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Somerset Boat Centre — Boat Hire · Bridgwater &amp; Taunton Canal</title>
+  <meta name="description" content="Boat hire at Maidenmead Moorings, North Newton — narrowboats, kayaks, paddleboards and more on the Bridgwater and Taunton Canal." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --sbc-nav: #004d6b;
+      --sbc-heading: #1a404e;
+      --sbc-orange: #ff6300;
+      --sbc-orange-border: #af4400;
+      --sbc-accent: #ff9b10;
+      --sbc-pale: #d9e5ea;
+      --sbc-sky: #c6effd;
+    }
+    body { font-family: 'Open Sans', system-ui, sans-serif; color: #1e293b; }
+    h1, h2, h3, .font-display { font-family: 'Bitter', Georgia, serif; }
+
+    nav { background: var(--sbc-nav); }
+
+    .btn-sbc {
+      background: var(--sbc-orange);
+      border: 1px solid var(--sbc-orange-border);
+      color: #fff;
+      font-family: 'Bitter', serif;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 0.625rem 1.25rem;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      transition: background 0.2s;
+    }
+    .btn-sbc:hover { background: rgb(255, 99, 0); }
+
+    .hero-wrap {
+      background-image: linear-gradient(rgba(0, 40, 60, 0.45), rgba(0, 40, 60, 0.55)),
+        url('https://somersetboatcentre.co.uk/images/1756334675.jpg');
+      background-size: cover;
+      background-position: center;
+    }
+
+    .craft-row {
+      border-bottom: 2px solid #e5e7eb;
+      padding: 2rem 0;
+    }
+    .craft-img {
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: 0.5rem;
+      width: 100%;
+      max-width: 280px;
+      margin: 0 auto;
+      display: block;
+    }
+
+    .alert-amber {
+      border: 1px solid #b45309;
+      background: #fef3c7;
+      color: #b45309;
+      border-radius: 0.5rem;
+      padding: 1.25rem 1.5rem;
+    }
+    .alert-blue {
+      border: 1px solid #1d4ed8;
+      background: #dbeafe;
+      color: #1d4ed8;
+      border-radius: 0.5rem;
+      padding: 1.25rem 1.5rem;
+    }
+
+    #book { background: var(--sbc-sky); }
+  </style>
+</head>
+<body class="bg-white">
+
+  <nav aria-label="Main navigation" class="px-5 py-4 md:px-10">
+    <div class="max-w-5xl mx-auto flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 text-white">
+        <img src="https://somersetboatcentre.co.uk/graphics/Background.png" alt="" width="32" height="32" class="rounded border border-[#478]" />
+        <span class="font-display font-semibold text-lg hidden sm:inline">Somerset Boat Centre</span>
+      </a>
+      <div class="hidden md:flex items-center gap-6 text-sm text-white">
+        <a href="#hire" class="hover:text-[#FF9B10]">Boat hire</a>
+        <a href="#visit" class="hover:text-[#FF9B10]">Find us</a>
+        <a href="#book" class="btn-sbc text-sm py-2">Book online</a>
+      </div>
+      <a href="#book" class="md:hidden btn-sbc text-sm py-2">Book</a>
+    </div>
+  </nav>
+
+  <header class="hero-wrap text-center text-white px-5 py-16 md:py-20">
+    <img src="https://somersetboatcentre.co.uk/graphics/slice1.svg" alt="Somerset Boat Centre" class="w-40 md:w-48 mx-auto mb-8" />
+    <h1 class="font-display text-3xl md:text-4xl font-semibold mb-4 uppercase tracking-wide">Boat hire</h1>
+    <p class="max-w-xl mx-auto text-white/95 text-lg mb-8">
+      Bridgwater &amp; Taunton Canal · Maidenmead Moorings, North Newton
+    </p>
+    <a href="#book" class="btn-sbc">Book hire online</a>
+  </header>
+
+  <main class="max-w-[980px] mx-auto px-4 py-10">
+
+    <div class="alert-amber my-6" role="note">
+      <h3 class="font-display font-semibold text-lg mb-2">New website</h3>
+      <p class="text-sm leading-relaxed">
+        Welcome to our new website — we hope you can find your way around. Problems? Email
+        <a href="mailto:info@somersetboatcentre.co.uk" class="underline font-medium">info@somersetboatcentre.co.uk</a>
+        (we aim to respond within 48hrs).
+      </p>
+    </div>
+
+    <div class="alert-blue my-6" role="note">
+      <h3 class="font-display font-semibold text-lg mb-2">Opening hours</h3>
+      <p class="text-sm leading-relaxed">
+        Monday to Thursday 9am–5pm<br />
+        Friday to Sunday 9am–9pm
+      </p>
+    </div>
+
+    <section id="hire" class="my-12">
+      <h2 class="font-display uppercase text-4xl text-center mb-6" style="color: var(--sbc-heading);">Hire a boat</h2>
+      <p class="text-center text-slate-700 mb-12 max-w-3xl mx-auto leading-relaxed">
+        We have a range of boats available to hire to suit most needs and budgets. We provide buoyancy aids on all craft
+        (kayak, paddleboard, rowing boat and Canadian canoe) — essential for children 12 and under. We cannot guarantee
+        you will stay dry, so bring a towel and change of clothes. Please read the
+        <a href="https://somersetboatcentre.co.uk/" class="underline" style="color: var(--sbc-orange);">terms and conditions of hire</a>.
+      </p>
+
+      <!-- Skippered Narrowboat -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img" src="https://somersetboatcentre.co.uk/images/1757801877.jpg" alt="Skippered narrowboat Somersun" loading="lazy" />
+        <div>
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Skippered narrowboat</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Cruise on <strong>Somersun</strong>. Morning, afternoon and evening cruises with SBC staff skippering — up to twelve passengers.
+            Help with locks, mooring and the swing bridge as much or as little as you like. Private hire for birthdays and celebrations.
+            Food options after booking (min 48hrs): fish &amp; chips, cream teas, afternoon teas, breakfast rolls — or bar drinks on arrival.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£180.00 <span class="font-normal text-slate-600">/ 2.5 hours</span></p>
+        </div>
+      </article>
+
+      <!-- Self Drive -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img md:order-2" src="https://somersetboatcentre.co.uk/images/1769520997.jpg" alt="Self-drive narrowboat Somerdays" loading="lazy" />
+        <div class="md:order-1">
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Self drive narrowboat</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            <strong>Somerdays</strong> — self-drive day bookings, max 8 people. Picnics welcome or kitchen pre-order (48hrs).
+            Hire <strong>09:30–16:30</strong> including 30 mins training — arrive promptly. <strong>£100 deposit</strong> on arrival, refunded after post-hire check.
+            Trip towards Taunton; optional stops at The Bathpool Inn or The Merry Monk.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£195.00 <span class="font-normal text-slate-600">/ 7 hours</span></p>
+        </div>
+      </article>
+
+      <!-- Wheelchair -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img" src="https://somersetboatcentre.co.uk/images/1762720318.png" alt="Wheelchair accessible boat" loading="lazy" />
+        <div>
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Wheelchair boat</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Specially adapted — 4 wheelchair users and 4 carers, or max 10 passengers (1000kg). Skipper included; unique helm for those with upper mobility.
+            No shelter; umbrellas provided. Commercial use for bridge inspection — contact us.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£60.00 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- Canadian canoe -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img md:order-2" src="https://somersetboatcentre.co.uk/images/1769531675.jpg" alt="Canadian canoe" loading="lazy" />
+        <div class="md:order-1">
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Canadian canoe</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Suitable for <strong>2 people</strong>. Wide open frame; single-bladed paddles. Max passenger weight 222kg.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£15.00 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- SUP -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img" src="https://somersetboatcentre.co.uk/images/1762709823.png" alt="Stand up paddleboards" loading="lazy" />
+        <div>
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Stand up paddleboards (SUPs)</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Fun for all ages and skill levels — experienced or not. Max 180kg per board.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£12.50 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- Big Billie -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img md:order-2" src="https://somersetboatcentre.co.uk/images/1762719975.png" alt="Big Billie paddle board" loading="lazy" />
+        <div class="md:order-1">
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Big Billie paddle board</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Giant SUP — 18ft × 5ft, up to <strong>8 people</strong>. Max weight 500kg.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£50.00 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- Kayak single -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img" src="https://somersetboatcentre.co.uk/images/1769528749.jpg" alt="Single kayak" loading="lazy" />
+        <div>
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Kayak single</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">Stable and comfortable single seater — up to 150kg.</p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£12.50 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- Kayak twin -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center">
+        <img class="craft-img md:order-2" src="https://somersetboatcentre.co.uk/images/1769528641.jpg" alt="Twin kayak" loading="lazy" />
+        <div class="md:order-1">
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Kayak twin</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">Two adults or two adults and a toddler — max load 280kg.</p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£15.00 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+
+      <!-- Rafted canoes -->
+      <article class="craft-row grid md:grid-cols-2 gap-8 items-center border-b-0">
+        <img class="craft-img" src="https://somersetboatcentre.co.uk/images/1766144010.jpg" alt="Rafted canoes" loading="lazy" />
+        <div>
+          <h3 class="font-display uppercase text-2xl font-semibold mb-4" style="color: var(--sbc-heading);">Rafted canoes</h3>
+          <p class="text-slate-700 mb-4 leading-relaxed">
+            Two canoes joined catamaran-style — almost impossible to capsize. Great for families. Up to 6 people, max 400kg.
+          </p>
+          <p class="font-bold text-lg mb-4" style="color: var(--sbc-heading);">£20.00 <span class="font-normal text-slate-600">/ 1 hour</span></p>
+        </div>
+      </article>
+    </section>
+
+    <section id="visit" class="rounded-2xl p-6 md:p-8 my-12 grid md:grid-cols-2 gap-8 items-center" style="background: var(--sbc-sky);">
+      <div>
+        <h2 class="font-display text-2xl mb-4" style="color: var(--sbc-heading);">Visit us</h2>
+        <p class="font-medium mb-2">Somerset Boat Centre</p>
+        <p class="text-slate-700">Maidenmead Moorings, Banklands<br />North Newton, Bridgwater<br />Somerset <strong>TA7 0DQ</strong></p>
+        <p class="mt-4 text-sm text-slate-600">
+          Also: <a href="https://somersetboatcentre.co.uk/stay-with-us" class="underline">Stay with us</a> ·
+          <a href="https://somersetboatcentre.co.uk/moorings" class="underline">Moorings</a> ·
+          <a href="https://somersetboatcentre.co.uk/boat-trips" class="underline">Boat trips</a> ·
+          <a href="https://somersetboatcentre.co.uk/food" class="underline">Food &amp; bar</a>
+        </p>
+      </div>
+      <img src="https://somersetboatcentre.co.uk/graphics/map.png" alt="Map — Somerset Boat Centre" class="rounded-lg w-full max-w-sm mx-auto" loading="lazy" />
+    </section>
+
+    <section id="book" class="py-12 -mx-4 px-4 md:mx-0 md:px-0 md:rounded-2xl" aria-label="Book online">
+      <h2 class="font-display uppercase text-3xl text-center mb-2" style="color: var(--sbc-heading);">Book online — preview</h2>
+      <p class="text-center text-slate-600 mb-8 max-w-lg mx-auto">
+        Try Solvio booking — same craft and prices; deposits when you go live.
+      </p>
+      <iframe
+        src="https://www.solviosystems.com/book/preview?lang=en&amp;mode=appointment&amp;name=Somerset%20Boat%20Centre"
+        width="100%"
+        height="920"
+        style="border:none;border-radius:12px;display:block;max-width:100%;background:#fff;"
+        title="Book boat hire — Somerset Boat Centre"
+        loading="lazy"
+      ></iframe>
+      <p class="text-center text-sm text-slate-500 mt-6">
+        Demo preview · Photos &amp; copy from <a href="https://somersetboatcentre.co.uk/boat-hire" class="underline">somersetboatcentre.co.uk</a> ·
+        Powered by <a href="https://www.solviosystems.com" class="underline">Solvio</a>
+      </p>
+    </section>
+
+    <section class="text-center py-12 border-t">
+      <p class="mb-4">
+        <a href="mailto:info@somersetboatcentre.co.uk" class="underline font-medium">info@somersetboatcentre.co.uk</a>
+      </p>
+      <div class="flex flex-wrap justify-center gap-3">
+        <a href="tel:+447508959996" class="btn-sbc text-sm">07508 959 996</a>
+        <a href="tel:+447946580050" class="btn-sbc text-sm" style="background: var(--sbc-nav); border-color: #05688c;">07946 580 050</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="py-6 text-center text-xs text-slate-500" style="background: var(--sbc-pale);">
+    Somerset Boat Centre · Solvio booking preview (not affiliated — for outreach demo)
+  </footer>
+
+</body>
+</html>

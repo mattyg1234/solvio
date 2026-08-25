@@ -1,0 +1,16 @@
+---
+description: Outreach demos — when to use WhatsApp vs phone on preview sites
+globs:
+  - docs/outreach-leads/**
+  - docs/solvio-outreach-gtm.md
+  - src/lib/outreach-demo.ts
+  - "**/restaurante-fortuna/**"
+---
+
+# Outreach — WhatsApp vs landline
+
+- **Spanish `922` (and most `9xx` geographic) = landline, not WhatsApp.** Use `tel:+34922…` on demo sites; omit `wa=` on `/book/preview` iframes.
+- **Spanish mobile for WhatsApp:** `6xxxxxxxx` or `7[1-9]xxxxxxx` after `34` (not `70x` personal, not `922` landline). Use `isLikelyWhatsAppE164()` before `wa=`.
+- **Trendscout** must tag `outreach_channel`: `whatsapp_mobile` vs `phone_only`; Village sorts mobile leads first.
+- **UK mobile:** `44` then `7xxxxxxxxx`. UK `01`/`02` landlines are not WhatsApp.
+- Do not trust Trendscout “public WhatsApp” without checking the number type. Fortuna: **+34 922 75 10 29** only.

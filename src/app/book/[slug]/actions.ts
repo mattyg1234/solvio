@@ -14,7 +14,8 @@ import { assertEventCapacityForSubmit } from "@/lib/booking-event-capacity";
 import { validateTableBookingSubmission } from "@/lib/booking-table-rules";
 import { dowSundayZeroInBusinessTZ, validateAppointmentSlotSelection, type AppointmentBreak } from "@/lib/booking-appointment-slots";
 import { isStaffWorkingOnWeekday } from "@/lib/staff-members";
-import { sendBookingRequestReceivedEmail, sendNewBookingNotificationEmail } from "@/lib/notifications/booking-emails";
+import { sendBookingRequestReceivedEmail } from "@/lib/notifications/booking-emails";
+import { notifyMerchantNewBooking } from "@/lib/notifications/merchant-new-booking";
 import { sendBookingRequestReceivedSms } from "@/lib/notifications/booking-sms";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -633,41 +634,17 @@ export async function submitBookingRequestAction(
     }
   }
 
-  try {
-    const adminClient = createSupabaseServiceRoleClient();
-    const { data: biz } = await adminClient
-      .from("businesses")
-      .select("owner_id, name")
-      .eq("booking_slug", slug.trim())
-      .maybeSingle();
-    if (biz?.owner_id) {
-      const { data: ownerProfile } = await adminClient
-        .from("profiles")
-        .select("email")
-        .eq("id", biz.owner_id)
-        .maybeSingle();
-      if (ownerProfile?.email) {
-        const merchantEmailResult = await sendNewBookingNotificationEmail({
-          merchantEmail: ownerProfile.email,
-          merchantName: biz.name,
-          guestName: customerName,
-          guestEmail: email,
-          bookingKind,
-          requestedDate,
-          preferredTime: preferredTimeRaw,
-          guestCount,
-          notes,
-          dashboardUrl: siteUrl,
-          autoConfirmed,
-        });
-        if (!merchantEmailResult.ok) {
-          console.error("[booking-submit] merchant email failed:", merchantEmailResult.message);
-        }
-      }
-    }
-  } catch (err) {
-    console.error("[booking-submit] merchant notify error:", err);
-  }
+  await notifyMerchantNewBooking({
+    bookingSlug: slug.trim(),
+    guestName: customerName,
+    guestEmail: email,
+    bookingKind,
+    requestedDate,
+    preferredTime: preferredTimeRaw,
+    guestCount,
+    notes,
+    autoConfirmed,
+  });
 
   return {
     ok: true,

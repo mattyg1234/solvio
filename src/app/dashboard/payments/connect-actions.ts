@@ -6,6 +6,7 @@ import type Stripe from "stripe";
 
 import { stripeClient } from "@/lib/stripe-client";
 import { getSiteUrl } from "@/lib/site-url";
+import { snapshotFromStripeAccount, describeStripeConnectDisplay } from "@/lib/stripe-connect-status";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type ConnectActionResult<T = void> = T extends void
@@ -50,6 +51,31 @@ async function clearConnectLink(
       stripe_connect_account_id: null,
       stripe_connect_charges_enabled: false,
       stripe_connect_details_submitted: false,
+      stripe_connect_payouts_enabled: false,
+      stripe_connect_disabled_reason: null,
+      stripe_connect_requirements_due: [],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", businessId);
+
+  if (error) throw new Error(error.message);
+}
+
+async function persistConnectSnapshot(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  businessId: string,
+  snap: ReturnType<typeof snapshotFromStripeAccount>,
+  accountId?: string,
+) {
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      ...(accountId ? { stripe_connect_account_id: accountId } : {}),
+      stripe_connect_charges_enabled: snap.chargesEnabled,
+      stripe_connect_details_submitted: snap.detailsSubmitted,
+      stripe_connect_payouts_enabled: snap.payoutsEnabled,
+      stripe_connect_disabled_reason: snap.disabledReason,
+      stripe_connect_requirements_due: snap.requirementsDue,
       updated_at: new Date().toISOString(),
     })
     .eq("id", businessId);
@@ -79,6 +105,9 @@ async function createExpressConnectAccount(
       stripe_connect_account_id: account.id,
       stripe_connect_charges_enabled: false,
       stripe_connect_details_submitted: false,
+      stripe_connect_payouts_enabled: false,
+      stripe_connect_disabled_reason: null,
+      stripe_connect_requirements_due: [],
       updated_at: new Date().toISOString(),
     })
     .eq("id", businessId);
@@ -147,8 +176,8 @@ export async function startStripeConnectOnboardingAction(
   try {
     const link = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${siteUrl}/dashboard/payments?connect=refresh&business=${businessId}`,
-      return_url: `${siteUrl}/dashboard/payments?connect=return&business=${businessId}`,
+      refresh_url: `${siteUrl}/dashboard/payments?connect=refresh&business=${businessId}&tab=connection`,
+      return_url: `${siteUrl}/dashboard/payments?connect=return&business=${businessId}&tab=connection`,
       type: "account_onboarding",
     });
 
@@ -182,13 +211,24 @@ export async function refreshStripeConnectStatusAction(
   ConnectActionResult<{
     chargesEnabled: boolean;
     detailsSubmitted: boolean;
+    payoutsEnabled: boolean;
+    disabledReason: string | null;
+    requirementsDue: string[];
+    displayStatus: string;
   }>
 > {
   const stripe = stripeClient();
   if (!stripe) {
     return {
       ok: true,
-      data: { chargesEnabled: false, detailsSubmitted: false },
+      data: {
+        chargesEnabled: false,
+        detailsSubmitted: false,
+        payoutsEnabled: false,
+        disabledReason: null,
+        requirementsDue: [],
+        displayStatus: "not_connected",
+      },
     };
   }
 
@@ -197,7 +237,14 @@ export async function refreshStripeConnectStatusAction(
   if (!accountId) {
     return {
       ok: true,
-      data: { chargesEnabled: false, detailsSubmitted: false },
+      data: {
+        chargesEnabled: false,
+        detailsSubmitted: false,
+        payoutsEnabled: false,
+        disabledReason: null,
+        requirementsDue: [],
+        displayStatus: "not_connected",
+      },
     };
   }
 
@@ -209,6 +256,7 @@ export async function refreshStripeConnectStatusAction(
       await clearConnectLink(supabase, businessId);
       revalidatePath("/dashboard/payments");
       revalidatePath("/dashboard");
+      revalidatePath("/dashboard/settings");
       return {
         ok: false,
         message:
@@ -221,29 +269,35 @@ export async function refreshStripeConnectStatusAction(
     };
   }
 
-  const { error } = await supabase
-    .from("businesses")
-    .update({
-      stripe_connect_charges_enabled: Boolean(account.charges_enabled),
-      stripe_connect_details_submitted: Boolean(account.details_submitted),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", businessId);
+  const snapshot = snapshotFromStripeAccount(account);
+  await persistConnectSnapshot(supabase, businessId, snapshot, account.id);
 
-  if (error) {
-    return { ok: false, message: error.message };
-  }
+  const display = describeStripeConnectDisplay(account.id, snapshot);
 
   revalidatePath("/dashboard/payments");
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
 
   return {
     ok: true,
     data: {
-      chargesEnabled: Boolean(account.charges_enabled),
-      detailsSubmitted: Boolean(account.details_submitted),
+      chargesEnabled: snapshot.chargesEnabled,
+      detailsSubmitted: snapshot.detailsSubmitted,
+      payoutsEnabled: snapshot.payoutsEnabled,
+      disabledReason: snapshot.disabledReason,
+      requirementsDue: snapshot.requirementsDue,
+      displayStatus: display.status,
     },
   };
+}
+
+/** Disconnect then start a fresh Connect onboarding link (same or new Express account). */
+export async function reconnectStripeConnectAction(
+  businessId: string,
+): Promise<ConnectActionResult<{ url: string }>> {
+  const { supabase } = await assertOwnedBusiness(businessId);
+  await clearConnectLink(supabase, businessId);
+  return startStripeConnectOnboardingAction(businessId);
 }
 
 /** Clears Solvio's link to Stripe — the Connect account stays in Stripe until deleted there. */
@@ -266,5 +320,6 @@ export async function disconnectStripeConnectAction(
 
   revalidatePath("/dashboard/payments");
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
   return { ok: true };
 }

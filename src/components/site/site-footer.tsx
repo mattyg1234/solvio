@@ -35,7 +35,7 @@ export function SiteFooter({ locale = "en" }: { locale?: MarketingLocale }) {
             <p className="font-semibold text-[#0f172a]">{copy.product}</p>
             <ul className="space-y-2 text-[#64748b]">
               <li>
-                <Link href={marketingHashHref(locale, "growth")} className="hover:text-[#7c3aed]">
+                <Link href={marketingHashHref(locale, "ops")} className="hover:text-[#7c3aed]">
                   {links.whatYouGet}
                 </Link>
               </li>

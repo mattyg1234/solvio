@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { merchantNotifyPhoneFromDetails } from "@/lib/merchant-notify-phone";
+import { isValidE164Phone } from "@/lib/normalize-phone";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { PlatformCapabilityKey } from "@/lib/platform-capabilities";
 
@@ -62,6 +64,12 @@ export async function saveOnboardingBusinessProfile(formData: FormData) {
   const website_url = String(formData.get("website_url") ?? "").trim();
 
   const phone = String(formData.get("merchant_phone") ?? "").trim();
+  if (!isValidE164Phone(phone)) {
+    return {
+      ok: false as const,
+      message: "Enter your mobile number for booking alerts — use country code (e.g. +44 7700 900123).",
+    };
+  }
   const addressLine1 = String(formData.get("merchant_address_line1") ?? "").trim();
   const addressLine2 = String(formData.get("merchant_address_line2") ?? "").trim();
   const city = String(formData.get("merchant_city") ?? "").trim();
@@ -146,6 +154,7 @@ export async function saveOnboardingCapabilities(caps: Record<PlatformCapability
     .from("businesses")
     .update({
       platform_capabilities: caps,
+      show_ops_enabled: Boolean(caps.show_ops),
       updated_at: new Date().toISOString(),
     })
     .eq("id", biz.id)
@@ -178,6 +187,20 @@ export async function completePlatformOnboarding() {
 
   if (!biz?.id) {
     return { ok: false as const, message: "No business on file." };
+  }
+
+  const { data: bizRow } = await supabase
+    .from("businesses")
+    .select("booking_flow_details")
+    .eq("id", biz.id)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  if (!merchantNotifyPhoneFromDetails(bizRow?.booking_flow_details)) {
+    return {
+      ok: false as const,
+      message: "Add your mobile for booking alerts in step 1 before going live.",
+    };
   }
 
   const { error } = await supabase

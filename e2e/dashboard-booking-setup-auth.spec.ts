@@ -12,10 +12,13 @@ test("dashboard: booking setup wizard reachable after login", async ({ page }) =
   const password = process.env.PLAYWRIGHT_DASHBOARD_PASSWORD;
   test.skip(!email || !password, "Set PLAYWRIGHT_DASHBOARD_EMAIL and PLAYWRIGHT_DASHBOARD_PASSWORD to run.");
 
+  const loginEmail = email!;
+  const loginPassword = password!;
+
   await page.goto("/login");
 
-  await page.fill("#login-email", email);
-  await page.fill("#login-password", password);
+  await page.fill("#login-email", loginEmail);
+  await page.fill("#login-password", loginPassword);
 
   await page.getByRole("button", { name: /^Log in$/i }).click();
 

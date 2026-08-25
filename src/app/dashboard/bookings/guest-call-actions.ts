@@ -162,7 +162,9 @@ async function placeGuestCall(params: {
       ...(params.venueCalendarBookingId ? { solvio_venue_calendar_booking_id: params.venueCalendarBookingId } : {}),
       ...(params.bookingRequestId ? { solvio_booking_request_id: params.bookingRequestId } : {}),
     },
-    assistantOverrides: buildBookingGuestAssistantOverrides(script, payment),
+    assistantOverrides: buildBookingGuestAssistantOverrides(script, payment, {
+      bookingEnabled: Boolean(params.business.booking_slug?.trim()),
+    }),
   });
 
   if (!callRes.ok) return callRes;

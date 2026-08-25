@@ -1,13 +1,17 @@
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
+import {
+  getTwilioAccountSid,
+  getTwilioAuthToken,
+  getTwilioSmsFrom,
+  isTwilioSmsConfigured,
+} from "@/lib/twilio-webhook";
 
 function twilioConfig() {
-  const sid = process.env.SOLVIO_TWILIO_ACCOUNT_SID?.trim() || process.env.TWILIO_ACCOUNT_SID?.trim();
-  const token = process.env.SOLVIO_TWILIO_AUTH_TOKEN?.trim() || process.env.TWILIO_AUTH_TOKEN?.trim();
-  const from =
-    process.env.SOLVIO_TWILIO_FROM_NUMBER?.trim() ||
-    process.env.TWILIO_FROM_NUMBER?.trim() ||
-    process.env.TWILIO_PHONE_NUMBER?.trim();
-  return { sid, token, from };
+  return {
+    sid: getTwilioAccountSid(),
+    token: getTwilioAuthToken(),
+    from: getTwilioSmsFrom(),
+  };
 }
 
 /** Lightweight Twilio helper — no SDK dependency beyond fetch. */
@@ -86,6 +90,49 @@ export async function sendBookingConfirmedSms(opts: {
 }
 
 export function isTwilioConfigured(): boolean {
-  const { sid, token, from } = twilioConfig();
-  return Boolean(sid && token && from);
+  return isTwilioSmsConfigured();
+}
+
+function kindLabel(bookingKind: string): string {
+  return bookingKind
+    ? bookingKind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Booking";
+}
+
+/** Text the venue owner when a guest books — uses the mobile from onboarding. */
+export async function sendNewBookingNotificationSms(opts: {
+  merchantPhoneE164: string;
+  merchantName: string;
+  guestName: string;
+  bookingKind: string;
+  requestedDate?: string;
+  preferredTime?: string;
+  guestCount?: string;
+  dashboardUrl: string;
+  autoConfirmed?: boolean;
+}): Promise<NotificationSendResult> {
+  const venue = opts.merchantName.trim() || "Your venue";
+  const guest = opts.guestName.trim() || "Guest";
+  const kind = kindLabel(opts.bookingKind);
+  const date = opts.requestedDate?.trim() || "—";
+  const time = opts.preferredTime?.trim() || "—";
+  const guests = opts.guestCount?.trim();
+  const diaryUrl = `${opts.dashboardUrl.replace(/\/$/, "")}/dashboard/bookings`;
+
+  const headline = opts.autoConfirmed ? `${venue}: booking confirmed` : `${venue}: new ${kind.toLowerCase()} request`;
+
+  const lines = [
+    headline,
+    `Guest: ${guest}`,
+    `Date: ${date}`,
+    `Time: ${time}`,
+    ...(guests ? [`Party: ${guests}`] : []),
+    `Diary: ${diaryUrl}`,
+    "— Solvio",
+  ];
+
+  return sendBookingSms({
+    phoneE164: opts.merchantPhoneE164,
+    body: lines.join("\n"),
+  });
 }

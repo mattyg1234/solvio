@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PlatformCapabilityKey } from "@/lib/platform-capabilities";
 import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
-import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
+import { parsePhoneDialFields, validateBookingPhone } from "@/lib/normalize-phone";
 import { BOOKING_MONTHLY_GBP } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +68,7 @@ const CAP_DEFS: { key: PlatformCapabilityKey; label: string; hint: string }[] = 
   { key: "tables", label: "Table bookings", hint: "Seated reservations and floor layouts." },
   { key: "ai_receptionist", label: "AI receptionist", hint: "Voice persona + scripted coverage." },
   { key: "lead_generation", label: "Lead generation", hint: "Inbound requests & outbound prospect lists." },
+  { key: "show_ops", label: "Show Ops", hint: "Tour/show bookings, bus lists, supplier invoices (white-label)." },
 ];
 
 export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
@@ -99,6 +100,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
     tables: true,
     ai_receptionist: false,
     lead_generation: false,
+    show_ops: false,
   });
 
   const persona = useMemo(
@@ -124,7 +126,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
 
   async function persistProfileAdvance() {
     const picked = [...TIMEZONES].includes(timeZone as (typeof TIMEZONES)[number]) ? timeZone : "UTC";
-    const phoneCheck = optionalPhoneE164(phoneDial, phoneLocal);
+    const phoneCheck = validateBookingPhone(phoneDial, phoneLocal);
     if (!phoneCheck.ok) {
       setErr(phoneCheck.message);
       return;
@@ -135,7 +137,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
     fd.append("time_zone", picked);
     fd.append("logo_url", logoUrl.trim());
     fd.append("website_url", websiteUrl.trim());
-    fd.append("merchant_phone", phoneCheck.e164 ?? "");
+    fd.append("merchant_phone", phoneCheck.e164);
     fd.append("merchant_address_line1", addressLine1.trim());
     fd.append("merchant_address_line2", addressLine2.trim());
     fd.append("merchant_city", city.trim());
@@ -222,7 +224,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl text-[#0f172a]">Business profile & modules</CardTitle>
             <CardDescription className="text-[14px] leading-relaxed">
-              Name and timezone first — logo and address can wait (they show on your public /book page when added).
+              Business name, timezone, and your mobile for booking-alert texts — logo and address can wait.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-8 pb-8">
@@ -254,12 +256,28 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
               </label>
             </div>
 
+            <PhoneDialCodeField
+              idPrefix="onb-phone"
+              label="Mobile for booking alerts"
+              required
+              dialCode={phoneDial}
+              localNumber={phoneLocal}
+              onDialCodeChange={setPhoneDial}
+              onLocalNumberChange={setPhoneLocal}
+              localPlaceholder="7700 900123"
+              inputClassName="rounded-2xl bg-[#fafbff] px-4"
+              selectClassName="rounded-2xl bg-white px-3"
+            />
+            <p className="text-[13px] font-normal text-[#64748b]">
+              Required — we text this number when a guest books on your Solvio page.
+            </p>
+
             <button
               type="button"
               className="text-sm font-semibold text-[#7c3aed] hover:underline"
               onClick={() => setShowOptionalDetails((v) => !v)}
             >
-              {showOptionalDetails ? "Hide logo & address (optional)" : "Add logo, phone & address for guests (optional)"}
+              {showOptionalDetails ? "Hide logo & address (optional)" : "Add logo & address (optional)"}
             </button>
 
             {showOptionalDetails ? (
@@ -289,18 +307,6 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
                   className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
                 />
               </label>
-              <PhoneDialCodeField
-                idPrefix="onb-phone"
-                label="Phone number"
-                optional
-                dialCode={phoneDial}
-                localNumber={phoneLocal}
-                onDialCodeChange={setPhoneDial}
-                onLocalNumberChange={setPhoneLocal}
-                localPlaceholder="7700 900123"
-                inputClassName="rounded-2xl bg-[#fafbff] px-4"
-                selectClassName="rounded-2xl bg-white px-3"
-              />
               <label className="space-y-2 text-sm font-semibold text-[#0f172a] sm:col-span-2" htmlFor="onb-addr1">
                 Street address
                 <input

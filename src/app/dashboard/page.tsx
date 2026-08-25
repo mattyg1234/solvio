@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoneyDisplay } from "@/lib/checkout-money";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { getSiteUrl } from "@/lib/site-url";
 import { bookingFlowKindLabel } from "@/lib/booking-flow-labels";
 import { isTrialExpired, trialDaysRemaining } from "@/lib/solvio-pricing";
@@ -28,18 +28,45 @@ export default async function DashboardOverviewPage() {
     redirect("/login");
   }
 
-  const { data: businesses } = await supabase
+  let { data: businesses } = await supabase
     .from("businesses")
     .select(
-      "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind,subscription_tier,created_at,time_zone",
+      "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind,subscription_tier,created_at,time_zone,platform_capabilities,show_ops_enabled",
     )
-    .eq("owner_id", user.id);
+    .eq("owner_id", user.id)
+    .order("created_at", { ascending: true });
+  if (!businesses?.length) {
+    const admin = createSupabaseServiceRoleClient();
+    const adminBiz = await admin
+      .from("businesses")
+      .select(
+        "id,name,booking_slug,stripe_connect_account_id,stripe_connect_charges_enabled,voice_receptionist_completed_at,booking_flow_completed_at,booking_flow_kind,subscription_tier,created_at,time_zone,platform_capabilities,show_ops_enabled",
+      )
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: true });
+    businesses = adminBiz.data;
+  }
+
+  const primaryBiz = businesses?.[0];
+  const capsRaw = primaryBiz?.platform_capabilities;
+  const caps =
+    capsRaw && typeof capsRaw === "object" && !Array.isArray(capsRaw)
+      ? (capsRaw as Record<string, boolean>)
+      : {};
+  const venueProduct =
+    Boolean(caps.appointments) ||
+    Boolean(caps.events) ||
+    Boolean(caps.tables) ||
+    Boolean(caps.ai_receptionist) ||
+    Boolean(caps.lead_generation);
+  if (primaryBiz?.show_ops_enabled && !venueProduct) {
+    redirect("/dashboard/show-ops");
+  }
 
   const siteUrl = await getSiteUrl();
   const stripeConnected = businesses?.some((b) => Boolean(b.stripe_connect_account_id)) ?? false;
   const stripeChargesEnabled =
     businesses?.some((b) => Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled)) ?? false;
-  const primaryBiz = businesses?.[0];
   const primaryBusinessName = primaryBiz?.name ?? null;
   const bookingSlug = (primaryBiz?.booking_slug as string | null | undefined)?.trim() || null;
   const publicBookingUrl = bookingSlug ? `${siteUrl}/book/${encodeURIComponent(bookingSlug)}` : null;

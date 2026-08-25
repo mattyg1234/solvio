@@ -135,6 +135,11 @@ export async function POST(req: Request) {
   const venueCalendarBookingId = asString(metadata.solvio_venue_calendar_booking_id);
   const bookingRequestId = asString(metadata.solvio_booking_request_id);
   const callPurpose = asString(metadata.solvio_call_purpose);
+  // Inbound receptionist calls carry no Solvio metadata — identify them by the
+  // Vapi assistant they hit and the call direction reported by Vapi.
+  const assistantId = asString(extractCallField(msg, "assistantId"));
+  const callType = asString(extractCallField(msg, "type"));
+  const isInbound = callType.toLowerCase().includes("inbound");
 
   const admin = createSupabaseServiceRoleClient();
 
@@ -157,6 +162,19 @@ export async function POST(req: Request) {
     .select("id, campaign_id, business_id, lead_id, venue_calendar_booking_id, booking_request_id, call_purpose")
     .eq("vapi_call_id", vapiCallId)
     .maybeSingle();
+
+  // If metadata didn't tell us the business (typical for INBOUND calls to a
+  // receptionist), resolve it from the Vapi assistant the call reached, so the
+  // customer still sees the call logged against their account.
+  let resolvedBusinessId = businessId;
+  if (!resolvedBusinessId && !existing && assistantId) {
+    const { data: bizByAssistant } = await admin
+      .from("businesses")
+      .select("id")
+      .eq("voice_receptionist_details->>vapi_assistant_id", assistantId)
+      .maybeSingle();
+    if (bizByAssistant?.id) resolvedBusinessId = bizByAssistant.id as string;
+  }
 
   // Pull success criteria for judge (if we have a campaign)
   let successCriteria = "";
@@ -197,12 +215,12 @@ export async function POST(req: Request) {
         call_purpose: existing.call_purpose ?? (callPurpose || null),
       })
       .eq("id", existing.id);
-  } else if (businessId) {
+  } else if (resolvedBusinessId) {
     await admin.from("voice_call_logs").insert({
-      business_id: businessId,
+      business_id: resolvedBusinessId,
       campaign_id: campaignId || null,
       lead_id: leadId || null,
-      direction: "outbound",
+      direction: isInbound ? "inbound" : "outbound",
       vapi_call_id: vapiCallId,
       caller_phone: asString((extractCallField(msg, "customer") as Record<string,unknown>)?.number),
       caller_name: asString((extractCallField(msg, "customer") as Record<string,unknown>)?.name),

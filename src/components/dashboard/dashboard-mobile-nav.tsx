@@ -16,9 +16,11 @@ import {
   Phone,
   Settings2,
   Sparkles,
+  Ticket,
   Users,
 } from "lucide-react";
 
+import { ShowOpsMobileNav } from "@/components/show-ops/show-ops-nav";
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
@@ -35,12 +37,27 @@ type NavItem = {
 function buildPrimaryNav(
   cap: ResolvedPlatformCapabilities,
   campaignsEnabled: boolean,
+  showOpsEnabled?: boolean,
 ): NavItem[] {
+  const venueProduct =
+    cap.appointments || cap.events || cap.tables || cap.ai_receptionist || cap.lead_generation;
   const items: NavItem[] = [
     { href: "/dashboard", label: "Home", icon: LayoutDashboard, exact: true, key: "home" },
-    { href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" },
-    { href: "/dashboard/payments", label: "Pay", icon: CreditCard, key: "pay" },
   ];
+
+  if (showOpsEnabled || cap.show_ops) {
+    items.push({
+      href: showOpsEnabled ? "/dashboard/show-ops" : "/dashboard/show-ops/setup",
+      label: "Show Ops",
+      icon: Ticket,
+      key: "show-ops",
+    });
+  }
+
+  if (venueProduct) {
+    items.push({ href: "/dashboard/bookings", label: "Bookings", icon: CalendarDays, key: "bookings" });
+    items.push({ href: "/dashboard/payments", label: "Pay", icon: CreditCard, key: "pay" });
+  }
 
   if (cap.ai_receptionist) {
     items.push({ href: "/dashboard/receptionist", label: "Voice", icon: Mic2, key: "receptionist" });
@@ -55,20 +72,38 @@ function buildMoreLinks(
   cap: ResolvedPlatformCapabilities,
   campaignsEnabled: boolean,
   plansBadge?: string | null,
+  showOpsEnabled?: boolean,
 ): NavItem[] {
-  const links: NavItem[] = [
-    { href: "/dashboard/setup/bookings", label: "Booking setup", icon: ClipboardList, key: "setup" },
-    {
+  const venueProduct =
+    cap.appointments || cap.events || cap.tables || cap.ai_receptionist || cap.lead_generation;
+  const links: NavItem[] = [];
+
+  if (showOpsEnabled || cap.show_ops) {
+    links.push({
+      href: showOpsEnabled ? "/dashboard/show-ops" : "/dashboard/show-ops/setup",
+      label: "Show Ops",
+      icon: Ticket,
+      key: "show-ops",
+    });
+  }
+
+  if (venueProduct) {
+    links.push({ href: "/dashboard/setup/bookings", label: "Booking setup", icon: ClipboardList, key: "setup" });
+    links.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
+    links.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: Sparkles, key: "ask" });
+  }
+
+  /** Show Ops workspaces are billed off-platform (client deals) — no self-serve plans page. */
+  if (!showOpsEnabled) {
+    links.push({
       href: "/dashboard/pricing",
       label: "Plans & billing",
       icon: CreditCard,
       key: "pricing",
       badge: plansBadge ?? undefined,
-    },
-    { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" },
-    { href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" },
-    { href: "/dashboard/ask", label: "Ask Solvio", icon: Sparkles, key: "ask" },
-  ];
+    });
+  }
+  links.push({ href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" });
 
   if (cap.lead_generation) {
     links.push({ href: "/dashboard/leads", label: "Leads", icon: Users, key: "leads" });
@@ -89,6 +124,7 @@ export type DashboardMobileNavProps = {
   campaignsEnabled?: boolean;
   subscriptionTier?: string;
   businessCreatedAt?: string | null;
+  showOpsEnabled?: boolean;
 };
 
 export function DashboardMobileNav({
@@ -96,15 +132,25 @@ export function DashboardMobileNav({
   campaignsEnabled = false,
   subscriptionTier = "trial",
   businessCreatedAt = null,
+  showOpsEnabled = false,
 }: DashboardMobileNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const venueProduct =
+    capabilities.appointments ||
+    capabilities.events ||
+    capabilities.tables ||
+    capabilities.ai_receptionist ||
+    capabilities.lead_generation;
+  if (showOpsEnabled && (pathname.startsWith("/dashboard/show-ops") || !venueProduct)) {
+    return <ShowOpsMobileNav />;
+  }
   const plansBadge =
     subscriptionTier === "trial" && businessCreatedAt
       ? `${trialDaysRemaining(businessCreatedAt)}d left`
       : undefined;
-  const primary = buildPrimaryNav(capabilities, campaignsEnabled);
-  const moreLinks = buildMoreLinks(capabilities, campaignsEnabled, plansBadge);
+  const primary = buildPrimaryNav(capabilities, campaignsEnabled, showOpsEnabled);
+  const moreLinks = buildMoreLinks(capabilities, campaignsEnabled, plansBadge, showOpsEnabled);
 
   function navActive(href: string, exact?: boolean) {
     const pathOnly = href.split("#")[0] ?? href;

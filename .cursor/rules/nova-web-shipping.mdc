@@ -1,0 +1,27 @@
+---
+description: Ship marketing sites and landing pages at Nova quality — design-system first, then stack + checklist
+globs:
+  - "**/index.html"
+  - "**/src/App.tsx"
+  - "**/src/pages/**"
+  - "**/tailwind.config.*"
+  - "sites/ruby-slipper/**"
+alwaysApply: false
+---
+
+# Nova-quality web shipping
+
+When building or redesigning a **marketing site, landing page, brand site, or outreach demo** (not dashboard/app chrome inside Next.js):
+
+1. Read and follow **`ship-marketing-site`** (`~/.cursor/skills/ship-marketing-site/SKILL.md`) — parity with Village agent Nova (`~/.openclaw/workspace/village/server/charters/nova.md`).
+2. **Before any visual design**, run UI/UX Pro Max:
+   ```bash
+   python3 ~/.cursor/skills/ui-ux-pro-max/scripts/search.py "<product niche keywords>" --design-system
+   ```
+3. **Stack:** Vite+React+TS for app-y sites; static `index.html` + Tailwind CDN for simple/outreach demos.
+4. **Motion:** Framer Motion, easing `[0.22, 1, 0.36, 1]`, respect `prefers-reduced-motion`.
+5. **Icons:** Lucide/Heroicons SVG — not emoji in UI.
+6. **Solvio hospitality demos (Nova / Village):** **Required** — iframe `https://www.solviosystems.com/book/preview?lang=es|en&mode=table|appointment&name=…&wa=…`, `#reserva` / `#book`, nav CTAs. Helpers: `src/lib/outreach-demo.ts`. Rule: **`.cursor/rules/outreach-demo-site-assets.mdc`** — photos, prices, and copy from **their live site**; no unrelated stock images.
+7. Ship **complete runnable files**; verify preview/build before claiming done.
+
+Do not skip the design-system step to "save time" — that is what makes Nova sites look professional.

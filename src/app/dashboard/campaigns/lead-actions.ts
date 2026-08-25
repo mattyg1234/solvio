@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { getTwilioAccountSid, getTwilioAuthToken, getTwilioSmsFrom } from "@/lib/twilio-webhook";
 import { startOutboundCall } from "@/lib/vapi-outbound";
 import { getSolvioVapiApiKey } from "@/lib/voice-platform-env";
 
@@ -295,6 +296,71 @@ export async function dialLeadNowAction(params: {
 
   revalidatePath(`/dashboard/campaigns/${params.campaignId}`);
   return { ok: true, callId: callRes.callId, creditSource: String(creditSource) };
+}
+
+/**
+ * Send a direct SMS to a lead using the merchant's Twilio SMS sender.
+ * Useful for UK lead outreach where a quick text follow-up converts better than calls.
+ */
+export async function sendLeadSmsAction(params: {
+  leadId: string;
+  campaignId: string;
+  body?: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { supabase, user } = await requireUser();
+  const c = await assertOwnsCampaign(supabase, user.id, params.campaignId);
+
+  const { data: lead } = await supabase
+    .from("voice_outbound_leads")
+    .select("id, phone, business_name, name, status, business_id")
+    .eq("id", params.leadId)
+    .eq("business_id", c.business_id)
+    .maybeSingle();
+  if (!lead) return { ok: false, message: "Lead not found." };
+  if (!lead.phone?.startsWith("+")) {
+    return { ok: false, message: "Lead phone is not in international format (+44...). Re-import lead to normalize it." };
+  }
+  if (lead.status === "do_not_call") {
+    return { ok: false, message: "Lead is marked Do Not Call." };
+  }
+
+  const sid = getTwilioAccountSid();
+  const token = getTwilioAuthToken();
+  const from = getTwilioSmsFrom();
+  if (!sid || !token || !from) {
+    return {
+      ok: false,
+      message: "Twilio SMS not configured (SOLVIO_TWILIO_ACCOUNT_SID / AUTH_TOKEN / FROM_NUMBER).",
+    };
+  }
+
+  const smsBody =
+    params.body?.trim() ||
+    `Hi${lead.name?.trim() ? ` ${lead.name.trim()}` : ""} — this is Solvio. We help UK venues convert missed calls + WhatsApp into confirmed bookings. Want a 2-minute demo?`;
+
+  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
+  const twilioRes = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      To: lead.phone.trim(),
+      From: from,
+      Body: smsBody.slice(0, 1200),
+    }),
+  });
+
+  if (!twilioRes.ok) {
+    const detail = await twilioRes.text().catch(() => "");
+    console.error("[campaign-leads] SMS send failed:", twilioRes.status, detail.slice(0, 300));
+    return { ok: false, message: `Twilio returned ${twilioRes.status}.` };
+  }
+
+  revalidatePath(`/dashboard/campaigns/${params.campaignId}`);
+  return { ok: true };
 }
 
 /**

@@ -10,6 +10,10 @@ import { loadStripeMerchantDashboardAction } from "@/app/dashboard/payments/merc
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  describeStripeConnectDisplay,
+  snapshotFromBusinessRow,
+} from "@/lib/stripe-connect-status";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
@@ -17,10 +21,13 @@ export const metadata: Metadata = {
   title: "Payments · Dashboard · Solvio",
 };
 
+const STRIPE_BUSINESS_SELECT =
+  "id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due";
+
 export default async function DashboardPaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connect?: string }>;
+  searchParams: Promise<{ connect?: string; tab?: string; business?: string }>;
 }) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -32,20 +39,25 @@ export default async function DashboardPaymentsPage({
   }
 
   const sp = await searchParams;
+  const activeTab = sp.tab === "activity" ? "activity" : "connection";
+
   const connectFlash =
     sp.connect === "return"
-      ? "Stripe connected — your account stays linked until you choose Disconnect. Table prices you set in Bookings control deposit amounts."
+      ? "Returned from Stripe — status refreshed below."
       : sp.connect === "refresh"
-        ? "Stripe needs a little more information — continue setup below."
+        ? "Stripe needs a little more information — continue setup on the Connection tab."
         : null;
 
   const { data: businesses } = await supabase
     .from("businesses")
-    .select("id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted")
+    .select(STRIPE_BUSINESS_SELECT)
     .eq("owner_id", user.id);
 
   if (sp.connect === "return" && businesses?.length) {
-    for (const b of businesses) {
+    const toRefresh = sp.business?.trim()
+      ? businesses.filter((b) => b.id === sp.business?.trim())
+      : businesses;
+    for (const b of toRefresh) {
       if (b.stripe_connect_account_id?.trim()) {
         await refreshStripeConnectStatusAction(b.id);
       }
@@ -54,19 +66,32 @@ export default async function DashboardPaymentsPage({
 
   const { data: businessesRefreshed } = await supabase
     .from("businesses")
-    .select("id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted")
+    .select(STRIPE_BUSINESS_SELECT)
     .eq("owner_id", user.id);
 
-  const stripeReady =
-    businessesRefreshed?.some((b) => Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled)) ?? false;
+  const businessRows = businessesRefreshed ?? [];
 
-  const primaryConnected = businessesRefreshed?.find(
+  const stripeReady = businessRows.some(
+    (b) => Boolean(b.stripe_connect_account_id && b.stripe_connect_charges_enabled),
+  );
+
+  const hasRestricted = businessRows.some((b) => {
+    if (!b.stripe_connect_account_id?.trim()) return false;
+    return (
+      describeStripeConnectDisplay(b.stripe_connect_account_id, snapshotFromBusinessRow(b)).status ===
+      "restricted"
+    );
+  });
+
+  const primaryConnected = businessRows.find(
     (b) => b.stripe_connect_account_id?.trim() && b.stripe_connect_charges_enabled,
   );
   const merchantDashboard =
     primaryConnected?.id && primaryConnected.stripe_connect_account_id
       ? await loadStripeMerchantDashboardAction(primaryConnected.id)
       : null;
+
+  const showActivity = Boolean(merchantDashboard?.ok);
 
   return (
     <div className="space-y-8">
@@ -93,23 +118,34 @@ export default async function DashboardPaymentsPage({
             </h1>
             <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
               Connect once — guest payments land in your Stripe balance. Solvio&apos;s platform fee depends on your plan
-              (1–5% — see <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">Plans</Link>).
-              Set prices per table under{" "}
-              <Link href="/dashboard/bookings?tab=offerings&view=tables" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
-                Bookings → Tables
+              (1–5% — see{" "}
+              <Link href="/dashboard/pricing" className="font-semibold text-[#7c3aed] underline-offset-2 hover:underline">
+                Plans
               </Link>
-              ; guests pay those amounts at checkout. Disconnect anytime from this page.
+              ). Manage your connection, disconnect, or reconnect anytime on the Connection tab.
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-                  stripeReady
-                    ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
-                    : "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
-                }`}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ring-1",
+                  hasRestricted
+                    ? "bg-rose-50 text-rose-900 ring-rose-100"
+                    : stripeReady
+                      ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
+                      : "bg-amber-50 text-amber-900 ring-amber-100",
+                )}
               >
-                <span className={`h-2 w-2 rounded-full ${stripeReady ? "bg-emerald-500" : "bg-amber-400"}`} />
-                {stripeReady ? "Ready to collect deposits" : "Connect Stripe to go live"}
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    hasRestricted ? "bg-rose-500" : stripeReady ? "bg-emerald-500" : "bg-amber-400",
+                  )}
+                />
+                {hasRestricted
+                  ? "Stripe account restricted — action required"
+                  : stripeReady
+                    ? "Ready to collect deposits"
+                    : "Connect Stripe to go live"}
               </span>
             </div>
           </div>
@@ -123,31 +159,100 @@ export default async function DashboardPaymentsPage({
         <p className="rounded-2xl border border-[#dbeafe] bg-[#eff6ff] px-4 py-3 text-sm text-[#1e40af]">{connectFlash}</p>
       ) : null}
 
-      <Card className="rounded-[22px] border border-[#ede9fe] bg-white shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base text-[#0f172a]">Connect your Stripe account</CardTitle>
-          <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-            Express onboarding opens Stripe in a new tab. When charges are enabled, table bookings with guide pricing can
-            offer a deposit checkout step. Solvio automatically retains your plan&apos;s platform fee (1–5% based on tier)
-            on each guest payment; the rest settles to your Connect balance.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pb-6">
-          <StripeConnectPanel
-            businesses={
-              businessesRefreshed?.map((b) => ({
-                id: b.id,
-                name: b.name,
-                stripe_connect_account_id: b.stripe_connect_account_id,
-                stripe_connect_charges_enabled: b.stripe_connect_charges_enabled,
-                stripe_connect_details_submitted: b.stripe_connect_details_submitted,
-              })) ?? []
-            }
-          />
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap gap-2 border-b border-[#ebe7f7] pb-1">
+        <Link
+          href="/dashboard/payments?tab=connection"
+          className={cn(
+            "rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
+            activeTab === "connection"
+              ? "border-b-2 border-[#7c3aed] text-[#7c3aed]"
+              : "text-[#64748b] hover:text-[#0f172a]",
+          )}
+        >
+          Connection
+        </Link>
+        {showActivity ? (
+          <Link
+            href="/dashboard/payments?tab=activity"
+            className={cn(
+              "rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
+              activeTab === "activity"
+                ? "border-b-2 border-[#7c3aed] text-[#7c3aed]"
+                : "text-[#64748b] hover:text-[#0f172a]",
+            )}
+          >
+            Balance & activity
+          </Link>
+        ) : null}
+      </div>
 
-      {merchantDashboard?.ok ? (
+      {activeTab === "connection" ? (
+        <>
+          <Card className="rounded-[22px] border border-[#ede9fe] bg-white shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base text-[#0f172a]">Stripe connection</CardTitle>
+              <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
+                Link your Express account, refresh status from Stripe, disconnect Solvio&apos;s link, or reconnect to
+                start fresh. If Stripe restricts your account, the banner appears across your dashboard until resolved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-6">
+              <StripeConnectPanel businesses={businessRows} />
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base text-[#0f172a]">How pricing works</CardTitle>
+                <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
+                  You choose deposit amounts when you configure each table — flat per table, per guest, or tiered by
+                  party size.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pb-6">
+                <p className="text-sm font-medium text-[#64748b]">
+                  {stripeReady
+                    ? "Payments are live. Edit table prices anytime under Bookings → Tables."
+                    : hasRestricted
+                      ? "Resolve the Stripe restriction above before guest checkout can work."
+                      : "Connect Stripe above, then set table prices under Dashboard → Bookings → Tables."}
+                </p>
+                <Link
+                  href="/dashboard/bookings?tab=offerings&view=tables"
+                  className="inline-flex text-sm font-semibold text-[#7c3aed] underline-offset-2 hover:underline"
+                >
+                  Set table prices →
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm ring-1 ring-[#ede9fe]/40">
+              <CardHeader>
+                <CardTitle className="text-base text-[#0f172a]">Solvio platform subscription</CardTitle>
+                <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
+                  Guest deposits (above) are separate from your Solvio plan. Booking is £50/mo after your free trial.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pb-6">
+                <p className="text-sm text-[#64748b]">
+                  Connect Stripe for guest payments — then add a card on the Booking plan so your public /book link stays
+                  live.
+                </p>
+                <Link
+                  href="/dashboard/pricing"
+                  className={cn(
+                    buttonVariants({ variant: "default" }),
+                    "inline-flex h-10 rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
+                  )}
+                >
+                  View plans · Booking from £50/mo →
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : showActivity && merchantDashboard?.ok ? (
         <Card className="rounded-[22px] border border-[#ede9fe] bg-white shadow-sm">
           <CardContent className="pb-8 pt-6">
             <StripeMerchantBalanceDashboard
@@ -156,55 +261,11 @@ export default async function DashboardPaymentsPage({
             />
           </CardContent>
         </Card>
-      ) : null}
-
-      <div className="grid gap-5 md:grid-cols-2">
-        <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base text-[#0f172a]">How pricing works</CardTitle>
-            <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              You choose deposit amounts when you configure each table — flat per table, per guest, or tiered by party size.
-              After a guest submits a table enquiry, Solvio can send them to Stripe Checkout for that amount.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 pb-6">
-            <p className="text-sm font-medium text-[#64748b]">
-              {stripeReady
-                ? "Payments are live. Edit table prices anytime under Bookings → Tables. Send deposit links from the inbox if a guest skipped checkout."
-                : "Connect Stripe above, then set table prices under Dashboard → Bookings → Tables."}
-            </p>
-            <Link
-              href="/dashboard/bookings?tab=offerings&view=tables"
-              className="inline-flex text-sm font-semibold text-[#7c3aed] underline-offset-2 hover:underline"
-            >
-              Set table prices →
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[22px] border border-[#ebe7f7] bg-white shadow-sm ring-1 ring-[#ede9fe]/40">
-          <CardHeader>
-            <CardTitle className="text-base text-[#0f172a]">Solvio platform subscription</CardTitle>
-            <CardDescription className="text-[13px] leading-relaxed text-[#64748b]">
-              Guest deposits (above) are separate from your Solvio plan. Booking is £50/mo after your free trial.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pb-6">
-            <p className="text-sm text-[#64748b]">
-              Connect Stripe for guest payments — then add a card on the Booking plan so your public /book link stays live.
-            </p>
-            <Link
-              href="/dashboard/pricing"
-              className={cn(
-                buttonVariants({ variant: "default" }),
-                "inline-flex h-10 rounded-full px-6 text-sm font-semibold shadow-md shadow-[#7c3aed]/20",
-              )}
-            >
-              View plans · Booking from £50/mo →
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      ) : (
+        <p className="text-sm text-[#64748b]">
+          Connect Stripe and enable charges to see balance and activity here.
+        </p>
+      )}
     </div>
   );
 }

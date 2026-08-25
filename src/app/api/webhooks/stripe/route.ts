@@ -10,10 +10,30 @@ import {
   PRO_AI_MINUTES,
   PRO_PLATFORM_FEE_BPS,
 } from "@/lib/solvio-pricing";
+import { applyShowOpsStripePayment } from "@/lib/show-ops/apply-payment";
+import { snapshotFromStripeAccount } from "@/lib/stripe-connect-status";
 import { stripeClient } from "@/lib/stripe-client";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+
+async function markShowOpsDepositPaid(session: Stripe.Checkout.Session) {
+  if (session.metadata?.solvio_kind !== "show_ops_deposit") return;
+  const bookingId = session.metadata.solvio_show_booking_id?.trim();
+  const businessId = session.metadata.solvio_business_id?.trim();
+  if (!bookingId || !businessId || !session.id) return;
+  const amount = (session.amount_total ?? 0) / 100;
+  try {
+    await applyShowOpsStripePayment({
+      businessId,
+      bookingId,
+      amount,
+      stripeCheckoutSessionId: session.id,
+    });
+  } catch (e) {
+    console.error("[stripe webhook] show ops deposit update failed", e);
+  }
+}
 
 async function markBookingPaid(session: Stripe.Checkout.Session) {
   const bookingId = session.metadata?.solvio_booking_request_id?.trim();
@@ -184,12 +204,17 @@ async function syncConnectAccount(account: Stripe.Account) {
 
   try {
     const admin = createSupabaseServiceRoleClient();
+    const snap = snapshotFromStripeAccount(account);
     await admin
       .from("businesses")
       .update({
         stripe_connect_account_id: account.id,
-        stripe_connect_charges_enabled: Boolean(account.charges_enabled),
-        stripe_connect_details_submitted: Boolean(account.details_submitted),
+        stripe_connect_charges_enabled: snap.chargesEnabled,
+        stripe_connect_details_submitted: snap.detailsSubmitted,
+        stripe_connect_payouts_enabled: snap.payoutsEnabled,
+        stripe_connect_disabled_reason: snap.disabledReason,
+        stripe_connect_requirements_due: snap.requirementsDue,
+        updated_at: new Date().toISOString(),
       })
       .eq("id", businessId);
   } catch (e) {
@@ -233,6 +258,9 @@ export async function POST(req: Request) {
   switch (evt.type) {
     case "checkout.session.completed": {
       const session = evt.data.object as Stripe.Checkout.Session;
+      if (session.metadata?.solvio_kind === "show_ops_deposit") {
+        await markShowOpsDepositPaid(session);
+      }
       if (session.metadata?.solvio_booking_request_id) {
         await markBookingPaid(session);
       }

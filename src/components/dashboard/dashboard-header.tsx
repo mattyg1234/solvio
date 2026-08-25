@@ -1,29 +1,42 @@
+"use client";
+
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
+import { usePathname } from "next/navigation";
 
 import { GetLiveStrip } from "@/components/dashboard/get-live-strip";
 import { DashboardTrialBanner, DashboardTrialChip } from "@/components/dashboard/dashboard-trial-banner";
+import { cn } from "@/lib/utils";
 
 type DashboardHeaderProps = {
   email: string;
   greetingName?: string | null;
   stripePaymentsReady?: boolean;
+  stripeConnectRestricted?: boolean;
   subscriptionTier?: string;
   businessCreatedAt?: string | null;
   bookingFlowComplete?: boolean;
   slugPublished?: boolean;
+  /** Hide venue launch checklist / Stripe chips (Show Ops-only tenants). */
+  venueLaunchRequired?: boolean;
 };
 
 export function DashboardHeader({
   email,
   greetingName,
   stripePaymentsReady = true,
+  stripeConnectRestricted = false,
   subscriptionTier = "trial",
   businessCreatedAt = null,
   bookingFlowComplete = false,
   slugPublished = false,
+  venueLaunchRequired = true,
 }: DashboardHeaderProps) {
-  const showGetLive = !bookingFlowComplete || !stripePaymentsReady || !slugPublished;
+  const pathname = usePathname();
+  if (pathname.startsWith("/dashboard/show-ops")) return null;
+
+  const showGetLive =
+    venueLaunchRequired && (!bookingFlowComplete || !stripePaymentsReady || !slugPublished);
 
   return (
     <>
@@ -48,21 +61,28 @@ export function DashboardHeader({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <DashboardTrialChip subscriptionTier={subscriptionTier} businessCreatedAt={businessCreatedAt} />
-            {!stripePaymentsReady ? (
+            {venueLaunchRequired && !stripePaymentsReady ? (
               <Link
-                href="/dashboard/payments"
-                className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100"
+                href="/dashboard/payments?tab=connection"
+                className={cn(
+                  "inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold",
+                  stripeConnectRestricted
+                    ? "border-rose-200 bg-rose-50 text-rose-950 hover:bg-rose-100"
+                    : "border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100",
+                )}
               >
-                Connect Stripe to accept payments
+                {stripeConnectRestricted ? "Stripe account restricted" : "Connect Stripe to accept payments"}
               </Link>
             ) : null}
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] px-4 py-2.5 text-sm font-semibold text-[#64748b] shadow-sm transition-colors hover:border-[#ddd6fe] hover:text-[#7c3aed]"
-            >
-              View marketing site
-              <ExternalLink className="h-4 w-4 opacity-70" aria-hidden />
-            </Link>
+            {venueLaunchRequired ? (
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-full border border-[#ebe7f7] bg-[#fafbff] px-4 py-2.5 text-sm font-semibold text-[#64748b] shadow-sm transition-colors hover:border-[#ddd6fe] hover:text-[#7c3aed]"
+              >
+                View marketing site
+                <ExternalLink className="h-4 w-4 opacity-70" aria-hidden />
+              </Link>
+            ) : null}
           </div>
         </div>
       </header>

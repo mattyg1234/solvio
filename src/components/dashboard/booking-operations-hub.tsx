@@ -44,6 +44,7 @@ import { GuestAiCallButton } from "@/components/dashboard/guest-ai-call-dialog";
 import { EventSeriesCalendarSheet, type SheetBusinessEventRow } from "@/components/dashboard/event-series-calendar-sheet";
 import { FloorTableWeekHoursStrip } from "@/components/dashboard/floor-table-week-hours-strip";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { NumberInput } from "@/components/ui/number-input";
 import { BOOKING_GUEST_MODE_LABELS, isBookingGuestMode } from "@/lib/booking-guest-modes";
 import { parseRecurrenceExtras } from "@/lib/business-event-occurrences";
 import type { AppointmentWeekRow, SlotExceptionRow } from "@/lib/booking-inventory-types";
@@ -1192,12 +1193,13 @@ function AppointmentsPanel({
             </label>
             <label className="block space-y-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
               Duration (min)
-              <input
-                type="number"
+              <NumberInput
                 value={newServiceDuration}
-                onChange={(e) => setNewServiceDuration(Math.max(5, Number(e.target.value)))}
-                min="5"
-                step="5"
+                min={5}
+                onValueChange={(n) => {
+                  if (n === "") return;
+                  setNewServiceDuration(n);
+                }}
                 className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-white px-3 text-[15px] font-normal text-[#0f172a]"
               />
             </label>
@@ -1393,12 +1395,11 @@ function EventsPanel({
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">
             Capacity <span className="font-normal normal-case tracking-normal text-[#94a3b8]">(leave blank = unlimited)</span>
           </label>
-          <input
-            type="number"
+          <NumberInput
             min={1}
             max={10000}
             value={capacity}
-            onChange={(e) => setCapacity(e.target.value)}
+            onValueChange={(n) => setCapacity(n === "" ? "" : String(n))}
             placeholder="e.g. 100"
             className="h-11 w-40 rounded-xl border border-[#ebe7f7] px-3"
           />
@@ -1799,7 +1800,7 @@ function SavedFloorTableDetailForm({
       <div className="grid gap-3 md:grid-cols-6 md:items-end">
         <div className="space-y-2 md:col-span-1">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Capacity</label>
-          <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={1} value={capacity} onValueChange={(n) => { if (n !== "") setCapacity(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2 md:col-span-1">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Shape</label>
@@ -1837,11 +1838,11 @@ function SavedFloorTableDetailForm({
         </div>
         <div className="space-y-2 md:col-span-1">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Width (px)</label>
-          <input type="number" min={48} value={widthPx} onChange={(e) => setWidthPx(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={48} value={widthPx} onValueChange={(n) => { if (n !== "") setWidthPx(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2 md:col-span-1">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Height (px)</label>
-          <input type="number" min={48} value={heightPx} onChange={(e) => setHeightPx(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={48} value={heightPx} onValueChange={(n) => { if (n !== "") setHeightPx(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Pricing mode</label>
@@ -2179,7 +2180,7 @@ function TablesPanel({
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Capacity</label>
-          <input type="number" min={1} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={1} value={capacity} onValueChange={(n) => { if (n !== "") setCapacity(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Shape</label>
@@ -2209,11 +2210,11 @@ function TablesPanel({
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Width (px)</label>
-          <input type="number" min={48} value={addWidth} onChange={(e) => setAddWidth(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={48} value={addWidth} onValueChange={(n) => { if (n !== "") setAddWidth(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Height (px)</label>
-          <input type="number" min={48} value={addHeight} onChange={(e) => setAddHeight(Number(e.target.value))} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
+          <NumberInput min={48} value={addHeight} onValueChange={(n) => { if (n !== "") setAddHeight(n); }} className="h-11 w-full rounded-xl border border-[#ebe7f7] px-3" />
         </div>
         <div className="space-y-2 md:col-span-2">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Pricing</label>

@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { signUpAction } from "@/app/signup/actions";
+import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
 import { BOOKING_TRIAL_DAYS, trialExploreLine } from "@/lib/solvio-pricing";
 import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
+import { validateBookingPhone } from "@/lib/normalize-phone";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 
@@ -16,6 +18,8 @@ export function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [phoneDial, setPhoneDial] = useState("+44");
+  const [phoneLocal, setPhoneLocal] = useState("");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,12 +38,19 @@ export function SignupForm() {
     const websiteUrl = "";
     const logoUrl = "";
     const businessCategory = String(fd.get("business_category") ?? "").trim();
+    const phoneCheck = validateBookingPhone(phoneDial, phoneLocal);
+    if (!phoneCheck.ok) {
+      setError(phoneCheck.message);
+      setLoading(false);
+      return;
+    }
 
     try {
       const result = await signUpAction({
         email,
         password,
         businessName,
+        merchantPhone: phoneCheck.e164,
         websiteUrl,
         logoUrl,
         businessCategory,
@@ -102,6 +113,21 @@ export function SignupForm() {
           Helps us tailor your booking setup — you can change this later.
         </p>
       </div>
+
+      <PhoneDialCodeField
+        idPrefix="signup-phone"
+        label="Mobile for booking alerts"
+        required
+        dialCode={phoneDial}
+        localNumber={phoneLocal}
+        onDialCodeChange={setPhoneDial}
+        onLocalNumberChange={setPhoneLocal}
+        localPlaceholder="7700 900123"
+        showHint
+      />
+      <p className="-mt-2 text-[13px] leading-relaxed text-[#64748b]">
+        We text this number when a guest books — use the mobile you check during service.
+      </p>
 
       <div className="space-y-2">
         <label htmlFor="signup-email" className="text-sm font-semibold text-[#0f172a]">

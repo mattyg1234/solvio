@@ -3,7 +3,7 @@
 export const BOOKING_TRIAL_DAYS = 7;
 
 /** Plan prices (GBP / month). */
-export const BOOKING_MONTHLY_GBP = 50;
+export const BOOKING_MONTHLY_GBP = 49;
 export const PRO_MONTHLY_GBP = 150;
 export const ENTERPRISE_MONTHLY_GBP = 399;
 

@@ -28,7 +28,8 @@ export type TwilioOwnedNumber = {
 
 function trimEnv(name: string): string {
   const v = process.env[name];
-  return typeof v === "string" ? v.trim() : "";
+  if (typeof v !== "string") return "";
+  return v.trim().replace(/^["']|["']$/g, "").replace(/\\n/g, "").replace(/\r?\n/g, "").trim();
 }
 
 function getTwilioCreds(): { sid: string; token: string } | null {

@@ -31,8 +31,8 @@ function decodeAuthError(raw: string | string[] | undefined): string | undefined
 function safeLoginRedirect(raw: string | string[] | undefined): string {
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value?.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  if (!value.startsWith("/dashboard")) return "/dashboard";
-  return value;
+  if (value.startsWith("/partner") || value.startsWith("/dashboard")) return value;
+  return "/dashboard";
 }
 
 export default async function LoginPage({

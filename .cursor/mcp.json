@@ -6,6 +6,13 @@
     },
     "stripe": {
       "url": "https://mcp.stripe.com"
+    },
+    "voice-mode": {
+      "command": "uvx",
+      "args": ["voice-mode"]
+    },
+    "higgsfield": {
+      "url": "https://mcp.higgsfield.ai/mcp"
     }
   }
 }

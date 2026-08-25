@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Download, ExternalLink, Loader2, Phone, PhoneCall, PhoneOff, Plus, Trash2, Upload } from "lucide-react";
+import { Download, ExternalLink, Loader2, MessageSquare, Phone, PhoneCall, PhoneOff, Plus, Trash2, Upload } from "lucide-react";
 
 import {
   addLeadAction,
@@ -11,6 +11,7 @@ import {
   exportLeadsCSVAction,
   getLeadCallTranscriptAction,
   getVapiCallUrlAction,
+  sendLeadSmsAction,
   stopCallNowAction,
   uploadLeadsCsvAction,
 } from "@/app/dashboard/campaigns/lead-actions";
@@ -234,6 +235,14 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
       const res = await stopCallNowAction({ leadId, campaignId });
       if (!res.ok) setError(res.message);
       else router.refresh();
+    });
+  }
+
+  function handleSendSms(leadId: string) {
+    run(async () => {
+      const res = await sendLeadSmsAction({ leadId, campaignId });
+      if (!res.ok) setError(res.message);
+      else setInfo("SMS sent.");
     });
   }
 
@@ -527,6 +536,16 @@ export function CampaignLeadsPanel({ campaignId, leads }: CampaignLeadsPanelProp
                         >
                           <Phone className="h-3.5 w-3.5" aria-hidden />
                         </a>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => handleSendSms(l.id)}
+                          className="rounded-full p-1.5 text-emerald-700 hover:bg-emerald-50"
+                          aria-label="Send SMS to lead"
+                          title="Send SMS"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
                         <button
                           type="button"
                           disabled={pending}

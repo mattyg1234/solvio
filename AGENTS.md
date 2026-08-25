@@ -4,14 +4,18 @@
 
 1. **Booking / events / tables / public `/book`** → read `.cursor/skills/solvio-booking/SKILL.md`
 2. **Product spec** → `docs/superpowers/specs/2026-05-19-solvio-booking-domain-design.md`
-3. **Process for new features** → use [Superpowers](https://github.com/obra/superpowers): brainstorm → plan → implement → verify
-4. **Before merge / after substantial PRs** → use personal skill **`code-review-skill`** (`~/.cursor/skills/code-review-skill/SKILL.md`) — React 19 / Next.js / TypeScript / security / performance. Prompt: *“Use code-review-skill on this diff; focus on security and edge cases.”*
+2b. **Show Ops (tour/show white-label)** → `docs/superpowers/specs/2026-08-11-solvio-show-ops-design.md`, routes under `src/app/dashboard/show-ops/`, migration `supabase/migrations/20260811120000_show_ops.sql`
+3. **Marketing sites / outreach demos (Nova bar)** → **`ship-marketing-site`**, **`docs/solvio-outreach-gtm.md`**, **`src/lib/outreach-demo.ts`**. Embed **`/book/preview?lang=es|en`** (fake booking, no DB). Village: Trendscout → Nova.
+4. **Process for new features** → use [Superpowers](https://github.com/obra/superpowers): brainstorm → plan → implement → verify
+5. **Before merge / after substantial PRs** → use personal skill **`code-review-skill`** (`~/.cursor/skills/code-review-skill/SKILL.md`) — React 19 / Next.js / TypeScript / security / performance. Prompt: *“Use code-review-skill on this diff; focus on security and edge cases.”*
 
 ## Stack
 
 - Next.js App Router, TypeScript, Tailwind
 - Supabase (RLS, RPCs, migrations in `supabase/migrations/`)
-- Deploy: Vercel (`solvio-roan.vercel.app`)
+- Deploy: Vercel (`solvio` → https://www.solviosystems.com)
+- Supabase: `aasfahcrdcoqxwnlkdnv` (not Tipsi)
+- **CloseMate CRM** (Matty sales): separate Vercel `closemate-ai`, tables `closemate_*` in same DB — migration `supabase/migrations/20260603170000_closemate_crm.sql`
 
 ## Shipping
 

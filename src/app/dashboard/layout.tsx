@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardMain } from "@/components/dashboard/dashboard-main";
 import { DashboardMobileNav } from "@/components/dashboard/dashboard-mobile-nav";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { OnboardingGate } from "@/components/dashboard/onboarding-gate";
+import { StripeConnectAlert } from "@/components/dashboard/stripe-connect-alert";
+import {
+  describeStripeConnectDisplay,
+  snapshotFromBusinessRow,
+} from "@/lib/stripe-connect-status";
 import { businessNeedsOnboarding, resolvePlatformCapabilities } from "@/lib/platform-capabilities";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Dashboard · Solvio",
@@ -23,6 +29,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
+  const { data: ownedBiz } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .limit(1)
+    .maybeSingle();
+  if (!ownedBiz) {
+    const { data: sellerMem } = await supabase
+      .from("show_ops_members")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("role", "seller")
+      .limit(1)
+      .maybeSingle();
+    if (sellerMem) redirect("/partner");
+  }
+
   const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
 
   const greetingName =
@@ -30,22 +53,54 @@ export default async function DashboardLayout({ children }: { children: React.Re
       ? profile.full_name.trim()
       : null;
 
-  const { data: primaryBiz } = await supabase
+  const bizCols =
+    "platform_capabilities,onboarding_completed_at,campaigns_enabled,show_ops_enabled,show_ops_display_name,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due,subscription_tier,created_at,booking_flow_completed_at,booking_slug";
+  let { data: primaryBiz } = await supabase
     .from("businesses")
-    .select(
-      "platform_capabilities,onboarding_completed_at,campaigns_enabled,stripe_connect_account_id,stripe_connect_charges_enabled,subscription_tier,created_at,booking_flow_completed_at,booking_slug",
-    )
+    .select(bizCols)
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (!primaryBiz) {
+    const admin = createSupabaseServiceRoleClient();
+    const adminBiz = await admin
+      .from("businesses")
+      .select(bizCols)
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    primaryBiz = adminBiz.data;
+  }
+
+  const { data: stripeBusinesses } = await supabase
+    .from("businesses")
+    .select(
+      "id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due",
+    )
+    .eq("owner_id", user.id);
 
   const capabilities = resolvePlatformCapabilities(primaryBiz?.platform_capabilities);
   const needsOnboarding = businessNeedsOnboarding(primaryBiz ?? null);
   const campaignsEnabled = Boolean((primaryBiz as { campaigns_enabled?: boolean } | null)?.campaigns_enabled);
+  const showOpsEnabled = Boolean((primaryBiz as { show_ops_enabled?: boolean } | null)?.show_ops_enabled);
+  const venueLaunchRequired =
+    capabilities.appointments ||
+    capabilities.events ||
+    capabilities.tables ||
+    capabilities.ai_receptionist ||
+    capabilities.lead_generation;
   const stripePaymentsReady = Boolean(
     primaryBiz?.stripe_connect_account_id?.trim() && primaryBiz?.stripe_connect_charges_enabled,
   );
+  const stripeConnectDisplay = primaryBiz?.stripe_connect_account_id?.trim()
+    ? describeStripeConnectDisplay(
+        primaryBiz.stripe_connect_account_id,
+        snapshotFromBusinessRow(primaryBiz),
+      )
+    : null;
+  const stripeConnectRestricted = stripeConnectDisplay?.status === "restricted";
   const subscriptionTier = (primaryBiz as { subscription_tier?: string } | null)?.subscription_tier ?? "trial";
   const businessCreatedAt = (primaryBiz as { created_at?: string } | null)?.created_at ?? null;
   const bookingFlowComplete = Boolean((primaryBiz as { booking_flow_completed_at?: string } | null)?.booking_flow_completed_at);
@@ -55,12 +110,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="min-h-screen bg-[#f8fafc]">
       <OnboardingGate needsOnboarding={needsOnboarding} />
       <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-[17rem] shrink-0 overflow-hidden border-r border-[#ebe7f7]/90 md:block">
+        <aside className="sticky top-0 hidden h-screen w-[17rem] shrink-0 overflow-hidden md:block">
           <DashboardSidebar
             capabilities={capabilities}
             campaignsEnabled={campaignsEnabled}
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
+            showOpsEnabled={showOpsEnabled}
+            showOpsDisplayName={
+              (primaryBiz as { show_ops_display_name?: string | null } | null)?.show_ops_display_name ||
+              (primaryBiz as { name?: string | null } | null)?.name ||
+              null
+            }
+            showOpsUserName={greetingName}
           />
         </aside>
 
@@ -69,18 +131,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
             email={user.email ?? ""}
             greetingName={greetingName}
             stripePaymentsReady={stripePaymentsReady}
+            stripeConnectRestricted={stripeConnectRestricted}
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
             bookingFlowComplete={bookingFlowComplete}
             slugPublished={slugPublished}
+            venueLaunchRequired={venueLaunchRequired}
           />
-          <main className="relative mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-8 md:py-10">{children}</main>
+          {venueLaunchRequired ? <StripeConnectAlert businesses={stripeBusinesses ?? []} /> : null}
+          <DashboardMain>{children}</DashboardMain>
 
           <DashboardMobileNav
             capabilities={capabilities}
             campaignsEnabled={campaignsEnabled}
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
+            showOpsEnabled={showOpsEnabled}
           />
         </div>
       </div>

@@ -210,7 +210,7 @@ export default async function DashboardReceptionistPage() {
             </h1>
             <p className="max-w-2xl text-[15px] leading-relaxed text-[#64748b]">
               Configure the voice, claim a number, and watch every call land here with a transcript and outcome.
-              Already wired into your booking diary — the receptionist can quote availability and confirm a booking on the call.
+              When your booking page is live, the receptionist checks real availability and books through the same calendar as /book.
             </p>
           </div>
           <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#f5f3ff] text-[#7c3aed] ring-1 ring-[#ebe7f7]">
@@ -251,7 +251,7 @@ export default async function DashboardReceptionistPage() {
           ready={bookingsReady}
           icon={CalendarCheck2}
           title="Connected to bookings"
-          readyLabel="Receptionist can quote slots and book on the call."
+          readyLabel="Receptionist can check live slots and book on the call."
           notReadyLabel="Finish booking setup so the AI can book guests."
           ctaHref="/dashboard/setup/bookings"
           ctaLabel={bookingsReady ? "Edit booking flow" : "Set up bookings"}

@@ -6,6 +6,7 @@ import { Loader2, Plus, X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
+import { NumberInput } from "@/components/ui/number-input";
 import { optionalPhoneE164, parsePhoneDialFields } from "@/lib/normalize-phone";
 import { cn } from "@/lib/utils";
 
@@ -205,12 +206,11 @@ export function ManualBookingDialog({ businessId, tables, events }: ManualBookin
                 </div>
                 <label className="block space-y-1">
                   <span className="text-sm font-medium text-[#0f172a]">Party size</span>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={50}
                     value={guestCount}
-                    onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                    onValueChange={(n) => setGuestCount(n === "" ? guestCount : n)}
                     className="h-10 w-24 rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-3 text-[14px] outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
                   />
                 </label>

@@ -1,0 +1,34 @@
+---
+description: >-
+  JARVIS voice assistant — Village UI, desktop agent, or Cursor Voice Mode.
+  Apply when user says JARVIS, voice mode, speak to me, open jarvis, or hands-free.
+alwaysApply: false
+---
+
+# JARVIS (Village)
+
+Matty's voice stack lives in **`~/Village/jarvis-voice`**. **JARVIS** is the persona; Hermes is the runtime only.
+
+## Which surface to use
+
+| Need | Command / action |
+|------|------------------|
+| **Smooth voice UI** (waveform, VAD, speak back) | `jarvis` → http://127.0.0.1:5174 |
+| **Full Mac agent** (terminal, cron, computer-use) | `jarvis agent` or Hermes desktop |
+| **Cursor session voice** | `jarvis-voice` skill + Voice Mode MCP `converse` |
+| **Phone / always-on** | Telegram @Orderfortipsibot after `hermes pairing approve` |
+
+## Voice UI flow
+
+1. Tap mic (not always-on until tapped).
+2. Speak; end-of-speech auto-sends.
+3. Short spoken reply + **Expand** for full text in UI.
+
+## Persona
+
+- `~/.hermes/SOUL.md` — JARVIS identity (not Hermes)
+- `~/.hermes/skins/jarvis.yaml` — CLI/desktop branding (`display.skin: jarvis`)
+- Spoken: British, under ~25 words; address **Matty**
+- Confirm voice commands briefly, then execute
+
+Trigger phrases: *JARVIS*, *voice mode*, *talk to me*, *open jarvis*, *speak*.

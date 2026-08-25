@@ -1,5 +1,5 @@
 import { PLATFORM_ELEVENLABS_VOICE_MODEL } from "@/lib/platform-voice-config";
-import { buildDepositPaymentLinkTool } from "@/lib/booking-guest-call-tools";
+import { buildMerchantReceptionistTools } from "@/lib/booking-guest-call-tools";
 import {
   getSolvioVapiAgentAnthropicModel,
   getSolvioVapiApiKey,
@@ -13,6 +13,8 @@ export type VapiAssistantSyncPatch = {
   elevenlabsVoiceModel?: string;
   /** Attach live deposit-link tool for inbound receptionist calls. */
   includeDepositTool?: boolean;
+  /** Attach check_booking_availability + create_booking_request (uses live /book rules). */
+  includeBookingTools?: boolean;
 };
 
 type VapiModelPayload = {
@@ -114,14 +116,21 @@ async function vapiFetchWithRetry(
   return last;
 }
 
-function defaultMerchantModel(systemPrompt: string, includeDepositTool = false): VapiModelPayload {
+function defaultMerchantModel(
+  systemPrompt: string,
+  options: { includeDepositTool?: boolean; includeBookingTools?: boolean } = {},
+): VapiModelPayload {
   const model: VapiModelPayload = {
     provider: "anthropic",
     model: getSolvioVapiAgentAnthropicModel(),
     messages: [{ role: "system", content: systemPrompt }],
   };
-  if (includeDepositTool) {
-    model.tools = [buildDepositPaymentLinkTool()];
+  const tools = buildMerchantReceptionistTools({
+    bookingEnabled: options.includeBookingTools === true,
+    depositSmsEnabled: options.includeDepositTool === true,
+  });
+  if (tools.length) {
+    model.tools = tools;
   }
   return model;
 }
@@ -147,7 +156,7 @@ export async function createMerchantVapiAssistant(
   patch: Required<
     Pick<VapiAssistantSyncPatch, "assistantName" | "firstMessage" | "systemPrompt" | "elevenlabsVoiceId">
   > &
-    Pick<VapiAssistantSyncPatch, "elevenlabsVoiceModel" | "includeDepositTool">,
+    Pick<VapiAssistantSyncPatch, "elevenlabsVoiceModel" | "includeDepositTool" | "includeBookingTools">,
 ): Promise<{ ok: true; assistantId: string } | { ok: false; message: string }> {
   const apiKey = getSolvioVapiApiKey().trim();
   if (!apiKey) {
@@ -158,7 +167,10 @@ export async function createMerchantVapiAssistant(
     name: patch.assistantName.trim(),
     firstMessage: patch.firstMessage.trim(),
     firstMessageMode: "assistant-speaks-first",
-    model: defaultMerchantModel(patch.systemPrompt.trim(), patch.includeDepositTool === true),
+    model: defaultMerchantModel(patch.systemPrompt.trim(), {
+      includeDepositTool: patch.includeDepositTool === true,
+      includeBookingTools: patch.includeBookingTools === true,
+    }),
     voice: defaultMerchantVoice(
       patch.elevenlabsVoiceId.trim(),
       patch.elevenlabsVoiceModel?.trim() || PLATFORM_ELEVENLABS_VOICE_MODEL,
@@ -223,7 +235,10 @@ export async function syncVapiAssistantConfig(
   if (patch.firstMessage?.trim()) body.firstMessage = patch.firstMessage.trim();
 
   if (patch.systemPrompt?.trim()) {
-    body.model = defaultMerchantModel(patch.systemPrompt.trim(), patch.includeDepositTool === true);
+    body.model = defaultMerchantModel(patch.systemPrompt.trim(), {
+      includeDepositTool: patch.includeDepositTool === true,
+      includeBookingTools: patch.includeBookingTools === true,
+    });
   }
 
   if (patch.elevenlabsVoiceId?.trim()) {

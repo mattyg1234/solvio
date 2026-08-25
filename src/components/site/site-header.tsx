@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
   const copy = getMarketingCopy(locale);
   const nav = [
-    { href: marketingHashHref(locale, "growth"), label: copy.header.nav.growth },
+    { href: marketingHashHref(locale, "ops"), label: copy.header.nav.growth },
     { href: marketingHashHref(locale, "pricing"), label: copy.header.nav.pricing },
     { href: marketingHashHref(locale, "commerce"), label: copy.header.nav.commerce },
     { href: marketingHashHref(locale, "faq"), label: copy.header.nav.faq },

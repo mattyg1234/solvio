@@ -38,7 +38,8 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isProtected = pathname.startsWith("/dashboard") || pathname.startsWith("/admin");
+  const isProtected =
+    pathname.startsWith("/dashboard") || pathname.startsWith("/admin") || pathname.startsWith("/partner");
 
   if (error && isStaleAuthSessionError(error.message)) {
     const clearingClient = createServerClient(url, anonKey, {
@@ -65,11 +66,24 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (!user && (pathname.startsWith("/dashboard") || pathname.startsWith("/partner"))) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.search = "";
+    loginUrl.search = pathname.startsWith("/partner") ? "?next=/partner" : "";
     return NextResponse.redirect(loginUrl);
+  }
+
+  // White-label Show Ops: pass custom host through for tenant branding / future rewrite.
+  const host = request.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
+  if (
+    host &&
+    !host.endsWith(".vercel.app") &&
+    host !== "localhost" &&
+    !host.startsWith("127.0.0.1") &&
+    host !== "www.solviosystems.com" &&
+    host !== "solviosystems.com"
+  ) {
+    supabaseResponse.headers.set("x-solvio-custom-host", host);
   }
 
   return supabaseResponse;

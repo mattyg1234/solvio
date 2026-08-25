@@ -5,7 +5,90 @@ export type GuestCallPaymentContext = {
   defaultAmountEuro?: number;
 };
 
+export const CHECK_BOOKING_AVAILABILITY_TOOL_NAME = "check_booking_availability";
+export const CREATE_BOOKING_REQUEST_TOOL_NAME = "create_booking_request";
 export const SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME = "send_deposit_payment_link";
+
+const toolServer = () => ({ url: vapiToolServerUrl() });
+
+export function buildCheckBookingAvailabilityTool() {
+  return {
+    type: "function",
+    function: {
+      name: CHECK_BOOKING_AVAILABILITY_TOOL_NAME,
+      description:
+        "Check live availability against this venue's booking calendar — same rules as their public /book page. Call BEFORE promising a slot. For appointments returns open slots; for tables checks date and time against the diary; for events lists or validates show nights.",
+      parameters: {
+        type: "object",
+        properties: {
+          bookingKind: {
+            type: "string",
+            enum: ["table", "appointment", "event", "walk_in"],
+            description: "Type of booking — default table for restaurants.",
+          },
+          dateYmd: { type: "string", description: "Date to check, YYYY-MM-DD." },
+          timeLocal: {
+            type: "string",
+            description: 'Optional time (e.g. "8pm", "19:30") — required before creating table bookings.',
+          },
+          partySize: { type: "number", description: "Guests / party size when relevant." },
+          preferredTable: { type: "string", description: "Optional table label from the floor plan." },
+          serviceName: { type: "string", description: "Appointment service name, if the venue lists services." },
+          staffName: { type: "string", description: "Preferred stylist or team member, if offered." },
+          hostedEventId: { type: "string", description: "UUID of hosted event — from a prior availability check." },
+          hostedOccurrenceStartsAt: {
+            type: "string",
+            description: "ISO start time of the show occurrence — from check_booking_availability.",
+          },
+        },
+        required: ["bookingKind", "dateYmd"],
+      },
+    },
+    server: toolServer(),
+    messages: [
+      { type: "request-start", content: "One moment — I'm checking our live diary." },
+      { type: "request-failed", content: "I couldn't reach the booking calendar just now — try again in a moment." },
+    ],
+  };
+}
+
+export function buildCreateBookingRequestTool() {
+  return {
+    type: "function",
+    function: {
+      name: CREATE_BOOKING_REQUEST_TOOL_NAME,
+      description:
+        "Create a booking in Solvio after check_booking_availability succeeded and the guest confirmed their details. Free bookings auto-confirm to the diary; deposit bookings return pending_deposit — then call send_deposit_payment_link.",
+      parameters: {
+        type: "object",
+        properties: {
+          guestName: { type: "string", description: "Guest full name." },
+          guestEmail: { type: "string", description: "Guest email if provided." },
+          dateYmd: { type: "string", description: "Booking date YYYY-MM-DD." },
+          timeLocal: { type: "string", description: "Time or appointment slot value from availability check." },
+          partySize: { type: "number", description: "Party size / guest count." },
+          bookingKind: {
+            type: "string",
+            enum: ["table", "appointment", "event", "walk_in"],
+            description: "Booking type.",
+          },
+          notes: { type: "string", description: "Allergies, occasion, accessibility, etc." },
+          preferredTable: { type: "string", description: "Table label when bookingKind is table." },
+          serviceName: { type: "string", description: "Service name for appointments." },
+          staffName: { type: "string", description: "Preferred staff member." },
+          hostedEventId: { type: "string", description: "Hosted event UUID for event bookings." },
+          hostedOccurrenceStartsAt: { type: "string", description: "Show occurrence ISO start from availability check." },
+        },
+        required: ["guestName", "dateYmd", "partySize", "bookingKind"],
+      },
+    },
+    server: toolServer(),
+    messages: [
+      { type: "request-start", content: "Perfect — I'm adding that to the diary now." },
+      { type: "request-failed", content: "That booking couldn't be saved — double-check availability and try again." },
+    ],
+  };
+}
 
 export function buildDepositPaymentLinkTool() {
   return {
@@ -13,10 +96,14 @@ export function buildDepositPaymentLinkTool() {
     function: {
       name: SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME,
       description:
-        "Create the guest's booking, generate a secure Stripe deposit link, and text it to their mobile with all booking details. Use once they agree to pay a deposit to confirm. Never read the URL aloud — this tool sends everything by SMS.",
+        "Text a Stripe deposit link after create_booking_request returned pending_deposit, or create+text in one step if bookingRequestId is omitted. Never read URLs aloud.",
       parameters: {
         type: "object",
         properties: {
+          bookingRequestId: {
+            type: "string",
+            description: "Booking request id from create_booking_request when deposit is required.",
+          },
           guestName: {
             type: "string",
             description: "Guest full name as confirmed on the call.",
@@ -55,9 +142,7 @@ export function buildDepositPaymentLinkTool() {
         required: ["guestName", "dateYmd", "timeLocal", "partySize"],
       },
     },
-    server: {
-      url: vapiToolServerUrl(),
-    },
+    server: toolServer(),
     messages: [
       {
         type: "request-start",
@@ -75,6 +160,18 @@ export function buildDepositPaymentLinkTool() {
   };
 }
 
+/** Live booking + optional deposit tools for merchant receptionist assistants. */
+export function buildMerchantReceptionistTools(options: { bookingEnabled: boolean; depositSmsEnabled: boolean }) {
+  const tools: Record<string, unknown>[] = [];
+  if (options.bookingEnabled) {
+    tools.push(buildCheckBookingAvailabilityTool(), buildCreateBookingRequestTool());
+  }
+  if (options.depositSmsEnabled) {
+    tools.push(buildDepositPaymentLinkTool());
+  }
+  return tools;
+}
+
 export function appendPaymentCollectionPrompt(basePrompt: string, ctx: GuestCallPaymentContext): string {
   const defaultAmt =
     ctx.defaultAmountEuro != null && ctx.defaultAmountEuro >= 0.5
@@ -88,7 +185,7 @@ export function appendPaymentCollectionPrompt(basePrompt: string, ctx: GuestCall
     `This venue (${ctx.businessName}) can take deposits through their own Stripe account.${defaultAmt}`,
     "When the guest is ready to secure their booking:",
     "- Confirm their name, date, time, party size, and any notes (allergies, occasion). Repeat details back before sending payment.",
-    `- Call ${SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME} with those details — it creates their booking in the diary and texts them a secure Stripe link with everything on it.`,
+    `- Call ${CREATE_BOOKING_REQUEST_TOOL_NAME} first if not done — when status is pending_deposit, call ${SEND_DEPOSIT_PAYMENT_LINK_TOOL_NAME} with bookingRequestId.`,
     "- NEVER read URLs, links, or web addresses aloud on the phone. Say: 'I've just texted you your booking details and a secure payment link — open the text when you're ready.'",
     "- Do NOT tell them to visit the website or spell out a link. The text message has the payment link.",
     "- If they already paid, do not send another link.",

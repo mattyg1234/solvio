@@ -30,6 +30,39 @@ export function sanitizeEuroInput(raw: string): string {
   return out;
 }
 
+/**
+ * Quantity / % / money typing: empty is allowed (so a leading 0 can be deleted).
+ * Comma is treated as a decimal point (European keyboards).
+ */
+export function sanitizeNumberInput(raw: string): string {
+  const normalized = raw.replace(/,/g, ".");
+  let out = "";
+  let seenDot = false;
+  for (const ch of normalized) {
+    if (ch === "-" && out === "") {
+      out = "-";
+      continue;
+    }
+    if (ch >= "0" && ch <= "9") {
+      out += ch;
+      continue;
+    }
+    if (ch === "." && !seenDot) {
+      seenDot = true;
+      out += ".";
+    }
+  }
+  return out;
+}
+
+/** Empty / in-progress typing ("", ".", "-") is not a number yet. */
+export function parseNumberInput(raw: string): number | "" {
+  const t = sanitizeNumberInput(raw).trim();
+  if (t === "" || t === "-" || t === "." || t === "-.") return "";
+  const n = Number(t);
+  return Number.isFinite(n) ? n : "";
+}
+
 /** Parse on save — empty or lone "." → 0 cents. */
 export function parseEuroInputToCents(raw: string): number {
   const trimmed = raw.trim().replace(/,/g, ".");

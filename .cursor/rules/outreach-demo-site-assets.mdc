@@ -1,0 +1,36 @@
+---
+description: Solvio outreach demo sites — always use the lead's real photos, copy, and brand from their live site
+globs:
+  - "outreach/**"
+  - "docs/outreach-leads/**"
+  - "docs/solvio-outreach-gtm.md"
+alwaysApply: false
+---
+
+# Outreach demo sites — real assets only
+
+When building a **Solvio outreach demo** (`outreach/*/index.html`, Nova, or Cursor):
+
+## Mandatory before shipping
+
+1. **Fetch the lead's live site** (`WebFetch` / `curl`) — homepage, contact, menu/prices/hire page as relevant.
+2. **Hero & gallery images** — use URLs from **their** site (e.g. `somersetboatcentre.co.uk/images/*`, `static.wixstatic.com/media/*`). **Never** use unrelated Unsplash/stock (e.g. divers, generic salons) unless their site has no usable images.
+3. **Copy** — taglines, prices, hours, address, service names from their pages (shorten for layout; don't invent).
+4. **Brand** — match their colours from site CSS (e.g. Wix `#E8B796` / `#8A5251` / `#E33292`), fonts, and button style. Prefer a **text wordmark** in nav; avoid large logo PNGs unless the brief asks for it.
+5. **Contact** — only publish WhatsApp/phone/email that appears on **their** site; use `isLikelyWhatsAppE164()` before `wa=` on the iframe. Omit `wa=` if no verified mobile.
+
+## Per vertical
+
+| Vertical | Booking mode | Source pages |
+|----------|--------------|--------------|
+| Restaurant | `mode=table` | Menu, reserve, contact |
+| Salon / hair / beauty / barber | `mode=appointment` | Prices, services, team, contact |
+| Boat hire / activity | `mode=appointment` | Boat-hire / activities page with craft photos |
+| Valeting / trades | `mode=appointment` | Services, contact |
+
+## After deploy
+
+- Add `docs/outreach-leads/{slug}.md` with demo URL, embed URL, contact, and note **image source** (their domain).
+- Redeploy **Solvio prod** when adding new `outreach-booking-preview-copy` presets (beauty, boat, etc.).
+
+See also: `docs/solvio-outreach-gtm.md`, Village `server/charters/nova.md`.

@@ -17,8 +17,8 @@ type LoginFormProps = {
 
 function safeDashboardRedirect(raw: string | undefined): string {
   if (!raw?.startsWith("/") || raw.startsWith("//")) return "/dashboard";
-  if (!raw.startsWith("/dashboard")) return "/dashboard";
-  return raw;
+  if (raw.startsWith("/partner") || raw.startsWith("/dashboard")) return raw;
+  return "/dashboard";
 }
 
 export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: LoginFormProps) {
@@ -47,7 +47,7 @@ export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: Logi
       }
       router.push(safeDashboardRedirect(redirectTo));
       router.refresh();
-    } catch (err) {
+    } catch {
       setError("Something went wrong — please try again or email hello@solviosystems.com.");
     } finally {
       setLoading(false);

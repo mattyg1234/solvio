@@ -1,0 +1,7 @@
+-- DEPRECATED — outreach demo sites no longer create Supabase businesses.
+--
+-- Use the fake booking preview instead (no DB, no real reservations):
+--   https://www.solviosystems.com/book/preview?lang=en|es&name=Business+Name&wa=447...
+--
+-- Helpers: src/lib/outreach-demo.ts → outreachBookingEmbedSrc()
+-- Docs: docs/solvio-outreach-gtm.md

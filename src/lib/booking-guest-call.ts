@@ -2,7 +2,7 @@ import { getSolvioVapiAgentAnthropicModel } from "@/lib/voice-platform-env";
 
 import {
   appendPaymentCollectionPrompt,
-  buildDepositPaymentLinkTool,
+  buildMerchantReceptionistTools,
   type GuestCallPaymentContext,
 } from "@/lib/booking-guest-call-tools";
 
@@ -118,6 +118,7 @@ export function composeBookingGuestCallScript(params: {
 export function buildBookingGuestAssistantOverrides(
   script: BookingGuestCallScript,
   payment?: GuestCallPaymentContext,
+  options?: { bookingEnabled?: boolean },
 ): Record<string, unknown> {
   const systemPrompt = payment
     ? appendPaymentCollectionPrompt(script.systemPrompt, payment)
@@ -129,8 +130,12 @@ export function buildBookingGuestAssistantOverrides(
     messages: [{ role: "system", content: systemPrompt }],
   };
 
-  if (payment) {
-    model.tools = [buildDepositPaymentLinkTool()];
+  const tools = buildMerchantReceptionistTools({
+    bookingEnabled: options?.bookingEnabled === true,
+    depositSmsEnabled: Boolean(payment),
+  });
+  if (tools.length) {
+    model.tools = tools;
   }
 
   return {

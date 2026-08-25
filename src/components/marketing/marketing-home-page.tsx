@@ -1,5 +1,6 @@
 import { SiteFooter } from "@/components/site/site-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { BackOfficeSection } from "@/components/home/back-office-section";
 import { CommerceSection } from "@/components/home/commerce-section";
 import { GrowthSection } from "@/components/home/growth-section";
 import { HeroGoLiveStrip } from "@/components/home/hero-go-live-strip";
@@ -31,6 +32,7 @@ export async function MarketingHomePage({ locale }: { locale: MarketingLocale })
       <main className="bg-white">
         <HeroSection vapiConfig={vapiConfig} locale={locale} />
         <HeroGoLiveStrip locale={locale} />
+        <BackOfficeSection locale={locale} />
         <GrowthSection locale={locale} />
         <CommerceSection locale={locale} />
         <MarketingBookPreview locale={locale} />

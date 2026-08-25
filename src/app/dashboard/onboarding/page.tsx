@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { businessNeedsOnboarding } from "@/lib/platform-capabilities";
 
 import type { MerchantProfileDraft } from "./platform-onboarding-wizard";
@@ -40,20 +40,42 @@ export default async function DashboardPlatformOnboardingPage({ searchParams }: 
 
   if (!user) redirect("/login");
 
-  const { data: biz } = await supabase
+  const bizSelect =
+    "id,name,time_zone,logo_url,website_url,booking_flow_details,booking_flow_completed_at,onboarding_completed_at,show_ops_enabled";
+  let { data: biz } = await supabase
     .from("businesses")
-    .select(
-      "id,name,time_zone,logo_url,website_url,booking_flow_details,booking_flow_completed_at,onboarding_completed_at",
-    )
+    .select(bizSelect)
     .eq("owner_id", user.id)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
   if (!biz?.id) {
+    const admin = createSupabaseServiceRoleClient();
+    const adminBiz = await admin
+      .from("businesses")
+      .select(bizSelect)
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    biz = adminBiz.data;
+  }
+
+  if (biz?.show_ops_enabled) {
+    redirect("/dashboard/show-ops");
+  }
+
+  if (!biz?.id) {
     return (
       <div className="mx-auto max-w-lg space-y-6 rounded-[24px] border border-[#ebe7f7] bg-white p-8 text-[15px] text-[#64748b] shadow-sm">
-        <p>No workspace found — finish signup with your venue name, or contact hello@solviosystems.com if this persists.</p>
+        <p>No workspace found — this login is for Show Ops, not venue booking setup.</p>
+        <Link
+          href="/dashboard/show-ops"
+          className="inline-flex rounded-full bg-[#0f766e] px-4 py-2 text-sm font-semibold text-white"
+        >
+          Open Show Ops
+        </Link>
         <SignOutButton className="w-full rounded-full border-[#ebe7f7] font-semibold" />
       </div>
     );
@@ -67,6 +89,11 @@ export default async function DashboardPlatformOnboardingPage({ searchParams }: 
   const d = biz.booking_flow_details;
   if (d && typeof d === "object" && !Array.isArray(d)) {
     merchantProfile = parseMerchantProfile((d as Record<string, unknown>).merchant_onboarding_profile);
+  }
+  const metaPhone =
+    typeof user.user_metadata?.merchant_phone === "string" ? user.user_metadata.merchant_phone.trim() : "";
+  if (!merchantProfile.phone && metaPhone) {
+    merchantProfile = { ...merchantProfile, phone: metaPhone };
   }
 
   const stepFromQuery = Number.parseInt(sp.step ?? "", 10);

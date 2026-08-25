@@ -17,11 +17,14 @@ import {
   Phone,
   PhoneCall,
   Radar,
+  Search,
   Settings2,
   Sparkles,
+  Ticket,
 } from "lucide-react";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { ShowOpsSidebar } from "@/components/show-ops/show-ops-nav";
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
@@ -32,8 +35,12 @@ function buildSidebarNav(
   cap: ResolvedPlatformCapabilities,
   campaignsEnabled: boolean,
   plansBadge?: string | null,
+  showOpsEnabled?: boolean,
 ): NavItem[] {
   const items: NavItem[] = [];
+
+  const venueProduct =
+    cap.appointments || cap.events || cap.tables || cap.ai_receptionist || cap.lead_generation;
 
   items.push({
     href: "/dashboard",
@@ -42,21 +49,31 @@ function buildSidebarNav(
     exact: true,
     key: "home",
   });
+  if (cap.show_ops || showOpsEnabled) {
+    items.push({
+      href: showOpsEnabled ? "/dashboard/show-ops" : "/dashboard/show-ops/setup",
+      label: "Show Ops",
+      icon: Ticket,
+      key: "show-ops",
+    });
+  }
 
-  items.push({
-    href: "/dashboard/bookings",
-    label: "Bookings hub",
-    icon: Inbox,
-    key: "bookings",
-  });
+  if (venueProduct) {
+    items.push({
+      href: "/dashboard/bookings",
+      label: "Bookings hub",
+      icon: Inbox,
+      key: "bookings",
+    });
 
-  /** Always reachable — flow kind, guest modes, and message remain editable after first completion. */
-  items.push({
-    href: "/dashboard/setup/bookings",
-    label: "Booking setup",
-    icon: ClipboardList,
-    key: "booking-setup",
-  });
+    /** Always reachable for venue tenants — flow remains editable after first completion. */
+    items.push({
+      href: "/dashboard/setup/bookings",
+      label: "Booking setup",
+      icon: ClipboardList,
+      key: "booking-setup",
+    });
+  }
 
   if (cap.ai_receptionist) {
     items.push({
@@ -71,6 +88,7 @@ function buildSidebarNav(
 
   if (cap.lead_generation) {
     items.push({ href: "/dashboard/leads", label: "Leads", icon: Radar, key: "leads" });
+    items.push({ href: "/dashboard/leads/find", label: "Find leads", icon: Search, key: "find-leads" });
   }
 
   if (campaignsEnabled) {
@@ -83,16 +101,22 @@ function buildSidebarNav(
     });
   }
 
-  items.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: MessageCircleQuestion, key: "ask" });
-  items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
-  items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
-  items.push({
-    href: "/dashboard/pricing",
-    label: "Plans",
-    icon: Euro,
-    key: "plans",
-    badge: plansBadge ?? undefined,
-  });
+  if (venueProduct) {
+    items.push({ href: "/dashboard/ask", label: "Ask Solvio", icon: MessageCircleQuestion, key: "ask" });
+    items.push({ href: "/dashboard/payments", label: "Payments", icon: CreditCard, key: "pay" });
+    items.push({ href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, key: "analytics" });
+  }
+
+  /** Show Ops workspaces are billed off-platform (client deals) — no self-serve plans page. */
+  if (!showOpsEnabled) {
+    items.push({
+      href: "/dashboard/pricing",
+      label: "Plans",
+      icon: Euro,
+      key: "plans",
+      badge: plansBadge ?? undefined,
+    });
+  }
   items.push({ href: "/dashboard/settings", label: "Settings", icon: Settings2, key: "settings" });
 
   return items;
@@ -103,22 +127,41 @@ export type DashboardSidebarProps = {
   campaignsEnabled?: boolean;
   subscriptionTier?: string;
   businessCreatedAt?: string | null;
+  showOpsEnabled?: boolean;
+  showOpsDisplayName?: string | null;
+  showOpsUserName?: string | null;
 };
+
+function hasVenueProduct(cap: ResolvedPlatformCapabilities) {
+  return cap.appointments || cap.events || cap.tables || cap.ai_receptionist || cap.lead_generation;
+}
 
 export function DashboardSidebar({
   capabilities,
   campaignsEnabled = false,
   subscriptionTier = "trial",
   businessCreatedAt = null,
+  showOpsEnabled = false,
+  showOpsDisplayName = null,
+  showOpsUserName = null,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const venueProduct = hasVenueProduct(capabilities);
+  if (showOpsEnabled && (pathname.startsWith("/dashboard/show-ops") || !venueProduct)) {
+    return (
+      <ShowOpsSidebar
+        displayName={showOpsDisplayName ?? undefined}
+        userName={showOpsUserName ?? undefined}
+      />
+    );
+  }
   const plansBadge =
     subscriptionTier === "trial" && businessCreatedAt
       ? `${trialDaysRemaining(businessCreatedAt)}d left`
       : subscriptionTier !== "trial"
         ? null
         : null;
-  const nav = buildSidebarNav(capabilities, campaignsEnabled, plansBadge);
+  const nav = buildSidebarNav(capabilities, campaignsEnabled, plansBadge, showOpsEnabled);
 
   function active(href: string, exact?: boolean) {
     if (exact) return pathname === href;
@@ -126,7 +169,7 @@ export function DashboardSidebar({
   }
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col border-r border-[#ebe7f7]/90 bg-white">
       <Link
         href="/dashboard"
         className="flex items-center gap-2 border-b border-[#ebe7f7]/90 px-5 py-5 outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[#7c3aed]"
