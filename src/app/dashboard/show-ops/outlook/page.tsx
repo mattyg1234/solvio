@@ -261,33 +261,33 @@ export default async function WeeklyOutlookPage() {
               <p className="px-5 py-6 text-sm text-slate-400">No shows or bookings in the next 14 nights.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+                <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wide text-slate-500">
-                      <th className="px-5 py-2">Night</th>
+                    <tr className="text-[13px] font-semibold text-slate-900">
+                      <th className="px-5 py-3 text-left font-semibold text-slate-400">{section.code}</th>
                       {section.resorts.map((r) => (
-                        <th key={r.key} colSpan={2} className="border-l border-slate-100 px-3 py-2 text-center">
+                        <th key={r.key} colSpan={2} className="border-l border-slate-200 px-2 py-3 text-center">
                           {r.label}
                         </th>
                       ))}
-                      <th className="border-l border-slate-100 px-3 py-2 text-center">{isUk ? "Venue pax" : "Direct / other"}</th>
-                      <th className="border-l border-slate-100 px-3 py-2 text-right">Total</th>
-                      <th className="px-3 py-2 text-right">Value</th>
-                      {!isUk ? <th className="px-3 py-2 text-right">Bus</th> : null}
+                      <th className="border-l border-slate-200 px-3 py-3 text-center">{isUk ? "Pax" : "Other"}</th>
+                      <th className="border-l-2 border-slate-200 px-4 py-3 text-center">Total</th>
+                      <th className="px-3 py-3 text-right font-medium text-slate-400">€</th>
+                      {!isUk ? <th className="px-3 py-3 text-right font-medium text-slate-400">Bus</th> : null}
                     </tr>
                     {section.resorts.length ? (
-                      <tr className="text-[10px] uppercase text-slate-400">
+                      <tr className="text-[10px] uppercase tracking-wide text-slate-400">
                         <th />
                         {section.resorts.map((r) => (
                           <>
-                            <th key={`${r.key}-b`} className="border-l border-slate-100 px-3 pb-1 text-center">Bus</th>
-                            <th key={`${r.key}-d`} className="px-3 pb-1 text-center">Direct</th>
+                            <th key={`${r.key}-b`} className="border-l border-slate-200 bg-slate-50 px-2 pb-2 text-center font-medium">Bus</th>
+                            <th key={`${r.key}-d`} className="px-2 pb-2 text-center font-medium">Direct</th>
                           </>
                         ))}
                         <th />
+                        <th className="border-l-2 border-slate-200" />
                         <th />
-                        <th />
-                        <th />
+                        {!isUk ? <th /> : null}
                       </tr>
                     ) : null}
                   </thead>
@@ -297,89 +297,71 @@ export default async function WeeklyOutlookPage() {
                       const allIslandBusPax = islandBusPax.get(`${n.date}|${section.island}`) ?? 0;
                       const seatsLeft = order ? order.seats - allIslandBusPax : null;
                       const other = n.cells.get(DIRECT_KEY);
-                      const avgRate = n.pax > 0 ? n.value / n.pax : 0;
                       return (
-                        <>
-                          <tr key={n.date} className="border-t border-slate-100 align-top">
-                            <td className="px-5 py-2.5">
-                              <Link
-                                href={`/dashboard/show-ops/calendar?date=${n.date}&island=${encodeURIComponent(section.island)}`}
-                                className="font-medium text-slate-900 hover:underline"
-                              >
-                                {fmtDate(n.date)}
-                              </Link>
-                              <p className="max-w-[220px] truncate text-xs text-slate-400">{[...n.shows].join(" · ") || "—"}</p>
-                            </td>
-                            {section.resorts.map((r) => {
-                              const c = n.cells.get(r.key);
-                              return (
-                                <>
-                                  <td key={`${r.key}-b`} className={`border-l border-slate-50 px-3 py-2.5 text-center ${c?.bus ? "font-semibold text-slate-900" : "text-slate-300"}`}>
-                                    {c?.bus ?? 0}
-                                  </td>
-                                  <td key={`${r.key}-d`} className={`px-3 py-2.5 text-center ${c?.direct ? "text-slate-700" : "text-slate-300"}`}>
-                                    {c?.direct ?? 0}
-                                  </td>
-                                </>
-                              );
-                            })}
-                            <td className={`border-l border-slate-50 px-3 py-2.5 text-center ${other && other.bus + other.direct ? "text-slate-700" : "text-slate-300"}`}>
-                              {other ? other.bus + other.direct : 0}
-                            </td>
-                            <td className="border-l border-slate-50 px-3 py-2.5 text-right font-semibold text-slate-900">{n.pax}</td>
-                            <td className="px-3 py-2.5 text-right text-slate-700">
-                              {n.value ? (
-                                <>
-                                  {euro(n.value)}
-                                  <span className="block text-[11px] text-slate-400">{euro(avgRate)}/pax</span>
-                                </>
+                        <tr key={n.date} className="border-t border-slate-100">
+                          <td className="px-5 py-4">
+                            <details className="group">
+                              <summary className="cursor-pointer list-none">
+                                <span className="font-semibold text-slate-900">{fmtDate(n.date)}</span>
+                                {n.hotels.size ? (
+                                  <span className="ml-1.5 text-[11px] text-slate-400 group-open:hidden">▸</span>
+                                ) : null}
+                              </summary>
+                              {n.hotels.size ? (
+                                <div className="mt-2 space-y-1 text-xs">
+                                  <p className="max-w-[240px] text-slate-400">{[...n.shows].join(" · ")}</p>
+                                  {[...n.hotels.entries()]
+                                    .sort((a, b) => b[1].pax - a[1].pax)
+                                    .map(([hotel, h]) => (
+                                      <p key={hotel} className="text-slate-500">
+                                        <span className="font-medium text-slate-700">{hotel}</span> · {h.pax} pax · {euro(h.value)}
+                                        {h.stops.size ? <span className="text-slate-400"> · {[...h.stops].join(" · ")}</span> : null}
+                                      </p>
+                                    ))}
+                                  <Link
+                                    href={`/dashboard/show-ops/calendar?date=${n.date}&island=${encodeURIComponent(section.island)}`}
+                                    className="inline-block font-medium text-[var(--show-ops-primary,#7c3aed)]"
+                                  >
+                                    Open on calendar →
+                                  </Link>
+                                </div>
+                              ) : null}
+                            </details>
+                          </td>
+                          {section.resorts.map((r) => {
+                            const c = n.cells.get(r.key);
+                            return (
+                              <>
+                                <td key={`${r.key}-b`} className={`border-l border-slate-100 bg-slate-50 px-2 py-4 text-center tabular-nums ${c?.bus ? "font-semibold text-slate-900" : "text-slate-300"}`}>
+                                  {c?.bus ?? 0}
+                                </td>
+                                <td key={`${r.key}-d`} className={`px-2 py-4 text-center tabular-nums ${c?.direct ? "text-slate-800" : "text-slate-300"}`}>
+                                  {c?.direct ?? 0}
+                                </td>
+                              </>
+                            );
+                          })}
+                          <td className={`border-l border-slate-100 px-3 py-4 text-center tabular-nums ${other && other.bus + other.direct ? "text-slate-800" : "text-slate-300"}`}>
+                            {other ? other.bus + other.direct : 0}
+                          </td>
+                          <td className="border-l-2 border-slate-200 px-4 py-4 text-center text-[15px] font-bold tabular-nums text-slate-900">
+                            {n.pax}
+                          </td>
+                          <td className="px-3 py-4 text-right tabular-nums text-slate-500">{n.value ? euro(n.value) : "—"}</td>
+                          {!isUk ? (
+                            <td className="px-3 py-4 text-right text-xs">
+                              {order ? (
+                                <span className={seatsLeft != null && seatsLeft < 0 ? "font-semibold text-rose-600" : "text-slate-500"}>
+                                  {allIslandBusPax}/{order.seats}
+                                </span>
+                              ) : n.busPax ? (
+                                <span className="font-medium text-amber-600">no bus</span>
                               ) : (
                                 <span className="text-slate-300">—</span>
                               )}
                             </td>
-                            {!isUk ? (
-                              <td className="px-3 py-2.5 text-right">
-                                {order ? (
-                                  <span className={seatsLeft != null && seatsLeft < 0 ? "font-semibold text-rose-600" : "text-slate-700"}>
-                                    {allIslandBusPax}/{order.seats}
-                                    <span className="block text-[11px] text-slate-400">{seatsLeft} left</span>
-                                  </span>
-                                ) : n.busPax ? (
-                                  <span className="font-semibold text-amber-600">
-                                    {n.busPax} pax
-                                    <span className="block text-[11px]">no bus yet</span>
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                            ) : null}
-                          </tr>
-                          {n.hotels.size ? (
-                            <tr key={`${n.date}-hotels`} className="bg-slate-50/40">
-                              <td colSpan={section.resorts.length * 2 + (isUk ? 4 : 5)} className="px-5 pb-3 pt-0">
-                                <details>
-                                  <summary className="cursor-pointer py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700">
-                                    {n.hotels.size} {isUk ? "venues / groups" : "hotels"} · {n.bookings} bookings
-                                  </summary>
-                                  <div className="mt-1 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                                    {[...n.hotels.entries()]
-                                      .sort((a, b) => b[1].pax - a[1].pax)
-                                      .map(([hotel, h]) => (
-                                        <div key={hotel} className="rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-slate-100">
-                                          <p className="font-medium text-slate-800">{hotel}</p>
-                                          <p className="text-slate-500">
-                                            {h.pax} pax · {euro(h.value)}
-                                            {h.stops.size ? <span className="block text-slate-400">{[...h.stops].join(" · ")}</span> : null}
-                                          </p>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </details>
-                              </td>
-                            </tr>
                           ) : null}
-                        </>
+                        </tr>
                       );
                     })}
                   </tbody>
