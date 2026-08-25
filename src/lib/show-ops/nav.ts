@@ -43,7 +43,7 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
       { href: "/dashboard/show-ops/outlook", label: "Outlook", key: "outlook" },
       { href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" },
       { href: "/dashboard/show-ops/stats", label: "Stats & insights", key: "stats" },
-      { href: "/dashboard/show-ops/lists", label: "Night lists", key: "lists" },
+      { href: "/dashboard/show-ops/lists", label: "Quick check-in", key: "lists" },
     ],
   },
   {

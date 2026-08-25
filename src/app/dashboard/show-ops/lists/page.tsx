@@ -321,8 +321,8 @@ export default async function DailyListsPage({
       <div className="print:hidden space-y-3">
           <ShowOpsPageHeader
             eyebrow="Analytics"
-            title="Night lists"
-            subtitle={`One list per job. Tick here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
+            title="Quick check-in"
+            subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
             actions={<PrintButton label="Print / send this list" />}
           />
         <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80">

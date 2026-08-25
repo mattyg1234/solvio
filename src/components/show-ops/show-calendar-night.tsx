@@ -100,7 +100,7 @@ export function ShowCalendarNight({
             Bus board
           </Link>
           <Link href={`/dashboard/show-ops/lists?date=${day.iso}`} className="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">
-            Night lists
+            Quick check-in
           </Link>
         </div>
       </div>
