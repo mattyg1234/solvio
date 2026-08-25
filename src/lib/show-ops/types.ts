@@ -249,4 +249,6 @@ export type ShowOpsWorkspace = {
   isOwner: boolean;
   showOpsEnabled: boolean;
   supplierId: string | null;
+  /** Explicit page allow-list; null means fall back to the role default. */
+  allowedPages?: string[] | null;
 };

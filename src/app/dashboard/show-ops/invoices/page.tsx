@@ -5,7 +5,7 @@ import {
 } from "@/app/dashboard/show-ops/actions";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
 import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { calendarMonthBounds, shiftMonth } from "@/lib/show-ops/invoice";
@@ -24,7 +24,7 @@ export default async function InvoicesPage({
   }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("invoices");
   if (!hasShowOpsModule(ctx.config, ctx.tier, "invoices")) {
     return <p className="text-sm text-slate-600">Invoices are not enabled for this workspace.</p>;
   }

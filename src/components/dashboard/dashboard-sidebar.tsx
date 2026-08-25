@@ -25,6 +25,7 @@ import {
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { ShowOpsSidebar } from "@/components/show-ops/show-ops-nav";
+import type { ShowOpsNavSection } from "@/lib/show-ops/nav";
 import type { ResolvedPlatformCapabilities } from "@/lib/platform-capabilities";
 import { trialDaysRemaining } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
@@ -130,6 +131,8 @@ export type DashboardSidebarProps = {
   showOpsEnabled?: boolean;
   showOpsDisplayName?: string | null;
   showOpsUserName?: string | null;
+  /** Show Ops nav filtered to this member's permissions; undefined = show all. */
+  showOpsNavSections?: ShowOpsNavSection[];
 };
 
 function hasVenueProduct(cap: ResolvedPlatformCapabilities) {
@@ -144,6 +147,7 @@ export function DashboardSidebar({
   showOpsEnabled = false,
   showOpsDisplayName = null,
   showOpsUserName = null,
+  showOpsNavSections,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const venueProduct = hasVenueProduct(capabilities);
@@ -152,6 +156,7 @@ export function DashboardSidebar({
       <ShowOpsSidebar
         displayName={showOpsDisplayName ?? undefined}
         userName={showOpsUserName ?? undefined}
+        sections={showOpsNavSections}
       />
     );
   }

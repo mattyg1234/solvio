@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { SHOW_OPS_PRIMARY } from "@/components/show-ops/ops-home-widgets";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsContext } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 
 function monthBounds(ym: string): { start: string; end: string } {
@@ -27,7 +27,7 @@ export default async function ShowOpsStatsPage({
   searchParams: Promise<{ island?: string; month?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsPage("stats");
   if (!ctx.business.show_ops_enabled) redirect("/dashboard/show-ops/setup");
 
   const today = new Date().toISOString().slice(0, 10);

@@ -8,7 +8,7 @@ import {
   type NightCloseRow,
 } from "@/components/show-ops/show-calendar-night";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled, roleAtLeast } from "@/lib/show-ops/access";
+import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { buildCalendarDays, type CloseKind } from "@/lib/show-ops/calendar";
 import { parseIsoYearMonth, shiftYearMonth, showOpsNightMonth } from "@/lib/show-ops/nights";
 import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
@@ -35,7 +35,7 @@ export default async function ShowOpsCalendarPage({
   searchParams: Promise<{ month?: string; island?: string; date?: string; closed?: string; emailed?: string; saved?: string; reopened?: string; error?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("calendar");
   const today = new Date().toISOString().slice(0, 10);
   const parsed = parseIsoYearMonth(`${sp.month || today.slice(0, 7)}-01`);
   const year = parsed?.year ?? Number(today.slice(0, 4));

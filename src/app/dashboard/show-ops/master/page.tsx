@@ -14,7 +14,7 @@ import { ScrollToCreated } from "@/components/show-ops/scroll-to-created";
 import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { SHOW_OPS_WEEKDAYS } from "@/lib/show-ops/nights";
 
 function Field({
@@ -71,7 +71,7 @@ export default async function MasterDataPage({
   const allowed = new Set(["shows", "partners", "rates", "hotels"]);
   const tab = sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "") ? sp.created : undefined;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("shows");
   const biz = ctx.business.id;
   const islands = ctx.config.islands;
 

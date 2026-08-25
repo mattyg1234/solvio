@@ -1,5 +1,6 @@
 import {
   importCsvAction,
+  createShowOpsStaffAction,
   inviteSellerPortalAction,
   inviteShowOpsMemberAction,
   removeShowOpsMemberAction,
@@ -8,7 +9,8 @@ import {
   updateShowOpsMyNameAction,
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS } from "@/lib/show-ops/nav";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 
@@ -18,7 +20,7 @@ export default async function ShowOpsSettingsPage({
   searchParams: Promise<{ seller?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("settings");
   const b = ctx.branding;
   const [{ data: members }, { data: suppliers }] = await Promise.all([
     ctx.supabase
@@ -53,35 +55,103 @@ export default async function ShowOpsSettingsPage({
         subtitle="Staff, seller portals, branding and ops customisation for this workspace."
       />
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
-        <h2 className="font-semibold">Users & permissions</h2>
+        <h2 className="font-semibold">Staff & permissions</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Owner always has full access. Invite staff who already have a Solvio login — roles: booker, office, finance,
-          admin.
+          Create a login for a member of staff and tick exactly what they can see. Venue check-in
+          staff normally need <strong>Quick check-in</strong> and nothing else. The owner always has
+          full access.
         </p>
-        <form action={inviteShowOpsMemberAction} className="mt-4 grid gap-3 sm:grid-cols-3">
-          <label className="text-sm sm:col-span-2">
-            Email
+        <form action={createShowOpsStaffAction} className="mt-4 grid gap-3 sm:grid-cols-3">
+          <label className="text-sm">
+            Name
+            <input
+              name="display_name"
+              placeholder="Maria at the door"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
+          <label className="text-sm">
+            Email (their login)
             <input
               name="email"
               type="email"
               required
-              placeholder="colleague@mht.example"
+              placeholder="maria@mht.example"
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+          </label>
+          <label className="text-sm">
+            Password
+            <input
+              name="password"
+              type="text"
+              required
+              minLength={8}
+              placeholder="at least 8 characters"
               className="mt-1 w-full rounded-lg border px-3 py-2"
             />
           </label>
           <label className="text-sm">
             Role
-            <select name="role" defaultValue="office" className="mt-1 w-full rounded-lg border px-3 py-2">
-              <option value="booker">Booker</option>
-              <option value="office">Office</option>
-              <option value="finance">Finance</option>
-              <option value="admin">Admin</option>
+            <select name="role" defaultValue="booker" className="mt-1 w-full rounded-lg border px-3 py-2">
+              <option value="booker">Booker — takes bookings</option>
+              <option value="office">Office — bookings + master data</option>
+              <option value="finance">Finance — adds invoicing</option>
+              <option value="admin">Admin — full access</option>
             </select>
           </label>
-          <button type="submit" className="sm:col-span-3 rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2.5 text-sm font-semibold text-white">
-            Invite / update member
+          <fieldset className="sm:col-span-3 rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-medium">Pages this person can open</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {SHOW_OPS_PAGE_KEYS.filter((k) => k !== "settings").map((key) => (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="pages"
+                    value={key}
+                    defaultChecked={key === "lists"}
+                    className="h-4 w-4"
+                  />
+                  {SHOW_OPS_PAGE_LABELS[key]}
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Settings stays owner and admin only. Anything unticked is blocked on the server too, not
+              just hidden from the menu.
+            </p>
+          </fieldset>
+          <button
+            type="submit"
+            className="sm:col-span-3 rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Create staff login
           </button>
         </form>
+
+        <details className="mt-4 rounded-xl bg-slate-50 p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Add someone who already has a Solvio login
+          </summary>
+          <form action={inviteShowOpsMemberAction} className="mt-3 grid gap-3 sm:grid-cols-3">
+            <label className="text-sm sm:col-span-2">
+              Email
+              <input name="email" type="email" required className="mt-1 w-full rounded-lg border px-3 py-2" />
+            </label>
+            <label className="text-sm">
+              Role
+              <select name="role" defaultValue="office" className="mt-1 w-full rounded-lg border px-3 py-2">
+                <option value="booker">Booker</option>
+                <option value="office">Office</option>
+                <option value="finance">Finance</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <button type="submit" className="sm:col-span-3 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white">
+              Add existing user
+            </button>
+          </form>
+        </details>
         <ul className="mt-4 divide-y text-sm">
           <li className="flex justify-between py-2">
             <span>

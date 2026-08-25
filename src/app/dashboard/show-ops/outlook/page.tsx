@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { nightsAheadKeys, productRunsOnDate } from "@/lib/show-ops/calendar";
 import { addDaysIso, paxTotal } from "@/lib/show-ops/calc";
 import { todayIsoUtc } from "@/lib/show-ops/nights";
@@ -12,7 +12,7 @@ export default async function WeeklyOutlookPage({
   searchParams: Promise<{ island?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("outlook");
   const island = sp.island || ctx.config.islands[0] || "";
   const today = todayIsoUtc();
   const endIso = addDaysIso(today, 14);

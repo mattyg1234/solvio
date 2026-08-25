@@ -29,6 +29,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   SHOW_OPS_MOBILE_PRIMARY_KEYS,
   SHOW_OPS_NAV_SECTIONS,
+  type ShowOpsNavSection,
   SHOW_OPS_SIDEBAR_LINKS,
   showOpsNavActive,
   type ShowOpsNavItem,
@@ -108,7 +109,16 @@ function ShowOpsSignOut() {
   );
 }
 
-function ShowOpsSidebarInner({ displayName, userName }: { displayName?: string; userName?: string }) {
+function ShowOpsSidebarInner({
+  displayName,
+  userName,
+  sections,
+}: {
+  displayName?: string;
+  userName?: string;
+  sections?: ShowOpsNavSection[];
+}) {
+  const navSections = sections ?? SHOW_OPS_NAV_SECTIONS;
   const pathname = usePathname();
   const search = useSearchParams();
   const tab = search.get("tab");
@@ -133,7 +143,7 @@ function ShowOpsSidebarInner({ displayName, userName }: { displayName?: string; 
       </Link>
 
       <nav className="flex flex-1 flex-col overflow-y-auto px-3 py-5" aria-label="Show Ops">
-        {SHOW_OPS_NAV_SECTIONS.map((section, i) => (
+        {navSections.map((section, i) => (
           <div key={section.id} className={i > 0 ? "mt-5 border-t border-[#f1f5f9] pt-5" : undefined}>
             <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8]">
               {section.label}
@@ -166,10 +176,18 @@ function ShowOpsSidebarInner({ displayName, userName }: { displayName?: string; 
   );
 }
 
-export function ShowOpsSidebar({ displayName, userName }: { displayName?: string; userName?: string }) {
+export function ShowOpsSidebar({
+  displayName,
+  userName,
+  sections,
+}: {
+  displayName?: string;
+  userName?: string;
+  sections?: ShowOpsNavSection[];
+}) {
   return (
     <Suspense fallback={<div className="h-full bg-white" />}>
-      <ShowOpsSidebarInner displayName={displayName} userName={userName} />
+      <ShowOpsSidebarInner displayName={displayName} userName={userName} sections={sections} />
     </Suspense>
   );
 }

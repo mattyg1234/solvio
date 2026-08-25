@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CalendarDays, Download, Sparkles, TrendingUp, Trophy, Users } from "lucide-react";
 
 import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { REPORT_PERIOD_OPTIONS, reportPeriodHref, resolveReportRange } from "@/lib/show-ops/report-range";
@@ -23,7 +23,7 @@ export default async function ReportsPage({
   }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("reports");
   if (!hasShowOpsModule(ctx.config, ctx.tier, "commercial")) {
     return <p className="text-sm text-slate-600">Reports are not enabled for this workspace.</p>;
   }

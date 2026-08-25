@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BookingsDeskTable, type BookingsDeskRow, type BookingsDeskSort } from "@/components/show-ops/bookings-desk";
 import { TicketScanner } from "@/components/show-ops/ticket-scanner";
 import { SHOW_OPS_GHOST_BTN, ShowOpsNewBookingButton, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   addDaysIso,
   formatShowOpsMoney,
@@ -73,7 +73,7 @@ export default async function AllBookingsPage({
   }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("bookings");
   const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
   const today = new Date().toISOString().slice(0, 10);
   const fourWeekEnd = addDaysIso(today, 27);

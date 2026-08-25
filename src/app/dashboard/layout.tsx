@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardMain } from "@/components/dashboard/dashboard-main";
 import { DashboardMobileNav } from "@/components/dashboard/dashboard-mobile-nav";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
+import { visibleShowOpsNav, type ShowOpsNavSection } from "@/lib/show-ops/nav";
 import { OnboardingGate } from "@/components/dashboard/onboarding-gate";
 import { StripeConnectAlert } from "@/components/dashboard/stripe-connect-alert";
 import {
@@ -54,7 +55,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       : null;
 
   const bizCols =
-    "platform_capabilities,onboarding_completed_at,campaigns_enabled,show_ops_enabled,show_ops_display_name,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due,subscription_tier,created_at,booking_flow_completed_at,booking_slug";
+    "id,owner_id,platform_capabilities,onboarding_completed_at,campaigns_enabled,show_ops_enabled,show_ops_display_name,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due,subscription_tier,created_at,booking_flow_completed_at,booking_slug";
   let { data: primaryBiz } = await supabase
     .from("businesses")
     .select(bizCols)
@@ -85,6 +86,32 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const needsOnboarding = businessNeedsOnboarding(primaryBiz ?? null);
   const campaignsEnabled = Boolean((primaryBiz as { campaigns_enabled?: boolean } | null)?.campaigns_enabled);
   const showOpsEnabled = Boolean((primaryBiz as { show_ops_enabled?: boolean } | null)?.show_ops_enabled);
+
+  // Which Show Ops pages this person may reach. primaryBiz is looked up by
+  // owner_id, so a staff member who is not the owner never appears there —
+  // fall back to their show_ops_members row, or a check-in login would get no
+  // Show Ops sidebar at all. Hiding links is cosmetic; each page also calls
+  // requireShowOpsPage server-side.
+  let showOpsNavSections: ShowOpsNavSection[] | undefined;
+  let showOpsMemberEnabled = false;
+  if (showOpsEnabled && (primaryBiz as { owner_id?: string } | null)?.owner_id === user.id) {
+    showOpsNavSections = visibleShowOpsNav("owner", null);
+  } else {
+    const { data: membership } = await supabase
+      .from("show_ops_members")
+      .select("role,allowed_pages")
+      .eq("user_id", user.id)
+      .neq("role", "seller")
+      .limit(1)
+      .maybeSingle();
+    if (membership) {
+      showOpsMemberEnabled = true;
+      showOpsNavSections = visibleShowOpsNav(
+        (membership as { role?: string }).role ?? "booker",
+        (membership as { allowed_pages?: string[] | null }).allowed_pages ?? null,
+      );
+    }
+  }
   const venueLaunchRequired =
     capabilities.appointments ||
     capabilities.events ||
@@ -116,13 +143,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
             campaignsEnabled={campaignsEnabled}
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
-            showOpsEnabled={showOpsEnabled}
+            showOpsEnabled={showOpsEnabled || showOpsMemberEnabled}
             showOpsDisplayName={
               (primaryBiz as { show_ops_display_name?: string | null } | null)?.show_ops_display_name ||
               (primaryBiz as { name?: string | null } | null)?.name ||
               null
             }
             showOpsUserName={greetingName}
+            showOpsNavSections={showOpsNavSections}
           />
         </aside>
 

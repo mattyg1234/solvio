@@ -7,7 +7,7 @@ import { NightListChips, nightListsHref } from "@/components/show-ops/night-list
 import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { formatShowOpsMoney, formatShowOpsPax, paxTotal, showOpsArrivalMark, showOpsBookingPayView, showOpsDoorPayPhrase, surnameKey } from "@/lib/show-ops/calc";
 import { hasShowOpsModule } from "@/lib/show-ops/config";
@@ -80,7 +80,7 @@ export default async function DailyListsPage({
   }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("lists");
   if (!hasShowOpsModule(ctx.config, ctx.tier, "lists")) {
     return <p className="text-sm text-slate-600">Lists are not enabled for this workspace.</p>;
   }

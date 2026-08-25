@@ -3,7 +3,7 @@ import Link from "next/link";
 import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { DoorTicketScanner } from "@/components/show-ops/ticket-scanner";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   formatShowOpsDoorTime,
   formatShowOpsMoney,
@@ -50,7 +50,7 @@ export default async function ShowOpsDoorPage({
   searchParams: Promise<{ date?: string; island?: string; show?: string; slot?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("door");
   const date = sp.date || isoDateInTimeZone(new Date(), "Atlantic/Canary");
   const island = sp.island || "";
   const showFilter = sp.show || "";

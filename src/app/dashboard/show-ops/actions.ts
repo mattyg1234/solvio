@@ -35,6 +35,7 @@ import {
 } from "@/lib/notifications/show-ops-emails";
 import { sendGuestTicket } from "@/lib/notifications/show-ops-guest-ticket";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
+import { SHOW_OPS_PAGE_KEYS } from "@/lib/show-ops/nav";
 import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
@@ -2046,6 +2047,123 @@ export async function inviteShowOpsMemberAction(formData: FormData): Promise<voi
     },
     { onConflict: "business_id,user_id" },
   );
+  if (error) throw new Error(error.message);
+  revalidateShowOps();
+}
+
+/**
+ * Create a staff login outright: email + password + the pages they may see.
+ *
+ * The old invite flow only worked for people who already had a Solvio account,
+ * which is a dead end for venue door staff. This creates the auth user directly
+ * with the service role, marks the email confirmed (nobody is checking a mailbox
+ * on a bus stop), and files the membership with an explicit page allow-list.
+ */
+export async function createShowOpsStaffAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const displayName = String(formData.get("display_name") ?? "").trim();
+  const role = String(formData.get("role") ?? "booker").trim();
+  const pages = formData.getAll("pages").map((p) => String(p));
+
+  if (!email || !email.includes("@")) throw new Error("A valid email is required.");
+  if (password.length < 8) throw new Error("Password must be at least 8 characters.");
+  if (!["booker", "office", "finance", "admin"].includes(role)) throw new Error("Invalid role.");
+
+  const valid = pages.filter((p) => (SHOW_OPS_PAGE_KEYS as readonly string[]).includes(p));
+  if (!valid.length) throw new Error("Pick at least one page this person can see.");
+  // Only an owner or admin may hand out Settings.
+  const allowedPages = role === "admin" ? valid : valid.filter((p) => p !== "settings");
+
+  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+  const admin = createSupabaseServiceRoleClient();
+
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: displayName || email.split("@")[0] },
+  });
+
+  let userId = created?.user?.id;
+  if (createErr) {
+    // Already registered: reuse the account and just set the password.
+    if (!/already|registered|exists/i.test(createErr.message)) throw new Error(createErr.message);
+    let found: string | undefined;
+    for (let page = 1; page <= 10 && !found; page++) {
+      const { data } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+      found = data.users.find((u) => (u.email || "").toLowerCase() === email)?.id;
+      if (data.users.length < 200) break;
+    }
+    if (!found) throw new Error("That email is taken but the account could not be found.");
+    userId = found;
+    const { error: pwErr } = await admin.auth.admin.updateUserById(found, { password });
+    if (pwErr) throw new Error(pwErr.message);
+  }
+  if (!userId) throw new Error("Could not create that login.");
+
+  const { error } = await admin.from("show_ops_members").upsert(
+    {
+      business_id: ctx.business.id,
+      user_id: userId,
+      role,
+      allowed_pages: allowedPages,
+      display_name: displayName || null,
+      created_by: ctx.user.id,
+    },
+    { onConflict: "business_id,user_id" },
+  );
+  if (error) throw new Error(error.message);
+  revalidateShowOps();
+}
+
+/** Change which pages an existing member can see. */
+export async function updateShowOpsMemberPagesAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const memberId = String(formData.get("member_id") ?? "").trim();
+  if (!memberId) throw new Error("Member required.");
+  const pages = formData.getAll("pages").map((p) => String(p));
+  const valid = pages.filter((p) => (SHOW_OPS_PAGE_KEYS as readonly string[]).includes(p));
+  if (!valid.length) throw new Error("Pick at least one page this person can see.");
+
+  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+  const admin = createSupabaseServiceRoleClient();
+  const { data: member } = await admin
+    .from("show_ops_members")
+    .select("id,role")
+    .eq("id", memberId)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!member) throw new Error("Member not found in this workspace.");
+  const allowedPages = member.role === "admin" ? valid : valid.filter((p) => p !== "settings");
+
+  const { error } = await admin
+    .from("show_ops_members")
+    .update({ allowed_pages: allowedPages })
+    .eq("id", memberId)
+    .eq("business_id", ctx.business.id);
+  if (error) throw new Error(error.message);
+  revalidateShowOps();
+}
+
+/** Reset a staff password without deleting the account. */
+export async function resetShowOpsStaffPasswordAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const memberId = String(formData.get("member_id") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) throw new Error("Password must be at least 8 characters.");
+
+  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+  const admin = createSupabaseServiceRoleClient();
+  const { data: member } = await admin
+    .from("show_ops_members")
+    .select("user_id")
+    .eq("id", memberId)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!member) throw new Error("Member not found in this workspace.");
+  const { error } = await admin.auth.admin.updateUserById(member.user_id, { password });
   if (error) throw new Error(error.message);
   revalidateShowOps();
 }

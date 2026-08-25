@@ -11,6 +11,12 @@ import type {
   ShowSupplier,
 } from "@/lib/show-ops/types";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import {
+  canSeeShowOpsPage,
+  showOpsAllowedPages,
+  SHOW_OPS_SIDEBAR_LINKS,
+  type ShowOpsPageKey,
+} from "@/lib/show-ops/nav";
 
 export const SHOW_OPS_WORKSPACE_COOKIE = "solvio_show_ops_workspace";
 
@@ -43,6 +49,8 @@ export type ShowOpsContext = {
   tier: ShowOpsBillingTier;
   role: ShowOpsMemberRole | "owner";
   isOwner: boolean;
+  /** Explicit page allow-list for this member; null means use the role default. */
+  allowedPages: string[] | null;
   workspaces: ShowOpsWorkspace[];
 };
 
@@ -89,6 +97,7 @@ async function loadWorkspaces(
       name: b.name,
       displayName: (b.show_ops_display_name || b.name || "My business").trim(),
       role: "owner",
+      allowedPages: null,
       isOwner: true,
       showOpsEnabled: Boolean(b.show_ops_enabled),
       supplierId: null,
@@ -97,7 +106,7 @@ async function loadWorkspaces(
 
   const { data: memberships } = await supabase
     .from("show_ops_members")
-    .select("business_id,role,supplier_id")
+    .select("business_id,role,supplier_id,allowed_pages")
     .eq("user_id", userId);
 
   const memberBizIds = (memberships ?? []).map((m) => m.business_id).filter((id) => !seen.has(id));
@@ -122,6 +131,7 @@ async function loadWorkspaces(
         isOwner: false,
         showOpsEnabled: Boolean(b.show_ops_enabled),
         supplierId: m.supplier_id ?? null,
+        allowedPages: (m.allowed_pages as string[] | null) ?? null,
       });
     }
   }
@@ -182,6 +192,8 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
     tier: (business.show_ops_billing_tier || "starter") as ShowOpsBillingTier,
     role: "seller",
     isOwner: false,
+    // Sellers never reach the Show Ops staff nav; their portal is separate.
+    allowedPages: [],
     workspaces: [],
     supplier,
   };
@@ -237,6 +249,7 @@ export async function requireShowOpsContext(): Promise<ShowOpsContext> {
     tier,
     role,
     isOwner,
+    allowedPages: picked.allowedPages ?? null,
     workspaces,
   };
 }
@@ -266,6 +279,23 @@ export async function requireShowOpsRole(needed: ShowOpsMemberRole): Promise<Sho
   const ctx = await requireShowOpsEnabled();
   if (!roleAtLeast(ctx.role, needed)) {
     throw new Error(`This action needs ${needed} access or higher.`);
+  }
+  return ctx;
+}
+
+/**
+ * Server-side page guard.
+ *
+ * Hiding a link in the sidebar is cosmetic — anyone can type the URL. Every
+ * Show Ops page calls this so a check-in-only login genuinely cannot open
+ * Invoicing by guessing the path.
+ */
+export async function requireShowOpsPage(key: ShowOpsPageKey): Promise<ShowOpsContext> {
+  const ctx = await requireShowOpsEnabled();
+  if (!canSeeShowOpsPage(ctx.role, ctx.allowedPages, key)) {
+    const fallback = showOpsAllowedPages(ctx.role, ctx.allowedPages)[0];
+    const target = SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === fallback);
+    redirect(target?.href ?? "/dashboard");
   }
   return ctx;
 }

@@ -5,7 +5,7 @@ import { BusStopReorder } from "@/components/show-ops/bus-stop-reorder";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { stopRunsOnDate } from "@/lib/show-ops/bus";
 import { formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
 
@@ -15,7 +15,7 @@ export default async function BusBoardPage({
   searchParams: Promise<{ date?: string; island?: string; view?: string; stops?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("buses");
   const today = new Date().toISOString().slice(0, 10);
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? (sp.date as string) : today;
   const island = sp.island || "";
