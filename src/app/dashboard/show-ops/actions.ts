@@ -17,6 +17,7 @@ import {
   applyNoShowBilling,
   arrivalFlagPatch,
   computeBookingMoney,
+  hasPricingSnapshot,
   parsePaxCount,
   paymentStatusAfter,
   paxTotal,
@@ -26,6 +27,7 @@ import {
   round2,
   showOpsAmountDue,
 } from "@/lib/show-ops/calc";
+import { normalisePartnerIslands } from "@/lib/show-ops/partners";
 import { createShowOpsDepositCheckoutSession } from "@/lib/show-ops/deposit-checkout";
 import {
   sendShowOpsHtmlEmail,
@@ -55,6 +57,7 @@ import type {
   ShowOpsBookingQuestion,
   ShowOpsBookingQuestionType,
   ShowOpsConfig,
+  ShowOpsBillingMode,
   ShowOpsSalesChannel,
 } from "@/lib/show-ops/types";
 
@@ -407,6 +410,10 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
       : ctx.config.currency) as ShowOpsConfig["currency"],
     guest_stripe_enabled: String(formData.get("guest_stripe_enabled") ?? "") === "1",
     partner_stripe_enabled: ctx.config.partner_stripe_enabled,
+    transport_supplement: (() => {
+      const v = Number(formData.get("transport_supplement"));
+      return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : ctx.config.transport_supplement;
+    })(),
     invoice: {
       series: String(formData.get("invoice_series") ?? ctx.config.invoice.series).trim() || ctx.config.invoice.series,
       defaultVatRate: (() => {
@@ -453,7 +460,6 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
     deposit_percent: Number(formData.get("deposit_percent") ?? 30),
     invoice_nett_percent: Number(formData.get("invoice_nett_percent") ?? 100),
     email: emailRaw || null,
-    notes: String(formData.get("notes") ?? "").trim() || null,
     tax_id: String(formData.get("tax_id") ?? "").trim() || null,
     legal_name: String(formData.get("legal_name") ?? "").trim() || null,
     invoice_address: String(formData.get("invoice_address") ?? "").trim() || null,
@@ -681,7 +687,8 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
     const row = {
       name: String(formData.get(p + "name") ?? "").trim(),
       partner_type: String(formData.get(p + "partner_type") ?? "agency").trim(),
-      island: String(formData.get(p + "island") ?? "").trim() || null,
+      island: normalisePartnerIslands(formData.getAll(p + "island").map(String)),
+      can_choose_billing_mode: String(formData.get(p + "can_choose_billing_mode") ?? "") === "1",
       billing_mode: String(formData.get(p + "billing_mode") ?? "deposit"),
       deposit_percent: Number(formData.get(p + "deposit_percent") ?? 30),
       invoice_nett_percent: Number(formData.get(p + "invoice_nett_percent") ?? 100),
@@ -856,6 +863,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
       product: product as never,
       supplier: supplier as never,
       transportRequired: Boolean(b.transport_required),
+      transportSupplement: ctx.config.transport_supplement,
     });
     const patch: Record<string, unknown> = {
       show_name: product.name,
@@ -1494,13 +1502,26 @@ async function buildBookingFields(
     pickup_time = stop.pickup_time;
   }
 
+  /*
+   * Deposit or invoice. The partner record decides unless the operator has ticked
+   * "let the desk pick" on that partner — a form field alone must never be able
+   * to move a booking off the billing its partner is set up for.
+   */
+  const requestedBilling = String(formData.get("billing_mode") ?? "").trim();
+  const billingMode =
+    supplier?.can_choose_billing_mode && (requestedBilling === "deposit" || requestedBilling === "invoice")
+      ? (requestedBilling as ShowOpsBillingMode)
+      : undefined;
+
   const money = computeBookingMoney({
     adults,
     children,
     infants,
     product: product as never,
     supplier: supplier as never,
+    billingMode,
     transportRequired: transport,
+    transportSupplement: ctx.config.transport_supplement,
   });
 
   // Per-attendee rows (name/type/note) — drives special-meal and door lists.
@@ -1584,6 +1605,9 @@ async function buildBookingFields(
       custom_answers,
       attendees: attendees.length ? attendees : null,
       payment_status: money.payment_status,
+      // Freeze the rates behind these numbers. Editing a partner nett or a show
+      // price later must not move money on a booking already taken.
+      pricing_snapshot: { ...money.pricing_snapshot, priced_at: new Date().toISOString() },
       updated_by: ctx.user.id,
       updated_at: new Date().toISOString(),
     },
@@ -1712,10 +1736,15 @@ export async function updateBookingAction(
       ? arrivalFlagPatch(newBooked, newBooked, new Date().toISOString(), existing.arrived_at)
       : null;
 
+  // A comment tweak must not restamp the rates. The snapshot only moves when
+  // pax / show / partner / transport moved, which is when the money moved too.
+  const { pricing_snapshot: freshSnapshot, ...restFields } = built.fields;
+
   const { error } = await ctx.supabase
     .from("show_bookings")
     .update({
-      ...built.fields,
+      ...restFields,
+      ...(moneyTouched ? { pricing_snapshot: freshSnapshot } : {}),
       total_cost,
       deposit_amount,
       nett_total,
@@ -2138,9 +2167,18 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
   if (!member) throw new Error("Member not found in this workspace.");
   const allowedPages = member.role === "admin" ? valid : valid.filter((p) => p !== "settings");
 
+  /*
+   * The partner this person books for. Sellers are locked to theirs by the portal,
+   * so this only ever sets the desk's pre-selected partner for office staff.
+   */
+  const patch: Record<string, unknown> = { allowed_pages: allowedPages };
+  if (formData.has("default_supplier_id") && member.role !== "seller") {
+    patch.supplier_id = String(formData.get("default_supplier_id") ?? "").trim() || null;
+  }
+
   const { error } = await admin
     .from("show_ops_members")
-    .update({ allowed_pages: allowedPages })
+    .update(patch)
     .eq("id", memberId)
     .eq("business_id", ctx.business.id);
   if (error) throw new Error(error.message);
@@ -2355,7 +2393,23 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
     : { data: [] as never[] };
   const productById = new Map((productRows ?? []).map((p) => [p.id, p]));
 
+  /*
+   * Invoice at the rate the booking was SOLD at, never today's rate.
+   *
+   * A booking taken through the desk carries a pricing snapshot, so its stored
+   * netts are authoritative — editing a partner's nett % afterwards must not move
+   * money on work already sold. Only the legacy import rows, which came in with no
+   * netts at all, still get priced from live master data.
+   */
   const priced = bookings.map((b) => {
+    if (hasPricingSnapshot(b.pricing_snapshot)) {
+      return {
+        ...b,
+        adult_nett_total: Number(b.adult_nett_total),
+        child_nett_total: Number(b.child_nett_total),
+        nett_total: Number(b.nett_total),
+      };
+    }
     const product = b.product_id ? productById.get(b.product_id) : null;
     if (!product || !supplierRow) {
       return {
@@ -2372,6 +2426,7 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
       product: product as never,
       supplier: supplierRow as never,
       transportRequired: Boolean(b.transport_required),
+      transportSupplement: ctx.config.transport_supplement,
     });
     return {
       ...b,

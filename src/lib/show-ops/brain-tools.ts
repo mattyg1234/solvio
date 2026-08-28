@@ -174,7 +174,7 @@ export async function opsListHotels(
 
 export async function opsCreateBooking(
   supabase: SupabaseClient,
-  scope: BizScope & { userId: string },
+  scope: BizScope & { userId: string; transportSupplement?: number },
   args: {
     show_date: string;
     guest_name: string;
@@ -255,6 +255,7 @@ export async function opsCreateBooking(
     product: product as never,
     supplier: (supplier as never) ?? null,
     transportRequired: transport,
+    transportSupplement: scope.transportSupplement ?? 0,
   });
 
   const { data: refData, error: refErr } = await supabase.rpc("show_ops_next_booking_ref", {

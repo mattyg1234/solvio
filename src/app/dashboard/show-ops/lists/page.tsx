@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { BusPickupSelect } from "@/components/show-ops/bus-pickup-select";
+import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import { NightListChips, nightListsHref } from "@/components/show-ops/night-list-chips";
 import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
@@ -468,60 +468,13 @@ export default async function DailyListsPage({
       {views.includes("door") ? <DoorTable rows={door} money={money} sortKeys={sortKeys} sortHref={sortHref} /> : null}
 
       {views.includes("bus") ? (
-        <div className="space-y-4">
-          {busGrouped.map((g) => (
-            <div key={g.key} className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
-              <div className="flex flex-wrap items-baseline justify-between gap-2 border-b px-4 py-3">
-                <h3 className="font-semibold">
-                  {g.time} · {g.label}
-                </h3>
-                <p className="text-sm text-slate-600">
-                  {g.pax} pax
-                  {g.seatsLeft == null ? " · order a bus" : ` · ${g.seatsLeft} island seats left`}
-                </p>
-              </div>
-              {g.notes ? <p className="border-b px-4 py-2 text-xs text-slate-500">{g.notes}</p> : null}
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <SortCol label="Guest" k="name" sortKeys={sortKeys} sortHref={sortHref} />
-                    <SortCol label="Hotel" k="hotel" sortKeys={sortKeys} sortHref={sortHref} />
-                    <th className="px-3 py-2">Pax</th>
-                    <th className="px-3 py-2">Mobile</th>
-                    <SortCol label="Diet" k="diet" sortKeys={sortKeys} sortHref={sortHref} />
-                    <th className="px-3 py-2 print:hidden">Move stop</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.rows.map((b) => (
-                    <tr key={b.id} className="border-t border-slate-100">
-                      <td className="px-3 py-1.5">
-                        <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="font-medium hover:underline">
-                          {b.guest_name}
-                        </Link>
-                        <div className="text-[11px] text-slate-500">{b.booking_ref}</div>
-                      </td>
-                      <td className="px-3 py-1.5">{b.hotel_name || "—"}</td>
-                      <td className="px-3 py-1.5">{formatShowOpsPax(b.adults, b.children, b.infants)}</td>
-                      <td className="px-3 py-1.5">{b.guest_mobile || "—"}</td>
-                      <td className="px-3 py-1.5">{b.dietary_required ? b.dietary_notes || "Yes" : ""}</td>
-                      <td className="px-3 py-1.5">
-                        <BusPickupSelect
-                          bookingId={b.id}
-                          currentStopId={b.pickup_stop_id}
-                          stops={stopOptions.filter((s) => s.label.startsWith(`${b.island} ·`))}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          {!busGrouped.length ? (
-            <p className="rounded-2xl bg-white p-5 text-sm text-slate-500 ring-1 ring-slate-200">No bus guests for these filters.</p>
-          ) : null}
-        </div>
+        <BusRunSheet
+          date={date}
+          groups={busGrouped as never}
+          stopOptions={stopOptions}
+          sortKeys={sortKeys}
+          sortHref={{ name: sortHref("name"), hotel: sortHref("hotel"), diet: sortHref("diet") }}
+        />
       ) : null}
 
       {views.includes("sales") ? (

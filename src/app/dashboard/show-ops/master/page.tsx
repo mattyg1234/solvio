@@ -68,8 +68,14 @@ export default async function MasterDataPage({
   searchParams: Promise<{ tab?: string; saved?: string; created?: string; error?: string }>;
 }) {
   const sp = await searchParams;
-  const allowed = new Set(["shows", "partners", "rates", "hotels"]);
-  const tab = sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
+  /*
+   * Rates was a duplicate of the deposit % / invoice nett % that already live on
+   * every partner, and nothing prices from it — so it is gone from the nav and any
+   * old link lands on Partners instead. The rate-card rows are still on the
+   * partner record for reference.
+   */
+  const allowed = new Set(["shows", "partners", "hotels"]);
+  const tab = sp.tab === "rates" ? "partners" : sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "") ? sp.created : undefined;
   const ctx = await requireShowOpsPage("shows");
   const biz = ctx.business.id;
@@ -208,7 +214,6 @@ export default async function MasterDataPage({
               <option value="write_off">Write off</option>
             </select>
           </label>
-          <Field label="Notes" name="notes" />
           <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-3`}>Add partner</SubmitOnce>
         </form>
         <MasterSuppliersForm

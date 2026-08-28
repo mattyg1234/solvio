@@ -264,7 +264,11 @@ export async function askOpsBrainAction(input: {
             if (!canBook) {
               toolResult = { error: "Your role cannot create bookings." };
             } else {
-              toolResult = await opsCreateBooking(ctx.supabase, { ...scope, userId: ctx.user.id }, args as never);
+              toolResult = await opsCreateBooking(
+                ctx.supabase,
+                { ...scope, userId: ctx.user.id, transportSupplement: ctx.config.transport_supplement },
+                args as never,
+              );
             }
           } else {
             toolResult = { error: `Unknown tool: ${name}` };

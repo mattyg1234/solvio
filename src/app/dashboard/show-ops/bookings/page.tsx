@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { BookingsDeskTable, type BookingsDeskRow, type BookingsDeskSort } from "@/components/show-ops/bookings-desk";
+import { ShowOpsLiveFilterForm } from "@/components/show-ops/live-filter-form";
 import { TicketScanner } from "@/components/show-ops/ticket-scanner";
 import { SHOW_OPS_GHOST_BTN, ShowOpsNewBookingButton, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -122,7 +123,19 @@ export default async function AllBookingsPage({
   if (door === "unpaid") query = query.eq("billing_mode", "deposit").neq("payment_status", "paid");
   if (q) {
     query = query.or(
-      `booking_ref.ilike.%${q}%,guest_name.ilike.%${q}%,show_name.ilike.%${q}%,supplier_name.ilike.%${q}%,hotel_name.ilike.%${q}%`,
+      [
+        "booking_ref",
+        "guest_name",
+        "guest_email",
+        "guest_mobile",
+        "show_name",
+        "supplier_name",
+        "hotel_name",
+        "pickup_stop_name",
+        "supplier_ticket_number",
+      ]
+        .map((col) => `${col}.ilike.%${q}%`)
+        .join(","),
     );
   }
 
@@ -287,16 +300,20 @@ export default async function AllBookingsPage({
         <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">Booking cancelled.</p>
       ) : null}
 
-      <form method="get" className="print:hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80">
+      <ShowOpsLiveFilterForm
+        action="/dashboard/show-ops/bookings"
+        className="print:hidden sticky top-0 z-10 rounded-2xl bg-white/95 p-4 shadow-sm ring-1 ring-slate-200/80 backdrop-blur"
+      >
         <div className="flex gap-3 overflow-x-auto pb-1">
           <div className="flex min-w-max items-end gap-3">
         <label className="text-xs font-medium text-slate-600">
           Search
           <input
             name="q"
+            type="search"
             defaultValue={sp.q || ""}
-            placeholder="Name, ref, show, supplier…"
-            className="mt-1 block min-w-[14rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+            placeholder="Name, ref, show, partner, hotel, stop, email…"
+            className="mt-1 block min-w-[16rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
           />
         </label>
         <label className="text-xs font-medium text-slate-600">
@@ -390,7 +407,7 @@ export default async function AllBookingsPage({
         ) : null}
           </div>
         </div>
-      </form>
+      </ShowOpsLiveFilterForm>
 
       <TicketScanner />
 

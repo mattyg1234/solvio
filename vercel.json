@@ -1,9 +1,15 @@
 {
-  "regions": ["dub1"],
+  "regions": [
+    "dub1"
+  ],
   "crons": [
     {
       "path": "/api/cron/show-ops-daily",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/show-ops-backup",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

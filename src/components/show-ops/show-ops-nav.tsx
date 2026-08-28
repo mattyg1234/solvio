@@ -135,9 +135,11 @@ function ShowOpsSidebarInner({
           <Image src="/brand/icon-192.png" alt="" width={72} height={72} className="h-full w-full" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-lg font-semibold tracking-tight text-[#0f172a]">Solvio</span>
-          <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
+          <span className="block truncate text-lg font-semibold tracking-tight text-[#0f172a]">
             {displayName || "Show Ops"}
+          </span>
+          <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
+            Powered by Solvio
           </span>
         </span>
       </Link>

@@ -48,6 +48,12 @@ export type ShowOpsConfig = {
   guest_stripe_enabled: boolean;
   /** Pay-links on partner invoice packs — off until the tenant opts in */
   partner_stripe_enabled: boolean;
+  /**
+   * Added per adult and per child when a booking takes the bus. Infants never pay it.
+   * A show that carries its own explicit with/without-transport price pair keeps that
+   * pair and ignores this.
+   */
+  transport_supplement: number;
   /** In-house morning digest — office emails, one per line */
   office_report_emails: string[];
   report_presets?: {
@@ -77,6 +83,7 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
   currency: "eur",
   guest_stripe_enabled: true,
   partner_stripe_enabled: false,
+  transport_supplement: 0,
   office_report_emails: [],
   report_presets: { office_sort: "supplier_surname" },
   invoice: {

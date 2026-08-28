@@ -208,6 +208,23 @@ export default async function ShowOpsSettingsPage({
                         </label>
                       ))}
                     </div>
+                    {m.role !== "seller" ? (
+                      <label className="mt-3 block text-xs text-slate-600">
+                        Books for (pre-selected on their new-booking form)
+                        <select
+                          name="default_supplier_id"
+                          defaultValue={m.supplier_id ?? ""}
+                          className="mt-1 block w-full max-w-sm rounded-lg border px-2 py-1.5 text-sm"
+                        >
+                          <option value="">— no partner, they pick every time —</option>
+                          {(suppliers ?? []).map((sup) => (
+                            <option key={sup.id} value={sup.id}>
+                              {sup.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <button type="submit" className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
                       Save pages
                     </button>
@@ -340,7 +357,10 @@ export default async function ShowOpsSettingsPage({
           <label className="text-sm sm:col-span-2">
             Workspace name
             <input name="display_name" defaultValue={b.displayName} className="mt-1 w-full rounded-lg border px-3 py-2" />
-            <span className="mt-1 block text-xs text-slate-500">Shown in the sidebar, on printed lists and on guest emails.</span>
+            <span className="mt-1 block text-xs text-slate-500">
+              What your team calls this system. Shown in the sidebar, on the dashboard heading, in the browser tab, on
+              printed lists and on guest emails.
+            </span>
           </label>
           <label className="text-sm sm:col-span-2">
             Logo URL
@@ -425,6 +445,22 @@ export default async function ShowOpsSettingsPage({
               Email Stripe payment links for guest deposits
             </label>
           </div>
+          <label className="block max-w-sm text-sm">
+            Transport supplement per head
+            <input
+              type="number"
+              name="transport_supplement"
+              min={0}
+              step="0.01"
+              defaultValue={ctx.config.transport_supplement}
+              className="mt-1 w-full rounded-lg border px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Added to every adult and child when a booking takes the bus. Infants never pay it, and partner
+              commission is still worked out on the full total. Set 0 to turn it off. A show that carries its own
+              without-transport price keeps that pair instead.
+            </span>
+          </label>
           <label className="block text-sm">
             {ctx.config.location_label}s (one per line)
             <textarea

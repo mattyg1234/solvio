@@ -13,7 +13,7 @@ export default async function NewBookingPage() {
   const [{ data: suppliers }, { data: products }, { data: hotels }, { data: stops }, bookedDates] = await Promise.all([
     ctx.supabase
       .from("show_suppliers")
-        .select("id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type")
+        .select("id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode")
       .eq("business_id", biz)
       .eq("active", true)
       .order("name"),
@@ -60,6 +60,8 @@ export default async function NewBookingPage() {
         hotels={(hotels ?? []) as never}
         stops={(stops ?? []) as never}
         config={ctx.config}
+        // Whoever is signed in books for their own outlet by default.
+        defaults={ctx.defaultSupplierId ? { supplier_id: ctx.defaultSupplierId } : undefined}
       />
     </div>
   );

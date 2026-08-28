@@ -45,6 +45,8 @@ export type BookingFormSupplier = {
   invoice_nett_percent: number;
   partner_type?: string;
   island?: string | null;
+  /** Partners with this on may be switched between deposit and invoice per booking. */
+  can_choose_billing_mode?: boolean | null;
 };
 
 export type BookingFormHotel = {
@@ -83,6 +85,7 @@ export type BookingFormDefaults = {
   supplier_ticket_number?: string | null;
   office_comments?: string | null;
   office_only_comments?: string | null;
+  billing_mode?: "deposit" | "invoice";
   custom_answers?: Record<string, string | boolean | number>;
   attendees?: Array<{ name?: string | null; type?: string | null; note?: string | null }> | null;
 };
@@ -105,6 +108,7 @@ type Props = {
     | "location_label"
     | "product_label"
     | "currency"
+    | "transport_supplement"
   >;
   defaults?: BookingFormDefaults;
   error?: string | null;
@@ -202,6 +206,11 @@ export function ShowOpsBookingForm({
   const [msg, setMsg] = useState<string | null>(error ?? null);
   const [productId, setProductId] = useState(defaults.product_id ?? "");
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
+  const [channel, setChannel] = useState(
+    defaults.sales_channel || config.sales_channels[0] || "direct",
+  );
+  /** Set once the operator overrides the channel by hand; stops the partner re-writing it. */
+  const channelPinned = useRef(Boolean(defaults.sales_channel));
   const [hotelId, setHotelId] = useState(defaults.hotel_id ?? "");
   const [pickupStopId, setPickupStopId] = useState(defaults.pickup_stop_id ?? "");
   const skipHotelFollow = useRef(Boolean(defaults.pickup_stop_id));
@@ -216,9 +225,12 @@ export function ShowOpsBookingForm({
   const [attNotes, setAttNotes] = useState<string[]>(
     () => (defaults.attendees ?? []).map((a) => a?.note ?? ""),
   );
+  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "">(defaults.billing_mode ?? "");
   const [showDate, setShowDate] = useState(defaults.show_date ?? "");
   const [customDate, setCustomDate] = useState(false);
   const [nightLoad, setNightLoad] = useState<ShowOpsNightLoad | null>(null);
+  /** Set on a successful create so the desk can read the ref back to the caller. */
+  const [saved, setSaved] = useState<SavedBooking | null>(null);
 
   useEffect(() => {
     setNightLoad(null);
@@ -234,29 +246,59 @@ export function ShowOpsBookingForm({
   }, [productId, showDate]);
 
   const product = products.find((p) => p.id === productId) ?? null;
-  const nights = useMemo(
-    () =>
-      showOpsRunNights({
-        weekdays: product?.run_weekdays,
-        bookedDates: product?.booked_dates,
-        selected: customDate ? undefined : showDate,
-      }),
-    [product, showDate, customDate],
+
+  /*
+   * The desk works location → date → ticket type, in that order: an operator on
+   * the phone knows which island the caller is on long before they know which
+   * show they want. Everything below narrows from that.
+   */
+  const islands = useMemo(
+    () => [...new Set(products.map((p) => p.island).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [products],
   );
+  const [island, setIsland] = useState(
+    () => products.find((p) => p.id === defaults.product_id)?.island ?? (islands.length === 1 ? islands[0] : ""),
+  );
+  const islandProducts = useMemo(
+    () => (island ? products.filter((p) => p.island === island) : products),
+    [products, island],
+  );
+
+  const runNightsFor = (p: BookingFormProduct) =>
+    showOpsRunNights({ weekdays: p.run_weekdays, bookedDates: p.booked_dates });
+
+  /** Every night any show on this island runs — the date list before a show is picked. */
+  const nights = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of islandProducts) for (const d of runNightsFor(p)) set.add(d);
+    if (!customDate && showDate) set.add(showDate);
+    return [...set].sort();
+  }, [islandProducts, showDate, customDate]);
   const nightGroups = useMemo(() => groupNightsByMonth(nights), [nights]);
+
+  /**
+   * Ticket types on that island running that night. If nothing matches — a show
+   * with no run nights set yet — the whole island's list is offered rather than
+   * an empty dropdown the operator cannot get past.
+   */
+  const showsForNight = useMemo(() => {
+    if (!showDate) return islandProducts;
+    const running = islandProducts.filter((p) => runNightsFor(p).includes(showDate));
+    return running.length ? running : islandProducts;
+  }, [islandProducts, showDate]);
+  /** The location everything downstream filters by: the show's if picked, else the operator's choice. */
+  const activeIsland = product?.island || island || "";
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null;
-  const suppliersForIsland = product
-    ? suppliers.filter((s) => partnerSellsOnIsland(s.island, product.island) || s.id === supplierId)
+  const suppliersForIsland = activeIsland
+    ? suppliers.filter((s) => partnerSellsOnIsland(s.island, activeIsland) || s.id === supplierId)
     : suppliers;
-  const hotelsForIsland = product
-    ? hotels.filter((h) => !product.island || h.island === product.island)
-    : hotels;
+  const hotelsForIsland = activeIsland ? hotels.filter((h) => h.island === activeIsland) : hotels;
   const hotel = hotelsForIsland.find((h) => h.id === hotelId) ?? hotels.find((h) => h.id === hotelId) ?? null;
   const stop =
     (pickupStopId ? stops.find((s) => s.id === pickupStopId) : null) ??
     (hotel?.bus_stop_id ? stops.find((s) => s.id === hotel.bus_stop_id) ?? null : null);
   const islandStops = stops.filter((s) =>
-    pickupStopOffered(s, { island: product?.island, showDate, selectedId: pickupStopId }),
+    pickupStopOffered(s, { island: activeIsland || undefined, showDate, selectedId: pickupStopId }),
   );
 
   useEffect(() => {
@@ -270,6 +312,17 @@ export function ShowOpsBookingForm({
   useEffect(() => {
     if (product && product.transport_available === false && transport) setTransport(false);
   }, [product, transport]);
+
+  /*
+   * Classify the sale by the partner who made it. Legacy imports tend to stamp
+   * every row with one channel regardless of who sold it, which wrecks the channel
+   * split in the commercial stats — the partner's own type is the truth.
+   */
+  useEffect(() => {
+    if (channelPinned.current) return;
+    const type = suppliers.find((s) => s.id === supplierId)?.partner_type;
+    setChannel(type || (supplierId ? "partner" : config.sales_channels[0] || "direct"));
+  }, [supplierId, suppliers, config.sales_channels]);
 
   const paxSlots = Math.min(adults + children + infants, 20);
   const attendeeType = (i: number) => (i < adults ? "adult" : i < adults + children ? "child" : "infant");
@@ -289,10 +342,23 @@ export function ShowOpsBookingForm({
         pct !== 100 ? p.adult_price * (pct / 100) : Number(p.adult_nett ?? p.adult_price);
       const child =
         pct !== 100 ? p.child_price * (pct / 100) : Number(p.child_nett ?? p.child_price);
-      return `${p.name} · ${p.island} (${moneyFmt(adult)} / ${moneyFmt(child)} nett)`;
+      return `${p.name} (${moneyFmt(adult)} / ${moneyFmt(child)} nett)`;
     }
-    return `${p.name} · ${p.island} (${moneyFmt(p.adult_price)} / ${moneyFmt(p.child_price)})`;
+    return `${p.name} (${moneyFmt(p.adult_price)} / ${moneyFmt(p.child_price)})`;
   };
+
+  // Per-head bus supplement — adults and children only, and only when the show
+  // does not carry its own explicit without-transport price.
+  const supplement = Number(config.transport_supplement) || 0;
+  const supplementApplies =
+    transport && supplement > 0 && product != null && product.adult_price_no_transport == null;
+  const supplementTotal = supplementApplies ? round2(supplement * (adults + children)) : 0;
+
+  // Only a partner explicitly given the permission can be flipped between deposit
+  // and invoice on a single booking; everyone else follows their partner record.
+  const canPickBilling = Boolean(supplier?.can_choose_billing_mode) && !sellerMode && !moneyLocked;
+  const effectiveBilling =
+    canPickBilling && (billingMode === "deposit" || billingMode === "invoice") ? billingMode : undefined;
 
   const money = useMemo(
     () =>
@@ -302,9 +368,11 @@ export function ShowOpsBookingForm({
         infants,
         product,
         supplier,
+        billingMode: effectiveBilling,
         transportRequired: transport,
+        transportSupplement: supplement,
       }),
-    [adults, children, infants, product, supplier, transport],
+    [adults, children, infants, product, supplier, transport, supplement, effectiveBilling],
   );
   // Commission = the slice the partner keeps (100% − the nett % we invoice them at).
   const commissionPct =
@@ -312,6 +380,19 @@ export function ShowOpsBookingForm({
       ? Math.max(0, round2(100 - Number(supplier.invoice_nett_percent || 100)))
       : 0;
   const commissionAmount = round2((money.total_cost * commissionPct) / 100);
+
+  if (saved) {
+    return (
+      <BookingSavedPanel
+        saved={saved}
+        onAnother={() => {
+          setSaved(null);
+          router.refresh();
+        }}
+        backHref={(successPath ?? "/dashboard/show-ops/bookings").replace("{ref}", encodeURIComponent(saved.ref))}
+      />
+    );
+  }
 
   return (
     <form
@@ -324,6 +405,25 @@ export function ShowOpsBookingForm({
           const res = await action(fd);
           if (!res.ok) {
             setMsg(res.message || "Save failed");
+            return;
+          }
+          if (mode === "create") {
+            // Read-back panel: the ref and the pick-up the guest is waiting to hear.
+            setSaved({
+              ref: res.message ?? "",
+              show: product?.name ?? "",
+              date: showDate,
+              guestName: String(fd.get("guest_name") ?? ""),
+              pax: { adults, children, infants },
+              transport,
+              stopName: transport && stop ? `${stop.resort} · ${stop.stop_name}` : null,
+              pickupTime: transport && stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : null,
+              showTime: product?.show_time ? String(product.show_time).slice(0, 5) : null,
+              total: moneyFmt(money.total_cost),
+              dueLabel: money.billing_mode === "invoice" ? "Nett to invoice" : "Deposit to collect",
+              dueAmount: moneyFmt(money.billing_mode === "invoice" ? money.nett_total : money.deposit_amount),
+            });
+            router.refresh();
             return;
           }
           if (successPath) {
@@ -357,48 +457,40 @@ export function ShowOpsBookingForm({
 
       <div className="grid gap-4 xl:grid-cols-3">
         {/* ── 1 · The show ─────────────────────────────── */}
-        <StepColumn step={1} label="The show">
-          <FieldLabel>Show</FieldLabel>
-          <select
-            name="product_id"
-            required
-            value={productId}
-            onChange={(e) => {
-              const next = e.target.value;
-              setProductId(next);
-              setCustomDate(false);
-              const p = products.find((x) => x.id === next);
-              if (p && hotelId) {
-                const stillOk = hotels.some((h) => h.id === hotelId && h.island === p.island);
-                if (!stillOk) setHotelId("");
-              }
-              const nextNights = showOpsRunNights({
-                weekdays: p?.run_weekdays,
-                bookedDates: p?.booked_dates,
-              });
-              if (!nextNights.includes(showDate)) setShowDate(nextNights[0] ?? "");
-            }}
-            className={INPUT}
-            disabled={moneyLocked}
-          >
-            <option value="">{products.length ? "Select a show" : "No shows saved yet"}</option>
-            {product && !products.some((p) => p.id === product.id) ? (
-              <option value={product.id}>{productPriceLabel(product)}</option>
-            ) : null}
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {productPriceLabel(p)}
-              </option>
-            ))}
-          </select>
-          {products.length === 0 ? (
-            <p className="mt-1 text-xs text-amber-700">Add shows under Shows in the sidebar before taking a booking.</p>
+        <StepColumn step={1} label={`${config.location_label}, date, ticket`}>
+          {islands.length > 1 ? (
+            <>
+              <FieldLabel>{config.location_label}</FieldLabel>
+              <select
+                value={island}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setIsland(next);
+                  setCustomDate(false);
+                  // Drop a show or hotel that does not belong to the new location.
+                  const keptProduct = products.find((p) => p.id === productId);
+                  if (keptProduct && next && keptProduct.island !== next) setProductId("");
+                  const keptHotel = hotels.find((h) => h.id === hotelId);
+                  if (keptHotel && next && keptHotel.island !== next) setHotelId("");
+                }}
+                className={INPUT}
+                disabled={moneyLocked}
+                aria-label={config.location_label}
+              >
+                <option value="">All {config.location_label.toLowerCase()}s</option>
+                {islands.map((i) => (
+                  <option key={i} value={i}>
+                    {i}
+                  </option>
+                ))}
+              </select>
+            </>
           ) : null}
 
-          <FieldLabel className="mt-4">Date</FieldLabel>
-          {!productId ? (
+          <FieldLabel className={islands.length > 1 ? "mt-4" : ""}>Date</FieldLabel>
+          {!nights.length && !customDate ? (
             <select disabled className={INPUT} aria-label="Show date">
-              <option>Pick a show first</option>
+              <option>No nights on the books{island ? ` for ${island}` : ""}</option>
             </select>
           ) : (
             <>
@@ -419,7 +511,7 @@ export function ShowOpsBookingForm({
                   onChange={(e) => setShowDate(e.target.value)}
                   className={INPUT}
                 >
-                  <option value="">{nights.length ? `Select a ${product?.name ?? "show"} night…` : "No nights on the books"}</option>
+                  <option value="">Select a night…</option>
                   {nightGroups.map((g) => (
                     <optgroup key={g.month} label={g.month}>
                       {g.dates.map((d) => (
@@ -440,11 +532,8 @@ export function ShowOpsBookingForm({
                 }}
               />
               <p className="mt-1 text-xs text-slate-500">
-                {product?.run_weekdays?.length
-                  ? "Purple dates are nights this show runs."
-                  : nights.length
-                    ? "Purple dates are nights already on the books. Set run nights under Shows for the full schedule."
-                    : "This show has no run nights yet — set them under Shows."}{" "}
+                {showDate ? `${showOpsDayName(showDate) ?? ""} — ` : ""}
+                purple dates are nights a show runs{island ? ` on ${island}` : ""}.{" "}
                 {customDate && !sellerMode ? (
                   <button type="button" className="font-semibold text-[var(--show-ops-primary,#7c3aed)] underline" onClick={() => setCustomDate(false)}>
                     Back to listed nights
@@ -457,6 +546,40 @@ export function ShowOpsBookingForm({
               </p>
             </>
           )}
+
+          <FieldLabel className="mt-4">Ticket type</FieldLabel>
+          <select
+            name="product_id"
+            required
+            value={productId}
+            onChange={(e) => {
+              const next = e.target.value;
+              setProductId(next);
+              const p = products.find((x) => x.id === next);
+              // A hotel from another island cannot survive the show change.
+              if (p && hotelId && !hotels.some((h) => h.id === hotelId && h.island === p.island)) {
+                setHotelId("");
+              }
+              if (p?.island && p.island !== island) setIsland(p.island);
+            }}
+            className={INPUT}
+            disabled={moneyLocked}
+          >
+            <option value="">
+              {showsForNight.length ? "Select a ticket type" : products.length ? "Nothing runs that night" : "No shows saved yet"}
+            </option>
+            {product && !showsForNight.some((p) => p.id === product.id) ? (
+              <option value={product.id}>{productPriceLabel(product)}</option>
+            ) : null}
+            {showsForNight.map((p) => (
+              <option key={p.id} value={p.id}>
+                {productPriceLabel(p)}
+              </option>
+            ))}
+          </select>
+          {products.length === 0 ? (
+            <p className="mt-1 text-xs text-amber-700">Add shows under Shows in the sidebar before taking a booking.</p>
+          ) : null}
 
           <FieldLabel className="mt-4">Adults</FieldLabel>
           <Stepper name="adults" value={adults} onChange={setAdults} disabled={moneyLocked} />
@@ -493,18 +616,45 @@ export function ShowOpsBookingForm({
                   </option>
                 ))}
               </select>
+              {canPickBilling ? (
+                <>
+                  <FieldLabel className="mt-4">Billing for this booking</FieldLabel>
+                  <select
+                    name="billing_mode"
+                    value={billingMode || supplier?.billing_mode || "deposit"}
+                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice")}
+                    className={INPUT}
+                  >
+                    <option value="deposit">Deposit — collect {supplier?.deposit_percent}% now</option>
+                    <option value="invoice">Invoice — nett {supplier?.invoice_nett_percent}% on the monthly pack</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {supplier?.name} is allowed to switch. Their default is {supplier?.billing_mode}.
+                  </p>
+                </>
+              ) : null}
+
               <FieldLabel className="mt-4">Sales channel</FieldLabel>
               <select
                 name="sales_channel"
                 className={INPUT}
-                defaultValue={defaults.sales_channel || config.sales_channels[0] || "direct"}
+                value={channel}
+                onChange={(e) => {
+                  channelPinned.current = true;
+                  setChannel(e.target.value);
+                }}
               >
-                {config.sales_channels.map((c) => (
-                  <option key={c} value={c}>
-                    {c.replace(/_/g, " ")}
-                  </option>
-                ))}
+                {[...new Set([...config.sales_channels, ...suppliers.map((s) => s.partner_type).filter(Boolean), channel])]
+                  .filter(Boolean)
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {String(c).replace(/_/g, " ")}
+                    </option>
+                  ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">
+                {supplier ? `Set from ${supplier.name}'s partner type.` : "Set from the partner once you pick one."}
+              </p>
             </>
           )}
 
@@ -516,6 +666,7 @@ export function ShowOpsBookingForm({
                   <span className="text-slate-400">
                     : {adults} × {moneyFmt(product.adult_price)}
                     {children > 0 ? ` + ${children} × ${moneyFmt(product.child_price)}` : ""}
+                    {supplementTotal > 0 ? ` + bus ${moneyFmt(supplementTotal)}` : ""}
                   </span>
                 ) : null}
               </span>
@@ -691,8 +842,8 @@ export function ShowOpsBookingForm({
               );
             })}
           </select>
-          {product && hotelsForIsland.length === 0 ? (
-            <p className="mt-1 text-xs text-amber-700">No hotels on {product.island} yet — add under Master data.</p>
+          {activeIsland && hotelsForIsland.length === 0 ? (
+            <p className="mt-1 text-xs text-amber-700">No hotels on {activeIsland} yet — add under Master data.</p>
           ) : null}
 
           <label className="mt-3 flex items-center gap-2 text-sm">
@@ -707,6 +858,10 @@ export function ShowOpsBookingForm({
             Transport required
             {product?.transport_available === false ? (
               <span className="text-xs text-slate-500">· no bus on this show</span>
+            ) : supplement > 0 && product?.adult_price_no_transport == null ? (
+              <span className="text-xs text-slate-500">
+                · +{moneyFmt(supplement)} per adult &amp; child, infants free
+              </span>
             ) : null}
           </label>
 
@@ -842,6 +997,12 @@ export function ShowOpsBookingForm({
                   <PriceLine
                     label={`Infants (${infants} × ${moneyFmt(product.infant_price)})`}
                     value={moneyFmt(round2(infants * Number(product.infant_price)))}
+                  />
+                ) : null}
+                {supplementTotal > 0 ? (
+                  <PriceLine
+                    label={`Transport (${adults + children} × ${moneyFmt(supplement)}${infants > 0 ? ", infants free" : ""})`}
+                    value={moneyFmt(supplementTotal)}
                   />
                 ) : null}
               </>
@@ -1011,6 +1172,112 @@ function PriceLine({
       <dd
         className={`tabular-nums ${tone === "rose" ? "text-rose-600" : strong ? "font-semibold text-slate-900" : "text-slate-700"}`}
       >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+type SavedBooking = {
+  ref: string;
+  show: string;
+  date: string;
+  guestName: string;
+  pax: { adults: number; children: number; infants: number };
+  transport: boolean;
+  stopName: string | null;
+  pickupTime: string | null;
+  showTime: string | null;
+  total: string;
+  dueLabel: string;
+  dueAmount: string;
+};
+
+/**
+ * What the operator reads back down the phone the moment a booking saves: the
+ * reference first, then the day, the stop and the time the coach comes.
+ */
+function BookingSavedPanel({
+  saved,
+  onAnother,
+  backHref,
+}: {
+  saved: SavedBooking;
+  onAnother: () => void;
+  backHref: string;
+}) {
+  const pax = [
+    saved.pax.adults ? `${saved.pax.adults} adult${saved.pax.adults === 1 ? "" : "s"}` : "",
+    saved.pax.children ? `${saved.pax.children} child${saved.pax.children === 1 ? "" : "ren"}` : "",
+    saved.pax.infants ? `${saved.pax.infants} infant${saved.pax.infants === 1 ? "" : "s"}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <div className="mt-6 print:mt-0">
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-center gap-3 px-6 py-5" style={{ backgroundColor: ACCENT }}>
+          <Check className="h-6 w-6 text-white" aria-hidden />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/70">Booking saved</p>
+            <p className="font-mono text-2xl font-bold tracking-tight text-white">{saved.ref}</p>
+          </div>
+        </div>
+        <dl className="divide-y divide-slate-100">
+          <SavedLine label="Guest" value={saved.guestName} />
+          <SavedLine label="Show" value={saved.show} />
+          <SavedLine
+            label="Date"
+            value={saved.date ? `${showOpsDayName(saved.date) ?? ""} ${saved.date}`.trim() : "—"}
+            strong
+          />
+          <SavedLine label="Party" value={pax || "—"} />
+          {saved.transport ? (
+            <>
+              <SavedLine label="Pick-up stop" value={saved.stopName ?? "Not set"} strong />
+              <SavedLine label="Pick-up time" value={saved.pickupTime ?? "—"} strong />
+            </>
+          ) : (
+            <SavedLine label="Transport" value="Guest makes their own way" />
+          )}
+          <SavedLine label="Show starts" value={saved.showTime ?? "—"} />
+          <SavedLine label="Total" value={saved.total} />
+          <SavedLine label={saved.dueLabel} value={saved.dueAmount} strong />
+        </dl>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3 print:hidden">
+        <button
+          type="button"
+          onClick={onAnother}
+          className="rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm"
+          style={{ backgroundColor: ACCENT }}
+        >
+          Take another booking
+        </button>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+        >
+          Print
+        </button>
+        <a
+          href={backHref}
+          className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+        >
+          Back to bookings
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function SavedLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 px-6 py-3">
+      <dt className="shrink-0 text-sm text-slate-500">{label}</dt>
+      <dd className={`text-right text-sm ${strong ? "text-base font-semibold text-slate-900" : "text-slate-800"}`}>
         {value}
       </dd>
     </div>

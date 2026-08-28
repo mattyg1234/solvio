@@ -51,6 +51,12 @@ export type ShowOpsContext = {
   isOwner: boolean;
   /** Explicit page allow-list for this member; null means use the role default. */
   allowedPages: string[] | null;
+  /**
+   * The partner this staff member books for by default — the desk pre-selects it
+   * so whoever answers the phone is not re-picking their own outlet every time.
+   * Null for owners and anyone not tied to one.
+   */
+  defaultSupplierId: string | null;
   workspaces: ShowOpsWorkspace[];
 };
 
@@ -194,6 +200,7 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
     isOwner: false,
     // Sellers never reach the Show Ops staff nav; their portal is separate.
     allowedPages: [],
+    defaultSupplierId: supplier.id,
     workspaces: [],
     supplier,
   };
@@ -250,6 +257,7 @@ export async function requireShowOpsContext(): Promise<ShowOpsContext> {
     role,
     isOwner,
     allowedPages: picked.allowedPages ?? null,
+    defaultSupplierId: picked.supplierId ?? null,
     workspaces,
   };
 }

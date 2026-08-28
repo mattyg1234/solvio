@@ -8,7 +8,7 @@ import {
   saveMasterSupplierOneAction,
   saveMasterSuppliersAllAction,
 } from "@/app/dashboard/show-ops/actions";
-import { partnerSearchHaystack } from "@/lib/show-ops/partners";
+import { partnerIslands, partnerSearchHaystack } from "@/lib/show-ops/partners";
 import { NumberInput } from "@/components/ui/number-input";
 
 function stopEnterSubmit(e: KeyboardEvent<HTMLFormElement>) {
@@ -33,6 +33,7 @@ export type MasterSupplierRow = {
   tax_id?: string | null;
   legal_name?: string | null;
   invoice_address?: string | null;
+  can_choose_billing_mode?: boolean | null;
   active: boolean | null;
 };
 
@@ -55,6 +56,24 @@ function setField(form: HTMLFormElement, name: string, value: string) {
 function setCheckbox(form: HTMLFormElement, name: string, on: boolean) {
   const el = form.elements.namedItem(name);
   if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = on;
+}
+
+/**
+ * Ticks one value inside a same-named checkbox group (the partner location boxes),
+ * leaving the partner's other locations alone. A partner already set to All is
+ * left alone too — it already sells there.
+ */
+function tickLocation(form: HTMLFormElement, name: string, value: string) {
+  const group = form.elements.namedItem(name);
+  const boxes =
+    group instanceof RadioNodeList
+      ? [...group].filter((el): el is HTMLInputElement => el instanceof HTMLInputElement)
+      : group instanceof HTMLInputElement
+        ? [group]
+        : [];
+  if (boxes.some((b) => b.value.toUpperCase() === "ALL" && b.checked)) return;
+  const target = boxes.find((b) => b.value === value);
+  if (target) target.checked = true;
 }
 
 export type MasterSupplierStat = { bookings: number; pax: number; revenue: number };
@@ -226,6 +245,17 @@ export function MasterSuppliersForm({
             <NumberInput name="bulk_invoice_nett_percent" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
           </label>
           <label className="text-xs font-medium text-slate-600">
+            Add location to ticked
+            <select name="bulk_add_island" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="">Keep</option>
+              {islands.map((i) => (
+                <option key={i} value={i}>
+                  {i}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
             No-show default
             <select name="bulk_no_show_policy" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
               <option value="">Keep</option>
@@ -256,12 +286,16 @@ export function MasterSuppliersForm({
               const deposit = String(fd.get("bulk_deposit_percent") ?? "").trim();
               const nett = String(fd.get("bulk_invoice_nett_percent") ?? "").trim();
               const active = String(fd.get("bulk_active") ?? "");
+              const addIsland = String(fd.get("bulk_add_island") ?? "").trim();
               for (const id of ticked) {
                 const p = `${id}::`;
                 if (billing) setField(form, `${p}billing_mode`, billing);
                 if (deposit) setField(form, `${p}deposit_percent`, deposit);
                 if (nett) setField(form, `${p}invoice_nett_percent`, nett);
                 if (active === "1" || active === "0") setCheckbox(form, `${p}active`, active === "1");
+                // Adds the island alongside whatever the partner already sells —
+                // it never takes one away.
+                if (addIsland) tickLocation(form, `${p}island`, addIsland);
               }
             }}
           >
@@ -385,20 +419,7 @@ export function MasterSuppliersForm({
                   ))}
                 </select>
               </label>
-              <label className="text-xs font-medium text-slate-600">
-                Location
-                <select name={`${prefix}island`} defaultValue={s.island || "ALL"} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-                  <option value="ALL">ALL</option>
-                  {islands.map((i) => (
-                    <option key={i} value={i}>
-                      {i}
-                    </option>
-                  ))}
-                  {s.island && s.island !== "ALL" && !islands.includes(s.island) ? (
-                    <option value={s.island}>{s.island}</option>
-                  ) : null}
-                </select>
-              </label>
+              <PartnerLocations prefix={prefix} islands={islands} value={s.island} />
               <label className="text-xs font-medium text-slate-600">
                 Billing
                 <select name={`${prefix}billing_mode`} defaultValue={s.billing_mode} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
@@ -439,6 +460,19 @@ export function MasterSuppliersForm({
                   ))}
                 </select>
               </label>
+              <label className="flex items-start gap-2 self-end pb-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  name={`${prefix}can_choose_billing_mode`}
+                  value="1"
+                  defaultChecked={Boolean(s.can_choose_billing_mode)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Let the desk pick deposit or invoice per booking
+                  <span className="block text-slate-400">Off = every booking uses the billing set above.</span>
+                </span>
+              </label>
               <label className="text-xs font-medium text-slate-600">
                 No-show default
                 <select
@@ -476,5 +510,56 @@ export function MasterSuppliersForm({
       ) : null}
 
     </form>
+  );
+}
+
+/**
+ * Locations a partner sells on. Ticking nothing (or ticking ALL) means every
+ * island — which is how the legacy export arrived, with no Gran Canaria anywhere
+ * even though a third of the hotels are there.
+ */
+function PartnerLocations({
+  prefix,
+  islands,
+  value,
+}: {
+  prefix: string;
+  islands: string[];
+  value?: string | null;
+}) {
+  const current = partnerIslands(value);
+  const all = current.length === 0 || current.some((v) => v.toUpperCase() === "ALL");
+  const [everywhere, setEverywhere] = useState(all);
+  // Locations the partner already has that are not in the tenant's island list.
+  const extras = current.filter((v) => v.toUpperCase() !== "ALL" && !islands.includes(v));
+
+  return (
+    <fieldset className="text-xs font-medium text-slate-600 sm:col-span-2">
+      <legend>Locations</legend>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1.5 rounded-lg border bg-white px-2 py-1.5">
+        <label className="flex items-center gap-1.5 font-semibold">
+          <input
+            type="checkbox"
+            name={`${prefix}island`}
+            value="ALL"
+            checked={everywhere}
+            onChange={(e) => setEverywhere(e.target.checked)}
+          />
+          All
+        </label>
+        {[...islands, ...extras].map((i) => (
+          <label key={i} className={`flex items-center gap-1.5 ${everywhere ? "text-slate-400" : ""}`}>
+            <input
+              type="checkbox"
+              name={`${prefix}island`}
+              value={i}
+              defaultChecked={current.includes(i)}
+              disabled={everywhere}
+            />
+            {i}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }

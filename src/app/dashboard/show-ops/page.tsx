@@ -239,7 +239,7 @@ export default async function ShowOpsHomePage({
     <div className="space-y-6">
       <ShowOpsPageHeader
         eyebrow={`Welcome back${firstName ? `, ${firstName}` : ""} 👋`}
-        title="Admin dashboard"
+        title={ctx.branding.displayName}
         actions={
           <>
             <form method="get" className="flex items-center gap-2">

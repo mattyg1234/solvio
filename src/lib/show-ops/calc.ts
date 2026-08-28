@@ -12,15 +12,47 @@ export type ShowOpsPriceProduct = Pick<
   | "infant_price_no_transport"
 >;
 
+export type ShowOpsPricingSnapshot = {
+  v: 1;
+  /** Stamped by the save action; null while the form is still doing live maths. */
+  priced_at: string | null;
+  adult_price: number;
+  child_price: number;
+  infant_price: number;
+  adult_nett_unit: number;
+  child_nett_unit: number;
+  invoice_nett_percent: number;
+  deposit_percent: number;
+  transport_required: boolean;
+  transport_supplement: number;
+};
+
 function num(n: unknown, fallback = 0): number {
   const v = Number(n);
   return Number.isFinite(v) ? v : fallback;
 }
 
-function pickUnit(withTransport: number, noTransport: number | null | undefined, transportRequired: boolean): number {
-  if (transportRequired) return round2(num(withTransport));
-  if (noTransport == null) return round2(num(withTransport));
-  return round2(num(noTransport));
+/**
+ * Unit price for one head.
+ *
+ * Two pricing shapes live side by side:
+ *  - a show that carries an explicit without-transport price owns both halves, so the
+ *    stored pair is used verbatim and no supplement is added on top;
+ *  - every other show prices the ticket show-only, and taking the bus adds `supplement`.
+ *
+ * `supplement` is passed as 0 for infants, who never pay for the seat.
+ */
+function pickUnit(
+  listPrice: number,
+  noTransport: number | null | undefined,
+  transportRequired: boolean,
+  supplement: number,
+): number {
+  if (noTransport != null) {
+    return round2(num(transportRequired ? listPrice : noTransport));
+  }
+  const base = round2(num(listPrice));
+  return transportRequired ? round2(base + Math.max(0, num(supplement))) : base;
 }
 
 /** Supplier % wins when it is not 100. Product nett is the 100% fallback. */
@@ -41,26 +73,33 @@ export function computeBookingMoney(input: {
   supplier: Pick<ShowSupplier, "billing_mode" | "deposit_percent" | "invoice_nett_percent"> | null;
   billingMode?: ShowOpsBillingMode;
   transportRequired?: boolean;
+  /** Per-head bus supplement from tenant config. Adults and children only. */
+  transportSupplement?: number;
 }) {
   const adults = Math.max(0, input.adults);
   const children = Math.max(0, input.children);
   const infants = Math.max(0, input.infants);
   const transport = Boolean(input.transportRequired);
+  const supplement = Math.max(0, num(input.transportSupplement));
 
   const adultPrice = pickUnit(
     num(input.product?.adult_price),
     input.product?.adult_price_no_transport,
     transport,
+    supplement,
   );
   const childPrice = pickUnit(
     num(input.product?.child_price),
     input.product?.child_price_no_transport,
     transport,
+    supplement,
   );
+  // Infants ride free — no seat, no supplement.
   const infantPrice = pickUnit(
     num(input.product?.infant_price),
     input.product?.infant_price_no_transport,
     transport,
+    0,
   );
   const total = round2(adults * adultPrice + children * childPrice + infants * infantPrice);
 
@@ -74,6 +113,25 @@ export function computeBookingMoney(input: {
   const child_nett_total = round2(children * childNettUnit);
   const nett_total = round2(adult_nett_total + child_nett_total);
 
+  /**
+   * What was quoted, frozen. Stored on the booking so a later change to a partner
+   * nett % or a show price cannot rewrite money on a booking already taken —
+   * invoicing reads the stored totals whenever this is present.
+   */
+  const pricing_snapshot: ShowOpsPricingSnapshot = {
+    v: 1,
+    priced_at: null,
+    adult_price: adultPrice,
+    child_price: childPrice,
+    infant_price: infantPrice,
+    adult_nett_unit: adultNettUnit,
+    child_nett_unit: childNettUnit,
+    invoice_nett_percent: nettPct,
+    deposit_percent: depositPct,
+    transport_required: transport,
+    transport_supplement: transport ? supplement : 0,
+  };
+
   if (mode === "invoice") {
     return {
       billing_mode: "invoice" as const,
@@ -84,6 +142,7 @@ export function computeBookingMoney(input: {
       adult_nett_total,
       child_nett_total,
       payment_status: "n_a" as const,
+      pricing_snapshot,
     };
   }
 
@@ -97,7 +156,18 @@ export function computeBookingMoney(input: {
     adult_nett_total,
     child_nett_total,
     payment_status: "unpaid" as const,
+    pricing_snapshot,
   };
+}
+
+/**
+ * True when this booking carries a price snapshot, i.e. it was taken through the
+ * desk rather than dragged in from the legacy export. Snapshotted bookings invoice
+ * at the money stored on the row; legacy rows still fall back to live pricing,
+ * because the import never wrote netts for them.
+ */
+export function hasPricingSnapshot(raw: unknown): boolean {
+  return Boolean(raw) && typeof raw === "object" && !Array.isArray(raw);
 }
 
 export function round2(n: number): number {

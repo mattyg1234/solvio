@@ -4,10 +4,17 @@ import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switch
 import { requireShowOpsContext } from "@/lib/show-ops/access";
 import { SHOW_OPS_OUTBOUND_HELD, showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
-export const metadata: Metadata = {
-  title: "Show Ops · Solvio",
-  description: "Tour and show operations — bookings, lists, invoices.",
-};
+/**
+ * Browser tab and bookmark name. Operators name their own system, so the
+ * workspace name leads and Solvio sits behind it.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const ctx = await requireShowOpsContext();
+  return {
+    title: `${ctx.branding.displayName} · Solvio`,
+    description: "Tour and show operations — bookings, lists, invoices.",
+  };
+}
 
 export default async function ShowOpsLayout({ children }: { children: React.ReactNode }) {
   const ctx = await requireShowOpsContext();

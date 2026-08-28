@@ -5,6 +5,7 @@ import {
   computeBookingMoney,
   formatShowOpsDoorTime,
   formatShowOpsMoney,
+  hasPricingSnapshot,
   paymentStatusAfter,
   showOpsAmountDue,
   showOpsBookingPayView,
@@ -314,4 +315,128 @@ test("money uses thousands separators", () => {
   assert.equal(formatShowOpsMoney(138336, "eur"), "€138,336.00");
   assert.equal(formatShowOpsMoney(118.5, "eur"), "€118.50");
   assert.equal(formatShowOpsMoney(130000, "gbp"), "£130,000.00");
+});
+
+/* ── Transport supplement ────────────────────────────────────────────────────
+ * Taking the bus adds a flat per-head supplement to adults and children.
+ * Infants ride free. The partner's cut is still worked out on the full total.
+ */
+
+const CANARIES_SHOW = {
+  adult_price: 49,
+  child_price: 29,
+  infant_price: 0,
+  adult_nett: null,
+  child_nett: null,
+  adult_price_no_transport: null,
+  child_price_no_transport: null,
+  infant_price_no_transport: null,
+};
+
+test("bus supplement adds €10 a head to adults and children, never infants", () => {
+  const without = computeBookingMoney({
+    adults: 2,
+    children: 1,
+    infants: 1,
+    product: CANARIES_SHOW,
+    supplier: null,
+    transportRequired: false,
+    transportSupplement: 10,
+  });
+  assert.equal(without.total_cost, 127); // 2×49 + 1×29 + 1×0
+
+  const withBus = computeBookingMoney({
+    adults: 2,
+    children: 1,
+    infants: 1,
+    product: CANARIES_SHOW,
+    supplier: null,
+    transportRequired: true,
+    transportSupplement: 10,
+  });
+  // 2×59 + 1×39 + infant still free
+  assert.equal(withBus.total_cost, 157);
+  assert.equal(withBus.total_cost - without.total_cost, 30);
+});
+
+test("a seller still takes 30% of the transport-inclusive total", () => {
+  const money = computeBookingMoney({
+    adults: 2,
+    children: 0,
+    infants: 0,
+    product: CANARIES_SHOW,
+    supplier: { billing_mode: "deposit", deposit_percent: 30, invoice_nett_percent: 100 },
+    transportRequired: true,
+    transportSupplement: 10,
+  });
+  assert.equal(money.total_cost, 118); // 2 × (49 + 10)
+  assert.equal(money.deposit_amount, 35.4); // 30% of 118, not of 98
+});
+
+test("a show with its own without-transport price keeps that pair, no supplement on top", () => {
+  const paired = { ...CANARIES_SHOW, adult_price: 130, adult_price_no_transport: 110 };
+  const withBus = computeBookingMoney({
+    adults: 1,
+    children: 0,
+    infants: 0,
+    product: paired,
+    supplier: null,
+    transportRequired: true,
+    transportSupplement: 10,
+  });
+  const without = computeBookingMoney({
+    adults: 1,
+    children: 0,
+    infants: 0,
+    product: paired,
+    supplier: null,
+    transportRequired: false,
+    transportSupplement: 10,
+  });
+  assert.equal(withBus.total_cost, 130); // not 140
+  assert.equal(without.total_cost, 110);
+});
+
+test("supplement of zero leaves every price exactly where it was", () => {
+  const money = computeBookingMoney({
+    adults: 2,
+    children: 2,
+    infants: 0,
+    product: CANARIES_SHOW,
+    supplier: null,
+    transportRequired: true,
+    transportSupplement: 0,
+  });
+  assert.equal(money.total_cost, 156); // 2×49 + 2×29
+});
+
+test("invoice nett follows the bus supplement through the partner percentage", () => {
+  const money = computeBookingMoney({
+    adults: 2,
+    children: 0,
+    infants: 0,
+    product: CANARIES_SHOW,
+    supplier: { billing_mode: "invoice", deposit_percent: 0, invoice_nett_percent: 85 },
+    transportRequired: true,
+    transportSupplement: 10,
+  });
+  assert.equal(money.total_cost, 118);
+  assert.equal(money.nett_total, 100.3); // 85% of 118
+});
+
+test("every booking priced through the desk carries a snapshot of its rates", () => {
+  const money = computeBookingMoney({
+    adults: 1,
+    children: 0,
+    infants: 0,
+    product: CANARIES_SHOW,
+    supplier: { billing_mode: "invoice", deposit_percent: 30, invoice_nett_percent: 85 },
+    transportRequired: true,
+    transportSupplement: 10,
+  });
+  assert.equal(hasPricingSnapshot(money.pricing_snapshot), true);
+  assert.equal(money.pricing_snapshot.adult_price, 59);
+  assert.equal(money.pricing_snapshot.invoice_nett_percent, 85);
+  assert.equal(money.pricing_snapshot.transport_supplement, 10);
+  assert.equal(hasPricingSnapshot(null), false);
 });

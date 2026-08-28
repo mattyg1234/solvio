@@ -32,8 +32,12 @@ export function BusStopReorder({ island, stops }: { island: string; stops: Reord
     <form action={reorderBusStopsAction} className="mt-2 rounded-xl bg-white p-3 ring-1 ring-slate-200">
       <input type="hidden" name="island" value={island} />
       <input type="hidden" name="ordered_ids" value={order.map((s) => s.id).join(",")} />
-      <p className="text-xs font-medium text-slate-600">Run order · {island}</p>
-      <p className="text-[11px] text-slate-500">Drag to reorder, then save. This only changes the bus-run order — hotels and bookings keep their stop.</p>
+      <p className="text-xs font-medium text-slate-600">Default run order · {island}</p>
+      <p className="text-[11px] text-slate-500">
+        Drag to reorder, then save. This is the <strong>permanent</strong> default for every night — hotels and bookings
+        keep their stop. To change the order for one night only, use the bus list under Quick check-in and export from
+        there.
+      </p>
       <ol className="mt-2 space-y-1">
         {order.map((s, i) => (
           <li

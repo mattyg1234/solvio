@@ -81,6 +81,13 @@ function parseInvoiceConfig(
   };
 }
 
+/** Money kept out of negative territory; anything unparseable falls back. */
+function parseMoney(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.round(n * 100) / 100;
+}
+
 function splitList(raw: unknown, fallback: string[]): string[] {
   if (Array.isArray(raw)) {
     const list = raw.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim());
@@ -141,6 +148,7 @@ export function parseShowOpsConfig(raw: unknown): ShowOpsConfig {
     currency: parseCurrency(o.currency),
     guest_stripe_enabled: parseBool(o.guest_stripe_enabled, DEFAULT_SHOW_OPS_CONFIG.guest_stripe_enabled),
     partner_stripe_enabled: parseBool(o.partner_stripe_enabled, false),
+    transport_supplement: parseMoney(o.transport_supplement, DEFAULT_SHOW_OPS_CONFIG.transport_supplement),
     office_report_emails: splitList(o.office_report_emails, []).filter((e) => e.includes("@")),
     report_presets: { office_sort: "supplier_surname" },
     invoice: parseInvoiceConfig(o.invoice, mhtLegacy),
@@ -214,7 +222,7 @@ export function genericSeedConfig(locationNames?: string[]): ShowOpsConfig {
 export function mhtSeedConfig(): ShowOpsConfig {
   return {
     ...DEFAULT_SHOW_OPS_CONFIG,
-    islands: ["Lanzarote", "Fuerteventura", "Tenerife", "UK Tour"],
+    islands: ["Lanzarote", "Fuerteventura", "Gran Canaria", "Tenerife", "UK Tour"],
     location_label: "Island",
     product_label: "Show",
     partner_types: [
@@ -231,6 +239,7 @@ export function mhtSeedConfig(): ShowOpsConfig {
     currency: "eur",
     guest_stripe_enabled: true,
     partner_stripe_enabled: false,
+    transport_supplement: 10,
     feature_flags: { mht_tracker_v1: true },
     booking_questions: [],
     enabled_modules: ["bookings", "lists", "payments", "invoices", "commercial"],

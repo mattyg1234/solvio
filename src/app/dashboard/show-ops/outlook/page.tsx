@@ -72,12 +72,15 @@ const SECTIONS: Section[] = [
 
 const DIRECT_KEY = "__direct__";
 
-type HotelRow = { pax: number; value: number; stops: Set<string> };
+type HotelRow = { pax: number; value: number; stops: Set<string>; resort: string };
+/** Adult / child price for a show running that night — the rates the phone asks for. */
+type RateRow = { show: string; adult: number; child: number };
 type Night = {
   date: string;
   shows: Set<string>;
   cells: Map<string, { bus: number; direct: number }>;
   hotels: Map<string, HotelRow>;
+  rates: Map<string, RateRow>;
   bookings: number;
   pax: number;
   value: number;
@@ -89,11 +92,35 @@ function fmtDate(iso: string) {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
+/** Roll the night's hotels up into their resorts — the other half of "sort by resort AND hotel". */
+function groupHotelsByResort(
+  hotels: Map<string, HotelRow>,
+): Map<string, { pax: number; value: number; hotels: number }> {
+  const out = new Map<string, { pax: number; value: number; hotels: number }>();
+  for (const h of hotels.values()) {
+    const key = h.resort || "Other";
+    const row = out.get(key) ?? { pax: 0, value: 0, hotels: 0 };
+    row.pax += h.pax;
+    row.value += h.value;
+    row.hotels += 1;
+    out.set(key, row);
+  }
+  return out;
+}
+
 function euro(n: number) {
   return `€${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`;
 }
 
-export default async function WeeklyOutlookPage() {
+export default async function WeeklyOutlookPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ by?: string }>;
+}) {
+  const sp = await searchParams;
+  // Resort and hotel are different questions — "which resort is filling up" vs
+  // "which hotel is sending them" — so the night detail groups by either.
+  const groupBy: "resort" | "hotel" = sp.by === "resort" ? "resort" : "hotel";
   const ctx = await requireShowOpsPage("outlook");
   const today = todayIsoUtc();
   const endIso = addDaysIso(today, 14);
@@ -101,7 +128,7 @@ export default async function WeeklyOutlookPage() {
   const [{ data: products }, { data: bookings }, { data: busOrders }, { data: stops }] = await Promise.all([
     ctx.supabase
       .from("show_products")
-      .select("id,name,island,capacity,run_weekdays,active")
+      .select("id,name,island,capacity,run_weekdays,active,adult_price,child_price")
       .eq("business_id", ctx.business.id)
       .eq("active", true),
     ctx.supabase
@@ -156,7 +183,17 @@ export default async function WeeklyOutlookPage() {
     }
     let n = m.get(date);
     if (!n) {
-      n = { date, shows: new Set(), cells: new Map(), hotels: new Map(), bookings: 0, pax: 0, value: 0, busPax: 0 };
+      n = {
+        date,
+        shows: new Set(),
+        cells: new Map(),
+        hotels: new Map(),
+        rates: new Map(),
+        bookings: 0,
+        pax: 0,
+        value: 0,
+        busPax: 0,
+      };
       m.set(date, n);
     }
     return n;
@@ -172,7 +209,13 @@ export default async function WeeklyOutlookPage() {
     for (const date of dates) {
       for (const p of sectionProducts) {
         if (productRunsOnDate(p.run_weekdays as number[] | null, date)) {
-          nightFor(section, date).shows.add(p.name);
+          const night = nightFor(section, date);
+          night.shows.add(p.name);
+          night.rates.set(p.name, {
+            show: p.name as string,
+            adult: Number(p.adult_price) || 0,
+            child: Number(p.child_price) || 0,
+          });
         }
       }
     }
@@ -204,7 +247,9 @@ export default async function WeeklyOutlookPage() {
     night.cells.set(cellKey, cell);
 
     const hotelName = (b.hotel_name as string) || "No hotel given";
-    const hotel = night.hotels.get(hotelName) ?? { pax: 0, value: 0, stops: new Set<string>() };
+    const hotel =
+      night.hotels.get(hotelName) ?? { pax: 0, value: 0, stops: new Set<string>(), resort: "" };
+    if (!hotel.resort) hotel.resort = section.resorts.find((r) => r.key === zone)?.label || "Other";
     hotel.pax += pax;
     hotel.value += value;
     if (stop?.name) hotel.stops.add(`${stop.name}${b.pickup_time ? ` · ${String(b.pickup_time).slice(0, 5)}` : ""}`);
@@ -225,12 +270,20 @@ export default async function WeeklyOutlookPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {SECTIONS.map((s) => (
           <ShowOpsPill key={s.id} href={`#${s.id}`} on={false}>
             {s.code}
           </ShowOpsPill>
         ))}
+        <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:inline-block" />
+        <span className="text-xs font-medium text-slate-500">Break each night down by</span>
+        <ShowOpsPill href="/dashboard/show-ops/outlook" on={groupBy === "hotel"}>
+          Hotel
+        </ShowOpsPill>
+        <ShowOpsPill href="/dashboard/show-ops/outlook?by=resort" on={groupBy === "resort"}>
+          Resort
+        </ShowOpsPill>
       </div>
 
       {SECTIONS.map((section) => {
@@ -303,21 +356,43 @@ export default async function WeeklyOutlookPage() {
                             <details className="group">
                               <summary className="cursor-pointer list-none">
                                 <span className="font-semibold text-slate-900">{fmtDate(n.date)}</span>
-                                {n.hotels.size ? (
+                                {n.hotels.size || n.rates.size ? (
                                   <span className="ml-1.5 text-[11px] text-slate-400 group-open:hidden">▸</span>
                                 ) : null}
                               </summary>
-                              {n.hotels.size ? (
+                              {n.hotels.size || n.rates.size ? (
                                 <div className="mt-2 space-y-1 text-xs">
-                                  <p className="max-w-[240px] text-slate-400">{[...n.shows].join(" · ")}</p>
-                                  {[...n.hotels.entries()]
-                                    .sort((a, b) => b[1].pax - a[1].pax)
-                                    .map(([hotel, h]) => (
-                                      <p key={hotel} className="text-slate-500">
-                                        <span className="font-medium text-slate-700">{hotel}</span> · {h.pax} pax · {euro(h.value)}
-                                        {h.stops.size ? <span className="text-slate-400"> · {[...h.stops].join(" · ")}</span> : null}
-                                      </p>
-                                    ))}
+                                  {/* Ticket rates for what runs tonight — the number the phone actually asks for. */}
+                                  {[...n.rates.values()].map((r) => (
+                                    <p key={r.show} className="text-slate-500">
+                                      <span className="font-medium text-slate-700">{r.show}</span> ·{" "}
+                                      {euro(r.adult)} adult / {euro(r.child)} child
+                                    </p>
+                                  ))}
+                                  {!n.rates.size ? (
+                                    <p className="max-w-[240px] text-slate-400">{[...n.shows].join(" · ")}</p>
+                                  ) : null}
+                                  {groupBy === "resort"
+                                    ? [...groupHotelsByResort(n.hotels).entries()]
+                                        .sort((a, b) => b[1].pax - a[1].pax)
+                                        .map(([resort, r]) => (
+                                          <p key={resort} className="text-slate-500">
+                                            <span className="font-medium text-slate-700">{resort}</span> · {r.pax} pax ·{" "}
+                                            {euro(r.value)}
+                                            <span className="text-slate-400"> · {r.hotels} hotels</span>
+                                          </p>
+                                        ))
+                                    : [...n.hotels.entries()]
+                                        .sort((a, b) => b[1].pax - a[1].pax)
+                                        .map(([hotel, h]) => (
+                                          <p key={hotel} className="text-slate-500">
+                                            <span className="font-medium text-slate-700">{hotel}</span> · {h.pax} pax ·{" "}
+                                            {euro(h.value)}
+                                            {h.stops.size ? (
+                                              <span className="text-slate-400"> · {[...h.stops].join(" · ")}</span>
+                                            ) : null}
+                                          </p>
+                                        ))}
                                   <Link
                                     href={`/dashboard/show-ops/calendar?date=${n.date}&island=${encodeURIComponent(section.island)}`}
                                     className="inline-block font-medium text-[var(--show-ops-primary,#7c3aed)]"

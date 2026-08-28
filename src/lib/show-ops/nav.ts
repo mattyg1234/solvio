@@ -33,7 +33,6 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
       { href: "/dashboard/show-ops/master?tab=partners", label: "Partners", key: "partners", tab: "partners" },
       { href: "/dashboard/show-ops/master?tab=hotels", label: "Hotels & pick-ups", key: "hotels", tab: "hotels" },
       { href: "/dashboard/show-ops/buses", label: "Bus board", key: "buses" },
-      { href: "/dashboard/show-ops/master?tab=rates", label: "Rates & commissions", key: "rates", tab: "rates" },
     ],
   },
   {
@@ -93,7 +92,6 @@ export const SHOW_OPS_PAGE_KEYS = [
   "partners",
   "hotels",
   "buses",
-  "rates",
   "outlook",
   "reports",
   "stats",
@@ -112,7 +110,6 @@ export const SHOW_OPS_PAGE_LABELS: Record<ShowOpsPageKey, string> = {
   partners: "Partners",
   hotels: "Hotels & pick-ups",
   buses: "Bus board",
-  rates: "Rates & commissions",
   outlook: "Outlook",
   reports: "Reports",
   stats: "Stats & insights",
@@ -131,7 +128,7 @@ const ROLE_DEFAULT_PAGES: Record<string, ShowOpsPageKey[]> = {
   office: ["dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels", "buses", "outlook", "reports"],
   finance: [
     "dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels",
-    "buses", "outlook", "reports", "invoices", "rates", "stats",
+    "buses", "outlook", "reports", "invoices", "stats",
   ],
   admin: [...SHOW_OPS_PAGE_KEYS],
   owner: [...SHOW_OPS_PAGE_KEYS],
