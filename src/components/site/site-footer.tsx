@@ -50,11 +50,6 @@ export function SiteFooter({ locale = "en" }: { locale?: MarketingLocale }) {
                 </Link>
               </li>
               <li>
-                <Link href={marketingHashHref(locale, "pricing")} className="hover:text-[#7c3aed]">
-                  {links.pricing}
-                </Link>
-              </li>
-              <li>
                 <Link href={marketingHashHref(locale, "faq")} className="hover:text-[#7c3aed]">
                   {links.faq}
                 </Link>
@@ -82,11 +77,6 @@ export function SiteFooter({ locale = "en" }: { locale?: MarketingLocale }) {
               <li>
                 <Link href="/login" className="hover:text-[#7c3aed]">
                   {links.login}
-                </Link>
-              </li>
-              <li>
-                <Link href="/signup" className="hover:text-[#7c3aed]">
-                  {links.signup}
                 </Link>
               </li>
             </ul>

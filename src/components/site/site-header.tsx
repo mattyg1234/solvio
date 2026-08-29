@@ -12,14 +12,12 @@ import { bookingDemoHref } from "@/lib/marketing-links";
 import { getMarketingCopy } from "@/lib/marketing-copy";
 import type { MarketingLocale } from "@/lib/marketing-locale";
 import { alternateMarketingPath, marketingHashHref } from "@/lib/marketing-locale";
-import { trialHeaderTagline } from "@/lib/solvio-pricing";
 import { cn } from "@/lib/utils";
 
 export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
   const copy = getMarketingCopy(locale);
   const nav = [
     { href: marketingHashHref(locale, "ops"), label: copy.header.nav.growth },
-    { href: marketingHashHref(locale, "pricing"), label: copy.header.nav.pricing },
     { href: marketingHashHref(locale, "commerce"), label: copy.header.nav.commerce },
     { href: marketingHashHref(locale, "faq"), label: copy.header.nav.faq },
     { href: bookingDemoHref(), label: copy.header.nav.liveDemo },
@@ -52,7 +50,7 @@ export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
           <div className="min-w-0">
             <SolvioWordmark className="text-lg font-semibold tracking-tight text-[#0f172a]" delay={reduce ? 0 : 0.12} />
             <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-[#94a3b8] sm:block">
-            {trialHeaderTagline()}
+            Bookings &amp; Show Ops
           </p>
           </div>
         </Link>
@@ -88,15 +86,6 @@ export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
             {copy.header.languageSwitch}
           </Link>
           <Link
-            href="/login"
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "sm" }),
-              "hidden rounded-full px-3 font-semibold text-[#64748b] hover:text-[#0f172a] sm:inline-flex",
-            )}
-          >
-            {copy.header.login}
-          </Link>
-          <Link
             href={bookingDemoHref()}
             className={cn(
               buttonVariants({ variant: "outline", size: "sm" }),
@@ -106,13 +95,13 @@ export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
             {copy.header.tryBookingDemo}
           </Link>
           <Link
-            href="/signup"
+            href="/login"
             className={cn(
               buttonVariants({ variant: "default", size: "sm" }),
               "rounded-full px-4 font-semibold shadow-md shadow-[#7c3aed]/20 sm:px-5",
             )}
           >
-            {copy.header.signup}
+            {copy.header.login}
           </Link>
           <button
             type="button"
@@ -151,11 +140,11 @@ export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
           </nav>
           <div className="mt-4 grid gap-2 border-t border-[#ebe7f7] pt-4">
             <Link
-              href="/signup"
+              href="/login"
               className={cn(buttonVariants({ variant: "default", size: "lg" }), "h-11 rounded-full font-semibold")}
               onClick={() => setMobileOpen(false)}
             >
-              {copy.header.signup}
+              {copy.header.login}
             </Link>
             <Link
               href={bookingDemoHref()}
@@ -163,13 +152,6 @@ export function SiteHeader({ locale = "en" }: { locale?: MarketingLocale }) {
               onClick={() => setMobileOpen(false)}
             >
               {copy.header.tryBookingDemo}
-            </Link>
-            <Link
-              href="/login"
-              className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 rounded-full font-semibold")}
-              onClick={() => setMobileOpen(false)}
-            >
-              {copy.header.login}
             </Link>
           </div>
         </div>

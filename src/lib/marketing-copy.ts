@@ -4,10 +4,8 @@ import {
   BOOKING_PLATFORM_FEE_BPS,
   BOOKING_TRIAL_DAYS,
   ENTERPRISE_AI_MINUTES,
-  ENTERPRISE_MONTHLY_GBP,
   ENTERPRISE_PLATFORM_FEE_BPS,
   PRO_AI_MINUTES,
-  PRO_MONTHLY_GBP,
   PRO_PLATFORM_FEE_BPS,
   TRIAL_PLATFORM_FEE_BPS,
 } from "@/lib/solvio-pricing";
@@ -51,6 +49,7 @@ export type MarketingCopy = {
     evenClosed: string;
     ctaTrial: string;
     ctaDemo: string;
+    ctaLogin: string;
     bullet1: string;
     bullet2: string;
     voiceLive: string;
@@ -232,6 +231,7 @@ const EN: MarketingCopy = {
     evenClosed: "Back office stays in sync",
     ctaTrial: "Start free trial",
     ctaDemo: "See live booking demo",
+    ctaLogin: "Log in",
     bullet1: "Booking, invoices, payments & reports",
     bullet2: "Venues, tours, shows & service businesses",
     voiceLive: "Click the purple microphone — you'll speak directly to our live AI receptionist demo.",
@@ -285,10 +285,10 @@ const EN: MarketingCopy = {
   growth: {
     eyebrow: "Built for outcomes",
     title: "Growth feels effortless when the office stops fighting itself.",
-    subtitle: `Booking from £${BOOKING_MONTHLY_GBP}/mo covers the public link and guest confirmations. Layer on ops and finance when you need lists, invoice packs and commercial trackers — still one clean product.`,
+    subtitle: `The public link and guest confirmations come as standard. Layer on ops and finance when you need lists, invoice packs and commercial trackers — still one clean product.`,
     examplePrefix: "Example:",
     blocks: [
-      { title: "Never miss a booking", body: "Your /book link works 24/7 — guests enquire even when you're closed. Optional AI receptionist on Pro.", stat: "More after-hours requests" },
+      { title: "Never miss a booking", body: "Your /book link works 24/7 — guests enquire even when you're closed. An optional AI receptionist can answer calls too.", stat: "More after-hours requests" },
       { title: "Invoices without re-keying", body: "Invoice-mode suppliers pull into packs with nett totals, ticket numbers and due dates.", stat: "Hours saved each month" },
       { title: "Payments that clear", body: "Deposit due lists for each show night — cash or card recorded, balances update instantly.", stat: "Less till-night chaos" },
       { title: "Lists the floor can trust", body: "Office, bus and dietary lists print from live bookings — sorted the way the show works.", stat: "One source of truth" },
@@ -308,8 +308,8 @@ const EN: MarketingCopy = {
       "Share one link — Instagram, Google, voicemail, partner sites.",
       "Deposits optional — start free, add cards when no-shows hurt.",
     ],
-    card2Title: "Pricing that grows when you grow",
-    card2Body: `Booking from £${BOOKING_MONTHLY_GBP}/mo — Pro adds AI receptionist from £${PRO_MONTHLY_GBP}/mo. Show Ops is included for design partners — bookings, lists, invoices and reports.`,
+    card2Title: "One system that grows with you",
+    card2Body: `Bookings, lists, invoices and reports in one clean product — with an optional AI receptionist that answers your calls.`,
     capabilities: [
       { title: "Takes bookings", body: "Guests pick a slot — confirmed into your diary with email and text." },
       { title: "Collects deposits", body: "Optional card prepayments when you enable them — shown clearly to guests." },
@@ -404,15 +404,11 @@ const EN: MarketingCopy = {
   },
   faq: {
     eyebrow: "FAQ",
-    title: "Common questions before you sign up",
+    title: "Common questions",
     items: [
       {
         q: "Is Solvio only a booking page?",
         a: "No. Guests still get a clean booking link — and the same system runs your back office: lists, deposits, invoices, reports and email confirmations so you stop re-keying.",
-      },
-      {
-        q: "Do I need a card to start?",
-        a: `${BOOKING_TRIAL_DAYS}-day free trial — add your card to get started. You won't be charged until the trial ends; £${BOOKING_MONTHLY_GBP}/mo after that unless you cancel.`,
       },
       {
         q: "Who receives guest deposit payments?",
@@ -425,10 +421,6 @@ const EN: MarketingCopy = {
       {
         q: "Will this replace our spreadsheets?",
         a: "That’s the point. Master data and bookings feed office lists, bus lists, payments and commercial reports automatically. Import suppliers/hotels/stops by CSV when you migrate.",
-      },
-      {
-        q: "Can I cancel?",
-        a: `Yes. Cancel anytime from the dashboard. Cancel before your ${BOOKING_TRIAL_DAYS}-day trial ends and you won't be charged £${BOOKING_MONTHLY_GBP}/mo.`,
       },
     ],
     legalPrefix: "More detail in our",
@@ -570,6 +562,7 @@ const ES: MarketingCopy = {
     evenClosed: "El back office se sincroniza",
     ctaTrial: "Prueba gratis",
     ctaDemo: "Ver demo de reservas",
+    ctaLogin: "Iniciar sesión",
     bullet1: "Reservas, facturas, cobros e informes",
     bullet2: "Locales, tours, espectáculos y servicios",
     voiceLive: "Pulsa el micrófono morado — hablarás con nuestra recepcionista IA de demostración en vivo.",
@@ -611,7 +604,7 @@ const ES: MarketingCopy = {
   goLive: {
     eyebrow: "En línea en ~30 minutos",
     title: "Tres pasos del registro a tu primera reserva.",
-    subtitle: "Mira lo que ven tus clientes en una página real — luego empieza la prueba gratis y publica tu enlace.",
+    subtitle: "Mira lo que ven tus clientes en una página real — luego publica tu enlace y compártelo donde quieras.",
     cta: "Ver demo de reservas en vivo",
     stepLabel: (n) => `Paso ${n}`,
     steps: [
@@ -623,11 +616,11 @@ const ES: MarketingCopy = {
   growth: {
     eyebrow: "Pensado para resultados",
     title: "El crecimiento se siente fácil — porque lo aburrido desaparece.",
-    subtitle: `Sin dashboards que vigilar. Booking (£${BOOKING_MONTHLY_GBP}/mes) incluye enlace público, calendario y depósitos online opcionales. Pro (£${PRO_MONTHLY_GBP}/mes) añade recepcionista IA con minutos mensuales limitados.`,
+    subtitle: `Sin dashboards que vigilar. Enlace público, calendario y depósitos online opcionales — y una recepcionista IA opcional que contesta tus llamadas.`,
     examplePrefix: "Ejemplo:",
     blocks: [
       { title: "No pierdas reservas", body: "Tu enlace /book funciona 24/7 — los clientes reservan aunque cierres. Pro añade recepcionista IA por teléfono.", stat: "Más consultas fuera de horario" },
-      { title: "Varios idiomas", body: "Ideal para calles concurridas — saluda en español e inglés (y más con Pro).", stat: "Más llamadas atendidas" },
+      { title: "Varios idiomas", body: "Ideal para calles concurridas — saluda en español e inglés.", stat: "Más llamadas atendidas" },
       { title: "Citas automáticas", body: "Eligen hueco en tu enlace — confirmado en tu agenda con email y SMS si no cobras depósito.", stat: "Menos ida y vuelta" },
       { title: "Menos teléfono", body: "Menos llamadas repetitivas cuando reservan solos — tu equipo en sala.", stat: "~6 h/semana ahorradas (ejemplo)" },
       { title: "Una bandeja de reservas", body: "Consultas, depósitos opcionales y confirmaciones en un sitio — sin hojas de cálculo.", stat: "Depósitos opcionales" },
@@ -646,8 +639,8 @@ const ES: MarketingCopy = {
       "Un enlace — Instagram, Google, buzón de voz, donde te encuentren.",
       "Depósitos opcionales — empieza con reservas gratis si prefieres.",
     ],
-    card2Title: "Precios que crecen contigo",
-    card2Body: `Booking desde £${BOOKING_MONTHLY_GBP}/mes — Pro con recepcionista IA desde £${PRO_MONTHLY_GBP}/mes. Enterprise para grupos desde £${ENTERPRISE_MONTHLY_GBP}/mes.`,
+    card2Title: "Un sistema que crece contigo",
+    card2Body: `Reservas, listas, facturas e informes en un solo producto — con recepcionista IA opcional que contesta tus llamadas.`,
     capabilities: [
       { title: "Gestiona reservas", body: "Eligen hueco — confirmado en tu agenda al instante si no cobras depósito." },
       { title: "Cobra depósitos", body: "Pagos con tarjeta opcionales — siempre claros para el cliente." },
@@ -742,23 +735,11 @@ const ES: MarketingCopy = {
   },
   faq: {
     eyebrow: "FAQ",
-    title: "Preguntas frecuentes antes de registrarte",
+    title: "Preguntas frecuentes",
     items: [
-      {
-        q: "¿Necesito tarjeta para empezar?",
-        a: `Prueba gratis de ${BOOKING_TRIAL_DAYS} días — añade tu tarjeta para empezar. No se cobra hasta que termine la prueba; £${BOOKING_MONTHLY_GBP}/mes después salvo que canceles.`,
-      },
       {
         q: "¿Quién recibe los depósitos?",
         a: "Tú. Los depósitos van a la cuenta de pagos de tu negocio — Solvio no es el comercio. Nosotros damos la página, bandeja y confirmaciones al cliente.",
-      },
-      {
-        q: "¿Qué comisiones cobra Solvio?",
-        a: `Booking cuesta £${BOOKING_MONTHLY_GBP}/mes tras la prueba. Comisión en depósitos: ${TRIAL_PLATFORM_FEE_BPS / 100}% en prueba, ${BOOKING_PLATFORM_FEE_BPS / 100}% en Booking, ${PRO_PLATFORM_FEE_BPS / 100}% en Pro, ${ENTERPRISE_PLATFORM_FEE_BPS / 100}% en Enterprise — siempre visible antes de pagar.`,
-      },
-      {
-        q: "¿Puedo cancelar?",
-        a: `Sí. Cancela cuando quieras desde el panel. Si cancelas antes de los ${BOOKING_TRIAL_DAYS} días de prueba, no se cobra £${BOOKING_MONTHLY_GBP}/mes.`,
       },
       {
         q: "¿Solo para restaurantes?",

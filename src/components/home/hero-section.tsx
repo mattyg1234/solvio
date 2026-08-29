@@ -73,22 +73,22 @@ export function HeroSection({
 
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <Link
-              href="/signup"
+              href={bookingDemoHref()}
               className={cn(
                 buttonVariants({ variant: "default", size: "lg" }),
                 "h-12 rounded-full px-8 text-base font-semibold shadow-lg shadow-[#7c3aed]/25",
               )}
             >
-              {copy.hero.ctaTrial}
+              {copy.hero.ctaDemo}
             </Link>
             <Link
-              href={bookingDemoHref()}
+              href="/login"
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
                 "h-12 rounded-full border-[#ebe7f7] px-8 text-base font-semibold text-[#0f172a] hover:bg-[#f8fafc]",
               )}
             >
-              {copy.hero.ctaDemo}
+              {copy.hero.ctaLogin}
             </Link>
           </div>
 
