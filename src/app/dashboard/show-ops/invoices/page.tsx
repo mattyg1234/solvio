@@ -1,4 +1,5 @@
 import {
+  generateAllInvoicePacksAction,
   generateInvoicePackAction,
   markInvoicePaidAction,
   voidInvoiceAction,
@@ -21,6 +22,7 @@ export default async function InvoicesPage({
     supplier_id?: string;
     as_of?: string;
     sort?: string;
+    generated?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -186,6 +188,11 @@ export default async function InvoicesPage({
         title="Invoicing"
         subtitle="Draft invoices, edit prices, issue a number. Verifactu API when you add the key."
       />
+      {sp.generated ? (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          Generated {sp.generated} draft invoice{sp.generated === "1" ? "" : "s"} — review and issue below.
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {[
           ["generate", "Generate pack"],
@@ -273,6 +280,41 @@ export default async function InvoicesPage({
             </form>
           </div>
 
+          {previewBySupplier.size > 1 ? (
+            <div className="rounded-2xl bg-white p-5 ring-1 ring-[var(--show-ops-primary,#7c3aed)]/30">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-semibold">Month-end run</h3>
+                <p className="text-sm text-slate-600">
+                  {previewBySupplier.size} suppliers · {previewRows.length} reservations below
+                </p>
+              </div>
+              <form action={generateAllInvoicePacksAction} className="mt-3 grid gap-3 sm:grid-cols-3">
+                <input type="hidden" name="period_start" value={periodStart} />
+                <input type="hidden" name="period_end" value={periodEnd} />
+                <input type="hidden" name="island" value={sp.island || ""} />
+                <label className="text-sm">
+                  Invoice date
+                  <input type="date" name="invoice_date" defaultValue={today} className="mt-1 w-full rounded-lg border px-3 py-2" />
+                </label>
+                <label className="text-sm">
+                  Payment terms
+                  <select name="payment_terms_days" defaultValue={30} className="mt-1 w-full rounded-lg border px-3 py-2">
+                    {[7, 15, 30, 45, 60, 90].map((d) => (
+                      <option key={d} value={d}>
+                        {d} days
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <SubmitOnce className="self-end rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+                  {`Generate all ${previewBySupplier.size} supplier packs`}
+                </SubmitOnce>
+              </form>
+              <p className="mt-2 text-xs text-slate-500">
+                One draft per supplier for this period — nothing is issued until you review each pack.
+              </p>
+            </div>
+          ) : null}
           <div className="space-y-4">
               {[...previewBySupplier.values()].map((group) => {
                 const total = round2(group.rows.reduce((s, r) => s + Number(r.nett_total), 0));

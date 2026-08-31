@@ -2352,18 +2352,25 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
   redirect("/dashboard/show-ops/payments?sent=1");
 }
 
-export async function generateInvoicePackAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
-  const period_start = String(formData.get("period_start") ?? "").trim();
-  const period_end = String(formData.get("period_end") ?? "").trim();
-  const island = String(formData.get("island") ?? "").trim();
-  const terms = Number(formData.get("payment_terms_days") ?? 30);
-  const invoice_date = String(formData.get("invoice_date") ?? "").trim() || new Date().toISOString().slice(0, 10);
-  const supplier_id = String(formData.get("supplier_id") ?? "").trim();
+type ShowOpsFinanceCtx = Awaited<ReturnType<typeof requireShowOpsRole>>;
 
-  if (!period_start || !period_end || !supplier_id) {
-    throw new Error("Period and supplier required.");
-  }
+type InvoicePackOpts = {
+  supplier_id: string;
+  period_start: string;
+  period_end: string;
+  island: string;
+  terms: number;
+  invoice_date: string;
+};
+
+/**
+ * Build one supplier's draft invoice pack for a period. Returns the new
+ * invoice id, or null when the supplier has no uninvoiced reservations in
+ * the window (so a batch run can skip quietly where the single-supplier
+ * flow reports an error).
+ */
+async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePackOpts): Promise<string | null> {
+  const { supplier_id, period_start, period_end, island, terms, invoice_date } = opts;
 
   let q = ctx.supabase
     .from("show_bookings")
@@ -2379,7 +2386,7 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
 
   const { data: bookings, error } = await q;
   if (error) throw new Error(error.message);
-  if (!bookings?.length) throw new Error("No uninvoiced reservations for that filter.");
+  if (!bookings?.length) return null;
 
   const { data: supplierRow } = await ctx.supabase
     .from("show_suppliers")
@@ -2488,7 +2495,7 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
   const claimedRows = priced.filter((b) => claimedIds.has(b.id));
   if (!claimedRows.length) {
     await ctx.supabase.from("show_invoices").delete().eq("id", inv.id);
-    throw new Error("Those reservations were invoiced by someone else — refresh and try again.");
+    return null;
   }
 
   const billedRows = claimedRows.map((b) => {
@@ -2586,8 +2593,84 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
       .eq("id", b.id);
   }
 
+  return inv.id;
+}
+
+export async function generateInvoicePackAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("finance");
+  const period_start = String(formData.get("period_start") ?? "").trim();
+  const period_end = String(formData.get("period_end") ?? "").trim();
+  const island = String(formData.get("island") ?? "").trim();
+  const terms = Number(formData.get("payment_terms_days") ?? 30);
+  const invoice_date = String(formData.get("invoice_date") ?? "").trim() || new Date().toISOString().slice(0, 10);
+  const supplier_id = String(formData.get("supplier_id") ?? "").trim();
+
+  if (!period_start || !period_end || !supplier_id) {
+    throw new Error("Period and supplier required.");
+  }
+
+  const invoiceId = await generateInvoicePackCore(ctx, {
+    supplier_id,
+    period_start,
+    period_end,
+    island,
+    terms,
+    invoice_date,
+  });
+  if (!invoiceId) {
+    throw new Error("No uninvoiced reservations for that filter — they may have just been invoiced elsewhere.");
+  }
+
   revalidateShowOps();
-  redirect(`/dashboard/show-ops/invoices/${inv.id}`);
+  redirect(`/dashboard/show-ops/invoices/${invoiceId}`);
+}
+
+/**
+ * The month-end run: one click builds a draft pack for EVERY supplier with
+ * uninvoiced invoice-mode reservations in the period — the batch Lanzasoft
+ * did by hand, supplier by supplier.
+ */
+export async function generateAllInvoicePacksAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("finance");
+  const period_start = String(formData.get("period_start") ?? "").trim();
+  const period_end = String(formData.get("period_end") ?? "").trim();
+  const island = String(formData.get("island") ?? "").trim();
+  const terms = Number(formData.get("payment_terms_days") ?? 30);
+  const invoice_date = String(formData.get("invoice_date") ?? "").trim() || new Date().toISOString().slice(0, 10);
+
+  if (!period_start || !period_end) throw new Error("Period required.");
+
+  let q = ctx.supabase
+    .from("show_bookings")
+    .select("supplier_id")
+    .eq("business_id", ctx.business.id)
+    .eq("billing_mode", "invoice")
+    .is("invoice_id", null)
+    .is("cancelled_at", null)
+    .gte("show_date", period_start)
+    .lte("show_date", period_end);
+  if (island) q = q.eq("island", island);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+
+  const supplierIds = [...new Set((data ?? []).map((r) => r.supplier_id).filter(Boolean))] as string[];
+  if (!supplierIds.length) throw new Error("No uninvoiced reservations in that period.");
+
+  let generated = 0;
+  for (const supplier_id of supplierIds) {
+    const invoiceId = await generateInvoicePackCore(ctx, {
+      supplier_id,
+      period_start,
+      period_end,
+      island,
+      terms,
+      invoice_date,
+    });
+    if (invoiceId) generated += 1;
+  }
+
+  revalidateShowOps();
+  redirect(`/dashboard/show-ops/invoices?view=invoices&generated=${generated}`);
 }
 
 export async function markInvoicePaidAction(formData: FormData): Promise<void> {
