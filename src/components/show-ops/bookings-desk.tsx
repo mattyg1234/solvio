@@ -120,21 +120,21 @@ export function BookingsDeskTable({
         <table className="min-w-[60rem] w-full text-left text-sm">
           <thead className="sticky top-0 z-20 border-b bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="w-8 px-2 py-2" />
+              <th className="w-8 px-1.5 py-2" />
               <SortTh col={sort.ref} label="Ref" />
               <SortTh col={sort.name} label="Name" />
               <SortTh col={sort.show} label="Show" />
               <SortTh col={sort.date} label="Date" />
               <SortTh col={sort.stop} label="Pick-up" />
-              <th className="px-2 py-2">Pax</th>
+              <th className="px-1.5 py-2">Pax</th>
               <SortTh col={sort.price} label="Price" right />
-              <th className="px-2 py-2 text-right">Paid</th>
+              <th className="px-1.5 py-2 text-right">Paid</th>
               <SortTh col={sort.outstanding} label="Outstanding" right />
-              <th className="px-2 py-2">Status</th>
-              <th className="px-2 py-2">Door</th>
-              <th className="px-2 py-2 print:hidden">Mark</th>
+              <th className="px-1.5 py-2">Status</th>
+              <th className="px-1.5 py-2">Door</th>
+              <th className="px-1.5 py-2 print:hidden">Mark</th>
               <SortTh col={sort.supplier} label="Supplier" />
-              <th className="px-2 py-2" />
+              <th className="px-1.5 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -309,7 +309,7 @@ function BookingRows({
           onToggle();
         }}
       >
-        <td className="px-2 py-2">
+        <td className="px-1.5 py-2">
           <button
             type="button"
             aria-expanded={open}
@@ -320,20 +320,20 @@ function BookingRows({
             <span className={cn("block text-xs transition-transform", open && "rotate-90")}>▶</span>
           </button>
         </td>
-        <td className="px-2 py-2 font-mono text-xs">{row.bookingRef}</td>
-        <td className="px-2 py-2 font-medium text-slate-900">
+        <td className="px-1.5 py-2 font-mono text-xs">{row.bookingRef}</td>
+        <td className="px-1.5 py-2 font-medium text-slate-900">
           {row.guestName}
           {row.hotelName ? <span className="block text-xs font-normal text-slate-500">{row.hotelName}</span> : null}
         </td>
-        <td className="px-2 py-2">
+        <td className="px-1.5 py-2">
           {row.showName}
           <span className="block text-xs text-slate-500">{row.island}</span>
         </td>
-        <td className="px-2 py-2 whitespace-nowrap">
+        <td className="px-1.5 py-2 whitespace-nowrap">
           {row.showDate}
           <span className="block text-xs text-slate-500">{row.dayName}</span>
         </td>
-        <td className="max-w-[11rem] px-2 py-2 text-xs">
+        <td className="max-w-[11rem] px-1.5 py-2 text-xs">
           {row.pickupStop ? (
             <>
               {row.pickupTime ? <span className="font-semibold whitespace-nowrap">{row.pickupTime}</span> : "—"}
@@ -343,7 +343,7 @@ function BookingRows({
             <span className="text-slate-400">own way</span>
           )}
         </td>
-        <td className="px-2 py-2 whitespace-nowrap">
+        <td className="px-1.5 py-2 whitespace-nowrap">
           <span className="font-medium text-slate-900">{row.pax}</span>
           {row.arrival.status === "pending" ? (
             <span className="block text-[11px] text-slate-400">not marked</span>
@@ -361,22 +361,22 @@ function BookingRows({
             </span>
           )}
         </td>
-        <td className="px-2 py-2 text-right tabular-nums">{row.price}</td>
-        <td className="px-2 py-2 text-right tabular-nums">{row.paid}</td>
-        <td className="px-2 py-2 text-right tabular-nums font-medium">
+        <td className="px-1.5 py-2 text-right tabular-nums">{row.price}</td>
+        <td className="px-1.5 py-2 text-right tabular-nums">{row.paid}</td>
+        <td className="px-1.5 py-2 text-right tabular-nums font-medium">
           {row.outstanding}
           {row.statusLabel === "Invoice" ? (
             <span className="block text-[10px] font-normal uppercase tracking-wide text-slate-400">nett</span>
           ) : null}
         </td>
-        <td className="px-2 py-2">
+        <td className="px-1.5 py-2">
           <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-medium", row.statusClass)}>
             {row.statusLabel}
           </span>
           {row.diet ? <span className="mt-1 block text-[11px] text-amber-800">{row.diet}</span> : null}
         </td>
-        <td className="px-2 py-2 whitespace-nowrap text-xs">{row.doorLabel}</td>
-        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+        <td className="px-1.5 py-2 whitespace-nowrap text-xs">{row.doorLabel}</td>
+        <td className="px-1.5 py-2" onClick={(e) => e.stopPropagation()}>
           {row.cancelled ? null : (
             <StaffMarks
               bookingId={row.id}
@@ -386,8 +386,8 @@ function BookingRows({
             />
           )}
         </td>
-        <td className="px-2 py-2">{row.supplier ?? "—"}</td>
-        <td className="px-2 py-2 text-right">
+        <td className="px-1.5 py-2">{row.supplier ?? "—"}</td>
+        <td className="px-1.5 py-2 text-right">
           <Link
             href={`/dashboard/show-ops/bookings/${row.id}`}
             className="text-xs font-medium text-[var(--show-ops-primary,#7c3aed)] underline"
@@ -428,9 +428,9 @@ function BookingRows({
 }
 
 function SortTh({ col, label, right = false }: { col?: BookingsDeskSort; label: string; right?: boolean }) {
-  if (!col) return <th className={cn("px-2 py-2", right && "text-right")}>{label}</th>;
+  if (!col) return <th className={cn("px-1.5 py-2", right && "text-right")}>{label}</th>;
   return (
-    <th className={cn("px-2 py-2", right && "text-right")}>
+    <th className={cn("px-1.5 py-2", right && "text-right")}>
       <Link href={col.href} className={col.active ? "text-slate-900 underline" : "hover:underline"}>
         {label}
         {col.active ? (col.dir === "asc" ? " ↑" : " ↓") : ""}
