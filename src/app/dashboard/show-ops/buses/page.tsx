@@ -8,6 +8,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { stopRunsOnDate } from "@/lib/show-ops/bus";
 import { formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
+import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 
 export default async function BusBoardPage({
   searchParams,
@@ -41,7 +42,7 @@ export default async function BusBoardPage({
     ctx.supabase.from("show_hotels").select("bus_stop_id").eq("business_id", ctx.business.id).eq("active", true),
   ]);
 
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const paxByStop = new Map<string, number>();
   const paxByIsland = new Map<string, number>();
   let unassignedPax = 0;

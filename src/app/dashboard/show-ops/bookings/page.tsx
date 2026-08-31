@@ -14,6 +14,7 @@ import {
   showOpsDayName,
   showOpsDoorPayPhrase,
 } from "@/lib/show-ops/calc";
+import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 
 const PAGE_SIZE = 250;
 
@@ -75,7 +76,7 @@ export default async function AllBookingsPage({
 }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("bookings");
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number, island?: string | null) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const today = new Date().toISOString().slice(0, 10);
   const fourWeekEnd = addDaysIso(today, 27);
   const q = sanitizeSearch(sp.q || "");
@@ -226,9 +227,9 @@ export default async function AllBookingsPage({
       pickupTime: r.pickup_time ? String(r.pickup_time).slice(0, 5) : null,
       pax: formatShowOpsPax(r.adults, r.children, r.infants),
       arrival,
-      price: money(Number(r.total_cost)),
-      paid: payView.paidAmount == null ? "—" : money(payView.paidAmount),
-      outstanding: payView.outstandingAmount == null ? "—" : money(payView.outstandingAmount),
+      price: money(Number(r.total_cost), r.island),
+      paid: payView.paidAmount == null ? "—" : money(payView.paidAmount, r.island),
+      outstanding: payView.outstandingAmount == null ? "—" : money(payView.outstandingAmount, r.island),
       statusLabel: payView.label,
       statusClass: payBadgeClass(payView.label),
       doorLabel: `${arrival.doorLabel}${doorPay ? ` · ${doorPay}` : ""}`,
@@ -238,7 +239,7 @@ export default async function AllBookingsPage({
       supplier: r.supplier_name,
       channel: r.sales_channel,
       transport: Boolean(r.transport_required),
-      deposit: money(Number(r.deposit_amount)),
+      deposit: money(Number(r.deposit_amount), r.island),
       billing: r.billing_mode === "invoice" ? "Invoice" : "Deposit",
       cancelled: Boolean(r.cancelled_at),
       arrived: Boolean(r.arrived_at),

@@ -8,7 +8,7 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
-import { hasShowOpsModule } from "@/lib/show-ops/config";
+import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { calendarMonthBounds, shiftMonth } from "@/lib/show-ops/invoice";
 
 export default async function InvoicesPage({
@@ -39,7 +39,8 @@ export default async function InvoicesPage({
   const periodEnd = sp.period_end || thisMonth.end;
   const asOf = sp.as_of || today;
   const sort = sp.sort || "owed";
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number, cur?: string | null) =>
+    formatShowOpsMoney(n, cur === "gbp" || cur === "usd" || cur === "eur" ? cur : ctx.config.currency);
 
   const [{ data: suppliers }, { data: invoiceRows }] = await Promise.all([
     ctx.supabase
@@ -87,13 +88,14 @@ export default async function InvoicesPage({
     child_nett_total: number;
     nett_total: number;
     show_date: string;
+    island: string | null;
   }> = [];
 
   if (view === "generate") {
     let q = ctx.supabase
       .from("show_bookings")
       .select(
-        "supplier_id,supplier_name,guest_name,booking_ref,supplier_ticket_number,adults,children,infants,adult_nett_total,child_nett_total,nett_total,total_cost,show_date,arrived_pax,arrived_at,no_show,no_show_charge",
+        "supplier_id,supplier_name,guest_name,booking_ref,supplier_ticket_number,island,adults,children,infants,adult_nett_total,child_nett_total,nett_total,total_cost,show_date,arrived_pax,arrived_at,no_show,no_show_charge",
       )
       .eq("business_id", ctx.business.id)
       .eq("billing_mode", "invoice")
@@ -136,6 +138,7 @@ export default async function InvoicesPage({
         child_nett_total: billed.billedChildNett,
         nett_total: billed.billedNett,
         show_date: r.show_date,
+        island: (r as { island?: string | null }).island ?? null,
       };
     });
   }
@@ -318,11 +321,13 @@ export default async function InvoicesPage({
           <div className="space-y-4">
               {[...previewBySupplier.values()].map((group) => {
                 const total = round2(group.rows.reduce((s, r) => s + Number(r.nett_total), 0));
+                const groupIslands = new Set(group.rows.map((r) => r.island).filter(Boolean));
+                const groupCurrency = showOpsCurrencyFor(ctx.config, groupIslands.size === 1 ? [...groupIslands][0] : null);
                 return (
                   <div key={group.id} className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h3 className="font-semibold">
-                        {group.name} · {group.rows.length} reservations · {money(total)}
+                        {group.name} · {group.rows.length} reservations · {money(total, groupCurrency)}
                       </h3>
                     </div>
                     <div className="mt-3 overflow-x-auto">
@@ -343,9 +348,9 @@ export default async function InvoicesPage({
                               <td className="py-1.5 pr-3">{r.guest_name}</td>
                               <td className="py-1.5 pr-3 font-mono text-xs">{r.booking_ref}</td>
                               <td className="py-1.5 pr-3">{r.supplier_ticket_number || "—"}</td>
-                              <td className="py-1.5 pr-3">{money(Number(r.adult_nett_total))}</td>
-                              <td className="py-1.5 pr-3">{money(Number(r.child_nett_total))}</td>
-                              <td className="py-1.5">{money(Number(r.nett_total))}</td>
+                              <td className="py-1.5 pr-3">{money(Number(r.adult_nett_total), groupCurrency)}</td>
+                              <td className="py-1.5 pr-3">{money(Number(r.child_nett_total), groupCurrency)}</td>
+                              <td className="py-1.5">{money(Number(r.nett_total), groupCurrency)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -433,14 +438,14 @@ export default async function InvoicesPage({
                       >
                         {inv.supplier_name}
                       </a>{" "}
-                      · {money(Number(inv.total_amount || 0))}
+                      · {money(Number(inv.total_amount || 0), inv.currency)}
                       <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                         {inv.status || "draft"}
                       </span>
                       {inv.paid ? (
                         <span className="ml-2 text-xs text-emerald-600">PAID {inv.paid_at || ""}</span>
                       ) : (
-                        <span className="ml-2 text-xs font-semibold text-amber-700">Owed {money(owed)}</span>
+                        <span className="ml-2 text-xs font-semibold text-amber-700">Owed {money(owed, inv.currency)}</span>
                       )}
                       <a
                         href={`/dashboard/show-ops/invoices/${inv.id}`}
@@ -500,9 +505,9 @@ export default async function InvoicesPage({
                           <td>
                             {l.adults}/{l.children}
                           </td>
-                          <td>{money(Number(l.adult_nett_total))}</td>
-                          <td>{money(Number(l.child_nett_total))}</td>
-                          <td>{money(Number(l.line_total))}</td>
+                          <td>{money(Number(l.adult_nett_total), inv.currency)}</td>
+                          <td>{money(Number(l.child_nett_total), inv.currency)}</td>
+                          <td>{money(Number(l.line_total), inv.currency)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -540,7 +545,7 @@ export default async function InvoicesPage({
                 <span>
                   {inv.supplier_name} · due {inv.due_date} · {inv.invoice_number || inv.verifactu_number || "unnumbered"}
                 </span>
-                <span className="font-medium text-rose-600">{money(Number(inv.total_amount || 0))}</span>
+                <span className="font-medium text-rose-600">{money(Number(inv.total_amount || 0), inv.currency)}</span>
               </li>
             ))}
             {!overdue?.length ? <li className="py-4 text-slate-500">None overdue</li> : null}

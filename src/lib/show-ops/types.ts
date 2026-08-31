@@ -44,6 +44,12 @@ export type ShowOpsConfig = {
   feature_flags: Record<string, boolean>;
   /** Display + Stripe Checkout currency */
   currency: ShowOpsCurrency;
+  /**
+   * Per-island currency overrides — e.g. { "UK Tour": "gbp" } for a tour leg
+   * sold in pounds while the rest of the workspace trades in euros. Islands
+   * named "UK…" default to gbp even when unset.
+   */
+  island_currencies: Record<string, ShowOpsCurrency>;
   /** Email Stripe Checkout links for guest deposits when Connect is ready */
   guest_stripe_enabled: boolean;
   /** Pay-links on partner invoice packs — off until the tenant opts in */
@@ -81,6 +87,7 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
   enabled_modules: ["bookings", "lists", "payments", "invoices", "commercial"],
   feature_flags: {},
   currency: "eur",
+  island_currencies: {},
   guest_stripe_enabled: true,
   partner_stripe_enabled: false,
   transport_supplement: 0,

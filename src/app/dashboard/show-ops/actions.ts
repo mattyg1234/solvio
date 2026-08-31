@@ -42,7 +42,7 @@ import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticke
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
-import { genericSeedConfig, mhtSeedConfig, slugifyQuestionId } from "@/lib/show-ops/config";
+import { genericSeedConfig, mhtSeedConfig, showOpsCurrencyFor, slugifyQuestionId } from "@/lib/show-ops/config";
 import {
   buildVerifactuPayload,
   formatInvoiceNumber,
@@ -181,7 +181,7 @@ function guestTicketFromBooking(
     totalCost: f.total_cost == null ? null : Number(f.total_cost),
     depositAmount: f.deposit_amount == null ? null : Number(f.deposit_amount),
     balanceRemaining: f.balance_remaining == null ? null : Number(f.balance_remaining),
-    currency: ctx.config.currency,
+    currency: showOpsCurrencyFor(ctx.config, (f as { island?: string | null }).island ?? null),
     dietaryNotes: (f.dietary_notes as string | null) ?? null,
     ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
     showTime: (f.ampm as string | null) ?? null,
@@ -1657,7 +1657,7 @@ export async function createBookingAction(
       totalCost: f.total_cost == null ? null : Number(f.total_cost),
       depositAmount: f.deposit_amount == null ? null : Number(f.deposit_amount),
       balanceRemaining: f.balance_remaining == null ? null : Number(f.balance_remaining),
-      currency: ctx.config.currency,
+      currency: showOpsCurrencyFor(ctx.config, (f as { island?: string | null }).island ?? null),
       dietaryNotes: (f.dietary_notes as string | null) ?? null,
       ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
       showTime: (f.ampm as string | null) ?? null,
@@ -2330,7 +2330,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
     showDate: booking.show_date,
     amount: dueInfo.amount,
     dueKind: dueInfo.kind,
-    currency: ctx.config.currency,
+    currency: showOpsCurrencyFor(ctx.config, (booking as { island?: string | null }).island ?? null),
     merchantName: ctx.branding.displayName,
   });
   if (!url) throw new Error("Could not create a Stripe payment link.");
@@ -2343,7 +2343,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
     showName: booking.show_name,
     showDate: booking.show_date,
     amount: dueInfo.amount,
-    currency: ctx.config.currency,
+    currency: showOpsCurrencyFor(ctx.config, (booking as { island?: string | null }).island ?? null),
     payUrl: url,
   });
   if (!sent.ok) throw new Error(sent.message);
@@ -2444,6 +2444,8 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
   });
 
   const supplier_name = priced[0].supplier_name || "Supplier";
+  const packIslands = new Set(priced.map((b) => (b.island ? String(b.island) : "")).filter(Boolean));
+  const packIsland = packIslands.size === 1 ? [...packIslands][0] : island || null;
   const due_date = addDaysIso(invoice_date, terms);
   const invoiceCfg = ctx.config.invoice;
   const vatRate = invoiceCfg.defaultVatRate;
@@ -2465,7 +2467,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       created_by: ctx.user.id,
       status: "draft",
       series: invoiceCfg.series,
-      currency: ctx.config.currency,
+      currency: showOpsCurrencyFor(ctx.config, packIsland),
       issuer_name: invoiceCfg.issuerName || ctx.branding.displayName,
       issuer_tax_id: invoiceCfg.issuerTaxId || null,
       issuer_address: invoiceCfg.issuerAddress || null,

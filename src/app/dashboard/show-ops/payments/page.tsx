@@ -6,7 +6,7 @@ import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsEnabled } from "@/lib/show-ops/access";
 import { formatShowOpsMoney, showOpsAmountDue } from "@/lib/show-ops/calc";
-import { hasShowOpsModule } from "@/lib/show-ops/config";
+import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 
 export default async function PaymentsPage({
   searchParams,
@@ -22,7 +22,7 @@ export default async function PaymentsPage({
   const date = sp.date || new Date().toISOString().slice(0, 10);
   const show = sp.show || "";
   const island = sp.island || "";
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const stripeReady = Boolean(
     ctx.business.stripe_connect_account_id?.trim() && ctx.business.stripe_connect_charges_enabled,
   );

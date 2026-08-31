@@ -10,7 +10,7 @@ import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-p
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { formatShowOpsMoney, formatShowOpsPax, paxTotal, showOpsArrivalMark, showOpsBookingPayView, showOpsDoorPayPhrase, surnameKey } from "@/lib/show-ops/calc";
-import { hasShowOpsModule } from "@/lib/show-ops/config";
+import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   clickNightListSort,
   parseNightListSort,
@@ -96,7 +96,7 @@ export default async function DailyListsPage({
   const timeFrom = sp.time_from || "";
   const timeTo = sp.time_to || "";
   const spacesOnly = sp.spaces === "1";
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
 
   let query = ctx.supabase
     .from("show_bookings")

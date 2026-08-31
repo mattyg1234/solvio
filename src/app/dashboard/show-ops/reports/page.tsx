@@ -4,7 +4,7 @@ import { CalendarDays, Download, Sparkles, TrendingUp, Trophy, Users } from "luc
 import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
-import { hasShowOpsModule } from "@/lib/show-ops/config";
+import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { REPORT_PERIOD_OPTIONS, reportPeriodHref, resolveReportRange } from "@/lib/show-ops/report-range";
 
 const PRIMARY = "var(--show-ops-primary,#7c3aed)";
@@ -196,7 +196,7 @@ export default async function ReportsPage({
       return s + billed.billedTotalCost;
     }, 0),
   );
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
 
   const prevPax = range.prevStart && range.prevEnd
     ? await (async () => {

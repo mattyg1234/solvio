@@ -13,6 +13,7 @@ import {
   showOpsDayName,
   surnameKey,
 } from "@/lib/show-ops/calc";
+import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 
 type DoorRow = {
@@ -55,7 +56,7 @@ export default async function ShowOpsDoorPage({
   const island = sp.island || "";
   const showFilter = sp.show || "";
   const slot = sp.slot === "AM" || sp.slot === "PM" ? sp.slot : "";
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
+  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const day = showOpsDayName(date);
 
   let query = ctx.supabase

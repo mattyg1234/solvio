@@ -29,8 +29,6 @@ export default async function InvoicePrintPage({
   if (!hasShowOpsModule(ctx.config, ctx.tier, "invoices")) {
     return <p className="text-sm text-slate-600">Invoices are not enabled for this workspace.</p>;
   }
-  const money = (n: number) => formatShowOpsMoney(n, ctx.config.currency);
-
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
     .select("*")
@@ -38,6 +36,9 @@ export default async function InvoicePrintPage({
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!inv) notFound();
+  const invCurrency =
+    inv.currency === "gbp" || inv.currency === "usd" || inv.currency === "eur" ? inv.currency : ctx.config.currency;
+  const money = (n: number) => formatShowOpsMoney(n, invCurrency);
 
   const { data: supplier } = inv.supplier_id
     ? await ctx.supabase
@@ -152,7 +153,7 @@ export default async function InvoicePrintPage({
           recipientTaxId={inv.recipient_tax_id || supplier?.tax_id || ""}
           recipientAddress={inv.recipient_address || supplier?.invoice_address || ""}
           defaultVatRate={ctx.config.invoice.defaultVatRate}
-          currency={ctx.config.currency}
+          currency={invCurrency}
           lines={(lines ?? []).map((l) => ({
             id: l.id,
             booking_id: l.booking_id,

@@ -51,6 +51,28 @@ function parseCurrency(raw: unknown): ShowOpsCurrency {
   return raw === "gbp" || raw === "usd" || raw === "eur" ? raw : DEFAULT_SHOW_OPS_CONFIG.currency;
 }
 
+function parseIslandCurrencies(raw: unknown): Record<string, ShowOpsCurrency> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, ShowOpsCurrency> = {};
+  for (const [island, cur] of Object.entries(raw as Record<string, unknown>)) {
+    if (cur === "gbp" || cur === "usd" || cur === "eur") out[island.trim()] = cur;
+  }
+  return out;
+}
+
+/**
+ * Currency a given island trades in. Explicit override wins; islands named
+ * "UK…" default to pounds; everything else uses the workspace currency.
+ */
+export function showOpsCurrencyFor(config: ShowOpsConfig, island?: string | null): ShowOpsCurrency {
+  const name = (island ?? "").trim();
+  if (!name) return config.currency;
+  const override = config.island_currencies[name];
+  if (override) return override;
+  if (/^uk\b/i.test(name)) return "gbp";
+  return config.currency;
+}
+
 function parseBool(raw: unknown, fallback: boolean): boolean {
   if (typeof raw === "boolean") return raw;
   if (raw === "1" || raw === "true") return true;
@@ -146,6 +168,7 @@ export function parseShowOpsConfig(raw: unknown): ShowOpsConfig {
     enabled_modules: enabled.length ? enabled : [...DEFAULT_SHOW_OPS_CONFIG.enabled_modules],
     feature_flags: flags,
     currency: parseCurrency(o.currency),
+    island_currencies: parseIslandCurrencies(o.island_currencies),
     guest_stripe_enabled: parseBool(o.guest_stripe_enabled, DEFAULT_SHOW_OPS_CONFIG.guest_stripe_enabled),
     partner_stripe_enabled: parseBool(o.partner_stripe_enabled, false),
     transport_supplement: parseMoney(o.transport_supplement, DEFAULT_SHOW_OPS_CONFIG.transport_supplement),
@@ -237,6 +260,7 @@ export function mhtSeedConfig(): ShowOpsConfig {
       "MHT Reception",
     ],
     currency: "eur",
+    island_currencies: { "UK Tour": "gbp" },
     guest_stripe_enabled: true,
     partner_stripe_enabled: false,
     transport_supplement: 10,
