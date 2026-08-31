@@ -546,6 +546,123 @@ function DietCell({ row }: { row: BookingRow }) {
   return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-950">{row.dietary_notes || "Yes"}</span>;
 }
 
+/**
+ * One booking as a phone card — the readable, tappable form of a list row on
+ * small screens. Carries the same door actions as the desktop table so staff
+ * can mark arrivals and payments from a phone at the entrance.
+ */
+function ListCard({
+  b,
+  variant,
+  questions,
+  money,
+}: {
+  b: BookingRow;
+  variant: "office" | "door";
+  questions: Array<{ id: string; label: string }>;
+  money: (n: number) => string;
+}) {
+  const answers =
+    b.custom_answers && typeof b.custom_answers === "object"
+      ? (b.custom_answers as Record<string, string | boolean | number>)
+      : {};
+  const pay = showOpsBookingPayView({
+    billingMode: b.billing_mode,
+    totalCost: b.total_cost,
+    balanceRemaining: b.balance_remaining,
+    nettTotal: b.nett_total,
+    paymentStatus: b.payment_status,
+    cancelledAt: b.cancelled_at,
+  });
+  const arrival = showOpsArrivalMark({
+    adults: b.adults,
+    children: b.children,
+    infants: b.infants,
+    arrivedPax: b.arrived_pax,
+    arrivedAt: b.arrived_at,
+    noShow: b.no_show,
+  });
+  const payPhrase = showOpsDoorPayPhrase(b.door_pay_method);
+  const tone =
+    arrival.status === "all_in"
+      ? "bg-emerald-50 ring-emerald-200"
+      : arrival.status === "partial"
+        ? "bg-amber-50 ring-amber-200"
+        : arrival.status === "absent"
+          ? "bg-slate-100 ring-slate-200 opacity-70"
+          : "bg-white ring-slate-200";
+  const owed = pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : pay.label;
+  return (
+    <div className={`rounded-2xl p-3 ring-1 ${tone}`}>
+      <div className="flex items-start justify-between gap-2">
+        <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="text-[15px] font-semibold leading-tight hover:underline">
+          {b.guest_name}
+        </Link>
+        <span className="whitespace-nowrap text-right text-sm font-medium">
+          {formatShowOpsPax(b.adults, b.children, b.infants)}
+          {arrival.status !== "pending" ? (
+            <span className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}>
+              {arrival.shortLabel}
+              {arrival.status === "partial" && arrival.missing ? ` · ${arrival.missing} missing` : ""}
+            </span>
+          ) : null}
+        </span>
+      </div>
+      <p className="mt-0.5 text-sm text-slate-600">
+        {b.show_name}
+        {b.hotel_name ? ` · ${b.hotel_name}` : ""}
+      </p>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+        {variant === "office" ? <span className="font-mono">{b.booking_ref}</span> : null}
+        {b.supplier_ticket_number ? <span>Ticket {b.supplier_ticket_number}</span> : null}
+        {variant === "office" && b.supplier_name ? <span>{b.supplier_name}</span> : null}
+        <span>
+          {arrival.doorLabel}
+          {payPhrase ? ` · ${payPhrase}` : ""}
+        </span>
+        <span className="font-medium text-slate-700">{owed}</span>
+      </div>
+      <div className="mt-1 text-xs">
+        <DietCell row={b} />
+      </div>
+      {variant === "office" && questions.length ? (
+        <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
+          {questions.map((q) => {
+            const v = answers[q.id];
+            const text = typeof v === "boolean" ? (v ? "Yes" : "No") : v != null && String(v).trim() ? String(v) : null;
+            return text ? (
+              <span key={q.id}>
+                {q.label}: {text}
+              </span>
+            ) : null;
+          })}
+        </div>
+      ) : null}
+      {variant === "office" && b.office_comments ? (
+        <p className="mt-1 text-xs italic text-slate-500">{b.office_comments}</p>
+      ) : null}
+      <div className="mt-2 flex flex-col gap-1.5 border-t border-black/5 pt-2">
+        <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
+        <NoShowDecisionForm
+          bookingId={b.id}
+          charge={b.no_show_charge === "write_off" || b.no_show_charge === "charge" ? b.no_show_charge : null}
+          missing={arrival.missing ?? 0}
+          booked={arrival.booked}
+          invoiced={Boolean(b.invoice_id)}
+          proofUrl={b.proofUrl ?? null}
+          compact
+        />
+        <div className="flex flex-wrap gap-1">
+          <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent")} big />
+          <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent")} tone="sky" big />
+          <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo big />
+          <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo big />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OfficeTable({
   date,
   title,
@@ -564,10 +681,20 @@ function OfficeTable({
   sortHref: (key: string) => string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200">
       <h3 className="border-b px-4 py-3 font-semibold">
         {title} · {date} · {rows.length} {rows.length === 1 ? "booking" : "bookings"}
       </h3>
+      {/* Phone: readable cards with the same door actions */}
+      <div className="space-y-2 p-3 lg:hidden print:hidden">
+        {rows.length ? (
+          rows.map((b) => <ListCard key={b.id} b={b} variant="office" questions={questions} money={money} />)
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-500">No rows</p>
+        )}
+      </div>
+      {/* Laptop and print: the full sheet */}
+      <div className="hidden overflow-x-auto lg:block print:block">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
@@ -686,6 +813,7 @@ function OfficeTable({
           ) : null}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -702,8 +830,16 @@ function DoorTable({
   sortHref: (key: string) => string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
+    <div className="rounded-2xl bg-white ring-1 ring-slate-200">
       <h3 className="border-b px-4 py-3 font-semibold">Door · how many showed / paid cash / paid on card</h3>
+      <div className="space-y-2 p-3 lg:hidden print:hidden">
+        {rows.length ? (
+          rows.map((b) => <ListCard key={b.id} b={b} variant="door" questions={[]} money={money} />)
+        ) : (
+          <p className="py-6 text-center text-sm text-slate-500">No rows</p>
+        )}
+      </div>
+      <div className="hidden overflow-x-auto lg:block print:block">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
@@ -786,6 +922,7 @@ function DoorTable({
           ) : null}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

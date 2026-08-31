@@ -213,7 +213,36 @@ export function BusRunSheet({
             </p>
           </div>
           {g.notes ? <p className="border-b px-4 py-2 text-xs text-slate-500">{g.notes}</p> : null}
-          <table className="min-w-full text-left text-sm">
+          {/* Phone: one card per pickup, with the move-stop control */}
+          <div className="space-y-2 p-3 lg:hidden print:hidden">
+            {g.rows.map((b) => (
+              <div key={b.id} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                <div className="flex items-start justify-between gap-2">
+                  <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="text-[15px] font-semibold leading-tight hover:underline">
+                    {b.guest_name}
+                  </Link>
+                  <span className="whitespace-nowrap text-sm font-medium">
+                    {formatShowOpsPax(b.adults, b.children, b.infants)}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-sm text-slate-600">{b.hotel_name || "—"}</p>
+                <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
+                  <span className="font-mono">{b.booking_ref}</span>
+                  {b.guest_mobile ? <span>{b.guest_mobile}</span> : null}
+                  {b.dietary_required ? <span className="font-medium text-amber-800">{b.dietary_notes || "Diet"}</span> : null}
+                </div>
+                <div className="mt-2 border-t border-black/5 pt-2">
+                  <BusPickupSelect
+                    bookingId={b.id}
+                    currentStopId={b.pickup_stop_id}
+                    stops={stopOptions.filter((s) => s.label.startsWith(`${b.island} ·`))}
+                  />
+                </div>
+              </div>
+            ))}
+            {!g.rows.length ? <p className="py-6 text-center text-sm text-slate-500">No pickups</p> : null}
+          </div>
+          <table className="hidden min-w-full text-left text-sm lg:table print:table">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
                 <SortTh label="Guest" k="name" sortKeys={sortKeys} sortHref={sortHref} />
