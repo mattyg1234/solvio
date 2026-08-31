@@ -1,6 +1,9 @@
 import Link from "next/link";
 
+import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
+import { ListFlagButton } from "@/components/show-ops/list-flag-button";
+import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { DoorTicketScanner } from "@/components/show-ops/ticket-scanner";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -11,6 +14,7 @@ import {
   showOpsArrivalMark,
   showOpsBookingPayView,
   showOpsDayName,
+  showOpsDoorPayPhrase,
   surnameKey,
 } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
@@ -37,6 +41,11 @@ type DoorRow = {
   arrived_at: string | null;
   arrived_pax: number | null;
   no_show: boolean | null;
+  door_pay_method: string | null;
+  no_show_charge: "charge" | "write_off" | null;
+  no_show_proof_path: string | null;
+  invoice_id: string | null;
+  proofUrl?: string | null;
 };
 
 function slotLabel(ampm: string | null): string | null {
@@ -62,7 +71,7 @@ export default async function ShowOpsDoorPage({
   let query = ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,show_name,ampm,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show",
+      "id,booking_ref,guest_name,show_name,ampm,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show,door_pay_method,no_show_charge,no_show_proof_path,invoice_id",
     )
     .eq("business_id", ctx.business.id)
     .eq("show_date", date)
@@ -79,6 +88,18 @@ export default async function ShowOpsDoorPage({
     if (slot && b.ampm !== slot) return false;
     return true;
   });
+
+  // Sign any no-show proof photos so the door card can link them.
+  await Promise.all(
+    bookings
+      .filter((b) => b.no_show_proof_path)
+      .map(async (b) => {
+        const { data } = await ctx.supabase.storage
+          .from("show-ops-proofs")
+          .createSignedUrl(b.no_show_proof_path!, 60 * 60);
+        if (data?.signedUrl) b.proofUrl = data.signedUrl;
+      }),
+  );
 
   const showNames = [
     ...new Set([...(savedShows ?? []).map((p) => p.name), ...bookings.map((b) => b.show_name), showFilter].filter(Boolean)),
@@ -208,6 +229,7 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
   const inAt = formatShowOpsDoorTime(row.arrived_at);
   const slot = slotLabel(row.ampm);
   const due = pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : null;
+  const payPhrase = showOpsDoorPayPhrase(row.door_pay_method);
 
   return (
     <article
@@ -246,6 +268,27 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
         {[row.hotel_name, row.pickup_stop_name, row.pickup_time?.slice(0, 5)].filter(Boolean).join(" · ") || "No pickup"}
       </p>
       {due ? <p className="mt-2 text-sm font-semibold text-amber-800">{due} still due at the door</p> : null}
+      {payPhrase ? <p className="mt-1 text-sm font-medium text-emerald-800">Paid {payPhrase}</p> : null}
+
+      {/* Mark people in and take payment, right from the phone */}
+      <div className="mt-3 flex flex-col gap-2 border-t border-black/5 pt-3">
+        <ArrivalPaxForm key={`${row.id}:${arrival.arrived}`} bookingId={row.id} mark={arrival} big />
+        <NoShowDecisionForm
+          bookingId={row.id}
+          charge={row.no_show_charge === "write_off" || row.no_show_charge === "charge" ? row.no_show_charge : null}
+          missing={arrival.missing ?? 0}
+          booked={arrival.booked}
+          invoiced={Boolean(row.invoice_id)}
+          proofUrl={row.proofUrl ?? null}
+          compact
+        />
+        <div className="flex flex-wrap gap-2">
+          <ListFlagButton bookingId={row.id} flag="cash" label="Paid cash" hide={Boolean(row.door_pay_method || arrival.status === "absent")} big />
+          <ListFlagButton bookingId={row.id} flag="card" label="Paid on card" hide={Boolean(row.door_pay_method || arrival.status === "absent")} tone="sky" big />
+          <ListFlagButton bookingId={row.id} flag="cash" label="Undo cash" hide={row.door_pay_method !== "cash"} undo big />
+          <ListFlagButton bookingId={row.id} flag="card" label="Undo card" hide={row.door_pay_method !== "card"} undo big />
+        </div>
+      </div>
     </article>
   );
 }
