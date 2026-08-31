@@ -154,7 +154,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           />
         </aside>
 
-        <div className="flex min-h-screen flex-1 flex-col pb-[5.75rem] md:pb-0">
+        {/* min-w-0: a flex item defaults to min-width:auto, so without this the
+            widest child (the bookings table) sets the column's floor and the whole
+            page scrolls sideways — clipping the header actions and filter bar. */}
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-[5.75rem] md:pb-0">
           <DashboardHeader
             email={user.email ?? ""}
             greetingName={greetingName}

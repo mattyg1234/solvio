@@ -305,8 +305,10 @@ export default async function AllBookingsPage({
         action="/dashboard/show-ops/bookings"
         className="print:hidden sticky top-0 z-10 rounded-2xl bg-white/95 p-4 shadow-sm ring-1 ring-slate-200/80 backdrop-blur"
       >
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          <div className="flex min-w-max items-end gap-3">
+        {/* Narrow screens keep the swipeable strip; from lg up the controls wrap
+            onto a second row so every filter is visible without scrolling. */}
+        <div className="flex gap-3 overflow-x-auto pb-1 lg:overflow-x-visible">
+          <div className="flex min-w-max items-end gap-3 lg:min-w-0 lg:flex-wrap lg:gap-x-3 lg:gap-y-2">
         <label className="text-xs font-medium text-slate-600">
           Search
           <input
