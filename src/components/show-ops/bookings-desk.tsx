@@ -333,10 +333,10 @@ function BookingRows({
           {row.showDate}
           <span className="block text-xs text-slate-500">{row.dayName}</span>
         </td>
-        <td className="px-2 py-2 whitespace-nowrap text-xs">
+        <td className="max-w-[11rem] px-2 py-2 text-xs">
           {row.pickupStop ? (
             <>
-              {row.pickupTime ? <span className="font-semibold">{row.pickupTime}</span> : "—"}
+              {row.pickupTime ? <span className="font-semibold whitespace-nowrap">{row.pickupTime}</span> : "—"}
               <span className="block text-slate-500">{row.pickupStop}</span>
             </>
           ) : (
@@ -470,7 +470,7 @@ function StaffMarks({
   const settled = alreadyPaid || Boolean(doorPay);
   const absent = arrival.status === "absent";
   return (
-    <div className="flex min-w-[14rem] flex-col gap-1.5">
+    <div className="flex min-w-[9.5rem] flex-col gap-1.5">
       <ArrivalPaxForm key={`${bookingId}:${arrival.arrived}`} bookingId={bookingId} mark={arrival} />
       <div className="flex flex-wrap gap-1">
         <ListFlagButton bookingId={bookingId} flag="cash" label="Paid cash" hide={settled || absent} />
