@@ -29,6 +29,7 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
       { href: "/dashboard/show-ops/master?tab=shows", label: "Shows", key: "shows", tab: "shows" },
       { href: "/dashboard/show-ops/bookings", label: "Bookings", key: "bookings" },
       { href: "/dashboard/show-ops/door", label: "Door", key: "door" },
+      { href: "/dashboard/show-ops/lists", label: "Night lists", key: "lists" },
       { href: "/dashboard/show-ops/invoices", label: "Invoicing", key: "invoices" },
       { href: "/dashboard/show-ops/master?tab=partners", label: "Partners", key: "partners", tab: "partners" },
       { href: "/dashboard/show-ops/master?tab=hotels", label: "Hotels & pick-ups", key: "hotels", tab: "hotels" },
@@ -42,7 +43,6 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
       { href: "/dashboard/show-ops/outlook", label: "Outlook", key: "outlook" },
       { href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" },
       { href: "/dashboard/show-ops/stats", label: "Stats & insights", key: "stats" },
-      { href: "/dashboard/show-ops/lists", label: "Quick check-in", key: "lists" },
     ],
   },
   {
@@ -64,7 +64,9 @@ export function showOpsNavActive(
   if (item.exact) return pathname === item.href.split("?")[0];
   if (item.tab) {
     const current = searchTab || "shows";
-    return pathname.startsWith("/dashboard/show-ops/master") && current === item.tab;
+    // Pick-up points are a sub-tab of Hotels & pick-ups; the rail item stays lit.
+    const effective = current === "stops" ? "hotels" : current;
+    return pathname.startsWith("/dashboard/show-ops/master") && effective === item.tab;
   }
   if (item.key === "bookings") {
     return pathname === "/dashboard/show-ops/bookings" || pathname.startsWith("/dashboard/show-ops/bookings/");
@@ -113,7 +115,7 @@ export const SHOW_OPS_PAGE_LABELS: Record<ShowOpsPageKey, string> = {
   outlook: "Outlook",
   reports: "Reports",
   stats: "Stats & insights",
-  lists: "Quick check-in",
+  lists: "Night lists",
   settings: "Settings",
 };
 

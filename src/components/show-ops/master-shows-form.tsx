@@ -32,6 +32,7 @@ export type MasterShowRow = {
   adult_nett: number | null;
   child_nett: number | null;
   capacity: number | null;
+  show_time?: string | null;
   transport_available: boolean;
   active: boolean | null;
   run_weekdays?: number[] | null;
@@ -252,6 +253,7 @@ export function MasterShowsForm({
               <Field label="Adult nett €" name={`${prefix}adult_nett`} type="number" step="0.01" defaultValue={p.adult_nett} />
               <Field label="Child nett €" name={`${prefix}child_nett`} type="number" step="0.01" defaultValue={p.child_nett} />
               <Field label="Capacity" name={`${prefix}capacity`} type="number" defaultValue={p.capacity} />
+              <Field label="Show starts" name={`${prefix}show_time`} type="time" defaultValue={p.show_time ? String(p.show_time).slice(0, 5) : ""} />
               <label className="flex items-center gap-2 text-xs sm:col-span-2">
                 <input type="checkbox" name={`${prefix}transport_available`} value="1" defaultChecked={p.transport_available} />{" "}
                 Transport available

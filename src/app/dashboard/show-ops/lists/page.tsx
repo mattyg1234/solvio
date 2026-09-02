@@ -321,7 +321,7 @@ export default async function DailyListsPage({
       <div className="print:hidden space-y-3">
           <ShowOpsPageHeader
             eyebrow="Analytics"
-            title="Quick check-in"
+            title="Night lists"
             subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
             actions={<PrintButton label="Print / send this list" />}
           />

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
+import { LocalTime } from "@/components/show-ops/local-time";
 import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { DoorTicketScanner } from "@/components/show-ops/ticket-scanner";
@@ -128,8 +129,8 @@ export default async function ShowOpsDoorPage({
     <div className="space-y-4">
       <ShowOpsPageHeader
         eyebrow="Door staff"
-        title="Ticket in"
-        subtitle={`${day ? `${day} · ` : ""}${date} · scan the guest QR and they drop into Arrived with the time.`}
+        title="Door"
+        subtitle={`${day ? `${day} · ` : ""}${date} · live arrivals: scan the guest QR or tap them in and they move to Arrived with the time. Printed office, bus and dietary sheets live under Night lists.`}
       />
 
       <DoorTicketScanner date={date} island={island} />
@@ -254,8 +255,10 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
           </p>
         </div>
         <div className="shrink-0 text-right">
-          {inAt ? (
-            <p className="text-lg font-semibold tabular-nums text-emerald-800">{inAt}</p>
+          {inAt && row.arrived_at ? (
+            <p className="text-lg font-semibold tabular-nums text-emerald-800">
+              <LocalTime iso={row.arrived_at} fallback={inAt} />
+            </p>
           ) : arrival.status === "absent" ? (
             <p className="text-sm font-semibold text-slate-500">No-show</p>
           ) : (

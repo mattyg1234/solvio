@@ -69,7 +69,7 @@ export function ShowCalendarNight({
   currency: ShowOpsCurrency;
   bookings: NightBookingRow[];
   closes: NightCloseRow[];
-  busOrders: Array<{ show_date: string; island: string; seats_ordered: number; cost_total: number | null }>;
+  busOrders: Array<{ show_date: string; island: string; seats_ordered: number; bus_count?: number | null; cost_total: number | null }>;
 }) {
   const money = (n: number) => formatShowOpsMoney(n, currency);
   const islandQuery = island ? `&island=${encodeURIComponent(island)}` : "";
@@ -100,7 +100,7 @@ export function ShowCalendarNight({
             Bus board
           </Link>
           <Link href={`/dashboard/show-ops/lists?date=${day.iso}`} className="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200">
-            Quick check-in
+            Night lists
           </Link>
         </div>
       </div>
@@ -119,7 +119,9 @@ export function ShowCalendarNight({
                 <h3 className="font-semibold text-slate-900">{isl.island}</h3>
                 <p className="text-xs font-semibold text-slate-600">
                   Bus {isl.busPax}
-                  {isl.seatsOrdered != null ? ` · ${isl.seatsOrdered} ordered · ${isl.busLeft} left` : " · not ordered yet"}
+                  {isl.seatsOrdered != null
+                    ? ` · ${Math.max(1, Number(order?.bus_count) || 1)} bus${Math.max(1, Number(order?.bus_count) || 1) === 1 ? "" : "es"} · ${isl.seatsOrdered} seats ordered · ${isl.busLeft} left`
+                    : " · not ordered yet"}
                   {isl.busCost
                     ? ` · ${money(isl.busCost)}${isl.busPax ? ` · ${money(round2(isl.busCost / isl.busPax))}/head` : ""}`
                     : ""}
@@ -189,6 +191,15 @@ export function ShowCalendarNight({
                 <input type="hidden" name="show_date" value={day.iso} />
                 <input type="hidden" name="island" value={isl.island} />
                 <input type="hidden" name="next" value={nextUrl} />
+                <label className="font-medium text-slate-600">
+                  Buses
+                  <NumberInput
+                    min={1}
+                    name="bus_count"
+                    defaultValue={order ? Math.max(1, Number(order.bus_count) || 1) : 1}
+                    className="mt-1 block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                  />
+                </label>
                 <label className="font-medium text-slate-600">
                   Seats ordered
                   <NumberInput

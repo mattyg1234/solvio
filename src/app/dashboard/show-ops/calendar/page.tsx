@@ -64,7 +64,7 @@ export default async function ShowOpsCalendarPage({
       .is("cancelled_at", null),
     ctx.supabase
       .from("show_bus_orders")
-      .select("show_date,island,seats_ordered,cost_total")
+      .select("show_date,island,seats_ordered,bus_count,cost_total")
       .eq("business_id", ctx.business.id)
       .gte("show_date", monthStart)
       .lte("show_date", monthEnd),

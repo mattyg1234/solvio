@@ -9,7 +9,7 @@ import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-p
 /**
  * Weekly outlook, organised the way the operation actually flies:
  * one section per airport code, resorts as columns, bus/direct split,
- * hotels + rates behind each night. Tenerife is split South / West.
+ * hotels + rates behind each night.
  */
 
 type ResortCol = { key: string; label: string };
@@ -24,6 +24,12 @@ type Section = {
   resorts: ResortCol[];
 };
 
+/*
+ * Sections follow the airport codes the operation flies on. Joel (1 Sept):
+ * FUE dropped, South and West Tenerife folded into one TFS block (the resorts
+ * stay as separate columns), Puerto de la Cruz no longer gets its own column
+ * — anything still booked there lands in "Other".
+ */
 const SECTIONS: Section[] = [
   {
     id: "ace", code: "ACE", title: "Lanzarote", island: "Lanzarote", zones: null,
@@ -31,14 +37,6 @@ const SECTIONS: Section[] = [
       { key: "CT", label: "Costa Teguise" },
       { key: "PB", label: "Playa Blanca" },
       { key: "PDC", label: "Puerto del Carmen" },
-    ],
-  },
-  {
-    id: "fue", code: "FUE", title: "Fuerteventura", island: "Fuerteventura", zones: null,
-    resorts: [
-      { key: "CLT", label: "Caleta de Fuste" },
-      { key: "CRR", label: "Corralejo" },
-      { key: "JAN", label: "Jandía" },
     ],
   },
   {
@@ -51,20 +49,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: "tfs", code: "TFS", title: "Tenerife South", island: "Tenerife",
-    zones: ["TFS", "TFGolf", "TFCA"],
+    id: "tfs", code: "TFS", title: "Tenerife · South & West", island: "Tenerife", zones: null,
     resorts: [
-      { key: "TFS", label: "Las Américas / Los Cristianos" },
-      { key: "TFGolf", label: "Golf del Sur" },
-      { key: "TFCA", label: "Costa Adeje / La Caleta" },
-    ],
-  },
-  {
-    id: "tfw", code: "TFW", title: "Tenerife West", island: "Tenerife",
-    zones: ["TFW", "CRZ"],
-    resorts: [
-      { key: "TFW", label: "Los Gigantes / West" },
-      { key: "CRZ", label: "Puerto de la Cruz" },
+      { key: "TFS", label: "South · Las Américas / Los Cristianos" },
+      { key: "TFCA", label: "South · Costa Adeje / La Caleta" },
+      { key: "TFGolf", label: "South · Golf del Sur" },
+      { key: "TFW", label: "West · Los Gigantes" },
     ],
   },
   { id: "uk", code: "UK", title: "UK Tour", island: "UK", zones: null, resorts: [] },
@@ -143,7 +133,7 @@ export default async function WeeklyOutlookPage({
       .order("show_date"),
     ctx.supabase
       .from("show_bus_orders")
-      .select("show_date,island,seats_ordered,cost_total")
+      .select("show_date,island,seats_ordered,bus_count,cost_total")
       .eq("business_id", ctx.business.id)
       .gte("show_date", today)
       .lte("show_date", endIso),
@@ -158,9 +148,15 @@ export default async function WeeklyOutlookPage({
   );
 
   // date -> island -> bus order
-  const busOrderByDateIsland = new Map<string, { seats: number }>();
+  const busOrderByDateIsland = new Map<string, { seats: number; buses: number }>();
   for (const o of busOrders ?? []) {
-    busOrderByDateIsland.set(`${o.show_date}|${o.island}`, { seats: Number(o.seats_ordered) || 0 });
+    const key = `${o.show_date}|${o.island}`;
+    const prev = busOrderByDateIsland.get(key) ?? { seats: 0, buses: 0 };
+    // Sum rather than overwrite, so a second order row for the same night adds up.
+    busOrderByDateIsland.set(key, {
+      seats: prev.seats + (Number(o.seats_ordered) || 0),
+      buses: prev.buses + Math.max(1, Number((o as { bus_count?: number }).bus_count) || 1),
+    });
   }
   // island bus pax across ALL sections of that island (bus orders are per island, not per zone)
   const islandBusPax = new Map<string, number>();
@@ -169,8 +165,7 @@ export default async function WeeklyOutlookPage({
     const candidates = SECTIONS.filter((s) => s.island === islandName);
     if (candidates.length === 0) return undefined;
     if (candidates.length === 1) return candidates[0];
-    // Tenerife: route by zone; unknown zones and direct bookings default to South.
-    return candidates.find((s) => zone && s.zones?.includes(zone)) ?? candidates.find((s) => s.id === "tfs");
+    return candidates.find((s) => zone && s.zones?.includes(zone)) ?? candidates[0];
   };
 
   // Build nights per section
@@ -427,6 +422,9 @@ export default async function WeeklyOutlookPage({
                             <td className="px-3 py-4 text-right text-xs">
                               {order ? (
                                 <span className={seatsLeft != null && seatsLeft < 0 ? "font-semibold text-rose-600" : "text-slate-500"}>
+                                  <span className="block font-medium text-slate-700">
+                                    {order.buses} bus{order.buses === 1 ? "" : "es"}
+                                  </span>
                                   {allIslandBusPax}/{order.seats}
                                 </span>
                               ) : n.busPax ? (

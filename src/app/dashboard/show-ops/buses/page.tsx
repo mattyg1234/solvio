@@ -38,7 +38,7 @@ export default async function BusBoardPage({
       .eq("show_date", date)
       .eq("transport_required", true)
       .is("cancelled_at", null),
-    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,cost_total,notes").eq("business_id", ctx.business.id).eq("show_date", date),
+    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,cost_total,notes").eq("business_id", ctx.business.id).eq("show_date", date),
     ctx.supabase.from("show_hotels").select("bus_stop_id").eq("business_id", ctx.business.id).eq("active", true),
   ]);
 
@@ -144,6 +144,7 @@ export default async function BusBoardPage({
         const order = orderByIsland.get(isl);
         const busPax = paxByIsland.get(isl) ?? 0;
         const seats = order ? Number(order.seats_ordered) : null;
+        const buses = order ? Math.max(1, Number(order.bus_count) || 1) : null;
         const cost = order ? Number(order.cost_total) : null;
         const resorts = [...new Set(islStops.map((s) => s.resort))];
         return (
@@ -160,7 +161,10 @@ export default async function BusBoardPage({
                         : "bg-slate-100 text-slate-700"
                   }`}
                 >
-                  {busPax} on bus{seats != null ? ` · ${seats} ordered · ${seats - busPax} free` : " · no bus ordered"}
+                  {busPax} on bus
+                  {seats != null
+                    ? ` · ${buses} bus${buses === 1 ? "" : "es"} · ${seats} seats ordered · ${seats - busPax} free`
+                    : " · no bus ordered"}
                 </span>
                 {cost != null && cost > 0 && busPax > 0 ? (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
@@ -174,6 +178,15 @@ export default async function BusBoardPage({
               <input type="hidden" name="show_date" value={date} />
               <input type="hidden" name="island" value={isl} />
               <input type="hidden" name="next" value={`/dashboard/show-ops/buses?date=${date}${island ? `&island=${encodeURIComponent(island)}` : ""}`} />
+              <label className="font-medium text-slate-600">
+                Buses
+                <NumberInput
+                  min={1}
+                  name="bus_count"
+                  defaultValue={buses ?? 1}
+                  className="mt-1 block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                />
+              </label>
               <label className="font-medium text-slate-600">
                 Seats ordered
                 <NumberInput

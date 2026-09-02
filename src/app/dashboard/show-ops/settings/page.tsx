@@ -60,7 +60,7 @@ export default async function ShowOpsSettingsPage({
         <h2 className="font-semibold">Staff & permissions</h2>
         <p className="mt-1 text-sm text-slate-600">
           Create a login for a member of staff and tick exactly what they can see. Venue check-in
-          staff normally need <strong>Quick check-in</strong> and nothing else. The owner always has
+          staff normally need <strong>Door</strong> (live arrivals) and <strong>Night lists</strong> (printed office / bus / dietary sheets) and nothing else. The owner always has
           full access.
         </p>
         <form action={createShowOpsStaffAction} className="mt-4 grid gap-3 sm:grid-cols-3">

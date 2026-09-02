@@ -35,7 +35,7 @@ export function BusStopReorder({ island, stops }: { island: string; stops: Reord
       <p className="text-xs font-medium text-slate-600">Default run order · {island}</p>
       <p className="text-[11px] text-slate-500">
         Drag to reorder, then save. This is the <strong>permanent</strong> default for every night — hotels and bookings
-        keep their stop. To change the order for one night only, use the bus list under Quick check-in and export from
+        keep their stop. To change the order for one night only, use the bus list under Night lists and export from
         there.
       </p>
       <ol className="mt-2 space-y-1">

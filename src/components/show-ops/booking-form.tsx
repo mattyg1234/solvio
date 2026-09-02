@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { getNightLoadAction, type ShowOpsNightLoad } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsNightCalendar } from "@/components/show-ops/night-calendar";
+import { SearchableSelect, type SearchableOption } from "@/components/show-ops/searchable-select";
 import { NumberInput } from "@/components/ui/number-input";
 import { computeBookingMoney, formatShowOpsMoney, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
@@ -334,6 +335,57 @@ export function ShowOpsBookingForm({
   };
   const specialMeals = attNotes.slice(0, paxSlots).filter((n) => n.trim()).length;
 
+  /*
+   * Hotels carry no resort of their own — it comes from the stop they are
+   * mapped to. Folding it into the searchable text means an operator who knows
+   * the resort but not the hotel name can still find it, which is how the
+   * phone call usually goes.
+   */
+  const hotelOptions = useMemo<SearchableOption[]>(
+    () =>
+      hotelsForIsland.map((h) => {
+        const stopFor = h.bus_stop_id ? stops.find((s) => s.id === h.bus_stop_id) : null;
+        const time = stopFor?.pickup_time ? String(stopFor.pickup_time).slice(0, 5) : "";
+        const hint = [stopFor?.resort, time].filter(Boolean).join(" · ");
+        return {
+          value: h.id,
+          label: h.name,
+          hint: hint || undefined,
+          keywords: [stopFor?.resort, stopFor?.stop_name, h.island].filter(Boolean).join(" "),
+        };
+      }),
+    [hotelsForIsland, stops],
+  );
+
+  const stopOptions = useMemo<SearchableOption[]>(
+    () =>
+      islandStops.map((s) => ({
+        value: s.id,
+        label: `${s.resort} · ${s.stop_name}`,
+        hint: [s.pickup_time ? String(s.pickup_time).slice(0, 5) : "", s.runs_on ?? ""]
+          .filter(Boolean)
+          .join(" · ") || undefined,
+        keywords: [s.resort, s.stop_name, s.runs_on, s.island].filter(Boolean).join(" "),
+      })),
+    [islandStops],
+  );
+
+  const supplierOptions = useMemo<SearchableOption[]>(
+    () =>
+      suppliersForIsland.map((s) => ({
+        value: s.id,
+        label: s.name,
+        hint: [
+          s.island || "",
+          s.billing_mode === "deposit" ? `deposit ${s.deposit_percent}%` : `invoice nett ${s.invoice_nett_percent}%`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        keywords: s.partner_type ?? "",
+      })),
+    [suppliersForIsland],
+  );
+
   const moneyFmt = (n: number) => formatShowOpsMoney(n, config.currency ?? "eur");
   const productPriceLabel = (p: BookingFormProduct) => {
     if (sellerMode && supplier?.billing_mode === "invoice") {
@@ -600,22 +652,15 @@ export function ShowOpsBookingForm({
           ) : (
             <>
               <FieldLabel className="mt-4">Partner / supplier</FieldLabel>
-              <select
+              <SearchableSelect
                 name="supplier_id"
                 value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                className={INPUT}
+                onChange={setSupplierId}
+                options={supplierOptions}
                 disabled={moneyLocked}
-              >
-                <option value="">—</option>
-                {suppliersForIsland.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                    {s.island ? ` · ${s.island}` : ""} · {s.billing_mode}
-                    {s.billing_mode === "deposit" ? ` ${s.deposit_percent}%` : ` nett ${s.invoice_nett_percent}%`}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Partner / supplier"
+                placeholder="Type a partner name…"
+              />
               {canPickBilling ? (
                 <>
                   <FieldLabel className="mt-4">Billing for this booking</FieldLabel>
@@ -829,19 +874,14 @@ export function ShowOpsBookingForm({
         {/* ── 3 · Pick-up ──────────────────────────────── */}
         <StepColumn step={3} label="Pick-up">
           <FieldLabel>Hotel</FieldLabel>
-          <select name="hotel_id" value={hotelId} onChange={(e) => setHotelId(e.target.value)} className={INPUT}>
-            <option value="">—</option>
-            {hotelsForIsland.map((h) => {
-              const hotelStop = h.bus_stop_id ? stops.find((s) => s.id === h.bus_stop_id) : null;
-              const t = hotelStop?.pickup_time ? String(hotelStop.pickup_time).slice(0, 5) : "";
-              return (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                  {t ? ` · ${t}` : ""}
-                </option>
-              );
-            })}
-          </select>
+          <SearchableSelect
+            name="hotel_id"
+            value={hotelId}
+            onChange={setHotelId}
+            options={hotelOptions}
+            ariaLabel="Hotel"
+            placeholder="Type a hotel or resort…"
+          />
           {activeIsland && hotelsForIsland.length === 0 ? (
             <p className="mt-1 text-xs text-amber-700">No hotels on {activeIsland} yet — add under Master data.</p>
           ) : null}
@@ -860,7 +900,7 @@ export function ShowOpsBookingForm({
               <span className="text-xs text-slate-500">· no bus on this show</span>
             ) : supplement > 0 && product?.adult_price_no_transport == null ? (
               <span className="text-xs text-slate-500">
-                · +{moneyFmt(supplement)} per adult &amp; child, infants free
+                {`\u00B7 +${moneyFmt(supplement)} per adult & child, infants free`}
               </span>
             ) : null}
           </label>
@@ -868,21 +908,15 @@ export function ShowOpsBookingForm({
           {transport ? (
             <>
               <FieldLabel className="mt-4">Pick-up point</FieldLabel>
-              <select
+              <SearchableSelect
                 name="pickup_stop_id"
                 value={pickupStopId}
-                onChange={(e) => setPickupStopId(e.target.value)}
-                className={INPUT}
-              >
-                <option value="">— pick a stop —</option>
-                {islandStops.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.resort} · {s.stop_name}
-                    {s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}
-                    {s.runs_on ? ` · ${s.runs_on}` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={setPickupStopId}
+                options={stopOptions}
+                ariaLabel="Pick-up point"
+                placeholder="Type a resort, stop or time…"
+                emptyLabel="— pick a stop —"
+              />
               <p className="mt-1 text-xs text-slate-500">
                 {hotel?.bus_stop_id && pickupStopId === hotel.bus_stop_id
                   ? `Assigned by hotel${stop?.resort ? `: ${stop.resort}` : ""}.`
@@ -899,10 +933,14 @@ export function ShowOpsBookingForm({
                   </p>
                 </div>
                 <div className="border-t border-slate-200 pt-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Show</p>
-                  <p className="text-2xl font-semibold tabular-nums text-slate-900">
-                    {product?.show_time ? String(product.show_time).slice(0, 5) : "—"}
-                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Show starts</p>
+                  {product?.show_time ? (
+                    <p className="text-2xl font-semibold tabular-nums text-slate-900">{String(product.show_time).slice(0, 5)}</p>
+                  ) : (
+                    <p className="text-xs text-amber-700">
+                      {product ? `No start time saved for ${product.name} — set it under Shows.` : "Pick a show first."}
+                    </p>
+                  )}
                 </div>
               </div>
             </>

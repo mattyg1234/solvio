@@ -1,17 +1,11 @@
-import {
-  nudgeBusStopAction,
-  upsertBusOrderAction,
-  upsertBusStopAction,
-  upsertHotelAction,
-  upsertProductAction,
-  upsertSupplierAction,
-} from "@/app/dashboard/show-ops/actions";
-import { BusStopReorder } from "@/components/show-ops/bus-stop-reorder";
+import { upsertBusOrderAction, upsertProductAction, upsertSupplierAction } from "@/app/dashboard/show-ops/actions";
+import { HotelsDirectory } from "@/components/show-ops/hotels-directory";
 import { MasterRatesForm } from "@/components/show-ops/master-rates-form";
 import { MasterShowsForm } from "@/components/show-ops/master-shows-form";
 import { MasterSuppliersForm } from "@/components/show-ops/master-suppliers-form";
+import { PickupPointsDirectory } from "@/components/show-ops/pickup-points-directory";
 import { ScrollToCreated } from "@/components/show-ops/scroll-to-created";
-import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
+import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -74,13 +68,20 @@ export default async function MasterDataPage({
    * old link lands on Partners instead. The rate-card rows are still on the
    * partner record for reference.
    */
-  const allowed = new Set(["shows", "partners", "hotels"]);
+  const allowed = new Set(["shows", "partners", "hotels", "stops"]);
   const tab = sp.tab === "rates" ? "partners" : sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "") ? sp.created : undefined;
   const ctx = await requireShowOpsPage("shows");
   const biz = ctx.business.id;
   const islands = ctx.config.islands;
+  const sb = ctx.supabase;
 
+  /*
+   * Only load what the open tab renders. Every tab used to pull suppliers,
+   * products, 1,200 hotels, 327 stops and the partner totals RPC on every
+   * visit, so Shows paid for Hotels and vice versa.
+   */
+  const wantsMaster = tab === "hotels" || tab === "stops";
   const [
     { data: suppliers },
     { data: products },
@@ -88,35 +89,59 @@ export default async function MasterDataPage({
     { data: hotels },
     { data: busOrders },
     { data: rates },
-  ] =
-    await Promise.all([
-      ctx.supabase.from("show_suppliers").select("*").eq("business_id", biz).eq("active", true).order("name"),
-      ctx.supabase.from("show_products").select("*").eq("business_id", biz).order("name"),
-      ctx.supabase.from("show_bus_stops").select("*").eq("business_id", biz).order("sort_order"),
-      ctx.supabase.from("show_hotels").select("*").eq("business_id", biz).order("name"),
-      ctx.supabase
-        .from("show_bus_orders")
-        .select("*")
-        .eq("business_id", biz)
-        .order("show_date", { ascending: false })
-        .limit(20),
-      ctx.supabase.from("show_supplier_rates").select("*").eq("business_id", biz).order("name"),
-    ]);
+  ] = await Promise.all([
+    tab === "partners"
+      ? sb.from("show_suppliers").select("*").eq("business_id", biz).eq("active", true).order("name")
+      : Promise.resolve({ data: [] as never[] }),
+    tab === "shows"
+      ? sb.from("show_products").select("*").eq("business_id", biz).order("name")
+      : Promise.resolve({ data: [] as never[] }),
+    wantsMaster
+      ? sb
+          .from("show_bus_stops")
+          .select("id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active")
+          .eq("business_id", biz)
+          .order("island")
+          .order("sort_order")
+          .order("stop_name")
+      : Promise.resolve({ data: [] as never[] }),
+    wantsMaster
+      ? sb.from("show_hotels").select("id,name,island,bus_stop_id,active").eq("business_id", biz).order("name")
+      : Promise.resolve({ data: [] as never[] }),
+    tab === "stops"
+      ? sb
+          .from("show_bus_orders")
+          .select("*")
+          .eq("business_id", biz)
+          .order("show_date", { ascending: false })
+          .limit(20)
+      : Promise.resolve({ data: [] as never[] }),
+    tab === "partners"
+      ? sb.from("show_supplier_rates").select("*").eq("business_id", biz).order("name")
+      : Promise.resolve({ data: [] as never[] }),
+  ]);
 
   // Per-partner sales for the list rows — aggregated in SQL, never row-fetched.
   const statsYear = new Date().getUTCFullYear();
-  const { data: partnerTotals } = await ctx.supabase.rpc("show_ops_partner_totals", {
-    p_business: biz,
-    p_from: `${statsYear}-01-01`,
-    p_to: `${statsYear}-12-31`,
-  });
+  const { data: partnerTotals } =
+    tab === "partners"
+      ? await sb.rpc("show_ops_partner_totals", {
+          p_business: biz,
+          p_from: `${statsYear}-01-01`,
+          p_to: `${statsYear}-12-31`,
+        })
+      : { data: [] as never[] };
   const supplierStats = Object.fromEntries(
     ((partnerTotals ?? []) as Array<{ supplier_id: string; bookings: number; pax: number; revenue: number }>).map(
       (r) => [r.supplier_id, { bookings: Number(r.bookings), pax: Number(r.pax), revenue: Number(r.revenue) }],
     ),
   );
 
-  const stopById = new Map((stops ?? []).map((s) => [s.id, s]));
+  const hotelsByStop: Record<string, number> = {};
+  for (const h of (hotels ?? []) as Array<{ bus_stop_id: string | null }>) {
+    if (h.bus_stop_id) hotelsByStop[h.bus_stop_id] = (hotelsByStop[h.bus_stop_id] ?? 0) + 1;
+  }
+
   const title =
     tab === "partners"
       ? "Partners"
@@ -124,15 +149,19 @@ export default async function MasterDataPage({
         ? "Rates & commissions"
         : tab === "hotels"
           ? "Hotels & pick-ups"
-          : "Shows";
+          : tab === "stops"
+            ? "Pick-up points"
+            : "Shows";
   const intro =
     tab === "partners"
       ? "Sellers — ticket shops, agencies, hotels, web. Type and location match the old Partners list. Commission cards live under Rates."
       : tab === "rates"
         ? "Commission cards (sale vs invoice). Partners pick one of these — they are not sellers."
         : tab === "hotels"
-          ? "Hotels, bus stops and seats ordered. Changing a stop here does not wipe bookings — only the run order and times."
-          : "Shows, islands, capacity and ticket prices. Tick rows to master-edit, or Save all shows at once. Reprice uninvoiced bookings after you change a rate.";
+          ? "Every hotel and the pick-up point it uses. Pick-up points, run order and bus orders are on their own tab."
+          : tab === "stops"
+            ? "Bus stops, printed times, permanent run order and buses ordered per night. Changing a stop never wipes bookings."
+            : "Shows, islands, capacity and ticket prices. Tick rows to master-edit, or Save all shows at once. Reprice uninvoiced bookings after you change a rate.";
 
   return (
     <div className="space-y-8">
@@ -286,218 +315,60 @@ export default async function MasterDataPage({
       </section>
       ) : null}
 
-      {tab === "hotels" ? (
+      {tab === "hotels" || tab === "stops" ? (
       <>
-      <section id="stops" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-        <h2 className="font-semibold text-slate-900">Bus stops</h2>
-        <form action={upsertBusStopAction} className="mt-3 grid gap-2 sm:grid-cols-3">
-          <input type="hidden" name="tab" value="hotels" />
-          <label className="text-xs font-medium text-slate-600">
-            Island
-            <select name="island" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-              {islands.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Field label="Resort" name="resort" required />
-          <Field label="Stop name" name="stop_name" required />
-          <Field label="Pickup time" name="pickup_time" type="time" />
-          <Field label="Sort order" name="sort_order" type="number" defaultValue={0} />
-          <Field label="Days (blank = every night)" name="runs_on" />
-          <Field label="Guide notes" name="guide_notes" />
-          <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-3`}>Add stop</SubmitOnce>
-        </form>
-        <div className="mt-4 space-y-3">
-          {pinCreated(stops ?? [], created).map((s) => (
-            <form
-              key={s.id}
-              id={`created-${s.id}`}
-              action={upsertBusStopAction}
-              className={`grid gap-2 rounded-xl p-3 sm:grid-cols-3 ${
-                created === s.id ? "bg-violet-50 ring-2 ring-[var(--show-ops-primary,#7c3aed)]" : "bg-slate-50"
-              }`}
-            >
-              <input type="hidden" name="id" value={s.id} />
-              <input type="hidden" name="tab" value="hotels" />
-              <label className="text-xs font-medium text-slate-600">
-                Island
-                <select
-                  name="island"
-                  defaultValue={s.island}
-                  className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
-                >
-                  {islands.map((i) => (
-                    <option key={i} value={i}>
-                      {i}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Field label="Resort" name="resort" required defaultValue={s.resort} />
-              <Field label="Stop name" name="stop_name" required defaultValue={s.stop_name} />
-              <Field
-                label="Pickup time"
-                name="pickup_time"
-                type="time"
-                defaultValue={s.pickup_time ? String(s.pickup_time).slice(0, 5) : ""}
-              />
-              <Field label="Sort order" name="sort_order" type="number" defaultValue={s.sort_order} />
-              <Field
-                label="Days (blank = every night)"
-                name="runs_on"
-                defaultValue={(s as { runs_on?: string | null }).runs_on ?? ""}
-              />
-              <Field
-                label="Guide notes"
-                name="guide_notes"
-                defaultValue={(s as { guide_notes?: string | null }).guide_notes ?? ""}
-              />
-              <label className="flex items-center gap-2 text-xs self-end pb-2">
-                <input type="checkbox" name="active" value="1" defaultChecked={s.active !== false} /> Active
-              </label>
-              <div className="flex flex-wrap items-end gap-2">
-                <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
-                  Save
-                </button>
-              </div>
-            </form>
-          ))}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {(stops ?? []).map((s) => (
-              <div key={`nudge-${s.id}`} className="flex gap-1">
-                <form action={nudgeBusStopAction}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <input type="hidden" name="dir" value="up" />
-                  <button type="submit" className="rounded bg-white px-2 py-1 text-xs ring-1 ring-slate-200">
-                    {s.stop_name} ↑
-                  </button>
-                </form>
-                <form action={nudgeBusStopAction}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <input type="hidden" name="dir" value="down" />
-                  <button type="submit" className="rounded bg-white px-2 py-1 text-xs ring-1 ring-slate-200">
-                    ↓
-                  </button>
-                </form>
-              </div>
-            ))}
-          </div>
-          {islands.map((island) => {
-            const islandStops = (stops ?? []).filter((s) => s.island === island);
-            if (!islandStops.length) return null;
-            return (
-              <BusStopReorder
-                key={island}
-                island={island}
-                stops={islandStops.map((s) => ({
-                  id: s.id,
-                  label: `${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}`,
-                }))}
-              />
-            );
-          })}
-        </div>
-      </section>
+      <div className="flex flex-wrap gap-2">
+        <ShowOpsPill href="/dashboard/show-ops/master?tab=hotels" on={tab === "hotels"}>
+          Hotels
+        </ShowOpsPill>
+        <ShowOpsPill href="/dashboard/show-ops/master?tab=stops" on={tab === "stops"}>
+          Pick-up points
+        </ShowOpsPill>
+      </div>
 
+      {tab === "hotels" ? (
       <section id="hotels" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold text-slate-900">Hotels</h2>
-        <form action={upsertHotelAction} className="mt-3 grid gap-2 sm:grid-cols-3">
-          <input type="hidden" name="tab" value="hotels" />
-          <Field label="Hotel name" name="name" required />
-          <label className="text-xs font-medium text-slate-600">
-            Island
-            <select name="island" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-              {islands.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-medium text-slate-600">
-            Bus stop
-            <select name="bus_stop_id" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-              <option value="">—</option>
-              {(stops ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.resort} · {s.stop_name}
-                  {s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-3`}>Add hotel</SubmitOnce>
-        </form>
-        <div className="mt-4 space-y-3">
-          {pinCreated(hotels ?? [], created).map((h) => {
-            const stop = h.bus_stop_id ? stopById.get(h.bus_stop_id) : null;
-            return (
-              <form
-                key={h.id}
-                id={`created-${h.id}`}
-                action={upsertHotelAction}
-                className={`grid gap-2 rounded-xl p-3 sm:grid-cols-3 ${
-                  created === h.id ? "bg-violet-50 ring-2 ring-[var(--show-ops-primary,#7c3aed)]" : "bg-slate-50"
-                }`}
-              >
-                <input type="hidden" name="id" value={h.id} />
-                <input type="hidden" name="tab" value="hotels" />
-                <Field label="Hotel name" name="name" required defaultValue={h.name} />
-                <label className="text-xs font-medium text-slate-600">
-                  Island
-                  <select
-                    name="island"
-                    defaultValue={h.island}
-                    className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
-                  >
-                    {islands.map((i) => (
-                      <option key={i} value={i}>
-                        {i}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-xs font-medium text-slate-600">
-                  Bus stop
-                  {stop
-                    ? ` (${stop.resort}${stop.pickup_time ? ` · ${String(stop.pickup_time).slice(0, 5)}` : ""})`
-                    : ""}
-                  <select
-                    name="bus_stop_id"
-                    defaultValue={h.bus_stop_id ?? ""}
-                    className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
-                  >
-                    <option value="">—</option>
-                    {(stops ?? []).map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.resort} · {s.stop_name}
-                        {s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-2 text-xs self-end pb-2">
-                  <input type="checkbox" name="active" value="1" defaultChecked={h.active !== false} /> Active
-                </label>
-                <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white sm:col-span-2">
-                  Save
-                </button>
-              </form>
-            );
-          })}
+        <p className="mt-1 text-xs text-slate-500">
+          Each hotel points at one pick-up point; the resort and time come from that stop. Filter by island or
+          resort, or type any part of the name.
+        </p>
+        <div className="mt-3">
+          <HotelsDirectory
+            hotels={(hotels ?? []) as never}
+            stops={(stops ?? []) as never}
+            islands={islands}
+            highlightId={created}
+          />
+        </div>
+      </section>
+      ) : null}
+
+      {tab === "stops" ? (
+      <>
+      <section id="stops" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h2 className="font-semibold text-slate-900">Pick-up points</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Bus stops with their printed time and which nights they run. Changing a time here moves every booking on
+          that stop; hotels keep their stop.
+        </p>
+        <div className="mt-3">
+          <PickupPointsDirectory
+            stops={(stops ?? []) as never}
+            hotelsByStop={hotelsByStop}
+            islands={islands}
+            highlightId={created}
+          />
         </div>
       </section>
 
       <section id="buses" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-        <h2 className="font-semibold text-slate-900">Bus orders (capacity + cost)</h2>
+        <h2 className="font-semibold text-slate-900">Bus orders (buses, seats + cost)</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Tell the system seats ordered + cost for weekly outlook spaces and cost-per-head reports.
+          How many buses and seats were ordered per island-night — drives the outlook spaces and cost-per-head reports.
         </p>
-        <form action={upsertBusOrderAction} className="mt-3 grid gap-2 sm:grid-cols-4">
-          <input type="hidden" name="tab" value="hotels" />
+        <form action={upsertBusOrderAction} className="mt-3 grid gap-2 sm:grid-cols-5">
+          <input type="hidden" name="tab" value="stops" />
           <Field label="Date" name="show_date" type="date" required />
           <label className="text-xs font-medium text-slate-600">
             Island
@@ -509,10 +380,11 @@ export default async function MasterDataPage({
               ))}
             </select>
           </label>
+          <Field label="Buses" name="bus_count" type="number" defaultValue={1} />
           <Field label="Seats ordered" name="seats_ordered" type="number" defaultValue={50} />
           <Field label="Cost €" name="cost_total" type="number" step="0.01" defaultValue={0} />
           <Field label="Notes" name="notes" />
-          <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-4`}>Save bus order</SubmitOnce>
+          <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-5`}>Save bus order</SubmitOnce>
         </form>
         <ul className="mt-4 divide-y text-sm">
           {pinCreated(busOrders ?? [], created).map((b) => (
@@ -521,11 +393,14 @@ export default async function MasterDataPage({
               id={`created-${b.id}`}
               className={`py-2 ${created === b.id ? "rounded-lg bg-violet-50 px-2 font-medium" : ""}`}
             >
-              {b.show_date} · {b.island} · {b.seats_ordered} seats · €{b.cost_total}
+              {b.show_date} · {b.island} · {Number(b.bus_count ?? 1)} bus{Number(b.bus_count ?? 1) === 1 ? "" : "es"} ·{" "}
+              {b.seats_ordered} seats · €{b.cost_total}
             </li>
           ))}
         </ul>
       </section>
+      </>
+      ) : null}
       </>
       ) : null}
     </div>

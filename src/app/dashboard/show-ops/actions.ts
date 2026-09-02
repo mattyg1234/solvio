@@ -77,7 +77,7 @@ function safeShowOpsNext(raw: string): string | null {
   return next;
 }
 
-const MASTER_TABS = new Set(["shows", "partners", "rates", "hotels"]);
+const MASTER_TABS = new Set(["shows", "partners", "rates", "hotels", "stops"]);
 
 function masterTabFromForm(formData: FormData, fallback: string) {
   const tab = String(formData.get("tab") ?? fallback).trim();
@@ -1409,6 +1409,8 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     show_date: String(formData.get("show_date") ?? "").trim(),
     island: String(formData.get("island") ?? "").trim(),
     seats_ordered: Number(formData.get("seats_ordered") ?? 0),
+    // How many coaches, not just seats — LPA runs two on a busy night.
+    bus_count: Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1)),
     cost_total: Number(formData.get("cost_total") ?? 0),
     notes: String(formData.get("notes") ?? "").trim() || null,
     updated_at: new Date().toISOString(),

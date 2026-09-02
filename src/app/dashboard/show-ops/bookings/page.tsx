@@ -22,7 +22,8 @@ const PAGE_SIZE = 250;
 const SORT_COLUMNS: Record<string, string> = {
   created: "created_at",
   date: "show_date",
-  ref: "booking_ref",
+  // Refs are text (MHT-L316713 / MHT-316714); the stored number sorts them properly.
+  ref: "booking_ref_num",
   name: "guest_name",
   show: "show_name",
   hotel: "hotel_name",
