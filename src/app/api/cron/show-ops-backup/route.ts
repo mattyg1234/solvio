@@ -1,9 +1,12 @@
+import { gzipSync } from "node:zlib";
+
 import { NextRequest, NextResponse } from "next/server";
 
 import {
   SHOW_OPS_BACKUP_BUCKET,
   backupObjectPath,
   buildShowOpsBackup,
+  snapshotsToPrune,
 } from "@/lib/show-ops/backup";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -18,16 +21,50 @@ function authorized(req: NextRequest): boolean {
   return req.nextUrl.searchParams.get("secret") === secret;
 }
 
+type Admin = ReturnType<typeof createSupabaseServiceRoleClient>;
+
+/** Every object in a tenant's folder — the Storage list API pages at 100 by default. */
+async function listSnapshots(admin: Admin, businessId: string): Promise<string[]> {
+  const names: string[] = [];
+  const limit = 1000;
+  for (let offset = 0; ; offset += limit) {
+    const { data, error } = await admin.storage
+      .from(SHOW_OPS_BACKUP_BUCKET)
+      .list(businessId, { limit, offset, sortBy: { column: "name", order: "asc" } });
+    if (error) throw new Error(error.message);
+    const page = (data ?? []).map((o) => o.name);
+    names.push(...page);
+    if (page.length < limit) return names;
+  }
+}
+
+/** Delete in batches — one remove() call with a thousand paths is refused. */
+async function removeSnapshots(admin: Admin, businessId: string, names: string[]): Promise<number> {
+  let removed = 0;
+  for (let i = 0; i < names.length; i += 100) {
+    const chunk = names.slice(i, i + 100).map((n) => `${businessId}/${n}`);
+    const { error } = await admin.storage.from(SHOW_OPS_BACKUP_BUCKET).remove(chunk);
+    if (error) throw new Error(error.message);
+    removed += chunk.length;
+  }
+  return removed;
+}
+
 /**
  * Rolling mirror of every Show Ops tenant.
  *
- * Writes a complete JSON snapshot per workspace into a private Storage bucket on
- * a schedule, so if the app or the database goes down there is a recent, whole
- * copy of the operation to restore or read from — not a nightly file that stops
- * at the first thousand bookings.
+ * Writes a complete, gzipped JSON snapshot per workspace into a private Storage
+ * bucket, so if the app or the database goes down there is a recent, whole copy
+ * of the operation to restore or read from.
  *
- * Retention is handled by the bucket; snapshots are named by timestamp so the
- * newest is always last.
+ * Cadence lives in vercel.json. It was every five minutes; a full 15 MB read of
+ * the tenant 288 times a day is 4 GB/day of database egress on a free-tier org
+ * whose monthly allowance is 5 GB, shared with Tipsi. Six-hourly until the
+ * project is on a plan that can afford the mirror, or the backup goes
+ * incremental.
+ *
+ * Then prunes: everything from the last hour stays, one per hour for a day,
+ * one per day for a month. Without this the bucket grew 4 GB a day.
  */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) {
@@ -51,36 +88,41 @@ export async function GET(req: NextRequest) {
     ok: boolean;
     path?: string;
     bytes?: number;
+    raw_bytes?: number;
     counts?: Record<string, number>;
+    pruned?: number;
+    prune_error?: string;
     error?: string;
   }> = [];
 
   for (const business of businesses ?? []) {
+    const entry: (typeof results)[number] = { business_id: business.id, name: business.name, ok: false };
     try {
       const backup = await buildShowOpsBackup(admin, business, exportedAt);
-      const body = JSON.stringify(backup);
+      const raw = Buffer.from(JSON.stringify(backup));
+      const body = gzipSync(raw);
       const path = backupObjectPath(business.id, exportedAt);
       const { error: upErr } = await admin.storage
         .from(SHOW_OPS_BACKUP_BUCKET)
-        .upload(path, body, { contentType: "application/json", upsert: true });
+        .upload(path, body, { contentType: "application/gzip", upsert: true });
       if (upErr) throw new Error(upErr.message);
-      results.push({
-        business_id: business.id,
-        name: business.name,
-        ok: true,
-        path,
-        bytes: Buffer.byteLength(body),
-        counts: backup.counts,
-      });
+      Object.assign(entry, { ok: true, path, bytes: body.byteLength, raw_bytes: raw.byteLength, counts: backup.counts });
     } catch (e) {
       // One tenant failing must not stop the rest of the mirror.
-      results.push({
-        business_id: business.id,
-        name: business.name,
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
+      entry.error = e instanceof Error ? e.message : String(e);
     }
+
+    // Prune only after this run's snapshot is safely written.
+    if (entry.ok) {
+      try {
+        const names = await listSnapshots(admin, business.id);
+        const stale = snapshotsToPrune(names);
+        entry.pruned = stale.length ? await removeSnapshots(admin, business.id, stale) : 0;
+      } catch (e) {
+        entry.prune_error = e instanceof Error ? e.message : String(e);
+      }
+    }
+    results.push(entry);
   }
 
   const failed = results.filter((r) => !r.ok).length;

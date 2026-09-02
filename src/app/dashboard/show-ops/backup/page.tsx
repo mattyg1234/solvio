@@ -27,7 +27,7 @@ export default async function ShowOpsBackupPage() {
     sortBy: { column: "name", order: "desc" },
   });
 
-  const snapshots = (objects ?? []).filter((o) => o.name.endsWith(".json"));
+  const snapshots = (objects ?? []).filter((o) => o.name.endsWith(".json") || o.name.endsWith(".json.gz"));
   const latest = snapshots[0] ?? null;
   const latestAt = latest?.created_at ?? latest?.updated_at ?? null;
 
@@ -37,7 +37,8 @@ export default async function ShowOpsBackupPage() {
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Backups &amp; Plan B</h2>
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
           A complete copy of this workspace — every booking, partner, hotel, stop, payment and invoice — is written to
-          private storage every five minutes. If the system goes down, the mirror is at most five minutes behind.
+          private storage every six hours. If the system goes down, the mirror is at most six hours behind.
+          Copies are kept for a day, then one a day for a month.
         </p>
       </div>
 
@@ -51,11 +52,11 @@ export default async function ShowOpsBackupPage() {
                 {size(Number(latest.metadata?.size ?? 0))}
               </span>
             </p>
-            <p className="text-xs text-slate-500">{latest.name.replace(/\.json$/, "").replace(/-(\d{2})-(\d{2})-(\d{2})-\d{3}Z$/, " $1:$2:$3 UTC")}</p>
+            <p className="text-xs text-slate-500">{latest.name.replace(/\.json(\.gz)?$/, "").replace(/-(\d{2})-(\d{2})-(\d{2})-\d{3}Z$/, " $1:$2:$3 UTC")}</p>
           </>
         ) : (
           <p className="mt-1 text-sm text-amber-700">
-            No snapshot yet. The job runs every five minutes — if this is still empty in ten, check that CRON_SECRET is
+            No snapshot yet. The job runs every six hours — if this is still empty tomorrow, check that CRON_SECRET is
             set on the deployment.
           </p>
         )}
