@@ -31,7 +31,7 @@ export default async function NewBookingPage() {
       .order("name"),
     ctx.supabase
       .from("show_bus_stops")
-      .select("id,stop_name,resort,pickup_time,island,runs_on")
+      .select("id,stop_name,resort,pickup_time,island,runs_on,zone")
       .eq("business_id", biz)
       .eq("active", true),
     loadBookedDatesByProduct(ctx.supabase, biz),

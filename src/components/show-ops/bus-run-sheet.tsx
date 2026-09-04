@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { GripVertical } from "lucide-react";
 
+import {
+  clearBusNightOrderAction,
+  getBusNightOrderAction,
+  saveBusNightOrderAction,
+  type BusNightOrder,
+  type BusNightSheet,
+} from "@/app/dashboard/show-ops/actions-bus";
 import { BusPickupSelect } from "@/components/show-ops/bus-pickup-select";
-import { formatShowOpsPax } from "@/lib/show-ops/calc";
+import { formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 
 export type BusRunRow = {
   id: string;
@@ -23,6 +30,7 @@ export type BusRunRow = {
 };
 
 export type BusRunGroup = {
+  /** pickup_stop_id, or `none-<island>` for bus guests with no stop yet. */
   key: string;
   island: string;
   time: string;
@@ -33,13 +41,29 @@ export type BusRunGroup = {
   rows: BusRunRow[];
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Saved per-island stop order → one flat key list, islands in the order the sheet lists them. */
+function keysFromSaved(groups: BusRunGroup[], saved: BusNightOrder[]): string[] {
+  const known = new Set(groups.map((g) => g.key));
+  const islands = [...new Set(groups.map((g) => g.island))];
+  const out: string[] = [];
+  for (const island of islands) {
+    const row = saved.find((s) => s.island === island);
+    if (!row) continue;
+    for (const id of row.stop_ids) if (known.has(id) && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
 /**
  * Tonight's bus list, in pick-up order.
  *
  * The driver's running order changes night to night — a coach might do Playa
- * Blanca first tonight and last tomorrow — so dragging here reorders THIS sheet
- * only. The saved stop order under Bus board is untouched, which is the whole
- * point: their old system made the change permanent every time.
+ * Blanca first tonight and last tomorrow — so dragging here reorders THIS
+ * night only. "Save tonight's order" keeps it in show_bus_night_orders (one
+ * row per island per night) so it survives a refresh and other desks see it.
+ * The permanent stop order under Bus board is never touched from here.
  */
 export function BusRunSheet({
   groups,
@@ -47,6 +71,7 @@ export function BusRunSheet({
   date,
   sortKeys = [],
   sortHref,
+  savedOrder,
 }: {
   groups: BusRunGroup[];
   stopOptions: Array<{ id: string; label: string }>;
@@ -55,10 +80,40 @@ export function BusRunSheet({
   sortKeys?: string[];
   /** key → href. A map, not a function: this component runs in the browser. */
   sortHref?: Record<string, string>;
+  /**
+   * Saved running order for this night, when the page already has it. Left
+   * out, the sheet fetches it (plus stop map/photo links and guide names) on mount.
+   */
+  savedOrder?: BusNightOrder[] | null;
 }) {
   const naturalOrder = useMemo(() => groups.map((g) => g.key), [groups]);
-  const [order, setOrder] = useState<string[]>(naturalOrder);
+  const [order, setOrder] = useState<string[]>(() => (savedOrder?.length ? keysFromSaved(groups, savedOrder) : naturalOrder));
   const [dragKey, setDragKey] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<BusNightSheet | null>(null);
+  const [savedIslands, setSavedIslands] = useState<string[]>(() => (savedOrder ?? []).map((s) => s.island));
+  const [note, setNote] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  // Saved order + stop links + guides. Runs once per night; the prop (when given)
+  // already seeded the order so there is no flash of the printed-times order.
+  useEffect(() => {
+    let alive = true;
+    getBusNightOrderAction(date)
+      .then((res) => {
+        if (!alive || !res.ok) return;
+        setSheet(res.sheet);
+        if (savedOrder === undefined && res.sheet.orders.length) {
+          setOrder(keysFromSaved(groups, res.sheet.orders));
+          setSavedIslands(res.sheet.orders.map((s) => s.island));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // groups only matter for the initial seeding; later filter changes are handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
 
   // Keys can come and go as filters change; keep known ones in the chosen order
   // and drop anything that has gone away.
@@ -78,6 +133,8 @@ export function BusRunSheet({
   }, [groups, order]);
 
   const rearranged = ordered.some((g, i) => g.key !== naturalOrder[i]);
+  const islands = useMemo(() => [...new Set(groups.map((g) => g.island))], [groups]);
+  const hasSaved = savedIslands.some((i) => islands.includes(i));
 
   function move(targetKey: string) {
     if (!dragKey || dragKey === targetKey) return;
@@ -97,6 +154,39 @@ export function BusRunSheet({
     if (from < 0 || to < 0 || to >= keys.length) return;
     keys.splice(to, 0, ...keys.splice(from, 1));
     setOrder(keys);
+  }
+
+  function saveTonight() {
+    setNote(null);
+    start(async () => {
+      type SaveResult = { island: string; saved: boolean; error: string | null };
+      const results: SaveResult[] = await Promise.all(
+        islands.map(async (island): Promise<SaveResult> => {
+          const ids = ordered.filter((g) => g.island === island && UUID_RE.test(g.key)).map((g) => g.key);
+          if (!ids.length) return { island, saved: false, error: null };
+          const res = await saveBusNightOrderAction(date, island, ids);
+          return { island, saved: res.ok, error: res.ok ? null : res.message };
+        }),
+      );
+      const failed = results.filter((r) => r.error);
+      if (failed.length) {
+        setNote(`Could not save: ${failed.map((f) => `${f.island} — ${f.error}`).join("; ")}`);
+        return;
+      }
+      setSavedIslands(results.filter((r) => r.saved).map((r) => r.island));
+      setNote("Tonight's order saved.");
+    });
+  }
+
+  function backToTimes() {
+    setNote(null);
+    setOrder(naturalOrder);
+    if (!hasSaved) return;
+    start(async () => {
+      await Promise.all(islands.map((island) => clearBusNightOrderAction(date, island)));
+      setSavedIslands([]);
+      setNote("Back to printed pick-up times.");
+    });
   }
 
   function exportCsv() {
@@ -143,22 +233,53 @@ export function BusRunSheet({
     );
   }
 
+  const guideLines = islands
+    .map((island) => ({ island, guide: sheet?.guides[island] ?? null }))
+    .filter((x) => x.guide);
+  const day = showOpsDayName(date);
+
   return (
     <div className="space-y-4">
+      {/* Night header — prints. Guide per island when the bus board has one. */}
+      <div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200">
+        <p className="text-sm font-semibold text-slate-900">
+          Bus list · {day ? `${day} ` : ""}
+          {date}
+          {islands.length === 1 ? ` · ${islands[0]}` : ""}
+        </p>
+        {guideLines.length ? (
+          <p className="mt-0.5 text-sm text-slate-700">
+            {guideLines.map((g) => `${islands.length > 1 ? `${g.island}: ` : ""}Guide ${g.guide}`).join(" · ")}
+          </p>
+        ) : null}
+        {hasSaved ? (
+          <p className="mt-0.5 text-xs font-semibold text-violet-800">Tonight&apos;s saved running order</p>
+        ) : null}
+      </div>
+
       <div className="print:hidden flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm ring-1 ring-slate-200">
         <p className="min-w-[16rem] flex-1 text-slate-600">
-          Pick-up order for {date}. Drag a stop to change tonight&apos;s running order — it only affects this sheet and
-          the export, never the saved stop order.
+          Drag a stop to change tonight&apos;s running order, then save it so it stays after a refresh. The permanent
+          stop order under Bus board is untouched.
         </p>
-        {rearranged ? (
+        {rearranged || hasSaved ? (
           <button
             type="button"
-            onClick={() => setOrder(naturalOrder)}
-            className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+            disabled={pending}
+            onClick={backToTimes}
+            className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60"
           >
             Back to pick-up times
           </button>
         ) : null}
+        <button
+          type="button"
+          disabled={pending || !rearranged}
+          onClick={saveTonight}
+          className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 ring-1 ring-violet-200 hover:bg-violet-50 disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Save tonight's order"}
+        </button>
         <button
           type="button"
           onClick={exportCsv}
@@ -166,9 +287,12 @@ export function BusRunSheet({
         >
           Export this order
         </button>
+        {note ? <p className="w-full text-xs text-slate-600">{note}</p> : null}
       </div>
 
-      {ordered.map((g, i) => (
+      {ordered.map((g, i) => {
+        const links = sheet?.stops[g.key] ?? null;
+        return (
         <div
           key={g.key}
           draggable
@@ -212,7 +336,30 @@ export function BusRunSheet({
               </span>
             </p>
           </div>
-          {g.notes ? <p className="border-b px-4 py-2 text-xs text-slate-500">{g.notes}</p> : null}
+          {g.notes || links?.map_url || links?.photo_url ? (
+            <div className="flex flex-wrap items-start gap-3 border-b px-4 py-2 text-xs text-slate-500">
+              {g.notes ? <p className="min-w-[10rem] flex-1">{g.notes}</p> : null}
+              {links?.map_url ? (
+                <a
+                  href={links.map_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[var(--show-ops-primary,#7c3aed)] underline"
+                >
+                  Map
+                </a>
+              ) : null}
+              {links?.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={links.photo_url}
+                  alt={`Pick-up point: ${g.label}`}
+                  loading="lazy"
+                  className="max-h-[120px] max-w-[120px] rounded-lg object-cover ring-1 ring-slate-200"
+                />
+              ) : null}
+            </div>
+          ) : null}
           {/* Phone: one card per pickup, with the move-stop control */}
           <div className="space-y-2 p-3 lg:hidden print:hidden">
             {g.rows.map((b) => (
@@ -278,7 +425,8 @@ export function BusRunSheet({
             </tbody>
           </table>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

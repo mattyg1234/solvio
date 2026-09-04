@@ -541,11 +541,18 @@ export default async function InvoicesPage({
             {[...(overdue ?? [])]
               .sort((a, b) => Number(b.total_amount || 0) - Number(a.total_amount || 0))
               .map((inv) => (
-              <li key={inv.id} className="flex justify-between py-2">
-                <span>
-                  {inv.supplier_name} · due {inv.due_date} · {inv.invoice_number || inv.verifactu_number || "unnumbered"}
-                </span>
-                <span className="font-medium text-rose-600">{money(Number(inv.total_amount || 0), inv.currency)}</span>
+              <li key={inv.id}>
+                <a
+                  href={`/dashboard/show-ops/invoices/${inv.id}`}
+                  className="flex justify-between gap-3 py-2 hover:underline"
+                  style={{ color: "inherit" }}
+                >
+                  <span>
+                    {inv.supplier_name} · due {inv.due_date} · {inv.invoice_number || inv.verifactu_number || "unnumbered"}
+                    <span className="ml-2 text-xs font-normal text-[var(--show-ops-primary,#7c3aed)]">Open →</span>
+                  </span>
+                  <span className="font-medium text-rose-600">{money(Number(inv.total_amount || 0), inv.currency)}</span>
+                </a>
               </li>
             ))}
             {!overdue?.length ? <li className="py-4 text-slate-500">None overdue</li> : null}

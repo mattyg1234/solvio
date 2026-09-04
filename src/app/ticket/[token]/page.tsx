@@ -4,6 +4,7 @@ import { showOpsTicketQrSvg } from "@/lib/show-ops/ticket-qr";
 import { showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { brandingFromBusiness, parseShowOpsConfig } from "@/lib/show-ops/config";
+import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 
 export default async function GuestTicketPage({
   params,
@@ -15,7 +16,7 @@ export default async function GuestTicketPage({
   const { data: booking } = await admin
     .from("show_bookings")
     .select(
-      "id,business_id,booking_ref,guest_name,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_stop_name,pickup_time,cancelled_at,arrived_at,ticket_token",
+      "id,business_id,booking_ref,guest_name,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,cancelled_at,arrived_at,ticket_token",
     )
     .eq("ticket_token", token)
     .maybeSingle();
@@ -40,12 +41,15 @@ export default async function GuestTicketPage({
   const qr = await showOpsTicketQrSvg(ticketUrl);
   const day = showOpsDayName(booking.show_date);
   const pax = formatShowOpsPax(booking.adults, booking.children, booking.infants);
+  const isPrivate = !booking.transport_required && pickupKindFromBooking(booking) === "private";
   const pickup =
     booking.transport_required && booking.pickup_stop_name
       ? `${booking.pickup_stop_name}${booking.pickup_time ? ` · ${String(booking.pickup_time).slice(0, 5)}` : ""}`
       : booking.transport_required
         ? "Pick-up to be confirmed"
-        : "Making your own way";
+        : isPrivate
+          ? privateTransferLine(booking.private_zone || parsePrivatePickupLabel(booking.pickup_stop_name)?.zone)
+          : "Making your own way";
   const showTime = booking.ampm === "AM" ? "Morning show" : booking.ampm === "PM" ? "Evening show" : null;
 
   if (booking.cancelled_at) {
@@ -72,7 +76,9 @@ export default async function GuestTicketPage({
         aria-hidden
         dangerouslySetInnerHTML={{ __html: qr }}
       />
-      <p className="mt-2 text-center text-xs text-slate-500">Show this QR at the door and on the bus</p>
+      <p className="mt-2 text-center text-xs text-slate-500">
+        {booking.transport_required ? "Show this QR at the door and on the bus" : "Show this QR at the door"}
+      </p>
       <dl className="mt-8 space-y-3 rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
         <Row label="Name" value={booking.guest_name} />
         <Row label="Guests" value={pax} />

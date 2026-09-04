@@ -5,9 +5,9 @@ import { BookingFlags } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import { NightListChips, nightListsHref } from "@/components/show-ops/night-list-chips";
-import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
+import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { PrintButton } from "@/components/show-ops/print-button";
-import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
+import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { formatShowOpsMoney, formatShowOpsPax, paxTotal, showOpsArrivalMark, showOpsBookingPayView, showOpsDoorPayPhrase, surnameKey } from "@/lib/show-ops/calc";
@@ -498,9 +498,33 @@ function SortCol({
   );
 }
 
+/*
+ * The three at-a-glance colours, same as the phone cards and the Door:
+ * amber = special meal, rose = money still due at the door, violet = office comment.
+ * Tints are forced through on print so a paper list reads the same way.
+ */
+const TINT_PRINT = "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
+
 function DietCell({ row }: { row: BookingRow }) {
   if (!row.dietary_required) return <span className="text-slate-400">—</span>;
-  return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-950">{row.dietary_notes || "Yes"}</span>;
+  return <span className={`rounded bg-amber-100 px-1.5 py-0.5 text-amber-950 ${TINT_PRINT}`}>{row.dietary_notes || "Yes"}</span>;
+}
+
+function OwedCell({ pay, money }: { pay: ReturnType<typeof showOpsBookingPayView>; money: (n: number) => string }) {
+  if (pay.outstandingAmount != null && pay.outstandingAmount > 0) {
+    return (
+      <span className={`whitespace-nowrap rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-900 ${TINT_PRINT}`}>
+        {money(pay.outstandingAmount)} due
+      </span>
+    );
+  }
+  return <>{pay.label}</>;
+}
+
+function CommentsCell({ row }: { row: BookingRow }) {
+  const note = row.office_comments?.trim();
+  if (!note) return <span className="text-slate-400">—</span>;
+  return <span className={`inline-block rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-950 whitespace-pre-wrap ${TINT_PRINT}`}>{note}</span>;
 }
 
 /**
@@ -608,7 +632,9 @@ function ListCard({
           invoiced={Boolean(b.invoice_id)}
           proofUrl={b.proofUrl ?? null}
           compact
+          photo={false}
         />
+        <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} big />
         <div className="flex flex-wrap gap-1">
           <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} big />
           <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" big />
@@ -735,9 +761,11 @@ function OfficeTable({
                   {payPhrase ? ` · ${payPhrase}` : ""}
                 </td>
                 <td className="px-3 py-1.5">
-                  {pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : pay.label}
+                  <OwedCell pay={pay} money={money} />
                 </td>
-                <td className={`px-3 py-1.5 ${b.office_comments ? "bg-violet-50 font-medium text-violet-950" : ""}`}>{b.office_comments || ""}</td>
+                <td className="px-3 py-1.5">
+                  <CommentsCell row={b} />
+                </td>
                 <td className="px-3 py-1.5">
                   <div className="flex flex-col gap-1">
                     <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
@@ -749,7 +777,9 @@ function OfficeTable({
                       invoiced={Boolean(b.invoice_id)}
                       proofUrl={b.proofUrl ?? null}
                       compact
+                      photo={false}
                     />
+                    <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} />
                     <div className="flex flex-wrap gap-1">
                       <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
                       <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
@@ -806,6 +836,7 @@ function DoorTable({
             <SortCol label="Ticket" k="ticket" sortKeys={sortKeys} sortHref={sortHref} />
             <SortCol label="Diet" k="diet" sortKeys={sortKeys} sortHref={sortHref} />
             <th className="px-3 py-2">Owed</th>
+            <th className="px-3 py-2">Comments</th>
             <th className="px-3 py-2 print:hidden">Mark</th>
           </tr>
         </thead>
@@ -845,7 +876,10 @@ function DoorTable({
                   <DietCell row={b} />
                 </td>
                 <td className="px-3 py-2">
-                  {pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : pay.label}
+                  <OwedCell pay={pay} money={money} />
+                </td>
+                <td className="px-3 py-2">
+                  <CommentsCell row={b} />
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex flex-col gap-1">
@@ -858,7 +892,9 @@ function DoorTable({
                       invoiced={Boolean(b.invoice_id)}
                       proofUrl={b.proofUrl ?? null}
                       compact
+                      photo={false}
                     />
+                    <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} />
                     <div className="flex flex-wrap gap-1">
                       <ListFlagButton bookingId={b.id} flag="cash" label="Paid cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
                       <ListFlagButton bookingId={b.id} flag="card" label="Paid on card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
@@ -872,7 +908,7 @@ function DoorTable({
           })}
           {!rows.length ? (
             <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+              <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                 No rows
               </td>
             </tr>

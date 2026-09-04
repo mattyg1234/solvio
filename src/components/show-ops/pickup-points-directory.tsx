@@ -18,6 +18,9 @@ export type DirectoryPickupStop = {
   runs_on: string | null;
   guide_notes: string | null;
   active: boolean | null;
+  /** Map link / photo of the stop. Undefined when the page did not load them — the form then leaves them alone. */
+  map_url?: string | null;
+  photo_url?: string | null;
 };
 
 const PAGE = 50;
@@ -178,6 +181,8 @@ export function PickupPointsDirectory({
             runs_on: null,
             guide_notes: null,
             active: true,
+            map_url: null,
+            photo_url: null,
           }}
           onDone={() => setAdding(false)}
         />
@@ -289,6 +294,17 @@ function StopRow({
         <td className="px-3 py-2 text-slate-700">
           {stop.stop_name}
           {stop.active === false ? <span className="ml-2 text-[11px] text-slate-400">inactive</span> : null}
+          {stop.map_url ? (
+            <a
+              href={stop.map_url}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-2 text-[11px] font-semibold text-[var(--show-ops-primary,#7c3aed)] underline"
+            >
+              Map
+            </a>
+          ) : null}
+          {stop.photo_url ? <span className="ml-2 text-[11px] text-slate-400">photo</span> : null}
         </td>
         <td className="px-3 py-2 text-slate-600">{stop.island}</td>
         <td className="px-3 py-2 text-right tabular-nums text-slate-700">{hhmm(stop.pickup_time) || "—"}</td>
@@ -320,6 +336,9 @@ function StopForm({
   islands: string[];
   onDone: () => void;
 }) {
+  // Only offer the link fields when we actually hold their current values —
+  // saving blanks over a link nobody could see would be worse than hiding them.
+  const linksLoaded = !initial.id || initial.map_url !== undefined || initial.photo_url !== undefined;
   return (
     <form action={upsertBusStopAction} className="grid gap-2 sm:grid-cols-4">
       {initial.id ? <input type="hidden" name="id" value={initial.id} /> : null}
@@ -358,6 +377,32 @@ function StopForm({
         Guide notes
         <input name="guide_notes" defaultValue={initial.guide_notes ?? ""} className={INPUT} />
       </label>
+      {linksLoaded ? (
+        <>
+          <label className="text-xs font-medium text-slate-600 sm:col-span-2">
+            Map link
+            <input
+              name="map_url"
+              type="url"
+              inputMode="url"
+              placeholder="https://maps.google.com/…"
+              defaultValue={initial.map_url ?? ""}
+              className={INPUT}
+            />
+          </label>
+          <label className="text-xs font-medium text-slate-600 sm:col-span-2">
+            Photo link
+            <input
+              name="photo_url"
+              type="url"
+              inputMode="url"
+              placeholder="https://… (jpg / png)"
+              defaultValue={initial.photo_url ?? ""}
+              className={INPUT}
+            />
+          </label>
+        </>
+      ) : null}
       <div className="flex items-end gap-3 pb-1">
         {initial.id ? (
           <label className="flex items-center gap-1.5 text-xs text-slate-600">

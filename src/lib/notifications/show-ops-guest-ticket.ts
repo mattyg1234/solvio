@@ -5,6 +5,7 @@ import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notifications/booking-whatsapp";
 import { formatShowOpsMoney, formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult, showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type GuestTicketInput = {
@@ -34,7 +35,27 @@ export type GuestTicketInput = {
   showTime?: string | null;
   /** Re-send after a pick-up time/stop change — leads with what changed. */
   updated?: boolean;
+  /** bus / private / own_way. Older rows without it are read from the pick-up label. */
+  pickupKind?: string | null;
+  /** Resort zone code (PDC, CT…) for a private transfer. */
+  privateZone?: string | null;
 };
+
+/** Private transfer? From the kind when stored, else from the "Private PDC · Villa" label. */
+function isPrivateTransfer(input: GuestTicketInput): boolean {
+  return (
+    pickupKindFromBooking({
+      pickup_kind: input.pickupKind,
+      transport_required: input.transportRequired,
+      pickup_stop_name: input.pickupStopName,
+    }) === "private"
+  );
+}
+
+function privateLine(input: GuestTicketInput): string {
+  const zone = input.privateZone || parsePrivatePickupLabel(input.pickupStopName)?.zone || null;
+  return privateTransferLine(zone);
+}
 
 function resendClient(): Resend | null {
   const apiKey =
@@ -61,6 +82,7 @@ function dateLine(input: GuestTicketInput): string {
 }
 
 function pickupLine(input: GuestTicketInput): string {
+  if (!input.transportRequired && isPrivateTransfer(input)) return `${privateLine(input)}.`;
   if (!input.transportRequired) return "Making your own way to the venue.";
   const time = input.pickupTime ? String(input.pickupTime).slice(0, 5) : null;
   if (input.pickupStopName && time) return `Bus pick-up: ${input.pickupStopName} at ${time}.`;
@@ -121,7 +143,9 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
     "Transport",
     input.transportRequired
       ? `${input.pickupStopName ?? "Pick-up to be confirmed"}${input.pickupTime ? ` · ${String(input.pickupTime).slice(0, 5)}` : ""}`
-      : "Own way",
+      : isPrivateTransfer(input)
+        ? privateLine(input)
+        : "Own way",
   ]);
   const money = moneyLine(input);
   if (money) rows.push(["Payment", money]);
@@ -226,7 +250,7 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
   const { data: booking } = await admin
     .from("show_bookings")
     .select(
-      "business_id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
+      "business_id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -264,5 +288,7 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
     dietaryNotes: booking.dietary_notes,
     ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
     showTime: booking.ampm,
+    pickupKind: booking.pickup_kind,
+    privateZone: booking.private_zone,
   });
 }

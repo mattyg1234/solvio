@@ -27,6 +27,26 @@ export type DigestBus = {
   bus_pax: number;
 };
 
+export type DigestOverdueInvoice = {
+  id: string;
+  supplier_name: string;
+  /** Issued number (or Verifactu number); null while still a draft. */
+  invoice_number: string | null;
+  total_amount: number;
+  currency?: ShowOpsCurrency | null;
+  due_date: string;
+  /** Absolute link into the invoice, e.g. https://…/dashboard/show-ops/invoices/<id>. */
+  url: string;
+};
+
+/** Whole days from `fromIso` to `toIso` (positive when `toIso` is later). */
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  const a = Date.parse(`${fromIso}T12:00:00Z`);
+  const b = Date.parse(`${toIso}T12:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
 export function isoDateInTimeZone(now: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -47,6 +67,10 @@ export function buildDailyDigest(input: {
   lastNightShows: DigestBooking[];
   tonightBus: DigestBus[];
   merchantName: string;
+  /** Unpaid, non-void invoices past their due date as of `today`. Omit or leave empty to drop the block. */
+  overdueInvoices?: DigestOverdueInvoice[];
+  /** Office-local "today" — the day the digest goes out; used for days overdue. Defaults to reportDate + 1. */
+  today?: string;
 }): {
   subject: string;
   text: string;
@@ -89,7 +113,21 @@ export function buildDailyDigest(input: {
     return `${b.island}: ${b.bus_pax} on bus · ${b.seats_ordered} ordered · ${left} left · spend ${money(b.cost_total)} · ${cph}/head`;
   });
 
-  const subject = `${input.merchantName} · ${input.reportDate} · ${input.takenYesterday.length} bookings / ${takenPax} pax`;
+  const today = input.today || addDaysIso(input.reportDate, 1);
+  const overdue = [...(input.overdueInvoices ?? [])]
+    .map((inv) => ({ ...inv, daysOverdue: Math.max(0, daysBetweenIso(inv.due_date, today)) }))
+    .sort((a, b) => b.daysOverdue - a.daysOverdue || b.total_amount - a.total_amount);
+  const overdueMoney = (inv: DigestOverdueInvoice) =>
+    formatShowOpsMoney(inv.total_amount, inv.currency || input.currency);
+  const overdueLine = (inv: (typeof overdue)[number]) =>
+    `${inv.supplier_name} · ${inv.invoice_number || "unnumbered"} · ${overdueMoney(inv)} · ${inv.daysOverdue} day${
+      inv.daysOverdue === 1 ? "" : "s"
+    } overdue`;
+  const overdueTotal = round2(overdue.reduce((s, inv) => s + Number(inv.total_amount || 0), 0));
+
+  const subject =
+    `${input.merchantName} · ${input.reportDate} · ${input.takenYesterday.length} bookings / ${takenPax} pax` +
+    (overdue.length ? ` · ${overdue.length} overdue invoice${overdue.length === 1 ? "" : "s"}` : "");
   const text = [
     `${input.merchantName} — in-house digest for ${input.reportDate}`,
     "",
@@ -100,6 +138,13 @@ export function buildDailyDigest(input: {
     "",
     `Last night on the shows: ${input.lastNightShows.length} bookings · ${lastNightPax} pax`,
     busLines.length ? `Tonight bus:\n${busLines.map((l) => `  ${l}`).join("\n")}` : "Tonight bus: none ordered yet",
+    ...(overdue.length
+      ? [
+          "",
+          `Overdue invoices: ${overdue.length} · ${money(overdueTotal)} still owed`,
+          ...overdue.map((inv) => `  ${overdueLine(inv)}\n    ${inv.url}`),
+        ]
+      : []),
   ].join("\n");
 
   const htmlList = (lines: string[]) =>
@@ -121,6 +166,17 @@ export function buildDailyDigest(input: {
       <p>${input.lastNightShows.length} bookings · ${lastNightPax} pax</p>
       <h2 style="font-size:14px;margin:20px 0 6px">Tonight’s buses</h2>
       ${htmlList(busLines)}
+      ${
+        overdue.length
+          ? `<h2 style="font-size:14px;margin:20px 0 6px;color:#be123c">Overdue invoices · ${overdue.length} · ${escapeHtml(money(overdueTotal))} still owed</h2>
+      <ul style="padding-left:18px;line-height:1.6">${overdue
+        .map(
+          (inv) =>
+            `<li>${escapeHtml(overdueLine(inv))} · <a href="${escapeHtml(inv.url)}" style="color:#7c3aed">Open invoice</a></li>`,
+        )
+        .join("")}</ul>`
+          : ""
+      }
     </div>
   `;
 

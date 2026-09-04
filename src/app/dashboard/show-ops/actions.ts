@@ -53,6 +53,15 @@ import {
 } from "@/lib/show-ops/invoice";
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
+import { diffBookingFields, type BookingChanges } from "@/lib/show-ops/booking-history";
+import {
+  normaliseZone,
+  parsePickupKind,
+  parsePrivateAccommodation,
+  privatePickupLabel,
+  type PrivateAccommodation,
+} from "@/lib/show-ops/private-pickup";
+import { parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
 import type {
   ShowOpsBookingQuestion,
   ShowOpsBookingQuestionType,
@@ -185,12 +194,14 @@ function guestTicketFromBooking(
     dietaryNotes: (f.dietary_notes as string | null) ?? null,
     ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
     showTime: (f.ampm as string | null) ?? null,
+    pickupKind: (f.pickup_kind as string | null) ?? null,
+    privateZone: (f.private_zone as string | null) ?? null,
     updated: opts?.updated ?? false,
   };
 }
 
 const TICKET_FIELDS =
-  "booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token";
+  "booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token";
 
 /** Send (or re-send) one guest their ticket from the booking record. */
 export async function resendGuestTicketAction(
@@ -898,6 +909,13 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   revalidateShowOps();
 }
 
+/** http(s) links only; anything else is dropped rather than printed on the run sheet. */
+function cleanHttpUrl(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  if (!v) return null;
+  return /^https?:\/\/\S+$/i.test(v) ? v.slice(0, 2000) : null;
+}
+
 export async function upsertBusStopAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsContext();
   const id = String(formData.get("id") ?? "").trim();
@@ -922,10 +940,16 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
     active: boolean;
     updated_at: string;
     runs_on?: string | null;
+    map_url?: string | null;
+    photo_url?: string | null;
   };
   if (formData.has("runs_on")) {
     row.runs_on = String(formData.get("runs_on") ?? "").trim() || null;
   }
+  // Map / photo links only move when the form that carries them is the one saving
+  // (the bus-board time form does not, so it never wipes them).
+  if (formData.has("map_url")) row.map_url = cleanHttpUrl(formData.get("map_url"));
+  if (formData.has("photo_url")) row.photo_url = cleanHttpUrl(formData.get("photo_url"));
   const tab = masterTabFromForm(formData, "hotels");
   if (!row.island || !row.resort || !row.stop_name) redirectMaster(tab, { error: "Island, resort and stop required." });
   row.active = id ? formData.get("active") === "1" : formData.get("active") !== "0";
@@ -1460,6 +1484,8 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     cost_total: Number(formData.get("cost_total") ?? 0),
     notes: String(formData.get("notes") ?? "").trim() || null,
     updated_at: new Date().toISOString(),
+    // Only the bus board sends a guide; other forms must not blank it.
+    ...(formData.has("guide_name") ? { guide_name: String(formData.get("guide_name") ?? "").trim() || null } : {}),
   };
   if (!row.show_date || !row.island) {
     if (next) redirect(`${next}${next.includes("?") ? "&" : "?"}error=${encodeURIComponent("Date and island required.")}`);
@@ -1503,7 +1529,9 @@ async function buildBookingFields(
   if (adults + children + infants < 1) {
     return { ok: false as const, error: "Need at least one guest." };
   }
-  const transport = String(formData.get("transport_required") ?? "") === "1";
+  // Bus / Private / Own way. Old forms only send transport_required — honour that.
+  const pickupKind = parsePickupKind(formData.get("pickup_kind"), String(formData.get("transport_required") ?? "") === "1");
+  const transport = pickupKind === "bus";
   const dietary = String(formData.get("dietary_required") ?? "") === "1";
 
   const [{ data: supplier }, { data: product }, { data: hotel }] = await Promise.all([
@@ -1548,6 +1576,16 @@ async function buildBookingFields(
     pickup_stop_id = stop.id;
     pickup_stop_name = `${stop.resort} · ${stop.stop_name}`;
     pickup_time = stop.pickup_time;
+  }
+
+  // Private transfer: no stop, no time. The Office list, Door and desk all print
+  // pickup_stop_name, so the "Private PDC · Villa" wording lives in that column.
+  let private_accommodation: PrivateAccommodation | null = null;
+  let private_zone: string | null = null;
+  if (pickupKind === "private") {
+    private_accommodation = parsePrivateAccommodation(formData.get("private_accommodation"));
+    private_zone = normaliseZone(formData.get("private_zone"));
+    pickup_stop_name = privatePickupLabel(private_zone, private_accommodation);
   }
 
   /*
@@ -1626,6 +1664,9 @@ async function buildBookingFields(
       hotel_id: hotelId,
       hotel_name: (hotel?.name ?? String(formData.get("hotel_name") ?? "").trim()) || null,
       transport_required: transport,
+      pickup_kind: pickupKind,
+      private_accommodation,
+      private_zone,
       pickup_stop_id,
       pickup_stop_name,
       pickup_time,
@@ -1650,6 +1691,7 @@ async function buildBookingFields(
       office_comments: String(formData.get("office_comments") ?? "").trim() || null,
       office_only_comments: String(formData.get("office_only_comments") ?? "").trim() || null,
       sales_channel,
+      payment_method: parseShowOpsPaymentMethod(formData.get("payment_method")),
       custom_answers,
       attendees: attendees.length ? attendees : null,
       payment_status: money.payment_status,
@@ -1709,11 +1751,40 @@ export async function createBookingAction(
       dietaryNotes: (f.dietary_notes as string | null) ?? null,
       ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
       showTime: (f.ampm as string | null) ?? null,
+      pickupKind: (f.pickup_kind as string | null) ?? null,
+      privateZone: (f.private_zone as string | null) ?? null,
     });
   }
 
   revalidateShowOps();
   return { ok: true, id: data?.id, message: booking_ref };
+}
+
+/**
+ * One history row per save that changed something. Never blocks the save —
+ * a failed audit line is logged, not surfaced to the desk.
+ */
+async function writeBookingHistory(
+  ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
+  bookingId: string,
+  changes: BookingChanges,
+): Promise<void> {
+  if (!Object.keys(changes).length) return;
+  try {
+    const { data: me } = await ctx.supabase.from("profiles").select("full_name,email").eq("id", ctx.user.id).maybeSingle();
+    const name =
+      (me?.full_name && String(me.full_name).trim()) || (me?.email && String(me.email).trim()) || ctx.user.email || null;
+    const { error } = await ctx.supabase.from("show_booking_history").insert({
+      business_id: ctx.business.id,
+      booking_id: bookingId,
+      changed_by: ctx.user.id,
+      changed_by_name: name,
+      changes,
+    });
+    if (error) console.error("[show-ops] booking history not written:", error.message);
+  } catch (e) {
+    console.error("[show-ops] booking history not written:", e);
+  }
 }
 
 export async function updateBookingAction(
@@ -1726,7 +1797,7 @@ export async function updateBookingAction(
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,cancelled_at,arrived_pax,arrived_at,no_show",
+      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -1788,23 +1859,25 @@ export async function updateBookingAction(
   // pax / show / partner / transport moved, which is when the money moved too.
   const { pricing_snapshot: freshSnapshot, ...restFields } = built.fields;
 
+  const patch = {
+    ...restFields,
+    ...(moneyTouched ? { pricing_snapshot: freshSnapshot } : {}),
+    total_cost,
+    deposit_amount,
+    nett_total,
+    adult_nett_total,
+    child_nett_total,
+    payment_status,
+    balance_remaining,
+    ...(arrivalClamp ?? {}),
+  };
   const { error } = await ctx.supabase
     .from("show_bookings")
-    .update({
-      ...restFields,
-      ...(moneyTouched ? { pricing_snapshot: freshSnapshot } : {}),
-      total_cost,
-      deposit_amount,
-      nett_total,
-      adult_nett_total,
-      child_nett_total,
-      payment_status,
-      balance_remaining,
-      ...(arrivalClamp ?? {}),
-    })
+    .update(patch)
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
+  await writeBookingHistory(ctx, id, diffBookingFields(existing as Record<string, unknown>, patch as Record<string, unknown>));
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }
@@ -1842,6 +1915,7 @@ export async function cancelBookingAction(
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
+  await writeBookingHistory(ctx, id, { cancelled: { from: null, to: reason } });
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }

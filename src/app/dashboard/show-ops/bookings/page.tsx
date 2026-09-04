@@ -15,6 +15,7 @@ import {
   showOpsDoorPayPhrase,
 } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
+import { SHOW_OPS_PAYMENT_METHOD_LABELS } from "@/lib/show-ops/types";
 
 const PAGE_SIZE = 250;
 
@@ -100,7 +101,7 @@ export default async function AllBookingsPage({
   let query = ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel",
+      "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel,payment_method,pickup_kind",
       { count: "exact" },
     )
     .eq("business_id", ctx.business.id)
@@ -238,6 +239,8 @@ export default async function AllBookingsPage({
       comments: r.office_comments,
       ticket: r.supplier_ticket_number,
       supplier: r.supplier_name,
+      paymentMethod: r.payment_method ? (SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[r.payment_method] ?? r.payment_method : null,
+      pickupKind: r.pickup_kind ?? null,
       channel: r.sales_channel,
       transport: Boolean(r.transport_required),
       deposit: money(Number(r.deposit_amount), r.island),

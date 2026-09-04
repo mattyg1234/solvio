@@ -25,9 +25,8 @@ export function BookingFlags({
   const diet = dietaryRequired ? (dietaryNotes?.trim() || "Special meal") : null;
   const note = comments?.trim() || null;
   if (!diet && !balanceDueLabel && !note) return null;
-  const base = compact
-    ? "rounded-md px-2 py-0.5 text-[11px] font-semibold"
-    : "rounded-lg px-2.5 py-1 text-xs font-semibold";
+  // Force the tint through on paper too — a printed list should read the same as the phone.
+  const base = `${compact ? "rounded-md px-2 py-0.5 text-[11px]" : "rounded-lg px-2.5 py-1 text-xs"} font-semibold [print-color-adjust:exact] [-webkit-print-color-adjust:exact]`;
   return (
     <div className={`mt-2 flex flex-wrap gap-1.5 ${compact ? "" : "print:gap-1"}`}>
       {diet ? (

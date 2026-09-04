@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  dailySalesCsv,
+  localDayUtcRange,
+  SHOW_OPS_OFFICE_TZ,
+  summariseDailySales,
+  type DailySalesRow,
+} from "@/lib/show-ops/daily-sales";
+import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 import { resolveShowOpsBusinessId } from "@/lib/show-ops/resolve-business";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-function csvCell(v: unknown) {
-  const s = v == null ? "" : String(v);
-  return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
+/** Bookings taken on one office-local day (Atlantic/Canary), summary + rows. Linked from Reports → Daily sales. */
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -20,8 +24,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Show Ops not enabled" }, { status: 403 });
   }
 
-  const date = request.nextUrl.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+  const rawDate = request.nextUrl.searchParams.get("date") || "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : isoDateInTimeZone(new Date(), SHOW_OPS_OFFICE_TZ);
   const island = request.nextUrl.searchParams.get("island") || "";
+  const window = localDayUtcRange(date, SHOW_OPS_OFFICE_TZ);
 
   let q = supabase
     .from("show_bookings")
@@ -29,9 +35,11 @@ export async function GET(request: NextRequest) {
       "booking_ref,guest_name,show_name,island,show_date,hotel_name,supplier_name,sales_channel,adults,children,infants,total_cost,billing_mode,created_at",
     )
     .eq("business_id", business.id)
-    .eq("show_date", date)
+    .gte("created_at", window.start)
+    .lt("created_at", window.end)
     .is("cancelled_at", null)
-    .order("created_at");
+    .order("created_at")
+    .range(0, 9999);
   if (island) q = q.eq("island", island);
 
   const { data, error } = await q;
@@ -39,54 +47,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rows = data ?? [];
-  const byIsland = new Map<string, number>();
-  const byChannel = new Map<string, number>();
-  const byHour = new Map<string, number>();
-  for (const r of rows) {
-    byIsland.set(r.island, (byIsland.get(r.island) || 0) + 1);
-    byChannel.set(r.sales_channel, (byChannel.get(r.sales_channel) || 0) + 1);
-    const hour = r.created_at
-      ? new Date(r.created_at).getUTCHours().toString().padStart(2, "0") + ":00"
-      : "unknown";
-    byHour.set(hour, (byHour.get(hour) || 0) + 1);
-  }
+  const csv = dailySalesCsv(summariseDailySales(date, (data ?? []) as DailySalesRow[], SHOW_OPS_OFFICE_TZ));
 
-  const lines: string[] = [];
-  lines.push("section,key,value");
-  lines.push(`summary,date,${csvCell(date)}`);
-  lines.push(`summary,total_bookings,${rows.length}`);
-  for (const [k, v] of byIsland) lines.push(`by_island,${csvCell(k)},${v}`);
-  for (const [k, v] of byChannel) lines.push(`by_channel,${csvCell(k)},${v}`);
-  for (const [k, v] of [...byHour.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    lines.push(`by_hour_utc,${csvCell(k)},${v}`);
-  }
-  lines.push("");
-  const header = [
-    "booking_ref",
-    "guest_name",
-    "show_name",
-    "island",
-    "show_date",
-    "hotel_name",
-    "supplier_name",
-    "sales_channel",
-    "adults",
-    "children",
-    "infants",
-    "total_cost",
-    "billing_mode",
-    "created_at",
-  ];
-  lines.push(header.join(","));
-  for (const row of rows) {
-    lines.push(header.map((h) => csvCell((row as Record<string, unknown>)[h])).join(","));
-  }
-
-  return new NextResponse(lines.join("\n"), {
+  return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="daily-sales-${date}.csv"`,
+      "Content-Disposition": `attachment; filename="daily-sales-${date}${island ? `-${island}` : ""}.csv"`,
     },
   });
 }

@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("show_bookings")
     .select(
-      "booking_ref,guest_name,show_name,island,show_date,hotel_name,supplier_name,adults,children,infants,arrived_pax,arrived_at,no_show,total_cost,balance_remaining,nett_total,payment_status,billing_mode,cancelled_at,created_at",
+      "booking_ref,guest_name,show_name,island,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,adults,children,infants,arrived_pax,arrived_at,no_show,total_cost,balance_remaining,nett_total,payment_status,billing_mode,payment_method,cancelled_at,created_at",
     )
     .eq("business_id", business.id)
     .order("created_at", { ascending: false })
@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
     "island",
     "show_date",
     "hotel_name",
+    "pickup",
     "supplier_name",
     "pax",
     "showed",
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
     "outstanding",
     "status",
     "billing_mode",
+    "payment_method",
   ];
   const lines = [header.join(",")];
   for (const row of data ?? []) {
@@ -110,6 +112,7 @@ export async function GET(request: NextRequest) {
         row.island,
         row.show_date,
         row.hotel_name,
+        [row.pickup_stop_name, row.pickup_time ? String(row.pickup_time).slice(0, 5) : ""].filter(Boolean).join(" · "),
         row.supplier_name,
         formatShowOpsPax(row.adults, row.children, row.infants),
         arrival.status === "pending" ? "" : String(arrival.arrived ?? ""),
@@ -119,6 +122,7 @@ export async function GET(request: NextRequest) {
         payView.outstandingAmount == null ? "" : payView.outstandingAmount.toFixed(2),
         payView.label,
         row.billing_mode,
+        row.payment_method ?? "",
       ]
         .map(csvCell)
         .join(","),

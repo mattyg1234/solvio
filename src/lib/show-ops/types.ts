@@ -11,6 +11,26 @@ export type ShowOpsMemberRole = "booker" | "office" | "finance" | "admin" | "sel
 
 export type ShowOpsBillingMode = "deposit" | "invoice";
 
+export type ShowOpsPaymentMethod = "cash" | "card" | "direct" | "transfer";
+
+export const SHOW_OPS_PAYMENT_METHODS: ShowOpsPaymentMethod[] = ["cash", "card", "direct", "transfer"];
+
+export const SHOW_OPS_PAYMENT_METHOD_LABELS: Record<ShowOpsPaymentMethod, string> = {
+  cash: "Cash",
+  card: "Card",
+  direct: "Direct",
+  transfer: "Transfer",
+};
+
+export function parseShowOpsPaymentMethod(raw: unknown): ShowOpsPaymentMethod | null {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return (SHOW_OPS_PAYMENT_METHODS as string[]).includes(v) ? (v as ShowOpsPaymentMethod) : null;
+}
+
+export type ShowOpsPickupKind = "bus" | "private" | "own_way";
+
+export type ShowOpsPrivateAccommodation = "hotel" | "villa" | "airbnb" | "friends_family";
+
 /** Legacy channel ids still accepted; tenants can add their own via config.sales_channels. */
 export type ShowOpsSalesChannel = string;
 
@@ -156,10 +176,16 @@ export type ShowBusStop = {
   id: string;
   business_id: string;
   island: string;
+  /** Resort code driving the outlook columns and private pick-ups (PDC, CT, TFS, …). */
+  zone: string | null;
   resort: string;
   stop_name: string;
   pickup_time: string | null;
   sort_order: number;
+  /** Link to the stop on a map — "Map" on the bus run sheet. */
+  map_url: string | null;
+  /** Photo of the pick-up point — small image on the bus run sheet. */
+  photo_url: string | null;
   active: boolean;
 };
 
@@ -183,6 +209,11 @@ export type ShowBooking = {
   hotel_id: string | null;
   hotel_name: string | null;
   transport_required: boolean;
+  /** bus = our coach (transport_required), private = own transfer from a resort, own_way = walks in. */
+  pickup_kind: ShowOpsPickupKind;
+  private_accommodation: ShowOpsPrivateAccommodation | null;
+  /** Resort zone code (show_bus_stops.zone) a private-transfer guest comes from. */
+  private_zone: string | null;
   pickup_stop_id: string | null;
   pickup_stop_name: string | null;
   pickup_time: string | null;
@@ -209,6 +240,8 @@ export type ShowBooking = {
   sales_channel: ShowOpsSalesChannel;
   custom_answers: Record<string, string | boolean | number>;
   payment_status: "unpaid" | "partial" | "paid" | "n_a";
+  /** How the guest paid; null until the office picks one. */
+  payment_method: ShowOpsPaymentMethod | null;
   invoice_id: string | null;
   arrived_at: string | null;
   arrived_pax: number | null;
@@ -251,8 +284,33 @@ export type ShowBusOrder = {
   show_date: string;
   island: string;
   seats_ordered: number;
+  bus_count: number;
   cost_total: number;
   notes: string | null;
+  /** Guide riding this island's coach tonight. */
+  guide_name: string | null;
+};
+
+/** Tonight's dragged running order of pick-up stops, one row per island per night. */
+export type ShowBusNightOrder = {
+  id: string;
+  business_id: string;
+  show_date: string;
+  island: string;
+  stop_ids: string[];
+  updated_by: string | null;
+  updated_at: string;
+};
+
+/** One save that changed something on a booking: {field: {from, to}}. */
+export type ShowBookingHistory = {
+  id: string;
+  business_id: string;
+  booking_id: string;
+  changed_at: string;
+  changed_by: string | null;
+  changed_by_name: string | null;
+  changes: Record<string, { from: unknown; to: unknown }>;
 };
 
 export type ShowOpsWorkspace = {

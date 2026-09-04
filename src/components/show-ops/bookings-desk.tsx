@@ -42,7 +42,17 @@ export type BookingsDeskRow = {
   doorPay: string | null;
   noShow: boolean;
   alreadyPaid: boolean;
+  /** Cash / Card / Direct / Transfer label, when the page passes it. */
+  paymentMethod?: string | null;
+  /** bus / private / own_way, when the page passes it. */
+  pickupKind?: string | null;
 };
+
+function transportLabel(row: BookingsDeskRow): string {
+  if (row.transport) return "Bus";
+  if (row.pickupKind === "private" || /^Private\b/.test(row.pickupStop ?? "")) return "Private transfer";
+  return "No transport";
+}
 
 export type BookingsDeskSort = { href: string; active: boolean; dir: "asc" | "desc" | null };
 
@@ -232,6 +242,8 @@ function DoorCard({ row, open, onToggle }: { row: BookingsDeskRow; open: boolean
             <Detail label="Supplier" value={row.supplier} />
             <Detail label="Outstanding" value={row.outstanding} />
             <Detail label="Ticket #" value={row.ticket} />
+            <Detail label="Transport" value={transportLabel(row)} />
+            <Detail label="Paid by" value={row.paymentMethod} />
           </div>
           {row.comments ? <Detail label="Office notes" value={row.comments} /> : null}
           <div className="flex gap-2 pt-1">
@@ -404,10 +416,11 @@ function BookingRows({
               <Detail label="Email" value={row.guestEmail} />
               <Detail label="Hotel" value={row.hotelName} />
               <Detail label="Pick-up" value={row.pickupStop ? `${row.pickupTime || "—"} · ${row.pickupStop}` : "Own way"} />
-              <Detail label="Transport" value={row.transport ? "Bus" : "No transport"} />
+              <Detail label="Transport" value={transportLabel(row)} />
               <Detail label="Ticket #" value={row.ticket} />
               <Detail label="Channel" value={row.channel} />
               <Detail label="Billing" value={`${row.billing} · deposit ${row.deposit}`} />
+              <Detail label="Paid by" value={row.paymentMethod} />
               <Detail label="Diet" value={row.diet} className="sm:col-span-2" />
               <Detail label="Showed up" value={row.arrival.status === "pending" ? "Not marked yet" : row.arrival.doorLabel + (row.arrival.status === "partial" && row.arrival.missing ? ` · ${row.arrival.missing} missing` : "")} />
               <Detail label="Office notes" value={row.comments} className="sm:col-span-2" />

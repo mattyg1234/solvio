@@ -1,10 +1,12 @@
 import Link from "next/link";
 
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
+import { BookingFlags } from "@/components/show-ops/booking-flags";
 import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
+import { DoorAutoRefresh } from "@/components/show-ops/door-auto-refresh";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import { LocalTime } from "@/components/show-ops/local-time";
-import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
+import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { DoorTicketScanner } from "@/components/show-ops/ticket-scanner";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -26,13 +28,15 @@ type DoorRow = {
   booking_ref: string;
   guest_name: string;
   show_name: string;
-  ampm: string | null;
   hotel_name: string | null;
   pickup_stop_name: string | null;
   pickup_time: string | null;
   adults: number;
   children: number;
   infants: number;
+  dietary_required: boolean | null;
+  dietary_notes: string | null;
+  office_comments: string | null;
   billing_mode: string;
   payment_status: string;
   total_cost: number;
@@ -49,15 +53,11 @@ type DoorRow = {
   proofUrl?: string | null;
 };
 
-function slotLabel(ampm: string | null): string | null {
-  if (ampm === "AM") return "Morning";
-  if (ampm === "PM") return "Evening";
-  return ampm;
-}
-
 export default async function ShowOpsDoorPage({
   searchParams,
 }: {
+  // `slot` is still accepted from old links and bookmarks but ignored: there is
+  // one show a night now, and the Door shows every booking for that night.
   searchParams: Promise<{ date?: string; island?: string; show?: string; slot?: string }>;
 }) {
   const sp = await searchParams;
@@ -65,14 +65,13 @@ export default async function ShowOpsDoorPage({
   const date = sp.date || isoDateInTimeZone(new Date(), "Atlantic/Canary");
   const island = sp.island || "";
   const showFilter = sp.show || "";
-  const slot = sp.slot === "AM" || sp.slot === "PM" ? sp.slot : "";
   const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const day = showOpsDayName(date);
 
   let query = ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,show_name,ampm,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show,door_pay_method,no_show_charge,no_show_proof_path,invoice_id",
+      "id,booking_ref,guest_name,show_name,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,dietary_required,dietary_notes,office_comments,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show,door_pay_method,no_show_charge,no_show_proof_path,invoice_id",
     )
     .eq("business_id", ctx.business.id)
     .eq("show_date", date)
@@ -84,13 +83,9 @@ export default async function ShowOpsDoorPage({
     ctx.supabase.from("show_products").select("name").eq("business_id", ctx.business.id).eq("active", true).order("name"),
   ]);
 
-  const bookings = ((bookingRows ?? []) as DoorRow[]).filter((b) => {
-    if (showFilter && b.show_name !== showFilter) return false;
-    if (slot && b.ampm !== slot) return false;
-    return true;
-  });
+  const bookings = ((bookingRows ?? []) as DoorRow[]).filter((b) => !showFilter || b.show_name === showFilter);
 
-  // Sign any no-show proof photos so the door card can link them.
+  // Sign any ticket photos so the door card can link them.
   await Promise.all(
     bookings
       .filter((b) => b.no_show_proof_path)
@@ -116,21 +111,13 @@ export default async function ShowOpsDoorPage({
   const waitingPax = waiting.reduce((n, b) => n + b.adults + b.children + b.infants, 0);
   const inPax = inNow.reduce((n, b) => n + (b.arrived_pax ?? b.adults + b.children + b.infants), 0);
 
-  const slotHref = (next: string) => {
-    const params = new URLSearchParams();
-    params.set("date", date);
-    if (island) params.set("island", island);
-    if (showFilter) params.set("show", showFilter);
-    if (next) params.set("slot", next);
-    return `/dashboard/show-ops/door?${params.toString()}`;
-  };
-
   return (
     <div className="space-y-4">
       <ShowOpsPageHeader
         eyebrow="Door staff"
         title="Door"
         subtitle={`${day ? `${day} · ` : ""}${date} · live arrivals: scan the guest QR or tap them in and they move to Arrived with the time. Printed office, bus and dietary sheets live under Night lists.`}
+        actions={<DoorAutoRefresh />}
       />
 
       <DoorTicketScanner date={date} island={island} />
@@ -144,32 +131,8 @@ export default async function ShowOpsDoorPage({
         showName={showFilter}
         showNames={showNames}
         includeShow
-        extra={slot ? { slot } : {}}
         touch
       />
-
-      <div className="flex gap-2 print:hidden">
-        {(
-          [
-            ["", "All"],
-            ["AM", "Morning"],
-            ["PM", "Evening"],
-          ] as const
-        ).map(([value, label]) => {
-          const on = slot === value;
-          return (
-            <Link
-              key={label}
-              href={slotHref(value)}
-              className={`min-h-11 flex-1 rounded-xl px-3 py-2 text-center text-sm font-semibold ${
-                on ? "bg-slate-900 text-white" : "bg-white text-slate-700 ring-1 ring-slate-200"
-              }`}
-            >
-              {label}
-            </Link>
-          );
-        })}
-      </div>
 
       <p className="text-sm font-medium text-slate-600">
         {waiting.length} waiting · {inNow.length} in
@@ -228,9 +191,10 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
     cancelledAt: row.cancelled_at,
   });
   const inAt = formatShowOpsDoorTime(row.arrived_at);
-  const slot = slotLabel(row.ampm);
   const due = pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : null;
   const payPhrase = showOpsDoorPayPhrase(row.door_pay_method);
+  // Invoice bookings are settled with the partner, never at the door.
+  const noDoorPay = Boolean(row.door_pay_method || arrival.status === "absent" || row.billing_mode === "invoice");
 
   return (
     <article
@@ -250,7 +214,6 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
           </Link>
           <p className="mt-0.5 text-sm text-slate-500">
             {row.booking_ref}
-            {slot ? ` · ${slot}` : ""}
             {` · ${row.show_name}`}
           </p>
         </div>
@@ -270,7 +233,13 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
       <p className="mt-2 text-sm text-slate-600">
         {[row.hotel_name, row.pickup_stop_name, row.pickup_time?.slice(0, 5)].filter(Boolean).join(" · ") || "No pickup"}
       </p>
-      {due ? <p className="mt-2 text-sm font-semibold text-amber-800">{due} still due at the door</p> : null}
+      {/* Amber = special meal, rose = money due at the door, violet = office comment */}
+      <BookingFlags
+        dietaryRequired={row.dietary_required}
+        dietaryNotes={row.dietary_notes}
+        balanceDueLabel={due}
+        comments={row.office_comments}
+      />
       {payPhrase ? <p className="mt-1 text-sm font-medium text-emerald-800">Paid {payPhrase}</p> : null}
 
       {/* Mark people in and take payment, right from the phone */}
@@ -284,10 +253,12 @@ function DoorCard({ row, money }: { row: DoorRow; money: (n: number) => string }
           invoiced={Boolean(row.invoice_id)}
           proofUrl={row.proofUrl ?? null}
           compact
+          photo={false}
         />
+        <TicketPhotoControl key={row.no_show_proof_path ?? "none"} bookingId={row.id} proofUrl={row.proofUrl ?? null} big />
         <div className="flex flex-wrap gap-2">
-          <ListFlagButton bookingId={row.id} flag="cash" label="Paid cash" hide={Boolean(row.door_pay_method || arrival.status === "absent")} big />
-          <ListFlagButton bookingId={row.id} flag="card" label="Paid on card" hide={Boolean(row.door_pay_method || arrival.status === "absent")} tone="sky" big />
+          <ListFlagButton bookingId={row.id} flag="cash" label="Paid cash" hide={noDoorPay} big />
+          <ListFlagButton bookingId={row.id} flag="card" label="Paid on card" hide={noDoorPay} tone="sky" big />
           <ListFlagButton bookingId={row.id} flag="cash" label="Undo cash" hide={row.door_pay_method !== "cash"} undo big />
           <ListFlagButton bookingId={row.id} flag="card" label="Undo card" hide={row.door_pay_method !== "card"} undo big />
         </div>

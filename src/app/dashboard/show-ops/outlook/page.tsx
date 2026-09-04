@@ -105,15 +105,26 @@ function euro(n: number) {
 export default async function WeeklyOutlookPage({
   searchParams,
 }: {
-  searchParams: Promise<{ by?: string }>;
+  searchParams: Promise<{ by?: string; days?: string }>;
 }) {
   const sp = await searchParams;
   // Resort and hotel are different questions — "which resort is filling up" vs
   // "which hotel is sending them" — so the night detail groups by either.
   const groupBy: "resort" | "hotel" = sp.by === "resort" ? "resort" : "hotel";
+  // 7 nights for the phone-desk view, 14 for bus planning. Default 14.
+  const days: 7 | 14 = sp.days === "7" ? 7 : 14;
+  const hrefFor = (next: { by?: "resort" | "hotel"; days?: 7 | 14 }) => {
+    const by = next.by ?? groupBy;
+    const d = next.days ?? days;
+    const p = new URLSearchParams();
+    if (by === "resort") p.set("by", "resort");
+    if (d !== 14) p.set("days", String(d));
+    const q = p.toString();
+    return q ? `/dashboard/show-ops/outlook?${q}` : "/dashboard/show-ops/outlook";
+  };
   const ctx = await requireShowOpsPage("outlook");
   const today = todayIsoUtc();
-  const endIso = addDaysIso(today, 14);
+  const endIso = addDaysIso(today, days);
 
   const [{ data: products }, { data: bookings }, { data: busOrders }, { data: stops }] = await Promise.all([
     ctx.supabase
@@ -257,7 +268,7 @@ export default async function WeeklyOutlookPage({
       <ShowOpsPageHeader
         eyebrow="Overview"
         title="Weekly outlook"
-        subtitle="Next 14 nights by airport — resorts, bus vs direct, hotels, rates and buses. Order buses on the show calendar."
+        subtitle={`Next ${days} nights by airport — resorts, bus vs direct, hotels, rates and buses. Order buses on the show calendar.`}
         actions={
           <Link href="/dashboard/show-ops/calendar" className="text-sm font-semibold text-[var(--show-ops-primary,#7c3aed)]">
             Open calendar
@@ -273,11 +284,19 @@ export default async function WeeklyOutlookPage({
         ))}
         <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:inline-block" />
         <span className="text-xs font-medium text-slate-500">Break each night down by</span>
-        <ShowOpsPill href="/dashboard/show-ops/outlook" on={groupBy === "hotel"}>
+        <ShowOpsPill href={hrefFor({ by: "hotel" })} on={groupBy === "hotel"}>
           Hotel
         </ShowOpsPill>
-        <ShowOpsPill href="/dashboard/show-ops/outlook?by=resort" on={groupBy === "resort"}>
+        <ShowOpsPill href={hrefFor({ by: "resort" })} on={groupBy === "resort"}>
           Resort
+        </ShowOpsPill>
+        <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:inline-block" />
+        <span className="text-xs font-medium text-slate-500">Show</span>
+        <ShowOpsPill href={hrefFor({ days: 7 })} on={days === 7}>
+          7 nights
+        </ShowOpsPill>
+        <ShowOpsPill href={hrefFor({ days: 14 })} on={days === 14}>
+          14 nights
         </ShowOpsPill>
       </div>
 
@@ -301,12 +320,12 @@ export default async function WeeklyOutlookPage({
                 {section.title}
               </h2>
               <p className="text-sm text-slate-500">
-                {totals.pax} pax · {totals.bookings} bookings · {euro(totals.value)} in the next 14 nights
+                {totals.pax} pax · {totals.bookings} bookings · {euro(totals.value)} in the next {days} nights
               </p>
             </div>
 
             {!nights.length ? (
-              <p className="px-5 py-6 text-sm text-slate-400">No shows or bookings in the next 14 nights.</p>
+              <p className="px-5 py-6 text-sm text-slate-400">No shows or bookings in the next {days} nights.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-sm">

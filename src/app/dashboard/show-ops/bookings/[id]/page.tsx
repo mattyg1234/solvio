@@ -12,7 +12,10 @@ import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsEnabled } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsPax, showOpsArrivalMark } from "@/lib/show-ops/calc";
+import { formatBookingChanges, formatBookingHistoryWhen, type BookingChanges } from "@/lib/show-ops/booking-history";
 import { loadBookedDatesByProduct, withBookedDates } from "@/lib/show-ops/nights";
+import { PRIVATE_ACCOMMODATION_LABELS, pickupKindFromBooking, type PrivateAccommodation } from "@/lib/show-ops/private-pickup";
+import { SHOW_OPS_PAYMENT_METHOD_LABELS, type ShowOpsPaymentMethod } from "@/lib/show-ops/types";
 
 export default async function EditBookingPage({
   params,
@@ -34,8 +37,15 @@ export default async function EditBookingPage({
     .maybeSingle();
   if (!booking) notFound();
 
-  const [{ data: suppliers }, { data: products }, { data: hotels }, { data: stops }, { data: creator }, bookedDates] =
-    await Promise.all([
+  const [
+    { data: suppliers },
+    { data: products },
+    { data: hotels },
+    { data: stops },
+    { data: creator },
+    bookedDates,
+    { data: history },
+  ] = await Promise.all([
       ctx.supabase
         .from("show_suppliers")
         .select("id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode")
@@ -56,14 +66,35 @@ export default async function EditBookingPage({
         .order("name"),
       ctx.supabase
         .from("show_bus_stops")
-        .select("id,stop_name,resort,pickup_time,island,runs_on")
+        .select("id,stop_name,resort,pickup_time,island,runs_on,zone")
         .eq("business_id", biz)
         .eq("active", true),
       booking.created_by
         ? ctx.supabase.from("profiles").select("full_name,email").eq("id", booking.created_by).maybeSingle()
         : Promise.resolve({ data: null }),
       loadBookedDatesByProduct(ctx.supabase, biz),
+      ctx.supabase
+        .from("show_booking_history")
+        .select("id,changed_at,changed_by_name,changes")
+        .eq("business_id", biz)
+        .eq("booking_id", id)
+        .order("changed_at", { ascending: false })
+        .limit(100),
     ]);
+
+  const pickupKind = pickupKindFromBooking(booking);
+  const accommodation = booking.private_accommodation
+    ? PRIVATE_ACCOMMODATION_LABELS[booking.private_accommodation as PrivateAccommodation] ?? null
+    : null;
+  const gettingThere =
+    pickupKind === "bus"
+      ? `Bus · ${booking.pickup_stop_name ?? "stop not set"}${booking.pickup_time ? ` · ${String(booking.pickup_time).slice(0, 5)}` : ""}`
+      : pickupKind === "private"
+        ? `Private transfer${booking.private_zone ? ` from ${booking.private_zone}` : ""}${accommodation ? ` · ${accommodation}` : ""}`
+        : "Own way";
+  const paidBy = booking.payment_method
+    ? SHOW_OPS_PAYMENT_METHOD_LABELS[booking.payment_method as ShowOpsPaymentMethod] ?? String(booking.payment_method)
+    : null;
 
   const createdBy =
     (creator?.full_name && String(creator.full_name).trim()) || creator?.email || "—";
@@ -101,6 +132,9 @@ export default async function EditBookingPage({
           <>
             Created {new Date(booking.created_at).toLocaleString()} by {createdBy}
             {booking.updated_at ? ` · last updated ${new Date(booking.updated_at).toLocaleString()}` : ""}
+            <span className="block">
+              {gettingThere} · Paid by {paidBy ?? "—"}
+            </span>
           </>
         }
       />
@@ -184,6 +218,10 @@ export default async function EditBookingPage({
           pickup_stop_id: booking.pickup_stop_id,
           supplier_id: booking.supplier_id,
           transport_required: booking.transport_required,
+          pickup_kind: booking.pickup_kind,
+          private_accommodation: booking.private_accommodation,
+          private_zone: booking.private_zone,
+          payment_method: booking.payment_method,
           dietary_required: booking.dietary_required,
           dietary_notes: booking.dietary_notes,
           adults: booking.adults,
@@ -256,6 +294,28 @@ export default async function EditBookingPage({
           </button>
         </form>
       )}
+      <div className="mt-6 border-t border-slate-200 pt-4">
+        <h2 className="text-sm font-semibold text-slate-900">History</h2>
+        {history?.length ? (
+          <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+            {history.map((h) => {
+              const line = formatBookingChanges(h.changes as BookingChanges);
+              if (!line) return null;
+              return (
+                <li key={h.id} className="flex flex-wrap gap-x-2">
+                  <span className="whitespace-nowrap tabular-nums text-slate-500">{formatBookingHistoryWhen(h.changed_at)}</span>
+                  <span className="text-slate-400">·</span>
+                  <span className="font-medium text-slate-800">{h.changed_by_name || "Staff"}</span>
+                  <span className="text-slate-400">·</span>
+                  <span>{line}</span>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-slate-500">No changes since it was taken.</p>
+        )}
+      </div>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   updateShowOpsMyNameAction,
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
+import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS } from "@/lib/show-ops/nav";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -19,7 +20,7 @@ import { NumberInput } from "@/components/ui/number-input";
 export default async function ShowOpsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ seller?: string }>;
+  searchParams: Promise<{ seller?: string; sample_sent?: string; sample_error?: string }>;
 }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("settings");
@@ -303,13 +304,22 @@ export default async function ShowOpsSettingsPage({
         </ul>
       </section>
 
-      <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+      <section id="daily-email" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">In-house daily email</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Morning digest of yesterday’s bookings (by show and partner), last night on the shows, and tonight’s bus
-          seats / spend / cost per head. Leave blank to skip. We can reshape it once you say what the old report was
-          missing.
+          Morning digest (07:00) of yesterday’s bookings (by show and partner), last night on the shows, tonight’s bus
+          seats / spend / cost per head, and any overdue invoices to chase. Leave blank to skip.
         </p>
+        {sp.sample_sent ? (
+          <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+            Sent to {sp.sample_sent} — check your inbox.
+          </p>
+        ) : null}
+        {sp.sample_error ? (
+          <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-900 ring-1 ring-rose-200">
+            Not sent: {sp.sample_error}
+          </p>
+        ) : null}
         <form action={updateShowOpsDailyReportAction} className="mt-4 space-y-3">
           <label className="block text-sm">
             Office emails (one per line)
@@ -324,6 +334,14 @@ export default async function ShowOpsSettingsPage({
           <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2.5 text-sm font-semibold text-white">
             Save daily email
           </button>
+        </form>
+        <form action={sendDigestSampleAction} className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+          <button type="submit" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50">
+            Send me a sample
+          </button>
+          <span className="text-xs text-slate-500">
+            Builds this morning’s digest with live data and emails it to {ctx.user.email || "your login"} only.
+          </span>
         </form>
       </section>
 

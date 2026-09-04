@@ -40,10 +40,8 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
   {
     id: "analytics",
     label: "Analytics",
-    items: [
-      { href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" },
-      { href: "/dashboard/show-ops/stats", label: "Stats & insights", key: "stats" },
-    ],
+    // Stats & insights now lives at the bottom of Reports (see SHOW_OPS_LEGACY_PAGE_KEYS).
+    items: [{ href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" }],
   },
   {
     id: "settings",
@@ -96,10 +94,22 @@ export const SHOW_OPS_PAGE_KEYS = [
   "buses",
   "outlook",
   "reports",
-  "stats",
   "lists",
   "settings",
 ] as const;
+
+/**
+ * Page keys that used to exist and may still sit in a saved allowed_pages list,
+ * with the page that answers for them now. "stats" folded into Reports (Sept 2026).
+ */
+export const SHOW_OPS_LEGACY_PAGE_KEYS = { stats: "reports" } as const satisfies Record<string, ShowOpsPageKey>;
+export type ShowOpsLegacyPageKey = keyof typeof SHOW_OPS_LEGACY_PAGE_KEYS;
+
+/** Current key for any saved key — legacy aliases resolve, junk returns null. */
+export function resolveShowOpsPageKey(key: string): ShowOpsPageKey | null {
+  if ((SHOW_OPS_PAGE_KEYS as readonly string[]).includes(key)) return key as ShowOpsPageKey;
+  return (SHOW_OPS_LEGACY_PAGE_KEYS as Record<string, ShowOpsPageKey>)[key] ?? null;
+}
 
 /** Human labels for the permission picker, in nav order. */
 export const SHOW_OPS_PAGE_LABELS: Record<ShowOpsPageKey, string> = {
@@ -114,7 +124,6 @@ export const SHOW_OPS_PAGE_LABELS: Record<ShowOpsPageKey, string> = {
   buses: "Bus board",
   outlook: "Outlook",
   reports: "Reports",
-  stats: "Stats & insights",
   lists: "Night lists",
   settings: "Settings",
 };
@@ -130,7 +139,7 @@ const ROLE_DEFAULT_PAGES: Record<string, ShowOpsPageKey[]> = {
   office: ["dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels", "buses", "outlook", "reports"],
   finance: [
     "dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels",
-    "buses", "outlook", "reports", "invoices", "stats",
+    "buses", "outlook", "reports", "invoices",
   ],
   admin: [...SHOW_OPS_PAGE_KEYS],
   owner: [...SHOW_OPS_PAGE_KEYS],
@@ -141,8 +150,14 @@ export function showOpsAllowedPages(
   role: string,
   allowedPages?: string[] | null,
 ): ShowOpsPageKey[] {
-  const valid = (keys: readonly string[]) =>
-    keys.filter((k): k is ShowOpsPageKey => (SHOW_OPS_PAGE_KEYS as readonly string[]).includes(k));
+  const valid = (keys: readonly string[]) => {
+    const out: ShowOpsPageKey[] = [];
+    for (const k of keys) {
+      const resolved = resolveShowOpsPageKey(k);
+      if (resolved && !out.includes(resolved)) out.push(resolved);
+    }
+    return out;
+  };
 
   if (allowedPages && allowedPages.length) {
     const picked = valid(allowedPages);
@@ -155,9 +170,10 @@ export function showOpsAllowedPages(
 export function canSeeShowOpsPage(
   role: string,
   allowedPages: string[] | null | undefined,
-  key: ShowOpsPageKey,
+  key: ShowOpsPageKey | ShowOpsLegacyPageKey,
 ): boolean {
-  return showOpsAllowedPages(role, allowedPages).includes(key);
+  const resolved = resolveShowOpsPageKey(key);
+  return resolved != null && showOpsAllowedPages(role, allowedPages).includes(resolved);
 }
 
 /** Nav sections with anything this member cannot reach stripped out. */

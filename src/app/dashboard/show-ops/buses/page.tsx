@@ -38,7 +38,7 @@ export default async function BusBoardPage({
       .eq("show_date", date)
       .eq("transport_required", true)
       .is("cancelled_at", null),
-    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,cost_total,notes").eq("business_id", ctx.business.id).eq("show_date", date),
+    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,cost_total,notes,guide_name").eq("business_id", ctx.business.id).eq("show_date", date),
     ctx.supabase.from("show_hotels").select("bus_stop_id").eq("business_id", ctx.business.id).eq("active", true),
   ]);
 
@@ -166,6 +166,11 @@ export default async function BusBoardPage({
                     ? ` · ${buses} bus${buses === 1 ? "" : "es"} · ${seats} seats ordered · ${seats - busPax} free`
                     : " · no bus ordered"}
                 </span>
+                {order?.guide_name ? (
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 font-semibold text-violet-900">
+                    Guide · {order.guide_name}
+                  </span>
+                ) : null}
                 {cost != null && cost > 0 && busPax > 0 ? (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
                     {money(cost)} · {money(round2(cost / busPax))}/head
@@ -203,6 +208,15 @@ export default async function BusBoardPage({
                   name="cost_total"
                   defaultValue={cost ?? ""}
                   className="mt-1 block w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="font-medium text-slate-600">
+                Guide
+                <input
+                  name="guide_name"
+                  defaultValue={order?.guide_name ?? ""}
+                  placeholder="Who's on the coach"
+                  className="mt-1 block w-36 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
                 />
               </label>
               <label className="grow font-medium text-slate-600">

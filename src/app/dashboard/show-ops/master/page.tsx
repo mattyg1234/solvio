@@ -99,7 +99,7 @@ export default async function MasterDataPage({
     wantsMaster
       ? sb
           .from("show_bus_stops")
-          .select("id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active")
+          .select("id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active,map_url,photo_url")
           .eq("business_id", biz)
           .order("island")
           .order("sort_order")

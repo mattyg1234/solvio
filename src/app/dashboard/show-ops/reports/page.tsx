@@ -5,10 +5,35 @@ import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
+import {
+  dailySalesCsvHref,
+  localDayUtcRange,
+  SHOW_OPS_OFFICE_TZ,
+  summariseDailySales,
+  type DailySalesRow,
+} from "@/lib/show-ops/daily-sales";
+import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 import { REPORT_PERIOD_OPTIONS, reportPeriodHref, resolveReportRange } from "@/lib/show-ops/report-range";
 
 const PRIMARY = "var(--show-ops-primary,#7c3aed)";
 const PAGE = "/dashboard/show-ops/reports";
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-09" → "September 2026" */
+function monthLabel(ym: string): string {
+  const d = new Date(`${ym}-01T12:00:00Z`);
+  return Number.isNaN(d.getTime())
+    ? ym
+    : d.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+type SalesAnalytics = {
+  monthly?: Array<{ m: string; gross: number; net: number; pax: number }>;
+  partners?: Array<{ name: string; revenue: number; pax: number }>;
+  avg_ticket?: number | null;
+  no_show_rate?: number | null;
+  occupancy?: number | null;
+} | null;
 
 export default async function ReportsPage({
   searchParams,
@@ -20,6 +45,11 @@ export default async function ReportsPage({
     to?: string;
     island?: string;
     partner_type?: string;
+    /** Year block (was the Stats page): YYYY-MM, and island or "all". Island falls back to the page filter. */
+    stats_month?: string;
+    stats_island?: string;
+    /** Daily sales block: YYYY-MM-DD, office-local. Defaults to today. */
+    sales_date?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -39,6 +69,35 @@ export default async function ReportsPage({
   const island = sp.island || "";
   const partnerType = sp.partner_type || "";
 
+  // Office-local today — the same clock the door and the 07:00 digest run on.
+  const todayLocal = isoDateInTimeZone(new Date(), SHOW_OPS_OFFICE_TZ);
+  const salesDate = /^\d{4}-\d{2}-\d{2}$/.test(sp.sales_date || "") ? sp.sales_date! : todayLocal;
+  const salesWindow = localDayUtcRange(salesDate, SHOW_OPS_OFFICE_TZ);
+  const statsMonth = /^\d{4}-\d{2}$/.test(sp.stats_month || "") ? sp.stats_month! : todayLocal.slice(0, 7);
+  const statsIsland = sp.stats_island === undefined ? island : sp.stats_island === "all" ? "" : sp.stats_island;
+
+  /** Every current query param, with overrides — so the sub-blocks keep the page's filters when they change theirs. */
+  const currentParams = (over: Record<string, string | undefined> = {}): Array<[string, string]> => {
+    const all: Record<string, string | undefined> = {
+      period: sp.period,
+      month: sp.month,
+      from: sp.from,
+      to: sp.to,
+      island: sp.island,
+      partner_type: sp.partner_type,
+      stats_month: sp.stats_month,
+      stats_island: sp.stats_island,
+      sales_date: sp.sales_date,
+      ...over,
+    };
+    return Object.entries(all).filter((e): e is [string, string] => Boolean(e[1]));
+  };
+  const hrefWith = (over: Record<string, string | undefined>, hash = "") => {
+    const p = new URLSearchParams(currentParams(over));
+    const q = p.toString();
+    return `${q ? `${PAGE}?${q}` : PAGE}${hash}`;
+  };
+
   function applyShowDate<T extends { gte: (c: string, v: string) => T; lte: (c: string, v: string) => T }>(
     q: T,
     column: string,
@@ -49,7 +108,16 @@ export default async function ReportsPage({
     return next;
   }
 
-  const [{ data: bookings }, { data: busOrders }, { data: products }, { data: suppliers }, { data: invoices }, { data: payments }] = await Promise.all([
+  const [
+    { data: bookings },
+    { data: busOrders },
+    { data: products },
+    { data: suppliers },
+    { data: invoices },
+    { data: payments },
+    { data: salesRows },
+    { data: analyticsRaw },
+  ] = await Promise.all([
     (() => {
       let q = ctx.supabase
         .from("show_bookings")
@@ -91,7 +159,48 @@ export default async function ReportsPage({
       if (end) q = q.lte("paid_at", `${end}T23:59:59Z`);
       return q;
     })(),
+    // Daily sales: bookings taken on that office-local day (same reading as the digest's "taken yesterday").
+    (() => {
+      let q = ctx.supabase
+        .from("show_bookings")
+        .select(
+          "booking_ref,guest_name,show_name,island,show_date,hotel_name,supplier_name,sales_channel,adults,children,infants,total_cost,billing_mode,created_at",
+        )
+        .eq("business_id", ctx.business.id)
+        .gte("created_at", salesWindow.start)
+        .lt("created_at", salesWindow.end)
+        .is("cancelled_at", null)
+        .order("created_at")
+        .range(0, 9999);
+      if (island) q = q.eq("island", island);
+      return q;
+    })(),
+    // Year block — the old Stats & insights RPC.
+    ctx.supabase.rpc("show_ops_sales_analytics", {
+      p_business: ctx.business.id,
+      p_year: Number(statsMonth.slice(0, 4)) || new Date().getUTCFullYear(),
+      p_island: statsIsland || null,
+      p_month: statsMonth,
+    }),
   ]);
+
+  const dailySales = summariseDailySales(salesDate, (salesRows ?? []) as DailySalesRow[], SHOW_OPS_OFFICE_TZ);
+
+  const analytics = (analyticsRaw ?? null) as SalesAnalytics;
+  const monthlyByM = new Map((analytics?.monthly ?? []).map((x) => [x.m, x]));
+  const analyticsMonths = MONTH_LABELS.map((label, i) => {
+    const m = String(i + 1).padStart(2, "0");
+    const row = monthlyByM.get(m);
+    return { m, label, gross: Number(row?.gross ?? 0), net: Number(row?.net ?? 0), pax: Number(row?.pax ?? 0) };
+  });
+  const maxMonthGross = Math.max(...analyticsMonths.map((x) => x.gross), 0);
+  const analyticsPartners = (analytics?.partners ?? []).map((p) => ({
+    name: p.name,
+    revenue: Number(p.revenue || 0),
+    pax: Number(p.pax || 0),
+  }));
+  const maxPartnerRevenue = Math.max(...analyticsPartners.map((p) => p.revenue), 0);
+  const statsMoney = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, statsIsland));
 
   const supplierType = new Map((suppliers ?? []).map((s) => [s.id, s.partner_type]));
   const productCap = new Map((products ?? []).map((p) => [p.id, Number(p.capacity) || 0]));
@@ -173,9 +282,7 @@ export default async function ReportsPage({
   const invoiceTotal = round2((invoices ?? []).reduce((s, i) => s + Number(i.total_amount || 0), 0));
   const invoicePaid = round2((invoices ?? []).filter((i) => i.paid).reduce((s, i) => s + Number(i.total_amount || 0), 0));
   const invoicePending = round2(invoiceTotal - invoicePaid);
-  const cashPaid = round2(
-    (payments ?? []).filter((p) => p.method === "cash").reduce((s, p) => s + Number(p.amount || 0), 0),
-  );
+  // Cash is not tracked here any more (Joel: the tile was noise); card / Stripe stays as its own small tile.
   const cardPaid = round2(
     (payments ?? []).filter((p) => p.method === "card" || p.method === "stripe").reduce((s, p) => s + Number(p.amount || 0), 0),
   );
@@ -423,15 +530,18 @@ export default async function ReportsPage({
           ["Net after write-offs", money(netRevenue)],
           ["Invoice pending", money(invoicePending)],
           ["Invoice paid", money(invoicePaid)],
-          ["Cash taken", money(cashPaid)],
           ["No-shows", String(noShows)],
         ].map(([k, v]) => (
           <div key={k} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
             <p className="text-xs uppercase text-slate-500">{k}</p>
             <p className="mt-1 text-xl font-semibold">{v}</p>
-            {k === "Cash taken" ? <p className="mt-1 text-xs text-slate-500">Card/Stripe {money(cardPaid)}</p> : null}
           </div>
         ))}
+        <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+          <p className="text-[11px] uppercase text-slate-500">Card taken</p>
+          <p className="mt-1 text-base font-semibold">{money(cardPaid)}</p>
+          <p className="text-[11px] text-slate-400">Card / Stripe payments in this period</p>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(17rem,1fr)]">
@@ -701,6 +811,198 @@ export default async function ReportsPage({
           </tbody>
         </table>
       </div>
+
+      <div id="daily-sales" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">Daily sales</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Bookings taken on {shortDate(salesDate)} (office time{island ? `, ${island}` : ""}). Cancelled ones left out.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <form method="get" className="flex flex-wrap items-end gap-2">
+              {currentParams({ sales_date: undefined }).map(([k, v]) => (
+                <input key={k} type="hidden" name={k} value={v} />
+              ))}
+              <label className="text-xs font-medium text-slate-600">
+                Day
+                <input
+                  type="date"
+                  name="sales_date"
+                  defaultValue={salesDate}
+                  max={todayLocal}
+                  className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
+                />
+              </label>
+              <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
+                Show day
+              </button>
+            </form>
+            <a href={dailySalesCsvHref(salesDate, island)} className={SHOW_OPS_GHOST_BTN}>
+              <Download className="mr-2 h-4 w-4" aria-hidden />
+              Download CSV
+            </a>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {[
+            ["Bookings", String(dailySales.summary.totalBookings)],
+            ["Pax", String(dailySales.summary.totalPax)],
+            ["Value", money(dailySales.summary.totalValue)],
+          ].map(([k, v]) => (
+            <div key={k} className="rounded-xl bg-slate-50 p-3">
+              <p className="text-[11px] uppercase text-slate-500">{k}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{v}</p>
+            </div>
+          ))}
+        </div>
+        {dailySales.summary.totalBookings ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <CountList title="By island" rows={dailySales.summary.byIsland} />
+            <CountList title="By channel" rows={dailySales.summary.byChannel.map(([k, v]) => [k.replace(/_/g, " "), v])} />
+            <CountList title="By hour" rows={dailySales.summary.byHour} />
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">No bookings taken that day.</p>
+        )}
+      </div>
+
+      <div id="year" className="scroll-mt-24 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">Year · {statsMonth.slice(0, 4)}</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Sales by month, top partners for the chosen month, average ticket, no-shows, occupancy.
+            </p>
+          </div>
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            {currentParams({ stats_month: undefined }).map(([k, v]) => (
+              <input key={k} type="hidden" name={k} value={v} />
+            ))}
+            <label className="text-xs font-medium text-slate-600">
+              Month
+              <input
+                type="month"
+                name="stats_month"
+                defaultValue={statsMonth}
+                className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
+              Go
+            </button>
+          </form>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ShowOpsPill href={hrefWith({ stats_island: "all" }, "#year")} on={!statsIsland}>
+            All islands
+          </ShowOpsPill>
+          {ctx.config.islands.map((i) => (
+            <ShowOpsPill key={i} href={hrefWith({ stats_island: i }, "#year")} on={statsIsland === i}>
+              {i}
+            </ShowOpsPill>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(15rem,1fr)]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Sales by month · <span className="text-slate-900">■</span> gross ·{" "}
+              <span style={{ color: PRIMARY }}>■</span> net after write-offs
+            </p>
+            <div className="mt-3 flex h-36 items-end gap-1.5">
+              {analyticsMonths.map((mo) => (
+                <div key={mo.m} className="flex flex-1 flex-col items-center gap-1">
+                  <div className="flex w-full items-end justify-center gap-[2px]" style={{ height: "116px" }}>
+                    <div
+                      className="w-1/2 max-w-[14px] rounded-t bg-slate-900"
+                      style={{ height: `${maxMonthGross ? Math.round((mo.gross / maxMonthGross) * 112) : 0}px` }}
+                      title={`${mo.label} gross ${statsMoney(mo.gross)}`}
+                    />
+                    <div
+                      className="w-1/2 max-w-[14px] rounded-t"
+                      style={{
+                        height: `${maxMonthGross ? Math.round((mo.net / maxMonthGross) * 112) : 0}px`,
+                        backgroundColor: PRIMARY,
+                      }}
+                      title={`${mo.label} net ${statsMoney(mo.net)}`}
+                    />
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase text-slate-400">{mo.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Top partners · {monthLabel(statsMonth)}
+            </p>
+            <ul className="mt-3 space-y-2">
+              {analyticsPartners.map((p, i) => (
+                <li key={p.name} className="text-sm">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="truncate font-medium text-slate-900">
+                      {String(i + 1).padStart(2, "0")} · {p.name}
+                    </span>
+                    <span className="tabular-nums text-slate-600">{statsMoney(p.revenue)}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded-full bg-slate-100">
+                    <div
+                      className="h-1.5 rounded-full"
+                      style={{
+                        width: `${maxPartnerRevenue ? Math.max(4, Math.round((p.revenue / maxPartnerRevenue) * 100)) : 0}%`,
+                        backgroundColor: PRIMARY,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+              {!analyticsPartners.length ? <li className="text-sm text-slate-500">No partner sales this month.</li> : null}
+            </ul>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Average ticket</p>
+            <p className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+              {analytics?.avg_ticket != null ? statsMoney(Number(analytics.avg_ticket)) : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">No-show rate</p>
+            <p className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+              {analytics?.no_show_rate != null ? `${analytics.no_show_rate}%` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Average occupancy</p>
+            <p className="mt-0.5 text-2xl font-semibold tabular-nums text-slate-900">
+              {analytics?.occupancy != null ? `${analytics.occupancy}%` : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CountList({ title, rows }: { title: string; rows: Array<[string, number]> }) {
+  const max = Math.max(1, ...rows.map(([, n]) => n));
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+      <ul className="mt-2 space-y-1.5">
+        {rows.map(([k, n]) => (
+          <li key={k} className="flex items-center gap-2 text-sm">
+            <span className="w-24 shrink-0 truncate text-slate-700">{k}</span>
+            <div className="h-2 flex-1 rounded-full bg-slate-100">
+              <div className="h-2 rounded-full" style={{ width: `${Math.max(3, (n / max) * 100)}%`, backgroundColor: PRIMARY }} />
+            </div>
+            <span className="w-8 text-right font-semibold tabular-nums text-slate-700">{n}</span>
+          </li>
+        ))}
+        {!rows.length ? <li className="text-sm text-slate-500">None</li> : null}
+      </ul>
     </div>
   );
 }

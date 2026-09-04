@@ -12,11 +12,25 @@ import { computeBookingMoney, formatShowOpsMoney, round2, showOpsDayName } from 
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import {
+  PRIVATE_ACCOMMODATIONS,
+  PRIVATE_ACCOMMODATION_LABELS,
+  parsePickupKind,
+  parsePrivateAccommodation,
+  privatePickupLabel,
+  zoneOptionsFromStops,
+  type PickupKind,
+} from "@/lib/show-ops/private-pickup";
+import {
   groupNightsByMonth,
   showOpsNightLabel,
   showOpsRunNights,
 } from "@/lib/show-ops/nights";
-import type { ShowOpsBookingQuestion, ShowOpsConfig } from "@/lib/show-ops/types";
+import {
+  SHOW_OPS_PAYMENT_METHODS,
+  SHOW_OPS_PAYMENT_METHOD_LABELS,
+  type ShowOpsBookingQuestion,
+  type ShowOpsConfig,
+} from "@/lib/show-ops/types";
 
 export type BookingFormProduct = {
   id: string;
@@ -64,6 +78,8 @@ export type BookingFormStop = {
   pickup_time: string | null;
   island?: string;
   runs_on?: string | null;
+  /** Resort code (PDC, CT…) — feeds the resort list for private transfers. */
+  zone?: string | null;
 };
 
 export type BookingFormDefaults = {
@@ -77,6 +93,11 @@ export type BookingFormDefaults = {
   pickup_stop_id?: string | null;
   supplier_id?: string | null;
   transport_required?: boolean;
+  /** bus / private / own_way — falls back to transport_required on older rows. */
+  pickup_kind?: string | null;
+  private_accommodation?: string | null;
+  private_zone?: string | null;
+  payment_method?: string | null;
   dietary_required?: boolean;
   dietary_notes?: string | null;
   adults?: number;
@@ -215,7 +236,14 @@ export function ShowOpsBookingForm({
   const [hotelId, setHotelId] = useState(defaults.hotel_id ?? "");
   const [pickupStopId, setPickupStopId] = useState(defaults.pickup_stop_id ?? "");
   const skipHotelFollow = useRef(Boolean(defaults.pickup_stop_id));
-  const [transport, setTransport] = useState(Boolean(defaults.transport_required));
+  // Bus / Private / Own way. transport_required (pricing + bus list) is simply "kind is bus".
+  const [pickupKind, setPickupKind] = useState<PickupKind>(() =>
+    parsePickupKind(defaults.pickup_kind, Boolean(defaults.transport_required)),
+  );
+  const transport = pickupKind === "bus";
+  const [privateAcc, setPrivateAcc] = useState(defaults.private_accommodation ?? "");
+  const [privateZone, setPrivateZone] = useState(defaults.private_zone ?? "");
+  const [paymentMethod, setPaymentMethod] = useState(defaults.payment_method ?? "");
   const [dietary, setDietary] = useState(Boolean(defaults.dietary_required));
   const [adults, setAdults] = useState(defaults.adults ?? 2);
   const [children, setChildren] = useState(defaults.children ?? 0);
@@ -311,8 +339,12 @@ export function ShowOpsBookingForm({
   }, [hotelId, hotel?.bus_stop_id]);
 
   useEffect(() => {
-    if (product && product.transport_available === false && transport) setTransport(false);
+    if (product && product.transport_available === false && transport) setPickupKind("own_way");
   }, [product, transport]);
+
+  /** Resort codes on this island's stops — the "from where" of a private transfer. */
+  const zoneOptions = useMemo(() => zoneOptionsFromStops(stops, activeIsland || null), [stops, activeIsland]);
+  const privateLabel = privatePickupLabel(privateZone, parsePrivateAccommodation(privateAcc));
 
   /*
    * Classify the sale by the partner who made it. Legacy imports tend to stamp
@@ -468,6 +500,7 @@ export function ShowOpsBookingForm({
               guestName: String(fd.get("guest_name") ?? ""),
               pax: { adults, children, infants },
               transport,
+              privateLabel: pickupKind === "private" ? privateLabel : null,
               stopName: transport && stop ? `${stop.resort} · ${stop.stop_name}` : null,
               pickupTime: transport && stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : null,
               showTime: product?.show_time ? String(product.show_time).slice(0, 5) : null,
@@ -496,6 +529,7 @@ export function ShowOpsBookingForm({
           <input type="hidden" name="adults" value={adults} />
           <input type="hidden" name="children" value={children} />
           <input type="hidden" name="infants" value={infants} />
+          <input type="hidden" name="pickup_kind" value={pickupKind} />
           {transport ? <input type="hidden" name="transport_required" value="1" /> : null}
         </>
       ) : null}
@@ -735,6 +769,26 @@ export function ShowOpsBookingForm({
             </div>
           </div>
 
+          {sellerMode ? null : (
+            <>
+              <FieldLabel className="mt-3">Paid by</FieldLabel>
+              <select
+                name="payment_method"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className={INPUT}
+                aria-label="Paid by"
+              >
+                <option value="">—</option>
+                {SHOW_OPS_PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {SHOW_OPS_PAYMENT_METHOD_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
           {nightLoad ? (
             <div className="mt-3 rounded-xl bg-violet-50/70 px-3 py-2.5 ring-1 ring-violet-100">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-900/60">
@@ -886,24 +940,81 @@ export function ShowOpsBookingForm({
             <p className="mt-1 text-xs text-amber-700">No hotels on {activeIsland} yet — add under Master data.</p>
           ) : null}
 
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="transport_required"
-              value="1"
-              checked={transport && Boolean(product?.transport_available !== false)}
-              disabled={moneyLocked || product?.transport_available === false}
-              onChange={(e) => setTransport(e.target.checked)}
-            />
-            Transport required
-            {product?.transport_available === false ? (
-              <span className="text-xs text-slate-500">· no bus on this show</span>
-            ) : supplement > 0 && product?.adult_price_no_transport == null ? (
-              <span className="text-xs text-slate-500">
-                {`\u00B7 +${moneyFmt(supplement)} per adult & child, infants free`}
-              </span>
-            ) : null}
-          </label>
+          <FieldLabel className="mt-3">Getting there</FieldLabel>
+          <select
+            name="pickup_kind"
+            value={pickupKind}
+            disabled={moneyLocked}
+            onChange={(e) => setPickupKind(e.target.value as PickupKind)}
+            className={INPUT}
+            aria-label="Getting there"
+          >
+            <option value="bus" disabled={product?.transport_available === false}>
+              Bus
+            </option>
+            <option value="private">Private</option>
+            <option value="own_way">Own way</option>
+          </select>
+          {moneyLocked ? null : <input type="hidden" name="transport_required" value={transport ? "1" : "0"} />}
+          <p className="mt-1 text-xs text-slate-500">
+            {product?.transport_available === false
+              ? "No bus on this show."
+              : supplement > 0 && product?.adult_price_no_transport == null
+                ? `Bus adds ${moneyFmt(supplement)} per adult & child, infants free.`
+                : "Bus puts them on the coach list. Private and own way pay the no-bus price."}
+          </p>
+
+          {pickupKind === "private" ? (
+            <>
+              <FieldLabel className="mt-3">Staying at</FieldLabel>
+              <select
+                name="private_accommodation"
+                required
+                value={privateAcc}
+                onChange={(e) => setPrivateAcc(e.target.value)}
+                className={INPUT}
+                aria-label="Staying at"
+              >
+                <option value="">Pick one…</option>
+                {PRIVATE_ACCOMMODATIONS.map((a) => (
+                  <option key={a} value={a}>
+                    {PRIVATE_ACCOMMODATION_LABELS[a]}
+                  </option>
+                ))}
+              </select>
+              <FieldLabel className="mt-3">Resort</FieldLabel>
+              {zoneOptions.length ? (
+                <select
+                  name="private_zone"
+                  required
+                  value={privateZone}
+                  onChange={(e) => setPrivateZone(e.target.value)}
+                  className={INPUT}
+                  aria-label="Resort"
+                >
+                  <option value="">Pick a resort…</option>
+                  {privateZone && !zoneOptions.some((z) => z.code === privateZone) ? (
+                    <option value={privateZone}>{privateZone}</option>
+                  ) : null}
+                  {zoneOptions.map((z) => (
+                    <option key={z.code} value={z.code}>
+                      {z.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  name="private_zone"
+                  value={privateZone}
+                  onChange={(e) => setPrivateZone(e.target.value.toUpperCase())}
+                  placeholder="Resort code, e.g. PDC"
+                  className={INPUT}
+                  aria-label="Resort"
+                />
+              )}
+              <p className="mt-1 text-xs text-slate-500">Office list shows: {privateLabel}.</p>
+            </>
+          ) : null}
 
           {transport ? (
             <>
@@ -1003,6 +1114,8 @@ export function ShowOpsBookingForm({
                   value={stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : "—"}
                 />
               </>
+            ) : pickupKind === "private" ? (
+              <SummaryLine label="Transport" value={privateLabel} />
             ) : (
               <SummaryLine label="Transport" value="Guest makes own way" />
             )}
@@ -1223,6 +1336,8 @@ type SavedBooking = {
   guestName: string;
   pax: { adults: number; children: number; infants: number };
   transport: boolean;
+  /** "Private PDC · Villa" when the guest has their own transfer. */
+  privateLabel: string | null;
   stopName: string | null;
   pickupTime: string | null;
   showTime: string | null;
@@ -1276,6 +1391,8 @@ function BookingSavedPanel({
               <SavedLine label="Pick-up stop" value={saved.stopName ?? "Not set"} strong />
               <SavedLine label="Pick-up time" value={saved.pickupTime ?? "—"} strong />
             </>
+          ) : saved.privateLabel ? (
+            <SavedLine label="Transport" value={saved.privateLabel} strong />
           ) : (
             <SavedLine label="Transport" value="Guest makes their own way" />
           )}
