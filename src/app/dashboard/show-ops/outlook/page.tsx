@@ -26,8 +26,9 @@ type Section = {
 
 /*
  * Sections follow the airport codes the operation flies on. Joel (1 Sept):
- * FUE dropped, South and West Tenerife folded into one TFS block (the resorts
- * stay as separate columns), Puerto de la Cruz no longer gets its own column
+ * FUE dropped, all of Tenerife is one TFS block (Matty 4 Sept: it's just TFS,
+ * resorts stay as columns with no South/West wording), Puerto de la Cruz no
+ * longer gets its own column
  * — anything still booked there lands in "Other".
  */
 const SECTIONS: Section[] = [
@@ -49,12 +50,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: "tfs", code: "TFS", title: "Tenerife · South & West", island: "Tenerife", zones: null,
+    id: "tfs", code: "TFS", title: "Tenerife", island: "Tenerife", zones: null,
     resorts: [
-      { key: "TFS", label: "South · Las Américas / Los Cristianos" },
-      { key: "TFCA", label: "South · Costa Adeje / La Caleta" },
-      { key: "TFGolf", label: "South · Golf del Sur" },
-      { key: "TFW", label: "West · Los Gigantes" },
+      { key: "TFS", label: "Las Américas / Los Cristianos" },
+      { key: "TFCA", label: "Costa Adeje / La Caleta" },
+      { key: "TFGolf", label: "Golf del Sur" },
+      { key: "TFW", label: "Los Gigantes" },
     ],
   },
   { id: "uk", code: "UK", title: "UK Tour", island: "UK", zones: null, resorts: [] },
