@@ -20,6 +20,7 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
     items: [
       { href: "/dashboard/show-ops", label: "Dashboard", exact: true, key: "dashboard" },
       { href: "/dashboard/show-ops/calendar", label: "Show calendar", key: "calendar" },
+      { href: "/dashboard/show-ops/outlook", label: "Outlook", key: "outlook" },
     ],
   },
   {
@@ -40,7 +41,6 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
     id: "analytics",
     label: "Analytics",
     items: [
-      { href: "/dashboard/show-ops/outlook", label: "Outlook", key: "outlook" },
       { href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" },
       { href: "/dashboard/show-ops/stats", label: "Stats & insights", key: "stats" },
     ],

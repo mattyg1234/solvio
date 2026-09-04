@@ -255,7 +255,7 @@ export default async function WeeklyOutlookPage({
   return (
     <div className="space-y-8">
       <ShowOpsPageHeader
-        eyebrow="Analytics"
+        eyebrow="Overview"
         title="Weekly outlook"
         subtitle="Next 14 nights by airport — resorts, bus vs direct, hotels, rates and buses. Order buses on the show calendar."
         actions={

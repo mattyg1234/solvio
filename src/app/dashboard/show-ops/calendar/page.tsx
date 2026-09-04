@@ -134,6 +134,9 @@ export default async function ShowOpsCalendarPage({
         subtitle="Click a day to fold out every show, bus seats, and the bookings on that night."
         actions={
           <div className="flex items-center gap-2">
+            <Link href="/dashboard/show-ops/outlook" className="mr-2 text-sm font-semibold text-[var(--show-ops-primary,#7c3aed)]">
+              Outlook →
+            </Link>
             <Link href={monthHref(prev.year, prev.month, island, date)} className="rounded-xl bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-200">
               ←
             </Link>
