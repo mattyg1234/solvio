@@ -1400,6 +1400,52 @@ export async function upsertHotelAction(formData: FormData): Promise<void> {
   redirectMaster(tab, { saved: "1", created: data?.id });
 }
 
+/**
+ * Joel: "delete option" on shows and partners. Only rows that nothing points
+ * at can go — a show or partner with bookings, prices or invoices stays and
+ * gets switched off instead, so history never loses its labels.
+ */
+export async function deleteProductAction(productId: string, formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const tab = masterTabFromForm(formData, "shows");
+  const id = productId.trim();
+  if (!id) redirectMaster(tab, { error: "Show required." });
+  const { count } = await ctx.supabase
+    .from("show_bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", ctx.business.id)
+    .eq("product_id", id);
+  if ((count ?? 0) > 0) {
+    redirectMaster(tab, { error: `This show has ${count} booking${count === 1 ? "" : "s"} against it — untick Active instead of deleting.` });
+  }
+  await ctx.supabase.from("show_rate_prices").delete().eq("business_id", ctx.business.id).eq("product_id", id);
+  const { error } = await ctx.supabase.from("show_products").delete().eq("business_id", ctx.business.id).eq("id", id);
+  if (error) redirectMaster(tab, { error: error.message });
+  revalidateShowOps();
+  redirectMaster(tab, { saved: "1" });
+}
+
+export async function deleteSupplierAction(supplierId: string, formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const tab = masterTabFromForm(formData, "partners");
+  const id = supplierId.trim();
+  if (!id) redirectMaster(tab, { error: "Partner required." });
+  const [{ count: bookings }, { count: invoices }] = await Promise.all([
+    ctx.supabase.from("show_bookings").select("id", { count: "exact", head: true }).eq("business_id", ctx.business.id).eq("supplier_id", id),
+    ctx.supabase.from("show_invoices").select("id", { count: "exact", head: true }).eq("business_id", ctx.business.id).eq("supplier_id", id),
+  ]);
+  if ((bookings ?? 0) > 0 || (invoices ?? 0) > 0) {
+    redirectMaster(tab, {
+      error: `This partner has ${bookings ?? 0} booking${bookings === 1 ? "" : "s"} and ${invoices ?? 0} invoice${invoices === 1 ? "" : "s"} — untick Active instead of deleting.`,
+    });
+  }
+  await ctx.supabase.from("show_ops_members").update({ supplier_id: null }).eq("business_id", ctx.business.id).eq("supplier_id", id);
+  const { error } = await ctx.supabase.from("show_suppliers").delete().eq("business_id", ctx.business.id).eq("id", id);
+  if (error) redirectMaster(tab, { error: error.message });
+  revalidateShowOps();
+  redirectMaster(tab, { saved: "1" });
+}
+
 export async function upsertBusOrderAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsContext();
   const tab = masterTabFromForm(formData, "hotels");

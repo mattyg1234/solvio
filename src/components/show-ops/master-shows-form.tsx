@@ -4,6 +4,7 @@ import { useRef, useState, type KeyboardEvent } from "react";
 
 import {
   applyMasterProductsBulkAction,
+  deleteProductAction,
   repriceUninvoicedBoundAction,
   saveMasterProductOneAction,
   saveMasterProductsAllAction,
@@ -288,13 +289,25 @@ export function MasterShowsForm({
                 Save this show
               </button>
             </div>
-            <button
-              type="submit"
-              formAction={repriceUninvoicedBoundAction.bind(null, p.id)}
-              className="mt-2 text-xs font-medium text-teal-800 underline"
-            >
-              Reprice uninvoiced bookings from this show’s prices
-            </button>
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              <button
+                type="submit"
+                formAction={repriceUninvoicedBoundAction.bind(null, p.id)}
+                className="text-xs font-medium text-teal-800 underline"
+              >
+                Reprice uninvoiced bookings from this show’s prices
+              </button>
+              <button
+                type="submit"
+                formAction={deleteProductAction.bind(null, p.id)}
+                onClick={(e) => {
+                  if (!confirm(`Delete "${p.name}"? Only possible if it has no bookings.`)) e.preventDefault();
+                }}
+                className="text-xs font-medium text-rose-700 underline"
+              >
+                Delete show
+              </button>
+            </div>
           </div>
         );
       })}

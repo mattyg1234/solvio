@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import {
   applyMasterSuppliersBulkAction,
+  deleteSupplierAction,
   saveMasterSupplierOneAction,
   saveMasterSuppliersAllAction,
 } from "@/app/dashboard/show-ops/actions";
@@ -492,13 +493,25 @@ export function MasterSuppliersForm({
               <label className="flex items-center gap-2 self-end pb-2 text-xs">
                 <input type="checkbox" name={`${prefix}active`} value="1" defaultChecked={s.active !== false} /> Active
               </label>
-              <button
-                type="submit"
-                formAction={saveMasterSupplierOneAction.bind(null, s.id)}
-                className="self-end rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white sm:col-span-3"
-              >
-                Save this partner
-              </button>
+              <div className="flex flex-wrap items-center gap-4 self-end sm:col-span-3">
+                <button
+                  type="submit"
+                  formAction={saveMasterSupplierOneAction.bind(null, s.id)}
+                  className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Save this partner
+                </button>
+                <button
+                  type="submit"
+                  formAction={deleteSupplierAction.bind(null, s.id)}
+                  onClick={(e) => {
+                    if (!confirm(`Delete "${s.name}"? Only possible if it has no bookings or invoices.`)) e.preventDefault();
+                  }}
+                  className="text-xs font-medium text-rose-700 underline"
+                >
+                  Delete partner
+                </button>
+              </div>
             </div>
           </div>
         );

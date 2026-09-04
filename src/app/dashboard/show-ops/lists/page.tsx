@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
+import { BookingFlags } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import { NightListChips, nightListsHref } from "@/components/show-ops/night-list-chips";
@@ -429,12 +430,6 @@ export default async function DailyListsPage({
           active={views}
           hrefFor={(id) => qs({ views: toggleNightListView(views, id) })}
         />
-        <ShowOpsPill
-          href={qs({ views: views.includes("sales") ? views.filter((v) => v !== "sales") : [...views, "sales"] })}
-          on={views.includes("sales")}
-        >
-          Daily sales
-        </ShowOpsPill>
       </div>
       <p className="print:hidden text-sm text-slate-500">
         Click a list to add it. Click again to remove. Click column headers to sort — each extra click adds another sort.
@@ -477,44 +472,6 @@ export default async function DailyListsPage({
         />
       ) : null}
 
-      {views.includes("sales") ? (
-        <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-          <h3 className="font-semibold">Daily sales · {date}</h3>
-          <p className="mt-2 text-sm">Total bookings: {bookings.length}</p>
-          <h4 className="mt-4 text-xs font-semibold uppercase text-slate-500">By island</h4>
-          <ul className="text-sm">
-            {[...byIsland.entries()].map(([k, v]) => (
-              <li key={k}>
-                {k}: {v}
-              </li>
-            ))}
-          </ul>
-          <h4 className="mt-4 text-xs font-semibold uppercase text-slate-500">By show (pax)</h4>
-          <ul className="text-sm">
-            {[...byShow.entries()]
-              .sort((a, b) => b[1] - a[1])
-              .map(([k, v]) => (
-                <li key={k}>
-                  {k}: {v}
-                </li>
-              ))}
-          </ul>
-          <h4 className="mt-4 text-xs font-semibold uppercase text-slate-500">By channel</h4>
-          <ul className="text-sm">
-            {[...byChannel.entries()].map(([k, v]) => (
-              <li key={k}>
-                {k}: {v}
-              </li>
-            ))}
-          </ul>
-          <a
-            className="mt-4 inline-block text-sm font-semibold text-[var(--show-ops-primary,#7c3aed)] underline"
-            href={`/api/show-ops/daily-sales.csv?date=${date}&island=${encodeURIComponent(island)}`}
-          >
-            Download summary + detail CSV
-          </a>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -622,9 +579,12 @@ function ListCard({
         </span>
         <span className="font-medium text-slate-700">{owed}</span>
       </div>
-      <div className="mt-1 text-xs">
-        <DietCell row={b} />
-      </div>
+      <BookingFlags
+        dietaryRequired={b.dietary_required}
+        dietaryNotes={b.dietary_notes}
+        balanceDueLabel={pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : null}
+        comments={b.office_comments}
+      />
       {variant === "office" && questions.length ? (
         <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
           {questions.map((q) => {
@@ -638,9 +598,6 @@ function ListCard({
           })}
         </div>
       ) : null}
-      {variant === "office" && b.office_comments ? (
-        <p className="mt-1 text-xs italic text-slate-500">{b.office_comments}</p>
-      ) : null}
       <div className="mt-2 flex flex-col gap-1.5 border-t border-black/5 pt-2">
         <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
         <NoShowDecisionForm
@@ -653,8 +610,8 @@ function ListCard({
           compact
         />
         <div className="flex flex-wrap gap-1">
-          <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent")} big />
-          <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent")} tone="sky" big />
+          <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} big />
+          <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" big />
           <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo big />
           <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo big />
         </div>
@@ -780,7 +737,7 @@ function OfficeTable({
                 <td className="px-3 py-1.5">
                   {pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : pay.label}
                 </td>
-                <td className="px-3 py-1.5">{b.office_comments || ""}</td>
+                <td className={`px-3 py-1.5 ${b.office_comments ? "bg-violet-50 font-medium text-violet-950" : ""}`}>{b.office_comments || ""}</td>
                 <td className="px-3 py-1.5">
                   <div className="flex flex-col gap-1">
                     <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
@@ -794,8 +751,8 @@ function OfficeTable({
                       compact
                     />
                     <div className="flex flex-wrap gap-1">
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent")} />
-                      <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent")} tone="sky" />
+                      <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
+                      <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
                       <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo />
                       <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo />
                     </div>
@@ -903,8 +860,8 @@ function DoorTable({
                       compact
                     />
                     <div className="flex flex-wrap gap-1">
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Paid cash" hide={Boolean(b.door_pay_method || arrival.status === "absent")} />
-                      <ListFlagButton bookingId={b.id} flag="card" label="Paid on card" hide={Boolean(b.door_pay_method || arrival.status === "absent")} tone="sky" />
+                      <ListFlagButton bookingId={b.id} flag="cash" label="Paid cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
+                      <ListFlagButton bookingId={b.id} flag="card" label="Paid on card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
                       <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo />
                       <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo />
                     </div>
