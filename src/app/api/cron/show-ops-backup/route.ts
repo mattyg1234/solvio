@@ -57,11 +57,12 @@ async function removeSnapshots(admin: Admin, businessId: string, names: string[]
  * bucket, so if the app or the database goes down there is a recent, whole copy
  * of the operation to restore or read from.
  *
- * Cadence lives in vercel.json. It was every five minutes; a full 15 MB read of
- * the tenant 288 times a day is 4 GB/day of database egress on a free-tier org
- * whose monthly allowance is 5 GB, shared with Tipsi. Six-hourly until the
- * project is on a plan that can afford the mirror, or the backup goes
- * incremental.
+ * Cadence lives in vercel.json: every five minutes. It was cut to six-hourly on
+ * 2 Sept 2026 because a full read of the tenant 288 times a day was 4 GB/day of
+ * egress on a free-tier org shared with Tipsi (5 GB/month allowance). The org
+ * moved to Pro on 4 Sept (250 GB/month); with gzip the snapshot is a few MB, so
+ * five-minute copies are back. If egress ever climbs again, make it incremental
+ * before slowing it down.
  *
  * Then prunes: everything from the last hour stays, one per hour for a day,
  * one per day for a month. Without this the bucket grew 4 GB a day.
