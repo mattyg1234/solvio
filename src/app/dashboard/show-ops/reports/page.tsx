@@ -15,6 +15,8 @@ import {
 import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 import { REPORT_PERIOD_OPTIONS, reportPeriodHref, resolveReportRange } from "@/lib/show-ops/report-range";
 
+import { loadReportRows, previousYearDate, ReportLoadError } from "@/lib/show-ops/report-data";
+
 const PRIMARY = "var(--show-ops-primary,#7c3aed)";
 const PAGE = "/dashboard/show-ops/reports";
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -66,7 +68,11 @@ export default async function ReportsPage({
   });
   const start = range.start;
   const end = range.end;
-  const island = sp.island || "";
+  const availableIslands = ctx.config.islands.filter((name) => ctx.allowedIslands === null || ctx.allowedIslands.includes(name));
+  if (!availableIslands.length) return <p>No islands are available for this account.</p>;
+  const availableCurrencies = [...new Set(availableIslands.map((name) => showOpsCurrencyFor(ctx.config, name)))];
+  const separateCurrencies = availableCurrencies.length > 1;
+  const island = availableIslands.includes(sp.island || "") ? sp.island! : separateCurrencies ? availableIslands[0] : "";
   const partnerType = sp.partner_type || "";
 
   // Office-local today — the same clock the door and the 07:00 digest run on.
@@ -74,7 +80,8 @@ export default async function ReportsPage({
   const salesDate = /^\d{4}-\d{2}-\d{2}$/.test(sp.sales_date || "") ? sp.sales_date! : todayLocal;
   const salesWindow = localDayUtcRange(salesDate, SHOW_OPS_OFFICE_TZ);
   const statsMonth = /^\d{4}-\d{2}$/.test(sp.stats_month || "") ? sp.stats_month! : todayLocal.slice(0, 7);
-  const statsIsland = sp.stats_island === undefined ? island : sp.stats_island === "all" ? "" : sp.stats_island;
+  const requestedStatsIsland = sp.stats_island === undefined ? island : sp.stats_island === "all" ? "" : sp.stats_island;
+  const statsIsland = availableIslands.includes(requestedStatsIsland) ? requestedStatsIsland : separateCurrencies ? island : "";
 
   /** Every current query param, with overrides — so the sub-blocks keep the page's filters when they change theirs. */
   const currentParams = (over: Record<string, string | undefined> = {}): Array<[string, string]> => {
@@ -83,7 +90,7 @@ export default async function ReportsPage({
       month: sp.month,
       from: sp.from,
       to: sp.to,
-      island: sp.island,
+      island,
       partner_type: sp.partner_type,
       stats_month: sp.stats_month,
       stats_island: sp.stats_island,
@@ -108,59 +115,68 @@ export default async function ReportsPage({
     return next;
   }
 
-  const [
-    { data: bookings },
-    { data: busOrders },
-    { data: products },
-    { data: suppliers },
-    { data: invoices },
-    { data: payments },
-    { data: salesRows },
-    { data: analyticsRaw },
-  ] = await Promise.all([
-    (() => {
-      let q = ctx.supabase
-        .from("show_bookings")
-        .select("*")
-        .eq("business_id", ctx.business.id)
-        .is("cancelled_at", null)
-        .range(0, 9999);
-      q = applyShowDate(q, "show_date");
+  function comparisonRows(from: string | null, to: string | null) {
+    if (!from || !to) return Promise.resolve({ data: [] });
+    return loadReportRows("comparison bookings", (offset, limit) => {
+      let q = ctx.supabase.from("show_bookings").select("adults,children,infants")
+        .eq("business_id", ctx.business.id).gte("show_date", from).lte("show_date", to)
+        .is("cancelled_at", null).order("id").range(offset, offset + limit - 1);
       if (island) q = q.eq("island", island);
       return q;
-    })(),
-    (() => {
-      let q = ctx.supabase.from("show_bus_orders").select("*").eq("business_id", ctx.business.id).range(0, 9999);
+    });
+  }
+
+  const reportLoad = await Promise.all([
+    loadReportRows("bookings", (offset, limit) => {
+      let q = ctx.supabase
+        .from("show_bookings")
+        .select("id,supplier_id,supplier_name,adults,children,infants,total_cost,sales_channel,show_date,product_id,show_name,hotel_name,nett_total,no_show,arrived_pax,adult_nett_total,child_nett_total,no_show_charge,island,transport_required")
+        .eq("business_id", ctx.business.id)
+        .is("cancelled_at", null)
+        .range(offset, offset + limit - 1);
       q = applyShowDate(q, "show_date");
-      return q;
-    })(),
-    ctx.supabase
+      if (island) q = q.eq("island", island);
+      return q.order("id");
+    }),
+    loadReportRows("bus orders", (offset, limit) => {
+      let q = ctx.supabase.from("show_bus_orders").select("id,show_date,island,cost_total,seats_ordered").eq("business_id", ctx.business.id).range(offset, offset + limit - 1);
+      q = applyShowDate(q, "show_date");
+      if (island) q = q.eq("island", island);
+      return q.order("id");
+    }),
+    loadReportRows("shows", (offset, limit) => ctx.supabase
       .from("show_products")
       .select("id,name,capacity,island")
-      .eq("business_id", ctx.business.id),
-    ctx.supabase.from("show_suppliers").select("id,name,partner_type").eq("business_id", ctx.business.id),
-    (() => {
+      .eq("business_id", ctx.business.id).order("id").range(offset, offset + limit - 1)),
+    loadReportRows("partners", (offset, limit) => ctx.supabase.from("show_suppliers").select("id,name,partner_type").eq("business_id", ctx.business.id).order("id").range(offset, offset + limit - 1)),
+    loadReportRows("invoices", (offset, limit) => {
       let q = ctx.supabase
         .from("show_invoices")
         .select("invoice_date,total_amount,paid,paid_at,voided")
         .eq("business_id", ctx.business.id)
         .eq("voided", false)
-        .range(0, 9999);
+        .range(offset, offset + limit - 1);
       q = applyShowDate(q, "invoice_date");
-      return q;
-    })(),
-    (() => {
+      if (island) q = q.eq("island", island);
+      return q.order("id");
+    }),
+    loadReportRows("payments", (offset, limit) => {
       let q = ctx.supabase
         .from("show_booking_payments")
-        .select("amount,method,paid_at")
+        .select("amount,method,show_bookings!inner(island)")
         .eq("business_id", ctx.business.id)
-        .range(0, 9999);
+        .range(offset, offset + limit - 1);
       if (start) q = q.gte("paid_at", `${start}T00:00:00Z`);
-      if (end) q = q.lte("paid_at", `${end}T23:59:59Z`);
-      return q;
-    })(),
+      if (end) {
+        const nextDay = new Date(`${end}T00:00:00Z`);
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+        q = q.lt("paid_at", nextDay.toISOString());
+      }
+      if (island) q = q.eq("show_bookings.island", island);
+      return q.in("method", ["card", "stripe"]).order("id");
+    }),
     // Daily sales: bookings taken on that office-local day (same reading as the digest's "taken yesterday").
-    (() => {
+    loadReportRows("daily sales", (offset, limit) => {
       let q = ctx.supabase
         .from("show_bookings")
         .select(
@@ -171,10 +187,10 @@ export default async function ReportsPage({
         .lt("created_at", salesWindow.end)
         .is("cancelled_at", null)
         .order("created_at")
-        .range(0, 9999);
+        .range(offset, offset + limit - 1);
       if (island) q = q.eq("island", island);
-      return q;
-    })(),
+      return q.order("id");
+    }),
     // Year block — the old Stats & insights RPC.
     ctx.supabase.rpc("show_ops_sales_analytics", {
       p_business: ctx.business.id,
@@ -182,7 +198,28 @@ export default async function ReportsPage({
       p_island: statsIsland || null,
       p_month: statsMonth,
     }),
-  ]);
+    comparisonRows(range.prevStart, range.prevEnd),
+    comparisonRows(previousYearDate(start), previousYearDate(end)),
+  ]).then((data) => ({ data, error: null })).catch((error: unknown) => ({ data: null, error }));
+  if (!reportLoad.data) {
+    return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+      <p>{reportLoad.error instanceof ReportLoadError ? reportLoad.error.message : "Reports could not be loaded. Please refresh and try again."}</p>
+      <Link href={`${PAGE}?period=month`} className="mt-3 inline-block underline">Open this month’s report</Link>
+    </div>;
+  }
+  const [
+    { data: bookings },
+    { data: busOrders },
+    { data: products },
+    { data: suppliers },
+    { data: invoices },
+    { data: payments },
+    { data: salesRows },
+    { data: analyticsRaw, error: analyticsError },
+    { data: prevRows },
+    { data: lastYearRows },
+  ] = reportLoad.data;
+  if (analyticsError) return <p role="alert">Yearly analytics could not be loaded. Please refresh and try again.</p>;
 
   const dailySales = summariseDailySales(salesDate, (salesRows ?? []) as DailySalesRow[], SHOW_OPS_OFFICE_TZ);
 
@@ -200,7 +237,7 @@ export default async function ReportsPage({
     pax: Number(p.pax || 0),
   }));
   const maxPartnerRevenue = Math.max(...analyticsPartners.map((p) => p.revenue), 0);
-  const statsMoney = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, statsIsland));
+  const statsMoney = (n: number) => formatShowOpsMoney(n, (statsIsland ? showOpsCurrencyFor(ctx.config, statsIsland) : availableCurrencies[0]));
 
   const supplierType = new Map((suppliers ?? []).map((s) => [s.id, s.partner_type]));
   const productCap = new Map((products ?? []).map((p) => [p.id, Number(p.capacity) || 0]));
@@ -303,42 +340,10 @@ export default async function ReportsPage({
       return s + billed.billedTotalCost;
     }, 0),
   );
-  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
+  const money = (n: number) => formatShowOpsMoney(n, (island ? showOpsCurrencyFor(ctx.config, island) : availableCurrencies[0]));
 
-  const prevPax = range.prevStart && range.prevEnd
-    ? await (async () => {
-        let q = ctx.supabase
-          .from("show_bookings")
-          .select("adults,children,infants")
-          .eq("business_id", ctx.business.id)
-          .gte("show_date", range.prevStart!)
-          .lte("show_date", range.prevEnd!)
-          .is("cancelled_at", null)
-          .range(0, 9999);
-        if (island) q = q.eq("island", island);
-        const { data } = await q;
-        return (data ?? []).reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0);
-      })()
-    : null;
-
-  // Same window, shifted back a year — the "vs LY" column Joel tracks.
-  const lastYearPax =
-    start && end
-      ? await (async () => {
-          const shift = (iso: string) => `${Number(iso.slice(0, 4)) - 1}${iso.slice(4)}`;
-          let q = ctx.supabase
-            .from("show_bookings")
-            .select("adults,children,infants")
-            .eq("business_id", ctx.business.id)
-            .gte("show_date", shift(start))
-            .lte("show_date", shift(end))
-            .is("cancelled_at", null)
-            .range(0, 9999);
-          if (island) q = q.eq("island", island);
-          const { data } = await q;
-          return (data ?? []).reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0);
-        })()
-      : null;
+  const prevPax = range.prevStart && range.prevEnd ? prevRows.reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0) : null;
+  const lastYearPax = start && end ? lastYearRows.reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0) : null;
 
   const busCostRows = (busOrders ?? [])
     .filter((o) => !island || o.island === island)
@@ -438,11 +443,13 @@ export default async function ReportsPage({
               className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
             />
           </label>
+          {separateCurrencies && <p className="text-xs text-slate-600">Choose one island to keep euro and pound totals separate.</p>}
+          {island && <p className="text-xs text-slate-600">Invoice and payment totals use this island. Older invoices without an island are excluded.</p>}
           <label className="text-xs font-medium text-slate-600">
             Island
             <select name="island" defaultValue={island} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm">
-              <option value="">All</option>
-              {ctx.config.islands.map((i) => (
+              {!separateCurrencies && <option value="">All</option>}
+              {availableIslands.map((i) => (
                 <option key={i} value={i}>
                   {i}
                 </option>
@@ -895,10 +902,10 @@ export default async function ReportsPage({
           </form>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <ShowOpsPill href={hrefWith({ stats_island: "all" }, "#year")} on={!statsIsland}>
+          {!separateCurrencies && <ShowOpsPill href={hrefWith({ stats_island: "all" }, "#year")} on={!statsIsland}>
             All islands
-          </ShowOpsPill>
-          {ctx.config.islands.map((i) => (
+          </ShowOpsPill>}
+          {availableIslands.map((i) => (
             <ShowOpsPill key={i} href={hrefWith({ stats_island: i }, "#year")} on={statsIsland === i}>
               {i}
             </ShowOpsPill>

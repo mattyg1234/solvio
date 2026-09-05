@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { isGlobalShowOpsAdmin } from "./island-access";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -270,6 +271,9 @@ export async function requireShowOpsContext(): Promise<ShowOpsContext> {
   };
 }
 
+/** Request-scoped render reuse only. Mutating actions keep the fresh context function above. */
+export const getShowOpsRenderContext = cache(requireShowOpsContext);
+
 export async function requireShowOpsEnabled(): Promise<ShowOpsContext> {
   const ctx = await requireShowOpsContext();
   if (!ctx.business.show_ops_enabled) {
@@ -307,7 +311,8 @@ export async function requireShowOpsRole(needed: ShowOpsMemberRole): Promise<Sho
  * Invoicing by guessing the path.
  */
 export async function requireShowOpsPage(key: ShowOpsPageKey): Promise<ShowOpsContext> {
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await getShowOpsRenderContext();
+  if (!ctx.business.show_ops_enabled) redirect("/dashboard/show-ops/setup");
   if (!canSeeShowOpsPage(ctx.role, ctx.allowedPages, key)) {
     const fallback = showOpsAllowedPages(ctx.role, ctx.allowedPages)[0];
     const target = SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === fallback);

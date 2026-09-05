@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
-import { requireShowOpsContext } from "@/lib/show-ops/access";
+import { getShowOpsRenderContext } from "@/lib/show-ops/access";
 import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
 /**
@@ -9,7 +9,7 @@ import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
  * workspace name leads and Solvio sits behind it.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await getShowOpsRenderContext();
   return {
     title: `${ctx.branding.displayName} · Solvio`,
     description: "Tour and show operations — bookings, lists, invoices.",
@@ -21,7 +21,7 @@ export default async function ShowOpsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const ctx = await requireShowOpsContext();
+  const ctx = await getShowOpsRenderContext();
   const { branding } = ctx;
 
   return (

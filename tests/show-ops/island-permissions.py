@@ -13,6 +13,7 @@ class IslandPermissions(unittest.TestCase):
   s.sql((s.ROOT/'supabase/migrations/20260905100500_show_ops_booking_history.sql').read_text())
   s.sql((s.ROOT/'supabase/migrations/20260905183006_show_ops_island_permissions.sql').read_text())
   s.sql((s.ROOT/'supabase/migrations/20260905184331_show_ops_booking_audit.sql').read_text())
+  s.sql((s.ROOT/'supabase/migrations/20260905211000_show_ops_booking_policy_performance.sql').read_text())
   s.sql(f"update show_products set island='Lanzarote' where id='{s.PRODUCT2}'; update show_ops_members set allowed_islands=array['Tenerife'] where user_id in ('{s.USERS['admin']}','{s.USERS['seller']}');")
  def count(self,q,role='admin'):return int(s.sql(q,role).stdout.strip().splitlines()[-1])
  def denied(self,q,role='admin'):self.assertNotEqual(s.sql(q,role,check=False).returncode,0)
@@ -62,6 +63,18 @@ class IslandPermissions(unittest.TestCase):
   user='40000000-0000-0000-0000-000000000010';s.sql(f"insert into auth.users values ('{user}');")
   s.sql(f"insert into show_ops_members(business_id,user_id,role,allowed_islands) values ('{s.BIZ}','{user}','booker',array['Tenerife']);",'admin')
   self.assertEqual(self.count(f"with x as(delete from show_ops_members where user_id='{user}' returning id) select count(*) from x;"),1)
+ def test_owner_scope_wins_over_restricted_membership(self):
+  s.sql(f"insert into show_ops_members(business_id,user_id,role,allowed_islands) values ('{s.BIZ}','{s.USERS['owner']}','booker','{{}}');")
+  s.sql(s.booking())
+  self.assertEqual(self.count('select count(*) from show_bookings;','owner'),1)
+ def test_prepared_booking_query_rechecks_current_user(self):
+  s.sql(s.booking())
+  s.sql(s.booking(product=s.PRODUCT2).replace("'Tenerife'","'Lanzarote'"))
+  statements=["set role authenticated; prepare visible_bookings as select count(*) from show_bookings;"]
+  for role in ['admin','outsider','owner','seller']:
+   statements.append(f"select set_config('request.jwt.claim.sub','{s.USERS[role]}',false); execute visible_bookings;")
+  rows=s.sql(' '.join(statements)).stdout.strip().splitlines()
+  self.assertEqual(rows[1::2],['1','0','2','0'])
  def test_invoice_cannot_claim_other_island_booking(self):
   s.sql(s.booking(product=s.PRODUCT2).replace("'Tenerife'","'Lanzarote'"));b=s.sql('select id from show_bookings;').stdout.strip()
   inv=s.sql(f"insert into show_invoices(business_id,supplier_name,period_start,period_end,invoice_date,island) values ('{s.BIZ}','Test','2026-10-01','2026-10-31','2026-10-31','Tenerife') returning id;").stdout.strip()
