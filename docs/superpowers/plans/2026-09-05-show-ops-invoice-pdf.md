@@ -7,3 +7,5 @@ Implemented: issued, non-voided invoice PDF generated from stored monetary/legal
 Verification: 124 Show Ops/notification tests pass, full TypeScript check and targeted ESLint pass. Independent security/edge-case review approved. GBP sample and pagination rendered and visually inspected. No database migration required.
 
 Limits: standard PDF font supports Latin/Spanish and rejects unsupported characters explicitly. Show dates follow linked booking data, matching current print behavior; immutable date snapshots remain a separate improvement. Actual delivery and client template approval remain acceptance tasks. Photo packaging is preserved outside the repository and excluded from this release; cancellation and partner document access are separate proposed scope.
+
+Release: commit `ba85499` pushed to main; deployed from its clean archive. Production deployment `dpl_C8QF95GheGdPEhNdppYjTFoTwVFN` READY and www.solviosystems.com alias verified. Root HTTP 200; unauthenticated invoice PDF route redirects (307). No authenticated invoice issuance or live email delivery claimed.

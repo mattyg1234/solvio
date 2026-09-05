@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildInvoicePdf, invoicePdfFilename } from "./invoice-pdf";
+import { loadInvoicePhotos, MAX_INVOICE_DELIVERY_BYTES, type InvoicePhotoBooking } from "./invoice-photos";
+import { invoiceDeliveryFingerprint } from "./invoice-delivery-fingerprint";
 
 /** Same stored invoice + attachment bundle for download and email. Uses the caller's authenticated client. */
-export async function loadInvoiceDelivery(supabase: SupabaseClient, businessId: string, invoiceId: string) {
+export async function loadInvoiceDelivery(supabase: SupabaseClient, businessId: string, invoiceId: string, options: { includeEvidence?: boolean } = {}) {
+  const includeEvidence = options.includeEvidence !== false;
   const { data: invoice, error: invoiceError } = await supabase.from("show_invoices")
     .select("*").eq("id", invoiceId).eq("business_id", businessId).maybeSingle();
   if (invoiceError) throw new Error("Could not load invoice. Nothing was sent.");
@@ -16,16 +19,23 @@ export async function loadInvoiceDelivery(supabase: SupabaseClient, businessId: 
   if (linesError || !lines?.length) throw new Error("Could not load invoice lines. Nothing was sent.");
   if (count !== lines.length) throw new Error("Invoice has too many lines for one attachment. Split the invoice pack.");
   const ids = [...new Set(lines.map((line) => line.booking_id as string | null).filter((id): id is string => !!id))];
-  const bookings: Array<{ id: string; show_date: string; booking_ref: string; guest_name: string }> = [];
+  const bookings: Array<InvoicePhotoBooking & { show_date: string }> = [];
+  if (includeEvidence && ids.length && !invoice.supplier_id) throw new Error("Invoice bookings have no seller association. Review the invoice before sending.");
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100);
-    const { data, error } = await supabase.from("show_bookings")
-      .select("id,show_date,booking_ref,guest_name").eq("business_id", businessId).in("id", batch);
+    let query = supabase.from("show_bookings")
+      .select("id,business_id,supplier_id,show_date,booking_ref,guest_name,no_show_proof_path").eq("business_id", businessId).in("id", batch);
+    if (includeEvidence) query = query.eq("supplier_id", invoice.supplier_id);
+    const { data, error } = await query;
     if (error || !data || data.length !== batch.length) throw new Error("Could not load every invoice booking date. Nothing was sent.");
     bookings.push(...data);
   }
+  bookings.sort((a, b) => a.id.localeCompare(b.id));
   const dateByBooking = new Map(bookings.map((b) => [b.id, b.show_date]));
   const datedLines = lines.map((line) => ({ ...line, show_date: dateByBooking.get(line.booking_id) || invoice.invoice_date }));
   const bytes = await buildInvoicePdf({ invoice, lines: datedLines });
-  return { invoice, lines: datedLines, bytes, filename: invoicePdfFilename(invoice.invoice_number || invoice.verifactu_number) };
+  const evidence = includeEvidence ? await loadInvoicePhotos(supabase.storage, businessId, invoice.supplier_id, bookings) : { photos: [], missing: [], totalBytes: 0 };
+  if (bytes.length + evidence.totalBytes > MAX_INVOICE_DELIVERY_BYTES) throw new Error("Invoice and ticket photos exceed the email attachment limit. Split the invoice pack.");
+  const evidenceFingerprint = invoiceDeliveryFingerprint(invoice, datedLines, { photos: evidence.photos.map(({ bookingId, path, sha256 }) => ({ bookingId, path, sha256 })), missing: evidence.missing });
+  return { invoice, lines: datedLines, bytes, evidence, evidenceFingerprint, filename: invoicePdfFilename(invoice.invoice_number || invoice.verifactu_number) };
 }

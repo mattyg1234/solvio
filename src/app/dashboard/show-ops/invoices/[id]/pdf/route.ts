@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
   const { id } = await params;
   try {
-    const { bytes, filename } = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id);
+    const { bytes, filename } = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id, { includeEvidence: false });
     return new Response(Buffer.from(bytes), {
       headers: {
         "Content-Type": "application/pdf",

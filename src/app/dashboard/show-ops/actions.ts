@@ -3215,7 +3215,13 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
   if (!id) throw new Error("Invoice required.");
 
   const { loadInvoiceDelivery } = await import("@/lib/show-ops/invoice-delivery");
-  const { invoice: inv, lines, bytes, filename } = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id);
+  const { invoice: inv, lines, bytes, filename, evidence, evidenceFingerprint } = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id);
+  const { assertInvoiceDeliveryReviewed } = await import("@/lib/show-ops/invoice-delivery-fingerprint");
+  assertInvoiceDeliveryReviewed({
+    expected: String(formData.get("evidence_fingerprint") || ""), actual: evidenceFingerprint,
+    reviewed: formData.get("attachments_reviewed") === "1", missingCount: evidence.missing.length,
+    missingAcknowledged: formData.get("missing_photos_acknowledged") === "1",
+  });
   const invoiceNumber = String(inv.invoice_number || inv.verifactu_number);
   let to = overrideTo;
   if (!to && inv.supplier_id) {
@@ -3248,6 +3254,7 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
     currency,
     paid: Boolean(inv.paid),
     invoiceAttachment: { filename, content: Buffer.from(bytes).toString("base64") },
+    ticketAttachments: evidence.photos.map(({ filename, content }) => ({ filename, content })),
     lines: lines.map((l) => ({
       showDate: l.show_date || inv.invoice_date,
       guestName: l.description || l.guest_name || "Line",

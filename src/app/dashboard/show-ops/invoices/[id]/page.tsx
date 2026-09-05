@@ -14,6 +14,7 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { hasShowOpsModule } from "@/lib/show-ops/config";
+import { loadInvoiceDelivery } from "@/lib/show-ops/invoice-delivery";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 
 export default async function InvoicePrintPage({
@@ -30,13 +31,20 @@ export default async function InvoicePrintPage({
   if (!hasShowOpsModule(ctx.config, ctx.tier, "invoices")) {
     return <p className="text-sm text-slate-600">Invoices are not enabled for this workspace.</p>;
   }
-  const { data: inv } = await ctx.supabase
+  let { data: inv } = await ctx.supabase
     .from("show_invoices")
     .select("*")
     .eq("id", id)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!inv) notFound();
+  let delivery: Awaited<ReturnType<typeof loadInvoiceDelivery>> | null = null;
+  let deliveryError = "";
+  if (inv.status === "issued" && !inv.voided) {
+    try { delivery = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id); inv = delivery.invoice; }
+    catch (error) { deliveryError = error instanceof Error ? error.message : "Could not prepare ticket photos. Refresh before sending."; }
+  }
+
   const invCurrency =
     inv.currency === "gbp" || inv.currency === "usd" || inv.currency === "eur" ? inv.currency : ctx.config.currency;
   const money = (n: number) => formatShowOpsMoney(n, invCurrency);
@@ -50,7 +58,7 @@ export default async function InvoicePrintPage({
         .maybeSingle()
     : { data: null };
 
-  const { data: lines } = await ctx.supabase
+  const { data: lines } = delivery ? { data: delivery.lines } : await ctx.supabase
     .from("show_invoice_lines")
     .select("*")
     .eq("invoice_id", id)
@@ -58,21 +66,20 @@ export default async function InvoicePrintPage({
     .order("guest_name");
 
   const bookingIds = [...new Set((lines ?? []).map((l) => l.booking_id).filter(Boolean))];
-  const { data: bookings } = bookingIds.length
+  const { data: bookings } = delivery
+    ? { data: delivery.lines.filter((line) => line.booking_id).map((line) => ({ id: line.booking_id, show_date: line.show_date })) }
+    : bookingIds.length
     ? await ctx.supabase.from("show_bookings").select("id,show_date,no_show_proof_path").eq("business_id", ctx.business.id).in("id", bookingIds)
     : { data: [] as { id: string; show_date: string; no_show_proof_path: string | null }[] };
   const dateByBooking = new Map((bookings ?? []).map((b) => [b.id, b.show_date]));
   const proofByBooking = new Map<string, string>();
-  await Promise.all(
-    (bookings ?? [])
-      .filter((b) => b.no_show_proof_path)
-      .map(async (b) => {
-        const { data } = await ctx.supabase.storage
-          .from("show-ops-proofs")
-          .createSignedUrl(b.no_show_proof_path!, 60 * 60);
-        if (data?.signedUrl) proofByBooking.set(b.id, data.signedUrl);
-      }),
-  );
+  if (delivery) {
+    for (const photo of delivery.evidence.photos) {
+      const { data, error } = await ctx.supabase.storage.from("show-ops-proofs").createSignedUrl(photo.path, 60 * 60);
+      if (error || !data?.signedUrl) deliveryError = "A ticket photo preview could not be opened. Refresh before sending.";
+      else proofByBooking.set(photo.bookingId, data.signedUrl);
+    }
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const supplierEmail = String(supplier?.email ?? "").trim();
@@ -192,6 +199,24 @@ export default async function InvoicePrintPage({
           ) : null}
           <form action={sendShowOpsInvoiceEmailAction} className="flex flex-wrap items-end gap-3">
             <input type="hidden" name="invoice_id" value={inv.id} />
+            {deliveryError ? <p className="w-full rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{deliveryError}</p> : null}
+            {delivery && !deliveryError ? (
+              <div className="w-full space-y-2 rounded-xl bg-slate-50 p-3 text-sm">
+                <input type="hidden" name="evidence_fingerprint" value={delivery.evidenceFingerprint} />
+                <p className="font-medium">Email includes the invoice PDF and {delivery.evidence.photos.length} original ticket photo(s).</p>
+                <a href="#invoice-ticket-photos" className="text-violet-700 underline">Review ticket photos and missing bookings</a>
+                <label className="flex items-start gap-2">
+                  <input type="checkbox" name="attachments_reviewed" value="1" required className="mt-1" />
+                  I checked this invoice and its ticket attachments for this seller.
+                </label>
+                {delivery.evidence.missing.length ? (
+                  <label className="flex items-start gap-2 text-amber-900">
+                    <input type="checkbox" name="missing_photos_acknowledged" value="1" required className="mt-1" />
+                    Send with {delivery.evidence.missing.length} booking(s) without a ticket photo, as listed below.
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
             <label className="text-xs font-medium text-slate-600">
               Email invoice to
               <input
@@ -203,10 +228,10 @@ export default async function InvoicePrintPage({
                 className="mt-1 block min-w-[16rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
               />
             </label>
-            {canEmail ? (
-              <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Email invoice PDF</SubmitOnce>
+            {canEmail && delivery && !deliveryError ? (
+              <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Email invoice and ticket photos</SubmitOnce>
             ) : (
-              <p className="text-sm text-amber-800">Issue the invoice first, then email.</p>
+              <p className="text-sm text-amber-800">{canEmail ? "Resolve the attachment preview before sending." : "Issue the invoice first, then email."}</p>
             )}
             {inv.emailed_at && sp.emailed !== "1" ? (
               <p className="text-xs text-slate-500">
@@ -281,23 +306,38 @@ export default async function InvoicePrintPage({
           <p className="text-lg font-semibold text-slate-900">Total {money(Number(inv.total_amount))}</p>
         </div>
         {inv.notes ? <p className="mt-4 text-sm text-slate-600">{inv.notes}</p> : null}
-        {[...proofByBooking.entries()].length ? (
-          <div className="mt-6 border-t border-slate-200 pt-4 print:break-inside-avoid">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">No-show ticket photos</p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              {(lines ?? []).map((l) => {
-                const url = l.booking_id ? proofByBooking.get(l.booking_id) : null;
-                if (!url) return null;
+        {delivery ? (
+          <section id="invoice-ticket-photos" className="mt-6 border-t border-slate-200 pt-4 print:break-inside-avoid">
+            <h2 className="text-sm font-semibold">Ticket attachments for {inv.supplier_name}</h2>
+            <p className="mt-1 text-sm text-slate-600">{delivery.evidence.photos.length} photo(s) attached · {delivery.evidence.missing.length} booking(s) without a photo.</p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              {delivery.evidence.photos.map((photo) => {
+                const url = proofByBooking.get(photo.bookingId);
                 return (
-                  <a key={l.booking_id} href={url} target="_blank" rel="noreferrer" className="block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={url} alt={`${l.guest_name} ticket photo`} className="h-24 w-auto rounded-lg ring-1 ring-slate-200" />
-                    <span className="mt-1 block text-xs text-slate-600">{l.guest_name}</span>
-                  </a>
+                  <div key={photo.bookingId} className="max-w-60 text-sm">
+                    {url ? <a href={url} target="_blank" rel="noreferrer" className="block text-violet-700 underline">
+                      {photo.mimeType === "image/heic" || photo.mimeType === "image/heif" ? "Open original HEIC/HEIF ticket photo" : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={url} alt={`${photo.bookingRef} ${photo.guestName} ticket photo`} className="h-28 w-auto rounded-lg ring-1 ring-slate-200" />
+                      )}
+                    </a> : <p className="text-rose-700">Photo preview unavailable; sending is blocked.</p>}
+                    <p className="mt-1 font-medium">{photo.bookingRef} · {photo.guestName}</p>
+                    <p className="break-all text-xs text-slate-500">{photo.filename}</p>
+                  </div>
                 );
               })}
             </div>
-          </div>
+            {delivery.evidence.missing.length ? (
+              <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Bookings without ticket photos</p>
+                <ul className="mt-1 space-y-1">
+                  {delivery.evidence.missing.map((booking) => <li key={booking.id}>
+                    <Link href={`/dashboard/show-ops/bookings/${booking.id}`} className="underline">{booking.booking_ref} · {booking.guest_name}</Link>
+                  </li>)}
+                </ul>
+              </div>
+            ) : null}
+          </section>
         ) : null}
       </article>
     </div>

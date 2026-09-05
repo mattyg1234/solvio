@@ -170,6 +170,7 @@ export async function sendShowOpsInvoiceEmail(opts: {
   currency: ShowOpsCurrency;
   paid: boolean;
   invoiceAttachment: { filename: string; content: string };
+  ticketAttachments?: Array<{ filename: string; content: string }>;
   lines: Array<{
     showDate: string;
     guestName: string;
@@ -222,13 +223,13 @@ export async function sendShowOpsInvoiceEmail(opts: {
     cc: cc.length ? cc : undefined,
     replyTo: opts.replyTo && opts.replyTo.includes("@") ? opts.replyTo : undefined,
     subject,
-    attachments: [opts.invoiceAttachment],
+    attachments: [opts.invoiceAttachment, ...(opts.ticketAttachments || [])],
     html: `
       <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:720px;margin:0 auto;color:#0f172a">
         <p style="font-size:16px">Hello ${escapeHtml(opts.supplierName)},</p>
         <p style="font-size:15px;line-height:1.5">
           Please find invoice <strong>${escapeHtml(opts.verifactuNumber)}</strong> from
-          ${escapeHtml(opts.merchantName)} for ${escapeHtml(opts.periodStart)} to ${escapeHtml(opts.periodEnd)}. The invoice PDF is attached.
+          ${escapeHtml(opts.merchantName)} for ${escapeHtml(opts.periodStart)} to ${escapeHtml(opts.periodEnd)}. The invoice PDF is attached${opts.ticketAttachments?.length ? ` with ${opts.ticketAttachments.length} ticket photo(s)` : ""}.
         </p>
         <p style="font-size:13px;color:#64748b;margin:16px 0 8px">
           Invoice date ${escapeHtml(opts.invoiceDate)}
