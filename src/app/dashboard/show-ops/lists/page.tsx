@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { BookingFlags } from "@/components/show-ops/booking-flags";
+import { BookingFlags, FlagDots } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import {
@@ -646,56 +646,6 @@ function SortCol({
   );
 }
 
-/*
- * The three at-a-glance colours, same as the phone cards and the Door:
- * amber = special meal, rose = money still due at the door, violet = office comment.
- * Tints are forced through on print so a paper list reads the same way.
- */
-const TINT_PRINT =
-  "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
-
-function DietCell({ row }: { row: BookingRow }) {
-  if (!row.dietary_required) return <span className="text-slate-400">—</span>;
-  return (
-    <span
-      className={`rounded bg-amber-100 px-1.5 py-0.5 text-amber-950 ${TINT_PRINT}`}
-    >
-      {row.dietary_notes || "Yes"}
-    </span>
-  );
-}
-
-function OwedCell({
-  pay,
-  money,
-}: {
-  pay: ReturnType<typeof showOpsBookingPayView>;
-  money: (n: number) => string;
-}) {
-  if (pay.outstandingAmount != null && pay.outstandingAmount > 0) {
-    return (
-      <span
-        className={`whitespace-nowrap rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-900 ${TINT_PRINT}`}
-      >
-        {money(pay.outstandingAmount)} due
-      </span>
-    );
-  }
-  return <>{pay.label}</>;
-}
-
-function CommentsCell({ row }: { row: BookingRow }) {
-  const note = row.office_comments?.trim();
-  if (!note) return <span className="text-slate-400">—</span>;
-  return (
-    <span
-      className={`inline-block rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-950 whitespace-pre-wrap ${TINT_PRINT}`}
-    >
-      {note}
-    </span>
-  );
-}
-
 /**
  * One booking as a phone card — the readable, tappable form of a list row on
  * small screens. Carries the same door actions as the desktop table so staff
@@ -929,9 +879,24 @@ function OfficeTable({
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
-      {/* Laptop and print: the full sheet */}
-      <div className="hidden overflow-x-auto lg:block print:block">
-        <table className="min-w-full text-left text-sm">
+      {/* Laptop and print: the full sheet. Fixed layout + dots so it never scrolls sideways. */}
+      <div className="hidden lg:block print:block">
+        <table className="w-full table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-[7.5rem]" />
+            <col />
+            <col />
+            <col className="w-[7rem]" />
+            <col />
+            <col className="w-[5.5rem]" />
+            <col className="w-[7.5rem]" />
+            <col className="w-[5.5rem]" />
+            {questions.map((q) => (
+              <col key={q.id} className="w-[6rem]" />
+            ))}
+            <col className="w-[6.5rem]" />
+            <col className="w-[11rem] print:hidden" />
+          </colgroup>
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <SortCol
@@ -972,7 +937,7 @@ function OfficeTable({
                 sortHref={sortHref}
               />
               <SortCol
-                label="Diet"
+                label="Flags"
                 k="diet"
                 sortKeys={sortKeys}
                 sortHref={sortHref}
@@ -983,8 +948,6 @@ function OfficeTable({
                 </th>
               ))}
               <th className="px-3 py-2">Door</th>
-              <th className="px-3 py-2">Owed</th>
-              <th className="px-3 py-2">Comments</th>
               <th className="px-3 py-2 print:hidden">Tick</th>
             </tr>
           </thead>
@@ -1022,17 +985,18 @@ function OfficeTable({
                   <td className="px-3 py-1.5 font-mono text-xs">
                     {b.booking_ref}
                   </td>
-                  <td className="px-3 py-1.5">{b.supplier_name || "—"}</td>
-                  <td className="px-3 py-1.5">
+                  <td className="truncate px-3 py-1.5" title={b.supplier_name || undefined}>{b.supplier_name || "—"}</td>
+                  <td className="truncate px-3 py-1.5">
                     <Link
                       href={`/dashboard/show-ops/bookings/${b.id}`}
                       className="font-medium hover:underline"
+                      title={b.guest_name}
                     >
                       {b.guest_name}
                     </Link>
                   </td>
-                  <td className="px-3 py-1.5">{b.show_name}</td>
-                  <td className="px-3 py-1.5">{b.hotel_name || "—"}</td>
+                  <td className="truncate px-3 py-1.5" title={b.show_name}>{b.show_name}</td>
+                  <td className="truncate px-3 py-1.5" title={b.hotel_name || undefined}>{b.hotel_name || "—"}</td>
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {formatShowOpsPax(b.adults, b.children, b.infants)}
                     {arrival.status !== "pending" ? (
@@ -1046,11 +1010,20 @@ function OfficeTable({
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-1.5">
+                  <td className="truncate px-3 py-1.5" title={b.supplier_ticket_number || undefined}>
                     {b.supplier_ticket_number || "—"}
                   </td>
                   <td className="px-3 py-1.5">
-                    <DietCell row={b} />
+                    <FlagDots
+                      dietaryRequired={b.dietary_required}
+                      dietaryNotes={b.dietary_notes}
+                      balanceDueLabel={
+                        pay.outstandingAmount != null && pay.outstandingAmount > 0
+                          ? money(pay.outstandingAmount)
+                          : null
+                      }
+                      comments={b.office_comments}
+                    />
                   </td>
                   {questions.map((q) => {
                     const v = answers[q.id];
@@ -1068,17 +1041,14 @@ function OfficeTable({
                       </td>
                     );
                   })}
-                  <td className="px-3 py-1.5 whitespace-nowrap text-xs">
+                  <td className="px-3 py-1.5 text-xs">
                     {arrival.doorLabel}
                     {payPhrase ? ` · ${payPhrase}` : ""}
+                    {pay.outstandingAmount == null || pay.outstandingAmount <= 0 ? (
+                      <span className="block text-[11px] text-slate-500">{pay.label}</span>
+                    ) : null}
                   </td>
-                  <td className="px-3 py-1.5">
-                    <OwedCell pay={pay} money={money} />
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <CommentsCell row={b} />
-                  </td>
-                  <td className="px-3 py-1.5">
+                  <td className="px-3 py-1.5 print:hidden">
                     <div className="flex flex-col gap-1">
                       <ArrivalPaxForm
                         key={`${b.id}:${arrival.arrived}`}
@@ -1150,7 +1120,7 @@ function OfficeTable({
             {!rows.length ? (
               <tr>
                 <td
-                  colSpan={12 + questions.length}
+                  colSpan={10 + questions.length}
                   className="px-3 py-6 text-center text-slate-500"
                 >
                   No rows
@@ -1195,8 +1165,17 @@ function DoorTable({
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
-      <div className="hidden overflow-x-auto lg:block print:block">
-        <table className="min-w-full text-left text-sm">
+      <div className="hidden lg:block print:block">
+        <table className="w-full table-fixed text-left text-sm">
+          <colgroup>
+            <col />
+            <col className="w-[8rem]" />
+            <col className="w-[6rem]" />
+            <col className="w-[8rem]" />
+            <col className="w-[5.5rem]" />
+            <col className="w-[7rem]" />
+            <col className="w-[11rem] print:hidden" />
+          </colgroup>
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <SortCol
@@ -1219,13 +1198,12 @@ function DoorTable({
                 sortHref={sortHref}
               />
               <SortCol
-                label="Diet"
+                label="Flags"
                 k="diet"
                 sortKeys={sortKeys}
                 sortHref={sortHref}
               />
-              <th className="px-3 py-2">Owed</th>
-              <th className="px-3 py-2">Comments</th>
+              <th className="px-3 py-2">Paid</th>
               <th className="px-3 py-2 print:hidden">Mark</th>
             </tr>
           </thead>
@@ -1252,8 +1230,8 @@ function DoorTable({
                   key={b.id}
                   className={`border-t border-slate-100 ${arrival.status === "all_in" ? "bg-emerald-50/50" : ""} ${arrival.status === "partial" ? "bg-amber-50/70" : ""} ${arrival.status === "absent" ? "opacity-50" : ""}`}
                 >
-                  <td className="px-3 py-2 font-medium">{b.guest_name}</td>
-                  <td className="px-3 py-2">{b.show_name}</td>
+                  <td className="truncate px-3 py-2 font-medium" title={b.guest_name}>{b.guest_name}</td>
+                  <td className="truncate px-3 py-2" title={b.show_name}>{b.show_name}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {formatShowOpsPax(b.adults, b.children, b.infants)}
                     {arrival.status !== "pending" ? (
@@ -1267,19 +1245,25 @@ function DoorTable({
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="truncate px-3 py-2" title={b.supplier_ticket_number || undefined}>
                     {b.supplier_ticket_number || "—"}
                   </td>
                   <td className="px-3 py-2">
-                    <DietCell row={b} />
+                    <FlagDots
+                      dietaryRequired={b.dietary_required}
+                      dietaryNotes={b.dietary_notes}
+                      balanceDueLabel={
+                        pay.outstandingAmount != null && pay.outstandingAmount > 0
+                          ? money(pay.outstandingAmount)
+                          : null
+                      }
+                      comments={b.office_comments}
+                    />
                   </td>
-                  <td className="px-3 py-2">
-                    <OwedCell pay={pay} money={money} />
+                  <td className="px-3 py-2 text-xs text-slate-600">
+                    {pay.outstandingAmount != null && pay.outstandingAmount > 0 ? "" : pay.label}
                   </td>
-                  <td className="px-3 py-2">
-                    <CommentsCell row={b} />
-                  </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 print:hidden">
                     <div className="flex flex-col gap-1">
                       <ArrivalPaxForm
                         key={`${b.id}:${arrival.arrived}`}
@@ -1351,7 +1335,7 @@ function DoorTable({
             {!rows.length ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={7}
                   className="px-3 py-6 text-center text-slate-500"
                 >
                   No rows
