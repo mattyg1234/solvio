@@ -1,3 +1,4 @@
+import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import { hotelNamesForStops } from "@/lib/show-ops/directory-search";
 import {
@@ -346,32 +347,11 @@ export default async function MasterDataPage({
                 ))}
               </select>
             </label>
-            <label className="text-xs font-medium text-slate-600">
-              Billing
-              <select
-                name="billing_mode"
-                className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
-              >
-                <option value="deposit">Deposit %</option>
-                <option value="invoice">Invoice nett</option>
-              </select>
-            </label>
             <Field label="Invoice email" name="email" type="email" />
             <Field label="Legal name" name="legal_name" />
             <Field label="NIF / tax ID" name="tax_id" />
             <Field label="Invoice address" name="invoice_address" />
-            <Field
-              label="Deposit %"
-              name="deposit_percent"
-              type="number"
-              defaultValue={30}
-            />
-            <Field
-              label="Invoice nett %"
-              name="invoice_nett_percent"
-              type="number"
-              defaultValue={70}
-            />
+            <PartnerBillingFields invoiceNettPercent={70} />
             <label className="text-xs font-medium text-slate-600">
               No-show default
               <select

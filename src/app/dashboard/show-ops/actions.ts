@@ -477,6 +477,7 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
     partner_type: String(formData.get("partner_type") ?? "agency").trim(),
     island: String(formData.get("island") ?? "").trim() || null,
     billing_mode: String(formData.get("billing_mode") ?? "deposit"),
+    can_choose_billing_mode: formData.get("can_choose_billing_mode") === "1",
     deposit_percent: Number(formData.get("deposit_percent") ?? 30),
     invoice_nett_percent: Number(formData.get("invoice_nett_percent") ?? 100),
     email: emailRaw || null,

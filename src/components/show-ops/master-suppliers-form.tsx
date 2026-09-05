@@ -10,6 +10,7 @@ import {
   saveMasterSuppliersAllAction,
 } from "@/app/dashboard/show-ops/actions";
 import { partnerIslands, partnerSearchHaystack } from "@/lib/show-ops/partners";
+import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
 import { NumberInput } from "@/components/ui/number-input";
 
 function stopEnterSubmit(e: KeyboardEvent<HTMLFormElement>) {
@@ -422,21 +423,6 @@ export function MasterSuppliersForm({
               </label>
               <PartnerLocations prefix={prefix} islands={islands} value={s.island} />
               <label className="text-xs font-medium text-slate-600">
-                Billing
-                <select name={`${prefix}billing_mode`} defaultValue={s.billing_mode} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-                  <option value="deposit">Deposit %</option>
-                  <option value="invoice">Invoice nett</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                Deposit %
-                <NumberInput name={`${prefix}deposit_percent`} defaultValue={s.deposit_percent} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                Invoice nett %
-                <NumberInput name={`${prefix}invoice_nett_percent`} defaultValue={s.invoice_nett_percent} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
                 Sale rate
                 <select name={`${prefix}sale_rate_id`} defaultValue={s.sale_rate_id ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
                   <option value="">— none —</option>
@@ -448,6 +434,10 @@ export function MasterSuppliersForm({
                   ))}
                 </select>
               </label>
+              <PartnerBillingFields
+                prefix={prefix} billingMode={s.billing_mode} depositPercent={s.deposit_percent}
+                invoiceNettPercent={s.invoice_nett_percent} canChoose={Boolean(s.can_choose_billing_mode)}
+                invoiceRate={
               <label className="text-xs font-medium text-slate-600">
                 Invoice rate
                 <select name={`${prefix}invoice_rate_id`} defaultValue={s.invoice_rate_id ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
@@ -461,19 +451,8 @@ export function MasterSuppliersForm({
                   ))}
                 </select>
               </label>
-              <label className="flex items-start gap-2 self-end pb-2 text-xs text-slate-600">
-                <input
-                  type="checkbox"
-                  name={`${prefix}can_choose_billing_mode`}
-                  value="1"
-                  defaultChecked={Boolean(s.can_choose_billing_mode)}
-                  className="mt-0.5"
-                />
-                <span>
-                  Let the desk pick deposit or invoice per booking
-                  <span className="block text-slate-400">Off = every booking uses the billing set above.</span>
-                </span>
-              </label>
+                }
+              />
               <label className="text-xs font-medium text-slate-600">
                 No-show default
                 <select
