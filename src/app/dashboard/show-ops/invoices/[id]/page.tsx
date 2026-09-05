@@ -11,7 +11,7 @@ import { InvoiceEditor } from "@/components/show-ops/invoice-editor";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
@@ -25,7 +25,8 @@ export default async function InvoicePrintPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("invoices");
+  if (!roleAtLeast(ctx.role, "finance")) notFound();
   if (!hasShowOpsModule(ctx.config, ctx.tier, "invoices")) {
     return <p className="text-sm text-slate-600">Invoices are not enabled for this workspace.</p>;
   }
@@ -53,11 +54,12 @@ export default async function InvoicePrintPage({
     .from("show_invoice_lines")
     .select("*")
     .eq("invoice_id", id)
+    .eq("business_id", ctx.business.id)
     .order("guest_name");
 
   const bookingIds = [...new Set((lines ?? []).map((l) => l.booking_id).filter(Boolean))];
   const { data: bookings } = bookingIds.length
-    ? await ctx.supabase.from("show_bookings").select("id,show_date,no_show_proof_path").in("id", bookingIds)
+    ? await ctx.supabase.from("show_bookings").select("id,show_date,no_show_proof_path").eq("business_id", ctx.business.id).in("id", bookingIds)
     : { data: [] as { id: string; show_date: string; no_show_proof_path: string | null }[] };
   const dateByBooking = new Map((bookings ?? []).map((b) => [b.id, b.show_date]));
   const proofByBooking = new Map<string, string>();
@@ -104,6 +106,11 @@ export default async function InvoicePrintPage({
                 ← All invoices
               </Link>
               <PrintButton />
+              {canEmail ? (
+                <a href={`/dashboard/show-ops/invoices/${id}/pdf`} className={SHOW_OPS_GHOST_BTN}>
+                  Download PDF
+                </a>
+              ) : null}
               {!inv.paid && !inv.voided ? (
                 <form action={markInvoicePaidAction}>
                   <input type="hidden" name="invoice_id" value={inv.id} />
@@ -197,7 +204,7 @@ export default async function InvoicePrintPage({
               />
             </label>
             {canEmail ? (
-              <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Email invoice</SubmitOnce>
+              <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Email invoice PDF</SubmitOnce>
             ) : (
               <p className="text-sm text-amber-800">Issue the invoice first, then email.</p>
             )}

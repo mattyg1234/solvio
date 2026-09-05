@@ -169,6 +169,7 @@ export async function sendShowOpsInvoiceEmail(opts: {
   totalAmount: number;
   currency: ShowOpsCurrency;
   paid: boolean;
+  invoiceAttachment: { filename: string; content: string };
   lines: Array<{
     showDate: string;
     guestName: string;
@@ -213,19 +214,21 @@ export async function sendShowOpsInvoiceEmail(opts: {
         `${l.showDate}  ${l.guestName}  ${l.bookingRef}  ${l.ticketNumber || "—"}  ${money(l.lineTotal)}`,
     )
     .join("\n");
+  const cc = filterShowOpsOutboundTo(opts.cc || "").filter((address) => address !== to);
 
   const { data, error } = await client.emails.send({
     from: fromAddr(),
     to,
-    cc: opts.cc && opts.cc.includes("@") && opts.cc.toLowerCase() !== to.toLowerCase() ? opts.cc : undefined,
+    cc: cc.length ? cc : undefined,
     replyTo: opts.replyTo && opts.replyTo.includes("@") ? opts.replyTo : undefined,
     subject,
+    attachments: [opts.invoiceAttachment],
     html: `
       <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:720px;margin:0 auto;color:#0f172a">
         <p style="font-size:16px">Hello ${escapeHtml(opts.supplierName)},</p>
         <p style="font-size:15px;line-height:1.5">
           Please find invoice <strong>${escapeHtml(opts.verifactuNumber)}</strong> from
-          ${escapeHtml(opts.merchantName)} for ${escapeHtml(opts.periodStart)} to ${escapeHtml(opts.periodEnd)}.
+          ${escapeHtml(opts.merchantName)} for ${escapeHtml(opts.periodStart)} to ${escapeHtml(opts.periodEnd)}. The invoice PDF is attached.
         </p>
         <p style="font-size:13px;color:#64748b;margin:16px 0 8px">
           Invoice date ${escapeHtml(opts.invoiceDate)}
@@ -237,7 +240,7 @@ export async function sendShowOpsInvoiceEmail(opts: {
           <thead>
             <tr style="text-align:left;color:#64748b;font-size:11px;text-transform:uppercase">
               <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1">Date</th>
-              <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1">Guest</th>
+              <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1">Description</th>
               <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1">Ref</th>
               <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1">Ticket</th>
               <th style="padding:6px 8px;border-bottom:2px solid #cbd5e1;text-align:right">Adult nett</th>

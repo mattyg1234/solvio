@@ -3208,88 +3208,64 @@ export async function retryVerifactuAction(formData: FormData): Promise<void> {
 
 export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsRole("finance");
+  const { canSeeShowOpsPage } = await import("@/lib/show-ops/nav");
+  if (!canSeeShowOpsPage(ctx.role, ctx.allowedPages, "invoices")) throw new Error("Invoice page access is required.");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const overrideTo = String(formData.get("to") ?? "").trim().toLowerCase();
   if (!id) throw new Error("Invoice required.");
 
-  const { data: inv } = await ctx.supabase
-    .from("show_invoices")
-    .select("*")
-    .eq("id", id)
-    .eq("business_id", ctx.business.id)
-    .maybeSingle();
-  if (!inv) throw new Error("Invoice not found.");
-  if (inv.voided) throw new Error("Cannot email a voided invoice.");
-  if (inv.status !== "issued") {
-    throw new Error("Issue the invoice first, then email it.");
-  }
-  const invoiceNumber = String(inv.invoice_number || inv.verifactu_number || "").trim();
-  if (!invoiceNumber) {
-    throw new Error("This invoice has no number yet — issue it first.");
-  }
-
+  const { loadInvoiceDelivery } = await import("@/lib/show-ops/invoice-delivery");
+  const { invoice: inv, lines, bytes, filename } = await loadInvoiceDelivery(ctx.supabase, ctx.business.id, id);
+  const invoiceNumber = String(inv.invoice_number || inv.verifactu_number);
   let to = overrideTo;
   if (!to && inv.supplier_id) {
-    const { data: supplier } = await ctx.supabase
+    const { data: supplier, error } = await ctx.supabase
       .from("show_suppliers")
       .select("email")
       .eq("id", inv.supplier_id)
       .eq("business_id", ctx.business.id)
       .maybeSingle();
+    if (error) throw new Error("Could not load the supplier email. Nothing was sent.");
     to = String(supplier?.email ?? "").trim().toLowerCase();
   }
   if (!to || !to.includes("@")) {
     throw new Error("Add a supplier email on Master data, or type one on this form.");
   }
-
-  const { data: lines } = await ctx.supabase
-    .from("show_invoice_lines")
-    .select("guest_name,booking_ref,supplier_ticket_number,adult_nett_total,child_nett_total,line_total,booking_id")
-    .eq("invoice_id", id)
-    .eq("business_id", ctx.business.id);
-
-  const bookingIds = [...new Set((lines ?? []).map((l) => l.booking_id).filter(Boolean))];
-  const { data: bookings } = bookingIds.length
-    ? await ctx.supabase.from("show_bookings").select("id,show_date").in("id", bookingIds)
-    : { data: [] as { id: string; show_date: string }[] };
-  const dateByBooking = new Map((bookings ?? []).map((b) => [b.id, b.show_date]));
-
+  const currency = inv.currency;
+  if (currency !== "eur" && currency !== "gbp" && currency !== "usd") throw new Error("Invoice currency is missing or unsupported.");
   const sent = await sendShowOpsInvoiceEmail({
     to,
     cc: ctx.user.email,
     replyTo: ctx.user.email,
-    merchantName: ctx.branding.displayName,
-    supplierName: inv.supplier_name,
+    merchantName: inv.issuer_name || ctx.branding.displayName,
+    supplierName: inv.recipient_name || inv.supplier_name,
     verifactuNumber: invoiceNumber,
-    invoiceDate: inv.invoice_date || new Date().toISOString().slice(0, 10),
+    invoiceDate: inv.invoice_date,
     periodStart: inv.period_start,
     periodEnd: inv.period_end,
     dueDate: inv.due_date,
     totalAmount: Number(inv.total_amount),
-    currency: ctx.config.currency,
+    currency,
     paid: Boolean(inv.paid),
-    lines: (lines ?? []).map((l) => ({
-      showDate: (l.booking_id && dateByBooking.get(l.booking_id)) || "—",
-      guestName: l.guest_name,
-      bookingRef: l.booking_ref,
+    invoiceAttachment: { filename, content: Buffer.from(bytes).toString("base64") },
+    lines: lines.map((l) => ({
+      showDate: l.show_date || inv.invoice_date,
+      guestName: l.description || l.guest_name || "Line",
+      bookingRef: l.booking_ref || "",
       ticketNumber: l.supplier_ticket_number,
-      adultNett: Number(l.adult_nett_total),
-      childNett: Number(l.child_nett_total),
+      adultNett: Number(l.adult_nett_total || 0),
+      childNett: Number(l.child_nett_total || 0),
       lineTotal: Number(l.line_total),
     })),
   });
   if (!sent.ok) throw new Error(sent.message);
 
-  await ctx.supabase
+  const { error: logError } = await ctx.supabase
     .from("show_invoices")
-    .update({
-      emailed_at: new Date().toISOString(),
-      emailed_to: to,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ emailed_at: new Date().toISOString(), emailed_to: to, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("business_id", ctx.business.id);
-
+  if (logError) throw new Error("Invoice email was sent, but its sent status could not be saved. Check delivery before sending again.");
   revalidateShowOps();
   redirect(`/dashboard/show-ops/invoices/${id}?emailed=1`);
 }
