@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
 import { requireShowOpsContext } from "@/lib/show-ops/access";
-import { SHOW_OPS_OUTBOUND_HELD, showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
 /**
  * Browser tab and bookmark name. Operators name their own system, so the
@@ -37,7 +37,7 @@ export default async function ShowOpsLayout({ children }: { children: React.Reac
       ) : null}
       {!showOpsOutboundLive() ? (
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-          {SHOW_OPS_OUTBOUND_HELD} Closes, invoices, tickets and partner mail stay in the app only.
+          Show Ops is in test mode. Emails are only sent to approved test addresses; other recipients stay blocked.
         </p>
       ) : null}
       {children}

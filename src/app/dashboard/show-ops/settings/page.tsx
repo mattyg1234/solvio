@@ -1,9 +1,11 @@
+import { Crown } from "lucide-react";
 import {
   importCsvAction,
   createShowOpsStaffAction,
   resetShowOpsStaffPasswordAction,
   updateShowOpsMemberPagesAction,
   inviteSellerPortalAction,
+  setSellerPartnerAdminAction,
   inviteShowOpsMemberAction,
   removeShowOpsMemberAction,
   updateShowOpsBrandingAction,
@@ -20,7 +22,7 @@ import { NumberInput } from "@/components/ui/number-input";
 export default async function ShowOpsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ seller?: string; sample_sent?: string; sample_error?: string }>;
+  searchParams: Promise<{ seller?: string; seller_error?: string; sample_sent?: string; sample_error?: string }>;
 }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("settings");
@@ -28,7 +30,7 @@ export default async function ShowOpsSettingsPage({
   const [{ data: members }, { data: suppliers }] = await Promise.all([
     ctx.supabase
       .from("show_ops_members")
-      .select("id,user_id,role,supplier_id,created_at,allowed_pages,display_name")
+      .select("id,user_id,role,supplier_id,created_at,allowed_pages,display_name,partner_admin")
       .eq("business_id", ctx.business.id)
       .order("created_at"),
     ctx.supabase.from("show_suppliers").select("id,name").eq("business_id", ctx.business.id).eq("active", true).order("name"),
@@ -251,16 +253,16 @@ export default async function ShowOpsSettingsPage({
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">Seller portals</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Each partner can have several logins (front desk, manager, and so on). Type an email and Solvio sends the
-          link + password automatically. After the first invite, they can add their own colleagues from their seller
-          page — you do not have to create every login.
+          Each partner can have several seller logins. Send a secure one-time sign-in link, then use Make admin
+          to give their manager permission to invite sellers and see organisation sales.
+          Ordinary sellers see only their own bookings and results.
         </p>
         {sp.seller === "sent" ? (
           <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-            Invite emailed — they got the link, email (ID), and password (or a note to use their existing Solvio
-            password).
+            Invitation submitted to the email provider with a secure one-time sign-in link.
           </p>
         ) : null}
+        {sp.seller_error ? <p role="alert" className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">{sp.seller_error}</p> : null}
         <form action={inviteSellerPortalAction} className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="text-sm">
             Partner / supplier
@@ -278,7 +280,7 @@ export default async function ShowOpsSettingsPage({
             <input name="email" type="email" required placeholder="bookings@partner.com" className="mt-1 w-full rounded-lg border px-3 py-2" />
           </label>
           <button type="submit" className="sm:col-span-3 rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2.5 text-sm font-semibold text-white">
-            Email seller link + password
+            Send or resend sign-in link
           </button>
         </form>
         <ul className="mt-4 divide-y text-sm">
@@ -288,15 +290,23 @@ export default async function ShowOpsSettingsPage({
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>
                   {p?.email || m.user_id.slice(0, 8)}{" "}
+                  {m.partner_admin ? <span className="inline-flex items-center gap-1 text-amber-700"><Crown className="h-4 w-4" aria-hidden="true" /> Admin</span> : null}{" "}
                   <span className="text-slate-500">· {supplierName.get(m.supplier_id || "") || "supplier"}</span>
                 </span>
                 {(ctx.isOwner || ctx.role === "admin" || ctx.role === "owner") ? (
+                  <div className="flex items-center gap-3">
+                  <form action={setSellerPartnerAdminAction}>
+                    <input type="hidden" name="member_id" value={m.id} />
+                    <input type="hidden" name="partner_admin" value={m.partner_admin ? "false" : "true"} />
+                    <button type="submit" className="text-xs text-violet-700 hover:underline">{m.partner_admin ? "Remove admin role" : "Make admin"}</button>
+                  </form>
                   <form action={removeShowOpsMemberAction}>
                     <input type="hidden" name="member_id" value={m.id} />
                     <button type="submit" className="text-xs text-rose-700 hover:underline">
                       Revoke
                     </button>
                   </form>
+                  </div>
                 ) : null}
               </li>
             );

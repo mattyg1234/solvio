@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -14,7 +15,8 @@ export default function PartnerPasswordPage() {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    const fd = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
     const password = String(fd.get("password") ?? "");
     const confirm = String(fd.get("confirm") ?? "");
     if (password.length < 8) {
@@ -34,7 +36,9 @@ export default function PartnerPasswordPage() {
         return;
       }
       setMsg("Password updated.");
-      e.currentTarget.reset();
+      form.reset();
+    } catch {
+      setErr("Could not save your password. Please retry.");
     } finally {
       setPending(false);
     }
@@ -42,8 +46,8 @@ export default function PartnerPasswordPage() {
 
   return (
     <form onSubmit={onSubmit} className="max-w-md space-y-3 rounded-2xl bg-white p-6 ring-1 ring-slate-200">
-      <h1 className="text-lg font-semibold text-slate-900">Change password</h1>
-      <p className="text-sm text-slate-600">This is only for your seller page. It does not change office logins.</p>
+      <h1 className="text-lg font-semibold text-slate-900">Set or change your password</h1>
+      <p className="text-sm text-slate-600">Your email link has signed you in. You can set a password for this Solvio account, or continue to your bookings.</p>
       <label className="block text-sm">
         New password
         <PasswordInput id="seller-new-password" name="password" autoComplete="new-password" required minLength={8} className="mt-1" />
@@ -61,6 +65,7 @@ export default function PartnerPasswordPage() {
       >
         {pending ? "Saving…" : "Save password"}
       </button>
+      <Link href="/partner" className="block text-sm font-medium underline">Continue to bookings</Link>
     </form>
   );
 }

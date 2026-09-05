@@ -1,5 +1,6 @@
 "use client";
 
+import { applyTicketType, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
 import { Check, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -33,6 +34,7 @@ import {
 } from "@/lib/show-ops/types";
 
 export type BookingFormProduct = {
+  show_ticket_types?: ShowTicketType[];
   id: string;
   name: string;
   island: string;
@@ -89,6 +91,8 @@ export type BookingFormDefaults = {
   guest_mobile?: string | null;
   guest_email?: string | null;
   product_id?: string | null;
+  ticket_type_id?: string | null;
+  ticket_type_name?: string | null;
   hotel_id?: string | null;
   pickup_stop_id?: string | null;
   supplier_id?: string | null;
@@ -114,8 +118,8 @@ export type BookingFormDefaults = {
 
 type Props = {
   mode: "create" | "edit";
-  action: (formData: FormData) => Promise<{ ok: true; message?: string } | { ok: false; message: string }>;
-  /** Absolute path to navigate after success. Use `{ref}` placeholder for booking ref. */
+  action: (formData: FormData) => Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }>;
+  /** Absolute path to navigate after success. Use `{ref}` for booking ref, or `{id}` for the created seller booking. */
   successPath?: string;
   products: BookingFormProduct[];
   suppliers: BookingFormSupplier[];
@@ -226,6 +230,7 @@ export function ShowOpsBookingForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(error ?? null);
+  const [ticketTypeId, setTicketTypeId] = useState(defaults.ticket_type_id ?? "");
   const [productId, setProductId] = useState(defaults.product_id ?? "");
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
   const [channel, setChannel] = useState(
@@ -274,7 +279,20 @@ export function ShowOpsBookingForm({
     return () => clearTimeout(t);
   }, [productId, showDate]);
 
-  const product = products.find((p) => p.id === productId) ?? null;
+  const baseProduct = products.find((p) => p.id === productId) ?? null;
+  const selectedTicketType = baseProduct?.show_ticket_types?.find((t) => t.id === ticketTypeId) ?? null;
+  const product = useMemo(() => {
+    if (!baseProduct) return null;
+    const pricedProduct = applyTicketType(baseProduct, selectedTicketType);
+    return {
+      ...pricedProduct,
+      transport_available: ticketTransportAvailable(pricedProduct.transport_available, productId, ticketTypeId, mode === "edit" ? {
+        product_id: defaults.product_id,
+        ticket_type_id: defaults.ticket_type_id,
+        transport_required: defaults.transport_required,
+      } : undefined),
+    };
+  }, [baseProduct, selectedTicketType, productId, ticketTypeId, mode, defaults.product_id, defaults.ticket_type_id, defaults.transport_required]);
 
   /*
    * The desk works location → date → ticket type, in that order: an operator on
@@ -491,6 +509,11 @@ export function ShowOpsBookingForm({
             setMsg(res.message || "Save failed");
             return;
           }
+          if (mode === "create" && sellerMode && res.id && successPath?.includes("{id}")) {
+            router.push(successPath.replace("{id}", encodeURIComponent(res.id)).replace("{ref}", encodeURIComponent(res.message ?? "")));
+            router.refresh();
+            return;
+          }
           if (mode === "create") {
             // Read-back panel: the ref and the pick-up the guest is waiting to hear.
             setSaved({
@@ -633,7 +656,7 @@ export function ShowOpsBookingForm({
             </>
           )}
 
-          <FieldLabel className="mt-4">Ticket type</FieldLabel>
+          <FieldLabel className="mt-4">Show</FieldLabel>
           <select
             name="product_id"
             required
@@ -641,6 +664,7 @@ export function ShowOpsBookingForm({
             onChange={(e) => {
               const next = e.target.value;
               setProductId(next);
+              setTicketTypeId("");
               const p = products.find((x) => x.id === next);
               // A hotel from another island cannot survive the show change.
               if (p && hotelId && !hotels.some((h) => h.id === hotelId && h.island === p.island)) {
@@ -652,7 +676,7 @@ export function ShowOpsBookingForm({
             disabled={moneyLocked}
           >
             <option value="">
-              {showsForNight.length ? "Select a ticket type" : products.length ? "Nothing runs that night" : "No shows saved yet"}
+              {showsForNight.length ? "Select a show" : products.length ? "Nothing runs that night" : "No shows saved yet"}
             </option>
             {product && !showsForNight.some((p) => p.id === product.id) ? (
               <option value={product.id}>{productPriceLabel(product)}</option>
@@ -666,6 +690,14 @@ export function ShowOpsBookingForm({
           {products.length === 0 ? (
             <p className="mt-1 text-xs text-amber-700">Add shows under Shows in the sidebar before taking a booking.</p>
           ) : null}
+
+          {baseProduct ? <label className="mt-4 block text-sm font-medium">Ticket type
+            <select name="ticket_type_id" value={ticketTypeId} disabled={moneyLocked} onChange={(e) => setTicketTypeId(e.target.value)} className={INPUT}>
+              <option value="">Standard ticket</option>
+              {(baseProduct.show_ticket_types ?? []).filter((t) => t.active || t.id === defaults.ticket_type_id).map((t) => <option key={t.id} value={t.id}>{t.name}{t.active ? "" : " (archived)"}</option>)}
+            </select>
+            {moneyLocked ? <input type="hidden" name="ticket_type_id" value={ticketTypeId} /> : null}
+          </label> : null}
 
           <FieldLabel className="mt-4">Adults</FieldLabel>
           <Stepper name="adults" value={adults} onChange={setAdults} disabled={moneyLocked} />

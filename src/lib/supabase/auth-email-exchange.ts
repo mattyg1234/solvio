@@ -1,3 +1,4 @@
+import { destinationAfterAuth } from "./auth-email-destination";
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -7,19 +8,6 @@ type AuthExchangeResult = { response: NextResponse } | { errorRedirect: NextResp
 
 function loginErrorRedirect(origin: string, message: string): NextResponse {
   return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(message)}`);
-}
-
-function destinationAfterAuth(type: EmailOtpType | null, origin: string, nextPath: string | null): string {
-  if (type === "recovery") {
-    return `${origin}/dashboard/settings?password=reset`;
-  }
-  if (type === "signup" || type === "email") {
-    return `${origin}/dashboard/onboarding`;
-  }
-  if (nextPath && nextPath.startsWith("/")) {
-    return `${origin}${nextPath}`;
-  }
-  return `${origin}/dashboard`;
 }
 
 /** Server-side email auth — works when the user opens the link on a different device than signup/reset. */

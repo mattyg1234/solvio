@@ -95,8 +95,6 @@ export async function sendShowOpsSellerInviteEmail(opts: {
   merchantName: string;
   loginUrl: string;
   email: string;
-  password: string | null;
-  existingAccount: boolean;
   invitedBy?: string | null;
 }): Promise<NotificationSendResult> {
   const client = resendClient();
@@ -109,15 +107,6 @@ export async function sendShowOpsSellerInviteEmail(opts: {
   if (!to.includes("@")) {
     return { ok: false, reason: "invalid_recipient", message: "Invalid email address." };
   }
-
-  const passwordBlock = opts.existingAccount
-    ? `<p style="font-size:15px;line-height:1.5">Sign in with your existing Solvio password. If you have forgotten it, use Forgot password on the login page.</p>`
-    : `<p style="font-size:15px">Your login:</p>
-        <p style="font-family:ui-monospace,monospace;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;font-size:14px">
-          Email (ID): ${escapeHtml(opts.email)}<br />
-          Password: ${escapeHtml(opts.password || "")}
-        </p>
-        <p style="font-size:13px;color:#64748b">You can change this password on your booking page after you sign in.</p>`;
 
   const who = opts.invitedBy?.trim()
     ? `${opts.invitedBy.trim()} at ${opts.sellerName}`
@@ -134,18 +123,16 @@ export async function sendShowOpsSellerInviteEmail(opts: {
           ${escapeHtml(who)} has given you a seller page for ${escapeHtml(opts.sellerName)} to make bookings with
           ${escapeHtml(opts.merchantName)} at your contracted rate.
         </p>
-        ${passwordBlock}
+        <p style="font-size:15px;line-height:1.5">Use the secure one-time link below to sign in as ${escapeHtml(opts.email)}. You can then set a password if you wish. Existing account passwords remain unchanged.</p>
         <p style="margin:24px 0">
           <a href="${escapeHtml(opts.loginUrl)}"
              style="display:inline-block;background:#0f766e;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600">
-            Open your booking page
+            Sign in to your booking page
           </a>
         </p>
       </div>
     `,
-    text: opts.existingAccount
-      ? `${who} seller page for ${opts.sellerName}: ${opts.loginUrl}\nSign in with your existing Solvio password (${opts.email}).\n`
-      : `${who} seller page for ${opts.sellerName}: ${opts.loginUrl}\nEmail (ID): ${opts.email}\nPassword: ${opts.password}\nYou can change the password after you sign in.\n`,
+    text: `${who} invited you to the seller page for ${opts.sellerName}.\nSign in as ${opts.email} with this secure one-time link: ${opts.loginUrl}\nYou can then set a password if you wish. Existing account passwords remain unchanged.\nIf the link expires, ask your administrator to resend the invitation.`,
   });
 
   if (error) {

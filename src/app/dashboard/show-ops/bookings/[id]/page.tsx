@@ -54,7 +54,7 @@ export default async function EditBookingPage({
         .order("name"),
       ctx.supabase
         .from("show_products")
-        .select("id,name,island,adult_price,child_price,infant_price,adult_price_no_transport,child_price_no_transport,infant_price_no_transport,adult_nett,child_nett,transport_available,run_weekdays,show_time")
+        .select("id,name,island,adult_price,child_price,infant_price,adult_price_no_transport,child_price_no_transport,infant_price_no_transport,adult_nett,child_nett,transport_available,run_weekdays,show_time,show_ticket_types(*)")
         .eq("business_id", biz)
         .eq("active", true)
         .order("name"),
@@ -208,6 +208,8 @@ export default async function EditBookingPage({
         config={ctx.config}
         moneyLocked={Boolean(booking.invoice_id)}
         defaults={{
+          ticket_type_id: booking.ticket_type_id,
+          ticket_type_name: booking.ticket_type_name,
           id: booking.id,
           show_date: booking.show_date,
           guest_name: booking.guest_name,

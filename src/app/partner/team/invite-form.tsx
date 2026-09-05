@@ -26,6 +26,8 @@ export function SellerColleagueInviteForm() {
       form.reset();
       setOk(true);
       router.refresh();
+    } catch {
+      setErr("We could not send the invitation. Please try again.");
     } finally {
       setPending(false);
     }
@@ -35,7 +37,7 @@ export function SellerColleagueInviteForm() {
     <form onSubmit={onSubmit} className="mt-4 space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="block flex-1 text-sm">
-          Colleague email
+          Seller email
           <input
             name="email"
             type="email"
@@ -49,13 +51,18 @@ export function SellerColleagueInviteForm() {
           disabled={pending}
           className="rounded-xl bg-[var(--show-ops-primary,#0f766e)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
-          {pending ? "Sending…" : "Email login"}
+          {pending ? "Sending…" : "Send invitation"}
         </button>
       </div>
-      {err ? <p className="text-sm text-rose-700">{err}</p> : null}
+      {err ? (
+        <p role="alert" className="text-sm text-rose-700">
+          {err}
+        </p>
+      ) : null}
       {ok ? (
-        <p className="text-sm text-emerald-800">
-          Invite sent — they got the link, email, and a temporary password.
+        <p role="status" className="text-sm text-emerald-800">
+          Invitation email sent with a one-time sign-in link for your
+          organisation.
         </p>
       ) : null}
     </form>

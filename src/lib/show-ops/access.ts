@@ -146,6 +146,7 @@ async function loadWorkspaces(
 }
 
 export type ShowOpsSellerContext = ShowOpsContext & {
+  partnerAdmin: boolean;
   supplier: Pick<
     ShowSupplier,
     "id" | "name" | "partner_type" | "billing_mode" | "deposit_percent" | "invoice_nett_percent"
@@ -158,7 +159,7 @@ async function loadSellerMembership(
 ) {
   const { data } = await supabase
     .from("show_ops_members")
-    .select("business_id,supplier_id")
+    .select("business_id,supplier_id,partner_admin")
     .eq("user_id", userId)
     .eq("role", "seller")
     .not("supplier_id", "is", null)
@@ -203,6 +204,7 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
     defaultSupplierId: supplier.id,
     workspaces: [],
     supplier,
+    partnerAdmin: mem.partner_admin === true,
   };
 }
 
@@ -305,5 +307,12 @@ export async function requireShowOpsPage(key: ShowOpsPageKey): Promise<ShowOpsCo
     const target = SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === fallback);
     redirect(target?.href ?? "/dashboard");
   }
+  return ctx;
+}
+
+export async function requirePartnerAdmin(): Promise<ShowOpsSellerContext> {
+  const ctx = await requireShowOpsSellerContext();
+  const { assertPartnerAdmin } = await import("@/lib/show-ops/partner-invitations");
+  assertPartnerAdmin(ctx.partnerAdmin);
   return ctx;
 }

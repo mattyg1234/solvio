@@ -1,59 +1,98 @@
-import { removeSellerColleagueAction } from "@/app/dashboard/show-ops/actions";
-import { requireShowOpsSellerContext } from "@/lib/show-ops/access";
-import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { Crown } from "lucide-react";
 
+import { removeSellerColleagueAction } from "@/app/dashboard/show-ops/actions";
+import { requirePartnerAdmin } from "@/lib/show-ops/access";
 import { SellerColleagueInviteForm } from "./invite-form";
 
-export default async function PartnerTeamPage() {
-  const ctx = await requireShowOpsSellerContext();
-  const admin = createSupabaseServiceRoleClient();
-  const { data: members } = await admin
-    .from("show_ops_members")
-    .select("id,user_id,created_at")
-    .eq("business_id", ctx.business.id)
-    .eq("supplier_id", ctx.supplier.id)
-    .eq("role", "seller")
-    .order("created_at");
+type TeamMember = {
+  member_id: string;
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  partner_admin: boolean;
+};
 
-  const ids = (members ?? []).map((m) => m.user_id);
-  const { data: profiles } = ids.length
-    ? await admin.from("profiles").select("id,email,full_name").in("id", ids)
-    : { data: [] as { id: string; email: string | null; full_name: string | null }[] };
-  const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+export default async function PartnerTeamPage() {
+  const ctx = await requirePartnerAdmin();
+  const { data, error } = await ctx.supabase.rpc("show_ops_partner_team", {
+    p_business_id: ctx.business.id,
+    p_supplier_id: ctx.supplier.id,
+  });
+  const members = (data ?? []) as TeamMember[];
 
   return (
-    <div className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-slate-200">
+    <div className="space-y-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-6">
       <div>
-        <h1 className="text-lg font-semibold text-slate-900">Your office logins</h1>
+        <h1 className="text-lg font-semibold text-slate-900">
+          Your organisation’s sellers
+        </h1>
         <p className="mt-1 text-sm text-slate-600">
-          Add people at {ctx.supplier.name} — front desk, manager, whoever books. Type an email and Solvio sends
-          their own login. They book at your contracted price. They cannot see other agencies or the MHT office.
+          Invite sellers to {ctx.supplier.name}. Each receives a private sign-in
+          link and can see only their own bookings and results. As an admin, you
+          can see the organisation’s results and manage seller access.
         </p>
       </div>
       <SellerColleagueInviteForm />
-      <ul className="divide-y text-sm">
-        {(members ?? []).map((m) => {
-          const p = byId.get(m.user_id);
-          const mine = m.user_id === ctx.user.id;
-          return (
-            <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-              <span>
-                {p?.email || m.user_id.slice(0, 8)}
-                {mine ? <span className="text-slate-500"> · you</span> : null}
-              </span>
-              {!mine ? (
-                <form action={removeSellerColleagueAction}>
-                  <input type="hidden" name="member_id" value={m.id} />
-                  <button type="submit" className="text-xs text-rose-700 hover:underline">
-                    Remove
-                  </button>
-                </form>
-              ) : null}
-            </li>
-          );
-        })}
-        {!members?.length ? <li className="py-2 text-slate-500">No logins yet.</li> : null}
-      </ul>
+      {error ? (
+        <p role="alert" className="text-sm text-rose-700">
+          We could not load your team. Please try again.
+        </p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {members.map((member) => {
+            const mine = member.user_id === ctx.user.id;
+            return (
+              <li
+                key={member.member_id}
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 break-all font-medium text-slate-900">
+                    {member.full_name || member.email || "Seller"}
+                    {mine ? (
+                      <span className="font-normal text-slate-500">· you</span>
+                    ) : null}
+                    {member.partner_admin ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+                        <Crown aria-hidden="true" className="h-3.5 w-3.5" />{" "}
+                        Admin
+                      </span>
+                    ) : null}
+                  </p>
+                  {member.full_name && member.email ? (
+                    <p className="mt-1 break-all text-xs text-slate-500">
+                      {member.email}
+                    </p>
+                  ) : null}
+                </div>
+                {!mine && !member.partner_admin ? (
+                  <form action={removeSellerColleagueAction}>
+                    <input
+                      type="hidden"
+                      name="member_id"
+                      value={member.member_id}
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                      aria-label={`Remove access for ${member.full_name || member.email || "seller"}`}
+                    >
+                      Remove access
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            );
+          })}
+          {!members.length ? (
+            <li className="py-3 text-slate-500">No seller logins found.</li>
+          ) : null}
+        </ul>
+      )}
+      <p className="text-xs text-slate-500">
+        Removing a seller ends their access and keeps their booking history.
+        Contact the office to change organisation administrators.
+      </p>
     </div>
   );
 }

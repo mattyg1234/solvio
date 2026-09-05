@@ -1,12 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { redirect } from "next/navigation";
 
 import { cookies } from "next/headers";
 
 import {
   requireShowOpsContext,
+  requirePartnerAdmin,
   requireShowOpsRole,
   requireShowOpsSellerContext,
   requireShowOpsStaffOrSeller,
@@ -42,6 +44,8 @@ import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticke
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
+import { applyTicketType, ticketBookingSnapshotPatch, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
+import { invitePartnerSeller, assertRemovableSeller } from "@/lib/show-ops/partner-invitations";
 import { partnerBookingErrorMessage } from "@/lib/show-ops/partner-booking";
 import { genericSeedConfig, mhtSeedConfig, showOpsCurrencyFor, slugifyQuestionId } from "@/lib/show-ops/config";
 import {
@@ -767,12 +771,14 @@ export async function getNightLoadAction(
   if (!product) return { ok: false, message: "Show not found." };
 
   const [{ data: bookings }, { data: order }, { data: closes }] = await Promise.all([
-    db
-      .from("show_bookings")
-      .select("adults,children,infants,transport_required,product_id,island")
-      .eq("business_id", ctx.business.id)
-      .eq("show_date", date)
-      .is("cancelled_at", null),
+    collectPartnerPages<{ adults: number; children: number; infants: number; transport_required: boolean; product_id: string | null; island: string }>(async (offset, limit) => {
+      const { data, error } = await db.from("show_bookings")
+        .select("adults,children,infants,transport_required,product_id,island")
+        .eq("business_id", ctx.business.id).eq("show_date", date).is("cancelled_at", null)
+        .order("id").range(offset, offset + limit - 1);
+      if (error) throw new Error("Could not check current capacity. Please retry.");
+      return data ?? [];
+    }).then((data) => ({ data })),
     db
       .from("show_bus_orders")
       .select("seats_ordered")
@@ -851,7 +857,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   const { data: bookings } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at",
+      "id,ticket_type_id,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at",
     )
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
@@ -863,21 +869,28 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
     ? await ctx.supabase.from("show_suppliers").select("*").eq("business_id", ctx.business.id).in("id", supplierIds)
     : { data: [] as Array<Record<string, unknown>> };
   const supplierById = new Map((suppliers ?? []).map((s) => [s.id as string, s]));
+  const { data: ticketTypes, error: typesError } = await ctx.supabase.from("show_ticket_types").select("*").eq("business_id", ctx.business.id).eq("product_id", productId);
+  if (typesError) throw new Error("Could not load ticket prices. Nothing repriced.");
+  const byTicketType = new Map((ticketTypes ?? []).map((t) => [t.id, t as ShowTicketType]));
+  if ((bookings ?? []).some((b) => b.ticket_type_id && !byTicketType.has(b.ticket_type_id))) throw new Error("A booking has an unavailable ticket type. Review it before repricing.");
   const now = new Date().toISOString();
 
   for (const b of bookings ?? []) {
     const supplier = b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null;
+    const pricedProduct = applyTicketType(product as import("@/lib/show-ops/types").ShowProduct, b.ticket_type_id ? byTicketType.get(b.ticket_type_id)! : null);
     const money = computeBookingMoney({
       adults: b.adults,
       children: b.children,
       infants: b.infants,
-      product: product as never,
+      product: pricedProduct as never,
       supplier: supplier as never,
       transportRequired: Boolean(b.transport_required),
       transportSupplement: ctx.config.transport_supplement,
     });
     const patch: Record<string, unknown> = {
-      show_name: product.name,
+      show_name: pricedProduct.name,
+      ticket_type_name: b.ticket_type_id ? byTicketType.get(b.ticket_type_id)!.name : null,
+      pricing_snapshot: { ...money.pricing_snapshot, priced_at: now },
       island: product.island,
       total_cost: money.total_cost,
       deposit_amount: money.deposit_amount,
@@ -1513,9 +1526,12 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
 async function buildBookingFields(
   ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
   formData: FormData,
+  existingTicketTypeId?: string | null,
+  existingTransport?: { product_id: string | null; ticket_type_id: string | null; transport_required: boolean },
 ) {
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const productId = String(formData.get("product_id") ?? "").trim() || null;
+  const ticketTypeId = String(formData.get("ticket_type_id") ?? "").trim() || null;
   const hotelId = String(formData.get("hotel_id") ?? "").trim() || null;
   const adultsParsed = parsePaxCount(formData.get("adults") ?? 0, "Adults");
   const childrenParsed = parsePaxCount(formData.get("children") ?? 0, "Children");
@@ -1534,7 +1550,7 @@ async function buildBookingFields(
   const transport = pickupKind === "bus";
   const dietary = String(formData.get("dietary_required") ?? "") === "1";
 
-  const [{ data: supplier }, { data: product }, { data: hotel }] = await Promise.all([
+  const [{ data: supplier }, { data: baseProduct }, { data: hotel }] = await Promise.all([
     supplierId
       ? ctx.supabase.from("show_suppliers").select("*").eq("id", supplierId).eq("business_id", ctx.business.id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -1546,12 +1562,23 @@ async function buildBookingFields(
       : Promise.resolve({ data: null }),
   ]);
 
+  let ticketType: ShowTicketType | null = null;
+  if (ticketTypeId) {
+    const { data, error } = await ctx.supabase.from("show_ticket_types").select("*")
+      .eq("id", ticketTypeId).eq("business_id", ctx.business.id).eq("product_id", productId ?? "").maybeSingle();
+    if (error || !data || (!data.active && ticketTypeId !== existingTicketTypeId)) {
+      return { ok: false as const, error: "This ticket type is unavailable for the selected show. Choose an active ticket type." };
+    }
+    ticketType = data as ShowTicketType;
+  }
+  const product = baseProduct ? applyTicketType(baseProduct as import("@/lib/show-ops/types").ShowProduct, ticketType) : null;
+
   const show_date = String(formData.get("show_date") ?? "").trim();
   const guest_name = String(formData.get("guest_name") ?? "").trim();
   if (!show_date || !guest_name) return { ok: false as const, error: "Guest name and show date required." };
   if (!product) return { ok: false as const, error: "Select a show / ticket product." };
 
-  if (transport && !product.transport_available) {
+  if (transport && !ticketTransportAvailable(product.transport_available, productId, ticketTypeId, existingTransport)) {
     return { ok: false as const, error: "This show does not include transport." };
   }
 
@@ -1676,6 +1703,8 @@ async function buildBookingFields(
       supplier_name: supplier?.name ?? null,
       billing_mode: money.billing_mode,
       product_id: productId,
+      ticket_type_id: ticketTypeId,
+      ticket_type_name: ticketType?.name ?? null,
       show_name: product.name,
       island: product.island,
       adults,
@@ -1797,7 +1826,7 @@ export async function updateBookingAction(
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
+      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -1805,7 +1834,8 @@ export async function updateBookingAction(
   if (!existing) return { ok: false, message: "Booking not found." };
   if (existing.cancelled_at) return { ok: false, message: "This booking is cancelled." };
 
-  const built = await buildBookingFields(ctx, formData);
+  if (!formData.has("ticket_type_id")) formData.set("ticket_type_id", existing.ticket_type_id ?? "");
+  const built = await buildBookingFields(ctx, formData, existing.ticket_type_id, existing);
   if (!built.ok) return { ok: false, message: built.error };
 
   const moneyTouched =
@@ -1813,6 +1843,7 @@ export async function updateBookingAction(
     existing.children !== built.fields.children ||
     existing.infants !== built.fields.infants ||
     existing.product_id !== built.fields.product_id ||
+    existing.ticket_type_id !== built.fields.ticket_type_id ||
     existing.supplier_id !== built.fields.supplier_id ||
     existing.transport_required !== built.fields.transport_required;
 
@@ -1861,7 +1892,11 @@ export async function updateBookingAction(
 
   const patch = {
     ...restFields,
-    ...(moneyTouched ? { pricing_snapshot: freshSnapshot } : {}),
+    ...ticketBookingSnapshotPatch(existing, {
+      show_name: restFields.show_name,
+      ticket_type_name: restFields.ticket_type_name,
+      pricing_snapshot: freshSnapshot,
+    }, moneyTouched),
     total_cost,
     deposit_amount,
     nett_total,
@@ -1935,101 +1970,69 @@ export async function cancelBookingFormAction(formData: FormData): Promise<void>
   redirect("/dashboard/show-ops/bookings?cancelled=1");
 }
 
-function generateSellerPassword(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const bytes = new Uint8Array(10);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (const b of bytes) out += alphabet[b % alphabet.length];
-  return `Sell-${out}`;
-}
-
-async function findAuthUserIdByEmail(
-  admin: ReturnType<typeof import("@/lib/supabase/server").createSupabaseServiceRoleClient>,
-  email: string,
-): Promise<string | null> {
-  for (let page = 1; page <= 20; page++) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) throw new Error(error.message);
-    const hit = data.users.find((u) => (u.email || "").toLowerCase() === email);
-    if (hit) return hit.id;
-    if (data.users.length < 200) break;
-  }
-  return null;
-}
-
-async function provisionSellerPortalLogin(opts: {
-  businessId: string;
-  supplierId: string;
-  supplierName: string;
-  email: string;
-}): Promise<{ password: string | null }> {
+async function provisionAndEmailSeller(opts: {
+  businessId: string; supplierId: string; supplierName: string;
+  email: string; merchantName: string; invitedBy?: string;
+  ctx: import("@/lib/show-ops/access").ShowOpsContext;
+}): Promise<{ userId: string }> {
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
-  const admin = createSupabaseServiceRoleClient();
-  const existingId = await findAuthUserIdByEmail(admin, opts.email);
-  let userId = existingId;
-  let password: string | null = null;
-
-  if (!userId) {
-    password = generateSellerPassword();
-    const { data, error } = await admin.auth.admin.createUser({
-      email: opts.email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: opts.supplierName, show_ops_seller: true },
-    });
-    if (error || !data.user) throw new Error(error?.message || "Could not create seller login.");
-    userId = data.user.id;
-    await admin.from("profiles").upsert({ id: userId, email: opts.email, full_name: opts.supplierName });
-  } else {
-    const { data: existingMem } = await admin
-      .from("show_ops_members")
-      .select("role,supplier_id")
-      .eq("business_id", opts.businessId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (existingMem && existingMem.role !== "seller") {
-      throw new Error("That email is already office staff on this account.");
-    }
-    if (existingMem?.role === "seller" && existingMem.supplier_id && existingMem.supplier_id !== opts.supplierId) {
-      throw new Error("That email already has a portal for another partner.");
-    }
-  }
-
-  const { error: memErr } = await admin.from("show_ops_members").upsert(
-    {
-      business_id: opts.businessId,
-      user_id: userId,
-      role: "seller",
-      supplier_id: opts.supplierId,
-    },
-    { onConflict: "business_id,user_id" },
-  );
-  if (memErr) throw new Error(memErr.message);
-  return { password };
-}
-
-async function emailSellerPortalInvite(opts: {
-  email: string;
-  supplierName: string;
-  merchantName: string;
-  password: string | null;
-  invitedBy?: string | null;
-}): Promise<void> {
   const { getSiteUrl } = await import("@/lib/site-url");
-  const siteUrl = (await getSiteUrl()).replace(/\/$/, "");
-  const sent = await sendShowOpsSellerInviteEmail({
-    to: opts.email,
-    sellerName: opts.supplierName,
-    merchantName: opts.merchantName,
-    loginUrl: `${siteUrl}/login?next=/partner`,
-    email: opts.email,
-    password: opts.password,
-    existingAccount: !opts.password,
-    invitedBy: opts.invitedBy,
+  const admin = createSupabaseServiceRoleClient();
+  return invitePartnerSeller({ ...opts, siteUrl: await getSiteUrl() }, {
+    deliveryAllowed: () => filterShowOpsOutboundTo(opts.email).length > 0,
+    assertAuthorized: async () => {
+      const client = opts.ctx.supabase;
+      // Fresh authenticated reads deliberately bypass the request-cached context.
+      const { data: owner, error: ownerError } = await client.from("businesses").select("owner_id")
+        .eq("id", opts.businessId).maybeSingle();
+      if (ownerError) throw new Error("Could not verify invitation permission. Please retry.");
+      if (owner?.owner_id === opts.ctx.user.id) return;
+      const { data: member, error } = await client.from("show_ops_members")
+        .select("role,supplier_id,partner_admin").eq("business_id", opts.businessId)
+        .eq("user_id", opts.ctx.user.id).maybeSingle();
+      if (error || !member || !( ["office", "finance", "admin"].includes(member.role)
+        || (member.role === "seller" && member.partner_admin === true && member.supplier_id === opts.supplierId))) {
+        throw new Error("Your invitation permission has changed. Refresh and ask your administrator for access.");
+      }
+    },
+    findUser: async (email) => {
+      for (let page = 1; ; page++) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+        if (error) throw new Error("Could not check the invitation account. Please retry.");
+        const hit = data.users.find((u) => u.email?.toLowerCase() === email);
+        if (hit) return hit.id;
+        if (data.users.length < 200) return null;
+      }
+    },
+    memberships: async (userId) => {
+      const { data, error } = await admin.from("show_ops_members")
+        .select("business_id,supplier_id,role").eq("user_id", userId);
+      if (error) throw new Error("Could not verify organisation membership. Please retry.");
+      const { data: owned, error: ownedError } = await admin.from("businesses").select("id").eq("owner_id", userId).limit(1);
+      if (ownedError) throw new Error("Could not verify account access. Please retry.");
+      if (owned?.length) throw new Error("That email already belongs to a business owner account.");
+      return data ?? [];
+    },
+    generateLink: async (email) => {
+      const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
+      if (error || !data.user || !data.properties?.hashed_token) throw new Error("Could not create a sign-in link. Please retry.");
+      const verificationType: string = data.properties.verification_type;
+      if (verificationType !== "signup" && verificationType !== "email" && verificationType !== "magiclink") {
+        throw new Error("Could not create the expected sign-in link. Please retry.");
+      }
+      return { userId: data.user.id, tokenHash: data.properties.hashed_token, verificationType };
+    },
+    addMember: async (userId) => {
+      const { error } = await opts.ctx.supabase.from("show_ops_members").insert({
+        business_id: opts.businessId, user_id: userId, role: "seller", supplier_id: opts.supplierId, partner_admin: false,
+      });
+      if (error) throw new Error("Could not add the seller. Please retry or ask the office to check their existing access.");
+    },
+    send: (loginUrl) => sendShowOpsSellerInviteEmail({
+      to: opts.email, sellerName: opts.supplierName, merchantName: opts.merchantName,
+      loginUrl, email: opts.email, invitedBy: opts.invitedBy,
+    }),
   });
-  if (!sent.ok && sent.message.includes("test mode")) return;
-  if (!sent.ok) throw new Error(sent.message);
 }
 
 export async function inviteSellerPortalAction(formData: FormData): Promise<void> {
@@ -2047,18 +2050,15 @@ export async function inviteSellerPortalAction(formData: FormData): Promise<void
     .maybeSingle();
   if (!supplier) throw new Error("Supplier not found.");
 
-  const { password } = await provisionSellerPortalLogin({
-    businessId: ctx.business.id,
-    supplierId: supplier.id,
-    supplierName: supplier.name,
-    email,
-  });
-  await emailSellerPortalInvite({
-    email,
-    supplierName: supplier.name,
-    merchantName: ctx.branding.displayName,
-    password,
-  });
+  try {
+    await provisionAndEmailSeller({
+      ctx,
+      businessId: ctx.business.id, supplierId: supplier.id, supplierName: supplier.name,
+      email, merchantName: ctx.branding.displayName,
+    });
+  } catch (error) {
+    redirect(`/dashboard/show-ops/settings?seller_error=${encodeURIComponent(error instanceof Error ? error.message : "Invitation not sent. Please retry.")}`);
+  }
 
   revalidateShowOps();
   redirect("/dashboard/show-ops/settings?seller=sent");
@@ -2067,56 +2067,51 @@ export async function inviteSellerPortalAction(formData: FormData): Promise<void
 export async function inviteSellerColleagueAction(
   formData: FormData,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const ctx = await requireShowOpsSellerContext();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!email || !email.includes("@")) return { ok: false, message: "Type a valid email." };
-  if (ctx.user.email && email === ctx.user.email.toLowerCase()) {
-    return { ok: false, message: "That is already your login." };
-  }
-
   try {
-    const { password } = await provisionSellerPortalLogin({
-      businessId: ctx.business.id,
-      supplierId: ctx.supplier.id,
-      supplierName: ctx.supplier.name,
-      email,
+    const ctx = await requirePartnerAdmin();
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: "Type a valid email." };
+    if (email === ctx.user.email?.toLowerCase()) return { ok: false, message: "That is already your login." };
+    await provisionAndEmailSeller({
+      ctx,
+      businessId: ctx.business.id, supplierId: ctx.supplier.id, supplierName: ctx.supplier.name,
+      email, merchantName: ctx.branding.displayName, invitedBy: ctx.user.email || ctx.supplier.name,
     });
-    await emailSellerPortalInvite({
-      email,
-      supplierName: ctx.supplier.name,
-      merchantName: ctx.branding.displayName,
-      password,
-      invitedBy: ctx.user.email || ctx.supplier.name,
-    });
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not send invite." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Invitation not sent. Please retry." };
   }
-
   revalidatePath("/partner/team");
   revalidateShowOps();
   return { ok: true };
 }
 
 export async function removeSellerColleagueAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsSellerContext();
+  const ctx = await requirePartnerAdmin();
   const memberId = String(formData.get("member_id") ?? "").trim();
   if (!memberId) throw new Error("Person required.");
+  // The authenticated client keeps the database admin guard authoritative during concurrent revocation.
+  const { data: row, error: lookupError } = await ctx.supabase.from("show_ops_members")
+    .select("id,business_id,user_id,role,supplier_id,partner_admin")
+    .eq("id", memberId).eq("business_id", ctx.business.id).maybeSingle();
+  if (lookupError) throw new Error("Could not check this seller.");
+  assertRemovableSeller({ businessId: ctx.business.id, supplierId: ctx.supplier.id, userId: ctx.user.id }, row);
+  const { data, error } = await ctx.supabase.from("show_ops_members").delete()
+    .eq("id", memberId).eq("business_id", ctx.business.id).eq("supplier_id", ctx.supplier.id)
+    .eq("role", "seller").eq("partner_admin", false).neq("user_id", ctx.user.id).select("id");
+  if (error || !data?.length) throw new Error("Could not remove this seller. Refresh and check your administrator access.");
+  revalidatePath("/partner/team");
+  revalidateShowOps();
+}
 
-  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
-  const admin = createSupabaseServiceRoleClient();
-  const { data: row } = await admin
-    .from("show_ops_members")
-    .select("id,user_id,role,supplier_id")
-    .eq("id", memberId)
-    .eq("business_id", ctx.business.id)
-    .maybeSingle();
-  if (!row || row.role !== "seller" || row.supplier_id !== ctx.supplier.id) {
-    throw new Error("You can only remove people from your own office.");
-  }
-  if (row.user_id === ctx.user.id) throw new Error("You cannot remove your own login.");
-
-  const { error } = await admin.from("show_ops_members").delete().eq("id", row.id);
-  if (error) throw new Error(error.message);
+export async function setSellerPartnerAdminAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsRole("admin");
+  const memberId = String(formData.get("member_id") ?? "").trim();
+  const partnerAdmin = formData.get("partner_admin") === "true";
+  if (!memberId) throw new Error("Person required.");
+  const { data, error } = await ctx.supabase.from("show_ops_members")
+    .update({ partner_admin: partnerAdmin }).eq("id", memberId).eq("business_id", ctx.business.id)
+    .eq("role", "seller").not("supplier_id", "is", null).select("id");
+  if (error || !data?.length) throw new Error("Could not change organisation administrator access.");
   revalidatePath("/partner/team");
   revalidateShowOps();
 }
@@ -2151,20 +2146,20 @@ export async function createSellerBookingAction(
   }
 
   const booking_ref = await nextRef(ctx);
-  const { data, error } = await ctx.supabase
+  const id = crypto.randomUUID();
+  const { error } = await ctx.supabase
     .from("show_bookings")
     .insert({
       ...built.fields,
+      id,
       office_only_comments: null,
       business_id: ctx.business.id,
       booking_ref,
       created_by: ctx.user.id,
-    })
-    .select("id")
-    .maybeSingle();
+    });
   if (error) return { ok: false, message: partnerBookingErrorMessage(error) };
   revalidatePath("/partner");
-  return { ok: true, id: data?.id, message: booking_ref };
+  return { ok: true, id, message: booking_ref };
 }
 
 export async function inviteShowOpsMemberAction(formData: FormData): Promise<void> {
