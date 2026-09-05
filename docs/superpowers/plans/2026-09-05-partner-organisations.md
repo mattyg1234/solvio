@@ -5,7 +5,7 @@ Use subagent-driven-development for independent implementation and review; user 
 - [x] Database: add partner_admin membership flag, secure membership visibility, own-seller booking read policy, creator stamping/immutability and updates denial for sellers; retain staff and transactional capacity checks. Test on isolated PostgreSQL with two sellers, org admin and another organisation.
 - [x] Invitations/access: ctx.partnerAdmin, staff-only grant/revoke administration, admin-only teammate invite/remove, binding and replay/failure-safe links, honest email gate; tests with stubbed auth/transport. Update Settings and email template.
 - [x] Portal: crown/navigation, admin-only Team, seller-specific bookings, role-scoped analytics date range and currency-separated leaderboard. No raw unscoped service-client data exposure. Test analytics and visibility.
-- [ ] Review final spec/security diff, typecheck, relevant tests and browser smoke; apply reviewed migration only to confirmed Solvio project; deploy clean archive and verify domain. No unrelated planner edits or real email sends.
+- [x] Review final spec/security diff, typecheck, relevant tests and browser smoke; apply reviewed migration only to confirmed Solvio project; deploy clean archive and verify domain. No unrelated planner edits or real email sends.
 
 ## Added during implementation
 
@@ -30,3 +30,11 @@ Use subagent-driven-development for independent implementation and review; user 
 ## Combined verification before release
 
 184 application tests, 62 isolated PostgreSQL tests, TypeScript and targeted lint pass. Production migration, final deployment and signed-in screen checks remain the release steps. No real invitations, invoices or guest messages have been sent during verification.
+
+## Production release evidence
+
+- Application commit: `03fea33933cf27dea175b400fc2365bebf088a3e`, after partner slice `79ee68d452000b9f5e309897abfef1a0021b435c`. Pushed to main.
+- Clean archived production build `dpl_8ZDXGWrd7XQ5engWTURkJKfWHspH` promoted and verified through `www.solviosystems.com`.
+- Exactly five selected migrations (20260905180237 through 20260905184331) applied transactionally to `aasfahcrdcoqxwnlkdnv`; migration records, audit triggers and new-table RLS checked. Live private-schema lint reports no errors.
+- Signed-in read-only checks: Shows and configurable extras, booking creator/history and legacy notice, island controls in Settings, shared nightly bus order and list controls. Live PDF download succeeded with 9 bookings / 21 guests. No production booking edits or outbound messages used for verification.
+- Real invitation inbox receipt, a fresh seller login and outbound invoice delivery remain acceptance demonstrations, not claims established by these checks.
