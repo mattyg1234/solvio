@@ -1,3 +1,4 @@
+import { isGlobalShowOpsAdmin } from "@/lib/show-ops/island-access";
 import { NextResponse } from "next/server";
 
 import { buildShowOpsBackup } from "@/lib/show-ops/backup";
@@ -18,6 +19,14 @@ export async function GET() {
   const resolved = await resolveShowOpsBusinessId(supabase, user.id);
   if (!resolved?.show_ops_enabled) {
     return NextResponse.json({ error: "Show Ops not enabled" }, { status: 403 });
+  }
+
+  const [{ data: ownerRow }, { data: member }] = await Promise.all([
+    supabase.from("businesses").select("owner_id").eq("id", resolved.id).maybeSingle(),
+    supabase.from("show_ops_members").select("role,allowed_islands").eq("business_id", resolved.id).eq("user_id", user.id).maybeSingle(),
+  ]);
+  if (ownerRow?.owner_id !== user.id && (!member || !isGlobalShowOpsAdmin(member.role, member.allowed_islands))) {
+    return NextResponse.json({ error: "Full backups require an administrator with access to all islands." }, { status: 403 });
   }
 
   const { data: business } = await supabase

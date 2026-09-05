@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BusSendForm } from "./bus-send-form";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { GripVertical } from "lucide-react";
 
@@ -12,6 +13,7 @@ import {
   type BusNightSheet,
 } from "@/app/dashboard/show-ops/actions-bus";
 import { BusPickupSelect } from "@/components/show-ops/bus-pickup-select";
+import { safeBusLink } from "@/lib/show-ops/bus-links";
 import { formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 
 export type BusRunRow = {
@@ -36,6 +38,8 @@ export type BusRunGroup = {
   time: string;
   label: string;
   notes: string;
+  mapUrl?: string | null;
+  photoUrl?: string | null;
   pax: number;
   seatsLeft: number | null;
   rows: BusRunRow[];
@@ -72,9 +76,10 @@ export function BusRunSheet({
   sortKeys = [],
   sortHref,
   savedOrder,
+  canManageOrders = false,
 }: {
   groups: BusRunGroup[];
-  stopOptions: Array<{ id: string; label: string }>;
+  stopOptions: Array<{ id: string; label: string; keywords?: string }>;
   date: string;
   /** Column sort carried in the URL, shared with the other night lists. */
   sortKeys?: string[];
@@ -85,14 +90,17 @@ export function BusRunSheet({
    * out, the sheet fetches it (plus stop map/photo links and guide names) on mount.
    */
   savedOrder?: BusNightOrder[] | null;
+  canManageOrders?: boolean;
 }) {
   const naturalOrder = useMemo(() => groups.map((g) => g.key), [groups]);
   const [order, setOrder] = useState<string[]>(() => (savedOrder?.length ? keysFromSaved(groups, savedOrder) : naturalOrder));
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [sheet, setSheet] = useState<BusNightSheet | null>(null);
   const [savedIslands, setSavedIslands] = useState<string[]>(() => (savedOrder ?? []).map((s) => s.island));
+  const [dirty, setDirty] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [downloading, setDownloading] = useState(false);
 
   // Saved order + stop links + guides. Runs once per night; the prop (when given)
   // already seeded the order so there is no flash of the printed-times order.
@@ -100,14 +108,15 @@ export function BusRunSheet({
     let alive = true;
     getBusNightOrderAction(date)
       .then((res) => {
-        if (!alive || !res.ok) return;
+        if (!alive) return;
+        if (!res.ok) { setNote(res.message); return; }
         setSheet(res.sheet);
         if (savedOrder === undefined && res.sheet.orders.length) {
           setOrder(keysFromSaved(groups, res.sheet.orders));
           setSavedIslands(res.sheet.orders.map((s) => s.island));
         }
       })
-      .catch(() => {});
+      .catch(() => { if (alive) setNote("Could not load the saved bus order. Refresh before printing or sending."); });
     return () => {
       alive = false;
     };
@@ -137,23 +146,26 @@ export function BusRunSheet({
   const hasSaved = savedIslands.some((i) => islands.includes(i));
 
   function move(targetKey: string) {
-    if (!dragKey || dragKey === targetKey) return;
+    if (!canManageOrders || !dragKey || dragKey === targetKey || groups.find(g => g.key === dragKey)?.island !== groups.find(g => g.key === targetKey)?.island) return;
     const keys = ordered.map((g) => g.key);
     const from = keys.indexOf(dragKey);
     const to = keys.indexOf(targetKey);
     if (from < 0 || to < 0) return;
     keys.splice(to, 0, ...keys.splice(from, 1));
     setOrder(keys);
+    setDirty(true);
     setDragKey(null);
   }
 
   function nudge(key: string, delta: number) {
+    if (!canManageOrders) return;
     const keys = ordered.map((g) => g.key);
     const from = keys.indexOf(key);
     const to = from + delta;
-    if (from < 0 || to < 0 || to >= keys.length) return;
+    if (from < 0 || to < 0 || to >= keys.length || ordered[from].island !== ordered[to].island) return;
     keys.splice(to, 0, ...keys.splice(from, 1));
     setOrder(keys);
+    setDirty(true);
   }
 
   function saveTonight() {
@@ -164,8 +176,10 @@ export function BusRunSheet({
         islands.map(async (island): Promise<SaveResult> => {
           const ids = ordered.filter((g) => g.island === island && UUID_RE.test(g.key)).map((g) => g.key);
           if (!ids.length) return { island, saved: false, error: null };
-          const res = await saveBusNightOrderAction(date, island, ids);
-          return { island, saved: res.ok, error: res.ok ? null : res.message };
+          try {
+            const res = await saveBusNightOrderAction(date, island, ids);
+            return { island, saved: res.ok, error: res.ok ? null : res.message };
+          } catch { return { island, saved: false, error: "Could not save. Check your access and retry." }; }
         }),
       );
       const failed = results.filter((r) => r.error);
@@ -174,23 +188,42 @@ export function BusRunSheet({
         return;
       }
       setSavedIslands(results.filter((r) => r.saved).map((r) => r.island));
-      setNote("Tonight's order saved.");
+      setDirty(false);
+      setNote("Tonight's order saved. Print, download and email use this saved order.");
     });
   }
 
   function backToTimes() {
     setNote(null);
-    setOrder(naturalOrder);
-    if (!hasSaved) return;
     start(async () => {
-      await Promise.all(islands.map((island) => clearBusNightOrderAction(date, island)));
-      setSavedIslands([]);
-      setNote("Back to printed pick-up times.");
+      try {
+        const results = await Promise.all(islands.map(island => clearBusNightOrderAction(date, island)));
+        const failed = results.find(result => !result.ok);
+        if (failed && !failed.ok) { setNote(failed.message); return; }
+        setOrder(naturalOrder); setSavedIslands([]); setDirty(false);
+        setNote("Back to printed pickup times.");
+      } catch { setNote("Could not reset the order. Please retry."); }
     });
   }
 
+  async function downloadPdf() {
+    if (downloading || dirty || pending || !sheet) return;
+    setDownloading(true); setNote(null);
+    try {
+      const response = await fetch("/dashboard/show-ops/lists/bus-pdf", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, bookingIds: ordered.flatMap(group => group.rows.map(row => row.id)) }) });
+      if (!response.ok || !response.headers.get("Content-Type")?.includes("application/pdf")) throw new Error(response.redirected ? "Please sign in again before downloading." : await response.text() || "Could not download the bus list.");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `bus-list-${date}.pdf`; anchor.click(); URL.revokeObjectURL(url);
+    } catch (error) { setNote(error instanceof Error ? error.message : "Could not download the bus list."); }
+    finally { setDownloading(false); }
+  }
+
   function exportCsv() {
-    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const cell = (v: unknown) => {
+      const raw = String(v ?? "");
+      const safe = /^[\s]*[=+@-]/.test(raw) ? `'${raw}` : raw;
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
     const lines = [
       ["Stop order", "Pick-up time", "Stop", "Island", "Booking ref", "Guest", "Hotel", "Pax", "Mobile", "Dietary"]
         .map(cell)
@@ -252,6 +285,7 @@ export function BusRunSheet({
             {guideLines.map((g) => `${islands.length > 1 ? `${g.island}: ` : ""}Guide ${g.guide}`).join(" · ")}
           </p>
         ) : null}
+        {!sheet ? <p className="mt-1 text-xs text-slate-500">Loading the saved running order…</p> : null}
         {hasSaved ? (
           <p className="mt-0.5 text-xs font-semibold text-violet-800">Tonight&apos;s saved running order</p>
         ) : null}
@@ -265,7 +299,7 @@ export function BusRunSheet({
         {rearranged || hasSaved ? (
           <button
             type="button"
-            disabled={pending}
+            disabled={!canManageOrders || pending}
             onClick={backToTimes}
             className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-60"
           >
@@ -274,28 +308,33 @@ export function BusRunSheet({
         ) : null}
         <button
           type="button"
-          disabled={pending || !rearranged}
+          disabled={!canManageOrders || pending || !sheet || !dirty}
           onClick={saveTonight}
           className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 ring-1 ring-violet-200 hover:bg-violet-50 disabled:opacity-50"
         >
           {pending ? "Saving…" : "Save tonight's order"}
         </button>
+        <button type="button" disabled={dirty || pending || !sheet} onClick={() => window.print()} className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-xs font-semibold text-white">Print bus list</button>
+        <button type="button" onClick={() => void downloadPdf()} disabled={downloading || dirty || pending || !sheet} className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading ? "Preparing PDF…" : "Download PDF"}</button>
         <button
           type="button"
           onClick={exportCsv}
+          disabled={dirty || pending || !sheet}
           className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-xs font-semibold text-white"
         >
-          Export this order
+          Download CSV
         </button>
-        {note ? <p className="w-full text-xs text-slate-600">{note}</p> : null}
+        <p className="w-full text-xs text-slate-500">{dirty ? "Unsaved order changes — save before printing, downloading or emailing. " : "Print, download and email use these bookings and the saved pickup order. "} Print includes pick-up photos; the PDF includes clickable map and photo links.</p>
+        {canManageOrders ? <BusSendForm date={date} bookingIds={ordered.flatMap(group => group.rows.map(row => row.id))} disabled={dirty || pending || !sheet || !ordered.length} /> : null}
+        {note ? <p role="status" className="w-full text-xs text-slate-600">{note}</p> : null}
       </div>
 
       {ordered.map((g, i) => {
-        const links = sheet?.stops[g.key] ?? null;
+        const links = { map_url: safeBusLink(sheet?.stops[g.key]?.map_url ?? g.mapUrl), photo_url: safeBusLink(sheet?.stops[g.key]?.photo_url ?? g.photoUrl) };
         return (
         <div
           key={g.key}
-          draggable
+          draggable={canManageOrders && !pending}
           onDragStart={() => setDragKey(g.key)}
           onDragOver={(e) => e.preventDefault()}
           onDrop={() => move(g.key)}
@@ -346,17 +385,19 @@ export function BusRunSheet({
                   rel="noreferrer"
                   className="font-semibold text-[var(--show-ops-primary,#7c3aed)] underline"
                 >
-                  Map
+                  Open map
                 </a>
               ) : null}
               {links?.photo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                <a href={links.photo_url} target="_blank" rel="noreferrer" aria-label={`Open pick-up photo for ${g.label}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={links.photo_url}
                   alt={`Pick-up point: ${g.label}`}
-                  loading="lazy"
+                  loading="eager"
                   className="max-h-[120px] max-w-[120px] rounded-lg object-cover ring-1 ring-slate-200"
                 />
+                </a>
               ) : null}
             </div>
           ) : null}

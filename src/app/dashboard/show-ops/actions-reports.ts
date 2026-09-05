@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireShowOpsRole } from "@/lib/show-ops/access";
+import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { buildShowOpsDigestForBusiness, DIGEST_BUSINESS_SELECT, type DigestBusinessRow } from "@/lib/show-ops/daily-report";
 import { filterShowOpsOutboundTo, SHOW_OPS_OUTBOUND_HELD } from "@/lib/show-ops/outbound";
 import { sendShowOpsHtmlEmail } from "@/lib/notifications/show-ops-emails";
@@ -23,7 +23,7 @@ function settingsRedirect(params: Record<string, string>): never {
  * and we say so rather than pretending it went.
  */
 export async function sendDigestSampleAction(): Promise<void> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireGlobalShowOpsAdmin();
   const email = (ctx.user.email || "").trim().toLowerCase();
   if (!email.includes("@")) {
     settingsRedirect({ sample_error: "Your login has no email address to send to." });

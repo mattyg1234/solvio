@@ -1,3 +1,4 @@
+import { bookingExtrasSummary } from "@/lib/show-ops/invoice-supplements";
 import { Resend } from "resend";
 
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
@@ -15,6 +16,7 @@ export type GuestTicketInput = {
   guestEmail?: string | null;
   guestMobile?: string | null;
   showName: string;
+  extrasSummary?: string;
   showDate: string;
   adults: number;
   children: number;
@@ -115,6 +117,7 @@ export function buildGuestTicketText(input: GuestTicketInput): string {
     `${input.showName} · ${dateLine(input)}${showTime ? ` · ${showTime}` : ""}`,
     `Guests: ${formatShowOpsPax(input.adults, input.children, input.infants)}`,
   ];
+  if (input.extrasSummary) lines.push(`Extras: ${input.extrasSummary}`);
   if (input.hotelName) lines.push(`Hotel: ${input.hotelName}`);
   lines.push(pickupLine(input));
   const money = moneyLine(input);
@@ -138,6 +141,7 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
   const showTime = showTimeLine(input);
   if (showTime) rows.push(["Show time", showTime]);
   rows.push(["Guests", formatShowOpsPax(input.adults, input.children, input.infants)]);
+  if (input.extrasSummary) rows.push(["Extras", input.extrasSummary]);
   if (input.hotelName) rows.push(["Hotel", input.hotelName]);
   rows.push([
     "Transport",
@@ -250,7 +254,7 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
   const { data: booking } = await admin
     .from("show_bookings")
     .select(
-      "business_id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
+      "business_id,booking_ref,guest_name,guest_email,guest_mobile,extras_snapshot,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -272,6 +276,7 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
     guestEmail: booking.guest_email,
     guestMobile: booking.guest_mobile,
     showName: booking.show_name,
+    extrasSummary: bookingExtrasSummary(booking.extras_snapshot),
     showDate: booking.show_date,
     adults: Number(booking.adults) || 0,
     children: Number(booking.children) || 0,

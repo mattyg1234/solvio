@@ -1,5 +1,6 @@
 "use client";
 
+import { normaliseDirectorySearch, matchesDirectorySearch } from "@/lib/show-ops/directory-search";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export type SearchableOption = {
@@ -54,14 +55,13 @@ export function SearchableSelect({
   const selected = options.find((o) => o.value === value) ?? null;
 
   const matches = useMemo(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = normaliseDirectorySearch(query).split(/\s+/).filter(Boolean);
     if (!words.length) return options.slice(0, 200);
     const scored: Array<{ o: SearchableOption; score: number }> = [];
     for (const o of options) {
-      const hay = `${o.label} ${o.hint ?? ""} ${o.keywords ?? ""}`.toLowerCase();
-      if (!words.every((w) => hay.includes(w))) continue;
+      if (!matchesDirectorySearch(query, o.label, o.hint, o.keywords)) continue;
       // A hit at the start of the name beats one buried in the keywords.
-      const label = o.label.toLowerCase();
+      const label = normaliseDirectorySearch(o.label);
       const score = words.every((w) => label.startsWith(w)) ? 0 : label.includes(words[0]) ? 1 : 2;
       scored.push({ o, score });
     }
@@ -140,6 +140,7 @@ export function SearchableSelect({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label={ariaLabel ? `Search ${ariaLabel.toLowerCase()}` : "Search options"}
             placeholder={placeholder}
             className="w-full border-b border-slate-100 px-3 py-2.5 text-sm outline-none"
             onKeyDown={(e) => {

@@ -1,3 +1,4 @@
+import { bookingExtrasSummary } from "@/lib/show-ops/invoice-supplements";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 import { showOpsTicketQrSvg } from "@/lib/show-ops/ticket-qr";
@@ -16,7 +17,7 @@ export default async function GuestTicketPage({
   const { data: booking } = await admin
     .from("show_bookings")
     .select(
-      "id,business_id,booking_ref,guest_name,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,cancelled_at,arrived_at,ticket_token",
+      "id,business_id,booking_ref,guest_name,extras_snapshot,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,cancelled_at,arrived_at,ticket_token",
     )
     .eq("ticket_token", token)
     .maybeSingle();
@@ -83,6 +84,7 @@ export default async function GuestTicketPage({
         <Row label="Name" value={booking.guest_name} />
         <Row label="Guests" value={pax} />
         <Row label={productLabel} value={booking.show_name} />
+        {bookingExtrasSummary(booking.extras_snapshot) ? <Row label="Extras" value={bookingExtrasSummary(booking.extras_snapshot)} /> : null}
         {showTime ? <Row label="Show time" value={showTime} /> : null}
         {booking.hotel_name ? <Row label="Hotel" value={booking.hotel_name} /> : null}
         <Row label="Bus / pick-up" value={pickup} />

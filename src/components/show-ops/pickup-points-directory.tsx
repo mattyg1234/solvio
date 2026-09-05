@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { matchesDirectorySearch } from "@/lib/show-ops/directory-search";
 import { useMemo, useState } from "react";
 
 import { upsertBusStopAction } from "@/app/dashboard/show-ops/actions";
@@ -40,12 +42,14 @@ function hhmm(t: string | null | undefined): string {
 export function PickupPointsDirectory({
   stops,
   hotelsByStop,
+  hotelNamesByStop = {},
   islands,
   highlightId,
 }: {
   stops: DirectoryPickupStop[];
   /** Hotels mapped to each stop — shown so an operator knows what a change touches. */
   hotelsByStop: Record<string, number>;
+  hotelNamesByStop?: Record<string, string[]>;
   islands: string[];
   highlightId?: string;
 }) {
@@ -67,18 +71,14 @@ export function PickupPointsDirectory({
   }, [stops, island]);
 
   const filtered = useMemo(() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return stops.filter((s) => {
       if (!showInactive && s.active === false) return false;
       if (island && s.island !== island) return false;
       if (resort && s.resort !== resort) return false;
-      if (words.length) {
-        const hay = `${s.resort} ${s.stop_name} ${s.island} ${s.zone ?? ""} ${hhmm(s.pickup_time)}`.toLowerCase();
-        if (!words.every((w) => hay.includes(w))) return false;
-      }
+      if (!matchesDirectorySearch(q, s.resort, s.stop_name, s.island, s.zone, hhmm(s.pickup_time), ...(hotelNamesByStop[s.id] ?? []))) return false;
       return true;
     });
-  }, [stops, island, resort, q, showInactive]);
+  }, [stops, island, resort, q, showInactive, hotelNamesByStop]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const current = Math.min(page, pages);
@@ -101,6 +101,7 @@ export function PickupPointsDirectory({
 
   return (
     <div className="space-y-3">
+      <Link href="/dashboard/show-ops/lists?tab=bus" className="inline-flex text-sm font-semibold text-violet-700 hover:underline">Open bus list · print or download</Link>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-xs font-medium text-slate-600">
           Search
@@ -110,7 +111,7 @@ export function PickupPointsDirectory({
               setQ(e.target.value);
               resetPage();
             }}
-            placeholder="Resort, stop or time…"
+            placeholder="Type a hotel or pickup name…"
             className={`${INPUT} min-w-[14rem]`}
           />
         </label>

@@ -1,3 +1,4 @@
+import type { ExtraSnapshot } from "./extras";
 import type { ShowOpsBillingMode, ShowOpsCurrency, ShowProduct, ShowSupplier } from "@/lib/show-ops/types";
 
 export type ShowOpsPriceProduct = Pick<
@@ -14,6 +15,7 @@ export type ShowOpsPriceProduct = Pick<
 
 export type ShowOpsPricingSnapshot = {
   v: 1;
+  extras?: ExtraSnapshot[];
   /** Stamped by the save action; null while the form is still doing live maths. */
   priced_at: string | null;
   adult_price: number;
@@ -21,6 +23,7 @@ export type ShowOpsPricingSnapshot = {
   infant_price: number;
   adult_nett_unit: number;
   child_nett_unit: number;
+  infant_nett_unit?: number;
   invoice_nett_percent: number;
   deposit_percent: number;
   transport_required: boolean;
@@ -69,6 +72,7 @@ export function computeBookingMoney(input: {
   adults: number;
   children: number;
   infants: number;
+  extras?: ExtraSnapshot[];
   product: ShowOpsPriceProduct | null;
   supplier: Pick<ShowSupplier, "billing_mode" | "deposit_percent" | "invoice_nett_percent"> | null;
   billingMode?: ShowOpsBillingMode;
@@ -101,7 +105,8 @@ export function computeBookingMoney(input: {
     transport,
     0,
   );
-  const total = round2(adults * adultPrice + children * childPrice + infants * infantPrice);
+  const extras = input.extras ?? [];
+  const total = round2(adults * adultPrice + children * childPrice + infants * infantPrice + extras.reduce((sum, extra) => sum + extra.gross_total, 0));
 
   const mode = input.billingMode ?? input.supplier?.billing_mode ?? "deposit";
   const depositPct = num(input.supplier?.deposit_percent, 30);
@@ -109,9 +114,11 @@ export function computeBookingMoney(input: {
 
   const adultNettUnit = unitNett(adultPrice, input.product?.adult_nett, nettPct);
   const childNettUnit = unitNett(childPrice, input.product?.child_nett, nettPct);
+  const infantNettUnit = unitNett(infantPrice, null, nettPct);
+  const infant_nett_total = round2(infants * infantNettUnit);
   const adult_nett_total = round2(adults * adultNettUnit);
   const child_nett_total = round2(children * childNettUnit);
-  const nett_total = round2(adult_nett_total + child_nett_total);
+  const nett_total = round2(adult_nett_total + child_nett_total + infant_nett_total + extras.reduce((sum, extra) => sum + extra.nett_total, 0));
 
   /**
    * What was quoted, frozen. Stored on the booking so a later change to a partner
@@ -121,11 +128,13 @@ export function computeBookingMoney(input: {
   const pricing_snapshot: ShowOpsPricingSnapshot = {
     v: 1,
     priced_at: null,
+    ...(extras.length ? { extras } : {}),
     adult_price: adultPrice,
     child_price: childPrice,
     infant_price: infantPrice,
     adult_nett_unit: adultNettUnit,
     child_nett_unit: childNettUnit,
+    infant_nett_unit: infantNettUnit,
     invoice_nett_percent: nettPct,
     deposit_percent: depositPct,
     transport_required: transport,
@@ -141,6 +150,7 @@ export function computeBookingMoney(input: {
       nett_total,
       adult_nett_total,
       child_nett_total,
+      infant_nett_total,
       payment_status: "n_a" as const,
       pricing_snapshot,
     };
@@ -155,6 +165,7 @@ export function computeBookingMoney(input: {
     nett_total,
     adult_nett_total,
     child_nett_total,
+    infant_nett_total,
     payment_status: "unpaid" as const,
     pricing_snapshot,
   };

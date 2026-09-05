@@ -1,5 +1,6 @@
 "use client";
 
+import { matchesDirectorySearch } from "@/lib/show-ops/directory-search";
 import { useMemo, useState } from "react";
 
 import { upsertHotelAction } from "@/app/dashboard/show-ops/actions";
@@ -75,17 +76,13 @@ export function HotelsDirectory({
   }, [stops, island]);
 
   const filtered = useMemo(() => {
-    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return hotels.filter((h) => {
       if (!showInactive && h.active === false) return false;
       if (island && h.island !== island) return false;
       const stop = h.bus_stop_id ? stopById.get(h.bus_stop_id) : undefined;
       if (unassignedOnly && stop) return false;
       if (resort && stop?.resort !== resort) return false;
-      if (words.length) {
-        const hay = `${h.name} ${h.island} ${stop?.resort ?? ""} ${stop?.stop_name ?? ""}`.toLowerCase();
-        if (!words.every((w) => hay.includes(w))) return false;
-      }
+      if (!matchesDirectorySearch(q, h.name, h.island, stop?.resort, stop?.stop_name)) return false;
       return true;
     });
   }, [hotels, stopById, island, resort, q, unassignedOnly, showInactive]);

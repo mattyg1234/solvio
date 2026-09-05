@@ -46,7 +46,19 @@ test("prints the office line, hiding id churn behind the name that moved", () =>
 });
 
 test("history timestamps read as day month and Canary clock", () => {
-  assert.equal(formatBookingHistoryWhen("2026-09-04T20:14:00Z"), "4 Sep 21:14");
-  assert.equal(formatBookingHistoryWhen("2026-01-15T00:05:00Z"), "15 Jan 00:05");
+  assert.equal(formatBookingHistoryWhen("2026-09-04T20:14:00Z"), "4 Sep 2026 21:14:00 · Canary time");
+  assert.equal(formatBookingHistoryWhen("2026-01-15T00:05:00Z"), "15 Jan 2026 00:05:00 · Canary time");
   assert.equal(formatBookingHistoryWhen("not a date"), "not a date");
+});
+
+
+test("structured audit evidence stays readable without losing nested values", () => {
+  const line = formatBookingChanges({ extras_snapshot: { from: [], to: [{ name: "Meal", quantity: 2, nett_total: 18 }] } });
+  assert.ok(line.includes('"name": "Meal"'));
+  assert.ok(line.includes('"nett_total": 18'));
+  assert.ok(!line.includes("[object Object]"));
+});
+
+test("history dates include the year across the Canary new-year boundary", () => {
+  assert.equal(formatBookingHistoryWhen("2027-01-01T00:00:01Z"), "1 Jan 2027 00:00:01 · Canary time");
 });

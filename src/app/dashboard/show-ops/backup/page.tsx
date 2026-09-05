@@ -1,5 +1,5 @@
 import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES } from "@/lib/show-ops/backup";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ function size(bytes: number): string {
 }
 
 export default async function ShowOpsBackupPage() {
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireGlobalShowOpsAdmin();
 
   // Snapshots are service-role only; the page reads them on the operator's behalf.
   const admin = createSupabaseServiceRoleClient();

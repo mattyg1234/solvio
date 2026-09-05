@@ -1,15 +1,39 @@
 "use client";
 
-import { applyTicketType, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
+import {
+  applyTicketType,
+  ticketTransportAvailable,
+  type ShowTicketType,
+} from "@/lib/show-ops/ticket-types";
 import { Check, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { hotelNamesForStops } from "@/lib/show-ops/directory-search";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { getNightLoadAction, type ShowOpsNightLoad } from "@/app/dashboard/show-ops/actions";
+import {
+  getNightLoadAction,
+  type ShowOpsNightLoad,
+} from "@/app/dashboard/show-ops/actions";
 import { ShowOpsNightCalendar } from "@/components/show-ops/night-calendar";
-import { SearchableSelect, type SearchableOption } from "@/components/show-ops/searchable-select";
+import {
+  SearchableSelect,
+  type SearchableOption,
+} from "@/components/show-ops/searchable-select";
 import { NumberInput } from "@/components/ui/number-input";
-import { computeBookingMoney, formatShowOpsMoney, round2, showOpsDayName } from "@/lib/show-ops/calc";
+import {
+  calculateExtras,
+  sameExtraSelection,
+  type ShowExtra,
+  type ExtraSnapshot,
+  type ExtraSelection,
+} from "@/lib/show-ops/extras";
+import { showOpsCurrencyFor } from "@/lib/show-ops/config";
+import {
+  computeBookingMoney,
+  formatShowOpsMoney,
+  round2,
+  showOpsDayName,
+} from "@/lib/show-ops/calc";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import {
@@ -35,6 +59,7 @@ import {
 
 export type BookingFormProduct = {
   show_ticket_types?: ShowTicketType[];
+  show_extras?: ShowExtra[];
   id: string;
   name: string;
   island: string;
@@ -85,6 +110,7 @@ export type BookingFormStop = {
 };
 
 export type BookingFormDefaults = {
+  extras_snapshot?: ExtraSnapshot[];
   id?: string;
   show_date?: string;
   guest_name?: string;
@@ -113,29 +139,27 @@ export type BookingFormDefaults = {
   office_only_comments?: string | null;
   billing_mode?: "deposit" | "invoice";
   custom_answers?: Record<string, string | boolean | number>;
-  attendees?: Array<{ name?: string | null; type?: string | null; note?: string | null }> | null;
+  attendees?: Array<{
+    name?: string | null;
+    type?: string | null;
+    note?: string | null;
+  }> | null;
 };
 
 type Props = {
   mode: "create" | "edit";
-  action: (formData: FormData) => Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }>;
+  action: (
+    formData: FormData,
+  ) => Promise<
+    { ok: true; id?: string; message?: string } | { ok: false; message: string }
+  >;
   /** Absolute path to navigate after success. Use `{ref}` for booking ref, or `{id}` for the created seller booking. */
   successPath?: string;
   products: BookingFormProduct[];
   suppliers: BookingFormSupplier[];
   hotels: BookingFormHotel[];
   stops: BookingFormStop[];
-  config: Pick<
-    ShowOpsConfig,
-    | "sales_channels"
-    | "dietary_mode"
-    | "dietary_options"
-    | "booking_questions"
-    | "location_label"
-    | "product_label"
-    | "currency"
-    | "transport_supplement"
-  >;
+  config: ShowOpsConfig;
   defaults?: BookingFormDefaults;
   error?: string | null;
   /** Locked partner portal — supplier is fixed, office-only fields hidden. */
@@ -156,7 +180,12 @@ function CustomQuestionField({
   if (q.type === "checkbox") {
     return (
       <label className="flex items-center gap-2 text-sm sm:col-span-2">
-        <input type="checkbox" name={name} value="1" defaultChecked={Boolean(prev)} />
+        <input
+          type="checkbox"
+          name={name}
+          value="1"
+          defaultChecked={Boolean(prev)}
+        />
         {q.label}
         {q.required ? " *" : ""}
       </label>
@@ -230,7 +259,19 @@ export function ShowOpsBookingForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(error ?? null);
-  const [ticketTypeId, setTicketTypeId] = useState(defaults.ticket_type_id ?? "");
+  const [extraChoices, setExtraChoices] = useState<{
+    productId: string;
+    selections: ExtraSelection[];
+  }>(() => ({
+    productId: defaults.product_id ?? "",
+    selections: (defaults.extras_snapshot ?? []).map((line) => ({
+      id: line.id,
+      quantity: line.charge_basis === "quantity" ? line.quantity : 1,
+    })),
+  }));
+  const [ticketTypeId, setTicketTypeId] = useState(
+    defaults.ticket_type_id ?? "",
+  );
   const [productId, setProductId] = useState(defaults.product_id ?? "");
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
   const [channel, setChannel] = useState(
@@ -239,27 +280,35 @@ export function ShowOpsBookingForm({
   /** Set once the operator overrides the channel by hand; stops the partner re-writing it. */
   const channelPinned = useRef(Boolean(defaults.sales_channel));
   const [hotelId, setHotelId] = useState(defaults.hotel_id ?? "");
-  const [pickupStopId, setPickupStopId] = useState(defaults.pickup_stop_id ?? "");
+  const [pickupStopId, setPickupStopId] = useState(
+    defaults.pickup_stop_id ?? "",
+  );
   const skipHotelFollow = useRef(Boolean(defaults.pickup_stop_id));
   // Bus / Private / Own way. transport_required (pricing + bus list) is simply "kind is bus".
   const [pickupKind, setPickupKind] = useState<PickupKind>(() =>
     parsePickupKind(defaults.pickup_kind, Boolean(defaults.transport_required)),
   );
   const transport = pickupKind === "bus";
-  const [privateAcc, setPrivateAcc] = useState(defaults.private_accommodation ?? "");
+  const [privateAcc, setPrivateAcc] = useState(
+    defaults.private_accommodation ?? "",
+  );
   const [privateZone, setPrivateZone] = useState(defaults.private_zone ?? "");
-  const [paymentMethod, setPaymentMethod] = useState(defaults.payment_method ?? "");
+  const [paymentMethod, setPaymentMethod] = useState(
+    defaults.payment_method ?? "",
+  );
   const [dietary, setDietary] = useState(Boolean(defaults.dietary_required));
   const [adults, setAdults] = useState(defaults.adults ?? 2);
   const [children, setChildren] = useState(defaults.children ?? 0);
   const [infants, setInfants] = useState(defaults.infants ?? 0);
-  const [attNames, setAttNames] = useState<string[]>(
-    () => (defaults.attendees ?? []).map((a) => a?.name ?? ""),
+  const [attNames, setAttNames] = useState<string[]>(() =>
+    (defaults.attendees ?? []).map((a) => a?.name ?? ""),
   );
-  const [attNotes, setAttNotes] = useState<string[]>(
-    () => (defaults.attendees ?? []).map((a) => a?.note ?? ""),
+  const [attNotes, setAttNotes] = useState<string[]>(() =>
+    (defaults.attendees ?? []).map((a) => a?.note ?? ""),
   );
-  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "">(defaults.billing_mode ?? "");
+  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "">(
+    defaults.billing_mode ?? "",
+  );
   const [showDate, setShowDate] = useState(defaults.show_date ?? "");
   const [customDate, setCustomDate] = useState(false);
   const [nightLoad, setNightLoad] = useState<ShowOpsNightLoad | null>(null);
@@ -280,19 +329,36 @@ export function ShowOpsBookingForm({
   }, [productId, showDate]);
 
   const baseProduct = products.find((p) => p.id === productId) ?? null;
-  const selectedTicketType = baseProduct?.show_ticket_types?.find((t) => t.id === ticketTypeId) ?? null;
+  const selectedTicketType =
+    baseProduct?.show_ticket_types?.find((t) => t.id === ticketTypeId) ?? null;
   const product = useMemo(() => {
     if (!baseProduct) return null;
     const pricedProduct = applyTicketType(baseProduct, selectedTicketType);
     return {
       ...pricedProduct,
-      transport_available: ticketTransportAvailable(pricedProduct.transport_available, productId, ticketTypeId, mode === "edit" ? {
-        product_id: defaults.product_id,
-        ticket_type_id: defaults.ticket_type_id,
-        transport_required: defaults.transport_required,
-      } : undefined),
+      transport_available: ticketTransportAvailable(
+        pricedProduct.transport_available,
+        productId,
+        ticketTypeId,
+        mode === "edit"
+          ? {
+              product_id: defaults.product_id,
+              ticket_type_id: defaults.ticket_type_id,
+              transport_required: defaults.transport_required,
+            }
+          : undefined,
+      ),
     };
-  }, [baseProduct, selectedTicketType, productId, ticketTypeId, mode, defaults.product_id, defaults.ticket_type_id, defaults.transport_required]);
+  }, [
+    baseProduct,
+    selectedTicketType,
+    productId,
+    ticketTypeId,
+    mode,
+    defaults.product_id,
+    defaults.ticket_type_id,
+    defaults.transport_required,
+  ]);
 
   /*
    * The desk works location → date → ticket type, in that order: an operator on
@@ -300,11 +366,16 @@ export function ShowOpsBookingForm({
    * show they want. Everything below narrows from that.
    */
   const islands = useMemo(
-    () => [...new Set(products.map((p) => p.island).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set(products.map((p) => p.island).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
     [products],
   );
   const [island, setIsland] = useState(
-    () => products.find((p) => p.id === defaults.product_id)?.island ?? (islands.length === 1 ? islands[0] : ""),
+    () =>
+      products.find((p) => p.id === defaults.product_id)?.island ??
+      (islands.length === 1 ? islands[0] : ""),
   );
   const islandProducts = useMemo(
     () => (island ? products.filter((p) => p.island === island) : products),
@@ -330,22 +401,38 @@ export function ShowOpsBookingForm({
    */
   const showsForNight = useMemo(() => {
     if (!showDate) return islandProducts;
-    const running = islandProducts.filter((p) => runNightsFor(p).includes(showDate));
+    const running = islandProducts.filter((p) =>
+      runNightsFor(p).includes(showDate),
+    );
     return running.length ? running : islandProducts;
   }, [islandProducts, showDate]);
   /** The location everything downstream filters by: the show's if picked, else the operator's choice. */
   const activeIsland = product?.island || island || "";
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null;
   const suppliersForIsland = activeIsland
-    ? suppliers.filter((s) => partnerSellsOnIsland(s.island, activeIsland) || s.id === supplierId)
+    ? suppliers.filter(
+        (s) =>
+          partnerSellsOnIsland(s.island, activeIsland) || s.id === supplierId,
+      )
     : suppliers;
-  const hotelsForIsland = activeIsland ? hotels.filter((h) => h.island === activeIsland) : hotels;
-  const hotel = hotelsForIsland.find((h) => h.id === hotelId) ?? hotels.find((h) => h.id === hotelId) ?? null;
+  const hotelsForIsland = activeIsland
+    ? hotels.filter((h) => h.island === activeIsland)
+    : hotels;
+  const hotel =
+    hotelsForIsland.find((h) => h.id === hotelId) ??
+    hotels.find((h) => h.id === hotelId) ??
+    null;
   const stop =
     (pickupStopId ? stops.find((s) => s.id === pickupStopId) : null) ??
-    (hotel?.bus_stop_id ? stops.find((s) => s.id === hotel.bus_stop_id) ?? null : null);
+    (hotel?.bus_stop_id
+      ? (stops.find((s) => s.id === hotel.bus_stop_id) ?? null)
+      : null);
   const islandStops = stops.filter((s) =>
-    pickupStopOffered(s, { island: activeIsland || undefined, showDate, selectedId: pickupStopId }),
+    pickupStopOffered(s, {
+      island: activeIsland || undefined,
+      showDate,
+      selectedId: pickupStopId,
+    }),
   );
 
   useEffect(() => {
@@ -357,12 +444,19 @@ export function ShowOpsBookingForm({
   }, [hotelId, hotel?.bus_stop_id]);
 
   useEffect(() => {
-    if (product && product.transport_available === false && transport) setPickupKind("own_way");
+    if (product && product.transport_available === false && transport)
+      setPickupKind("own_way");
   }, [product, transport]);
 
   /** Resort codes on this island's stops — the "from where" of a private transfer. */
-  const zoneOptions = useMemo(() => zoneOptionsFromStops(stops, activeIsland || null), [stops, activeIsland]);
-  const privateLabel = privatePickupLabel(privateZone, parsePrivateAccommodation(privateAcc));
+  const zoneOptions = useMemo(
+    () => zoneOptionsFromStops(stops, activeIsland || null),
+    [stops, activeIsland],
+  );
+  const privateLabel = privatePickupLabel(
+    privateZone,
+    parsePrivateAccommodation(privateAcc),
+  );
 
   /*
    * Classify the sale by the partner who made it. Legacy imports tend to stamp
@@ -372,18 +466,23 @@ export function ShowOpsBookingForm({
   useEffect(() => {
     if (channelPinned.current) return;
     const type = suppliers.find((s) => s.id === supplierId)?.partner_type;
-    setChannel(type || (supplierId ? "partner" : config.sales_channels[0] || "direct"));
+    setChannel(
+      type || (supplierId ? "partner" : config.sales_channels[0] || "direct"),
+    );
   }, [supplierId, suppliers, config.sales_channels]);
 
   const paxSlots = Math.min(adults + children + infants, 20);
-  const attendeeType = (i: number) => (i < adults ? "adult" : i < adults + children ? "child" : "infant");
+  const attendeeType = (i: number) =>
+    i < adults ? "adult" : i < adults + children ? "child" : "infant";
   const setAt = (list: string[], i: number, v: string) => {
     const next = [...list];
     while (next.length <= i) next.push("");
     next[i] = v;
     return next;
   };
-  const specialMeals = attNotes.slice(0, paxSlots).filter((n) => n.trim()).length;
+  const specialMeals = attNotes
+    .slice(0, paxSlots)
+    .filter((n) => n.trim()).length;
 
   /*
    * Hotels carry no resort of their own — it comes from the stop they are
@@ -394,30 +493,43 @@ export function ShowOpsBookingForm({
   const hotelOptions = useMemo<SearchableOption[]>(
     () =>
       hotelsForIsland.map((h) => {
-        const stopFor = h.bus_stop_id ? stops.find((s) => s.id === h.bus_stop_id) : null;
-        const time = stopFor?.pickup_time ? String(stopFor.pickup_time).slice(0, 5) : "";
-        const hint = [stopFor?.resort, time].filter(Boolean).join(" · ");
+        const stopFor = h.bus_stop_id
+          ? stops.find((s) => s.id === h.bus_stop_id)
+          : null;
+        const time = stopFor?.pickup_time
+          ? String(stopFor.pickup_time).slice(0, 5)
+          : "";
+        const hint = [stopFor?.stop_name, stopFor?.resort, time].filter(Boolean).join(" · ");
         return {
           value: h.id,
           label: h.name,
           hint: hint || undefined,
-          keywords: [stopFor?.resort, stopFor?.stop_name, h.island].filter(Boolean).join(" "),
+          keywords: [stopFor?.resort, stopFor?.stop_name, h.island]
+            .filter(Boolean)
+            .join(" "),
         };
       }),
     [hotelsForIsland, stops],
   );
 
+  const hotelNamesByStop = useMemo(() => hotelNamesForStops(hotels), [hotels]);
   const stopOptions = useMemo<SearchableOption[]>(
     () =>
       islandStops.map((s) => ({
         value: s.id,
         label: `${s.resort} · ${s.stop_name}`,
-        hint: [s.pickup_time ? String(s.pickup_time).slice(0, 5) : "", s.runs_on ?? ""]
+        hint:
+          [
+            s.pickup_time ? String(s.pickup_time).slice(0, 5) : "",
+            s.runs_on ?? "",
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined,
+        keywords: [s.resort, s.stop_name, s.runs_on, s.island, ...(hotelNamesByStop[s.id] ?? [])]
           .filter(Boolean)
-          .join(" · ") || undefined,
-        keywords: [s.resort, s.stop_name, s.runs_on, s.island].filter(Boolean).join(" "),
+          .join(" "),
       })),
-    [islandStops],
+    [islandStops, hotelNamesByStop],
   );
 
   const supplierOptions = useMemo<SearchableOption[]>(
@@ -427,7 +539,9 @@ export function ShowOpsBookingForm({
         label: s.name,
         hint: [
           s.island || "",
-          s.billing_mode === "deposit" ? `deposit ${s.deposit_percent}%` : `invoice nett ${s.invoice_nett_percent}%`,
+          s.billing_mode === "deposit"
+            ? `deposit ${s.deposit_percent}%`
+            : `invoice nett ${s.invoice_nett_percent}%`,
         ]
           .filter(Boolean)
           .join(" · "),
@@ -436,14 +550,19 @@ export function ShowOpsBookingForm({
     [suppliersForIsland],
   );
 
-  const moneyFmt = (n: number) => formatShowOpsMoney(n, config.currency ?? "eur");
+  const moneyFmt = (n: number) =>
+    formatShowOpsMoney(n, showOpsCurrencyFor(config, baseProduct?.island));
   const productPriceLabel = (p: BookingFormProduct) => {
     if (sellerMode && supplier?.billing_mode === "invoice") {
       const pct = Number(supplier.invoice_nett_percent);
       const adult =
-        pct !== 100 ? p.adult_price * (pct / 100) : Number(p.adult_nett ?? p.adult_price);
+        pct !== 100
+          ? p.adult_price * (pct / 100)
+          : Number(p.adult_nett ?? p.adult_price);
       const child =
-        pct !== 100 ? p.child_price * (pct / 100) : Number(p.child_nett ?? p.child_price);
+        pct !== 100
+          ? p.child_price * (pct / 100)
+          : Number(p.child_nett ?? p.child_price);
       return `${p.name} (${moneyFmt(adult)} / ${moneyFmt(child)} nett)`;
     }
     return `${p.name} (${moneyFmt(p.adult_price)} / ${moneyFmt(p.child_price)})`;
@@ -453,14 +572,114 @@ export function ShowOpsBookingForm({
   // does not carry its own explicit without-transport price.
   const supplement = Number(config.transport_supplement) || 0;
   const supplementApplies =
-    transport && supplement > 0 && product != null && product.adult_price_no_transport == null;
-  const supplementTotal = supplementApplies ? round2(supplement * (adults + children)) : 0;
+    transport &&
+    supplement > 0 &&
+    product != null &&
+    product.adult_price_no_transport == null;
+  const supplementTotal = supplementApplies
+    ? round2(supplement * (adults + children))
+    : 0;
 
   // Only a partner explicitly given the permission can be flipped between deposit
   // and invoice on a single booking; everyone else follows their partner record.
-  const canPickBilling = Boolean(supplier?.can_choose_billing_mode) && !sellerMode && !moneyLocked;
+  const canPickBilling =
+    Boolean(supplier?.can_choose_billing_mode) && !sellerMode && !moneyLocked;
   const effectiveBilling =
-    canPickBilling && (billingMode === "deposit" || billingMode === "invoice") ? billingMode : undefined;
+    canPickBilling && (billingMode === "deposit" || billingMode === "invoice")
+      ? billingMode
+      : undefined;
+
+  const extraSelections = useMemo(
+    () => (extraChoices.productId === productId ? extraChoices.selections : []),
+    [extraChoices, productId],
+  );
+  const extrasPreview = useMemo(() => {
+    const original = defaults.extras_snapshot ?? [];
+    const originalSelection = original.map((line) => ({
+      id: line.id,
+      quantity: line.charge_basis === "quantity" ? line.quantity : 1,
+    }));
+    const unchanged =
+      mode === "edit" &&
+      productId === (defaults.product_id ?? "") &&
+      ticketTypeId === (defaults.ticket_type_id ?? "") &&
+      adults === (defaults.adults ?? 2) &&
+      children === (defaults.children ?? 0) &&
+      infants === (defaults.infants ?? 0) &&
+      supplierId === (defaults.supplier_id ?? "") &&
+      transport === Boolean(defaults.transport_required) &&
+      (effectiveBilling ?? supplier?.billing_mode ?? "deposit") ===
+        (defaults.billing_mode ?? supplier?.billing_mode ?? "deposit") &&
+      sameExtraSelection(extraSelections, originalSelection);
+    if (moneyLocked || unchanged) return { lines: original, error: "" };
+    try {
+      for (const selected of extraSelections) {
+        const catalogueExtra = baseProduct?.show_extras?.find(
+          (item) => item.id === selected.id,
+        );
+        const previous = original.find((line) => line.id === selected.id);
+        if (catalogueExtra && !catalogueExtra.active && previous) {
+          const nextQuantity =
+            catalogueExtra.charge_basis === "per_person"
+              ? adults + children + infants
+              : catalogueExtra.charge_basis === "per_booking"
+                ? 1
+                : selected.quantity;
+          if (nextQuantity !== previous.quantity)
+            throw new Error(
+              `Remove the archived extra "${previous.name}" before changing its quantity or passenger count.`,
+            );
+        }
+      }
+      return {
+        lines: calculateExtras(
+          baseProduct?.show_extras ?? [],
+          extraSelections,
+          adults + children + infants,
+          Number(supplier?.invoice_nett_percent ?? 100),
+          {
+            allowArchived: mode === "edit" && productId === defaults.product_id,
+          },
+        ),
+        error: "",
+      };
+    } catch (failure) {
+      return {
+        lines: [] as ExtraSnapshot[],
+        error:
+          failure instanceof Error
+            ? failure.message
+            : "Could not calculate extras. Check your selection.",
+      };
+    }
+  }, [
+    defaults,
+    mode,
+    productId,
+    ticketTypeId,
+    adults,
+    children,
+    infants,
+    supplierId,
+    transport,
+    effectiveBilling,
+    supplier,
+    extraSelections,
+    moneyLocked,
+    baseProduct,
+  ]);
+  const extraLines = extrasPreview.lines;
+  const visibleExtras = (baseProduct?.show_extras ?? []).filter(
+    (extra) =>
+      extra.active ||
+      (productId === defaults.product_id &&
+        defaults.extras_snapshot?.some((line) => line.id === extra.id)),
+  );
+  function updateExtra(id: string, quantity: number | null) {
+    const next = extraSelections.filter((item) => item.id !== id);
+    if (quantity !== null) next.push({ id, quantity });
+    setExtraChoices({ productId, selections: next });
+  }
 
   const money = useMemo(
     () =>
@@ -473,15 +692,35 @@ export function ShowOpsBookingForm({
         billingMode: effectiveBilling,
         transportRequired: transport,
         transportSupplement: supplement,
+        extras: extraLines,
       }),
-    [adults, children, infants, product, supplier, transport, supplement, effectiveBilling],
+    [
+      adults,
+      children,
+      infants,
+      product,
+      supplier,
+      transport,
+      supplement,
+      effectiveBilling,
+      extraLines,
+    ],
   );
   // Commission = the slice the partner keeps (100% − the nett % we invoice them at).
   const commissionPct =
-    supplier && supplier.billing_mode === "invoice"
-      ? Math.max(0, round2(100 - Number(supplier.invoice_nett_percent || 100)))
+    supplier && money.billing_mode === "invoice"
+      ? Math.max(0, round2(100 - Number(supplier.invoice_nett_percent ?? 100)))
       : 0;
-  const commissionAmount = round2((money.total_cost * commissionPct) / 100);
+  const commissionAmount = round2(
+    ((money.total_cost -
+      extraLines.reduce((sum, line) => sum + line.gross_total, 0)) *
+      commissionPct) /
+      100 +
+      extraLines.reduce(
+        (sum, line) => sum + line.gross_total - line.nett_total,
+        0,
+      ),
+  );
 
   if (saved) {
     return (
@@ -491,7 +730,10 @@ export function ShowOpsBookingForm({
           setSaved(null);
           router.refresh();
         }}
-        backHref={(successPath ?? "/dashboard/show-ops/bookings").replace("{ref}", encodeURIComponent(saved.ref))}
+        backHref={(successPath ?? "/dashboard/show-ops/bookings").replace(
+          "{ref}",
+          encodeURIComponent(saved.ref),
+        )}
       />
     );
   }
@@ -501,6 +743,10 @@ export function ShowOpsBookingForm({
       className="mt-6 space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (extrasPreview.error) {
+          setMsg(extrasPreview.error);
+          return;
+        }
         const fd = new FormData(e.currentTarget);
         start(async () => {
           setMsg(null);
@@ -509,8 +755,17 @@ export function ShowOpsBookingForm({
             setMsg(res.message || "Save failed");
             return;
           }
-          if (mode === "create" && sellerMode && res.id && successPath?.includes("{id}")) {
-            router.push(successPath.replace("{id}", encodeURIComponent(res.id)).replace("{ref}", encodeURIComponent(res.message ?? "")));
+          if (
+            mode === "create" &&
+            sellerMode &&
+            res.id &&
+            successPath?.includes("{id}")
+          ) {
+            router.push(
+              successPath
+                .replace("{id}", encodeURIComponent(res.id))
+                .replace("{ref}", encodeURIComponent(res.message ?? "")),
+            );
             router.refresh();
             return;
           }
@@ -524,18 +779,34 @@ export function ShowOpsBookingForm({
               pax: { adults, children, infants },
               transport,
               privateLabel: pickupKind === "private" ? privateLabel : null,
-              stopName: transport && stop ? `${stop.resort} · ${stop.stop_name}` : null,
-              pickupTime: transport && stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : null,
-              showTime: product?.show_time ? String(product.show_time).slice(0, 5) : null,
+              stopName:
+                transport && stop ? `${stop.resort} · ${stop.stop_name}` : null,
+              pickupTime:
+                transport && stop?.pickup_time
+                  ? String(stop.pickup_time).slice(0, 5)
+                  : null,
+              showTime: product?.show_time
+                ? String(product.show_time).slice(0, 5)
+                : null,
               total: moneyFmt(money.total_cost),
-              dueLabel: money.billing_mode === "invoice" ? "Nett to invoice" : "Deposit to collect",
-              dueAmount: moneyFmt(money.billing_mode === "invoice" ? money.nett_total : money.deposit_amount),
+              dueLabel:
+                money.billing_mode === "invoice"
+                  ? "Nett to invoice"
+                  : "Deposit to collect",
+              dueAmount: moneyFmt(
+                money.billing_mode === "invoice"
+                  ? money.nett_total
+                  : money.deposit_amount,
+              ),
             });
             router.refresh();
             return;
           }
           if (successPath) {
-            const href = successPath.replace("{ref}", encodeURIComponent(res.message ?? ""));
+            const href = successPath.replace(
+              "{ref}",
+              encodeURIComponent(res.message ?? ""),
+            );
             router.push(href);
             router.refresh();
           } else {
@@ -544,7 +815,14 @@ export function ShowOpsBookingForm({
         });
       }}
     >
-      {defaults.id ? <input type="hidden" name="id" value={defaults.id} /> : null}
+      <input
+        type="hidden"
+        name="extras"
+        value={JSON.stringify(extraSelections)}
+      />
+      {defaults.id ? (
+        <input type="hidden" name="id" value={defaults.id} />
+      ) : null}
       {moneyLocked ? (
         <>
           <input type="hidden" name="product_id" value={productId} />
@@ -553,14 +831,20 @@ export function ShowOpsBookingForm({
           <input type="hidden" name="children" value={children} />
           <input type="hidden" name="infants" value={infants} />
           <input type="hidden" name="pickup_kind" value={pickupKind} />
-          {transport ? <input type="hidden" name="transport_required" value="1" /> : null}
+          {transport ? (
+            <input type="hidden" name="transport_required" value="1" />
+          ) : null}
         </>
       ) : null}
-      {msg ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{msg}</p> : null}
+      {msg ? (
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          {msg}
+        </p>
+      ) : null}
       {moneyLocked ? (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          This booking is on an invoice pack. Pax, show, supplier and transport are locked — void the invoice to change
-          them. Comments still save.
+          This booking is on an invoice pack. Pax, show, supplier and transport
+          are locked — void the invoice to change them. Comments still save.
         </p>
       ) : null}
 
@@ -578,15 +862,19 @@ export function ShowOpsBookingForm({
                   setCustomDate(false);
                   // Drop a show or hotel that does not belong to the new location.
                   const keptProduct = products.find((p) => p.id === productId);
-                  if (keptProduct && next && keptProduct.island !== next) setProductId("");
+                  if (keptProduct && next && keptProduct.island !== next)
+                    setProductId("");
                   const keptHotel = hotels.find((h) => h.id === hotelId);
-                  if (keptHotel && next && keptHotel.island !== next) setHotelId("");
+                  if (keptHotel && next && keptHotel.island !== next)
+                    setHotelId("");
                 }}
                 className={INPUT}
                 disabled={moneyLocked}
                 aria-label={config.location_label}
               >
-                <option value="">All {config.location_label.toLowerCase()}s</option>
+                <option value="">
+                  All {config.location_label.toLowerCase()}s
+                </option>
                 {islands.map((i) => (
                   <option key={i} value={i}>
                     {i}
@@ -596,10 +884,14 @@ export function ShowOpsBookingForm({
             </>
           ) : null}
 
-          <FieldLabel className={islands.length > 1 ? "mt-4" : ""}>Date</FieldLabel>
+          <FieldLabel className={islands.length > 1 ? "mt-4" : ""}>
+            Date
+          </FieldLabel>
           {!nights.length && !customDate ? (
             <select disabled className={INPUT} aria-label="Show date">
-              <option>No nights on the books{island ? ` for ${island}` : ""}</option>
+              <option>
+                No nights on the books{island ? ` for ${island}` : ""}
+              </option>
             </select>
           ) : (
             <>
@@ -642,13 +934,22 @@ export function ShowOpsBookingForm({
               />
               <p className="mt-1 text-xs text-slate-500">
                 {showDate ? `${showOpsDayName(showDate) ?? ""} — ` : ""}
-                purple dates are nights a show runs{island ? ` on ${island}` : ""}.{" "}
+                purple dates are nights a show runs
+                {island ? ` on ${island}` : ""}.{" "}
                 {customDate && !sellerMode ? (
-                  <button type="button" className="font-semibold text-[var(--show-ops-primary,#7c3aed)] underline" onClick={() => setCustomDate(false)}>
+                  <button
+                    type="button"
+                    className="font-semibold text-[var(--show-ops-primary,#7c3aed)] underline"
+                    onClick={() => setCustomDate(false)}
+                  >
                     Back to listed nights
                   </button>
                 ) : !sellerMode ? (
-                  <button type="button" className="underline" onClick={() => setCustomDate(true)}>
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setCustomDate(true)}
+                  >
                     Night not listed
                   </button>
                 ) : null}
@@ -667,7 +968,11 @@ export function ShowOpsBookingForm({
               setTicketTypeId("");
               const p = products.find((x) => x.id === next);
               // A hotel from another island cannot survive the show change.
-              if (p && hotelId && !hotels.some((h) => h.id === hotelId && h.island === p.island)) {
+              if (
+                p &&
+                hotelId &&
+                !hotels.some((h) => h.id === hotelId && h.island === p.island)
+              ) {
                 setHotelId("");
               }
               if (p?.island && p.island !== island) setIsland(p.island);
@@ -676,7 +981,11 @@ export function ShowOpsBookingForm({
             disabled={moneyLocked}
           >
             <option value="">
-              {showsForNight.length ? "Select a show" : products.length ? "Nothing runs that night" : "No shows saved yet"}
+              {showsForNight.length
+                ? "Select a show"
+                : products.length
+                  ? "Nothing runs that night"
+                  : "No shows available with your access"}
             </option>
             {product && !showsForNight.some((p) => p.id === product.id) ? (
               <option value={product.id}>{productPriceLabel(product)}</option>
@@ -688,23 +997,196 @@ export function ShowOpsBookingForm({
             ))}
           </select>
           {products.length === 0 ? (
-            <p className="mt-1 text-xs text-amber-700">Add shows under Shows in the sidebar before taking a booking.</p>
+            <p className="mt-1 text-xs text-amber-700">
+              No shows are available with your current access. Contact an
+              administrator if you need another show or island.
+            </p>
           ) : null}
 
-          {baseProduct ? <label className="mt-4 block text-sm font-medium">Ticket type
-            <select name="ticket_type_id" value={ticketTypeId} disabled={moneyLocked} onChange={(e) => setTicketTypeId(e.target.value)} className={INPUT}>
-              <option value="">Standard ticket</option>
-              {(baseProduct.show_ticket_types ?? []).filter((t) => t.active || t.id === defaults.ticket_type_id).map((t) => <option key={t.id} value={t.id}>{t.name}{t.active ? "" : " (archived)"}</option>)}
-            </select>
-            {moneyLocked ? <input type="hidden" name="ticket_type_id" value={ticketTypeId} /> : null}
-          </label> : null}
+          {baseProduct ? (
+            <label className="mt-4 block text-sm font-medium">
+              Ticket type
+              <select
+                name="ticket_type_id"
+                value={ticketTypeId}
+                disabled={moneyLocked}
+                onChange={(e) => setTicketTypeId(e.target.value)}
+                className={INPUT}
+              >
+                <option value="">Standard ticket</option>
+                {(baseProduct.show_ticket_types ?? [])
+                  .filter((t) => t.active || t.id === defaults.ticket_type_id)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                      {t.active ? "" : " (archived)"}
+                    </option>
+                  ))}
+              </select>
+              {moneyLocked ? (
+                <input
+                  type="hidden"
+                  name="ticket_type_id"
+                  value={ticketTypeId}
+                />
+              ) : null}
+            </label>
+          ) : null}
 
           <FieldLabel className="mt-4">Adults</FieldLabel>
-          <Stepper name="adults" value={adults} onChange={setAdults} disabled={moneyLocked} />
+          <Stepper
+            name="adults"
+            value={adults}
+            onChange={setAdults}
+            disabled={moneyLocked}
+          />
           <FieldLabel className="mt-4">Children</FieldLabel>
-          <Stepper name="children" value={children} onChange={setChildren} disabled={moneyLocked} />
+          <Stepper
+            name="children"
+            value={children}
+            onChange={setChildren}
+            disabled={moneyLocked}
+          />
           <FieldLabel className="mt-4">Infants</FieldLabel>
-          <Stepper name="infants" value={infants} onChange={setInfants} disabled={moneyLocked} />
+          <Stepper
+            name="infants"
+            value={infants}
+            onChange={setInfants}
+            disabled={moneyLocked}
+          />
+
+          {visibleExtras.length || extraSelections.length ? (
+            <section
+              className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+              aria-label="Optional extras"
+            >
+              <h3 className="text-sm font-semibold text-slate-900">
+                Optional extras
+              </h3>
+              <p className="text-xs text-slate-500">
+                Choose any additions. Per-guest extras charge for adults,
+                children and infants.
+              </p>
+              {visibleExtras.map((extra) => {
+                const selected = extraSelections.find(
+                  (item) => item.id === extra.id,
+                );
+                const line = extraLines.find((item) => item.id === extra.id);
+                return (
+                  <div key={extra.id} className="rounded-lg bg-white p-3">
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selected)}
+                        disabled={moneyLocked}
+                        onChange={(event) =>
+                          updateExtra(extra.id, event.target.checked ? 1 : null)
+                        }
+                        className="mt-1"
+                      />
+                      <span>
+                        <span className="font-medium">
+                          {line?.name ?? extra.name}
+                          {!extra.active ? " (archived)" : ""}
+                        </span>
+                        <span className="ml-2 text-slate-500">
+                          {moneyFmt(line?.unit_price ?? extra.unit_price)} ·{" "}
+                          {(line?.charge_basis ?? extra.charge_basis) ===
+                          "per_booking"
+                            ? "once per booking"
+                            : (line?.charge_basis ?? extra.charge_basis) ===
+                                "per_person"
+                              ? "per guest, including infants"
+                              : "each"}
+                        </span>
+                        {extra.description ? (
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {extra.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                    {selected &&
+                    (line?.charge_basis ?? extra.charge_basis) ===
+                      "quantity" ? (
+                      <label className="mt-2 block text-xs font-medium">
+                        Quantity
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          step={1}
+                          value={selected.quantity}
+                          disabled={moneyLocked || !extra.active}
+                          onChange={(event) =>
+                            updateExtra(
+                              extra.id,
+                              Math.min(
+                                100,
+                                Math.max(
+                                  1,
+                                  Math.trunc(Number(event.target.value) || 1),
+                                ),
+                              ),
+                            )
+                          }
+                          className="ml-2 w-20 rounded-lg border border-slate-200 px-2 py-1"
+                        />
+                      </label>
+                    ) : null}
+                    {line ? (
+                      <p className="mt-2 text-xs font-medium text-slate-700">
+                        {line.quantity} × {moneyFmt(line.unit_price)} ={" "}
+                        {moneyFmt(line.gross_total)}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {extraSelections
+                .filter(
+                  (selection) =>
+                    !visibleExtras.some((extra) => extra.id === selection.id),
+                )
+                .map((selection) => {
+                  const line = defaults.extras_snapshot?.find(
+                    (item) => item.id === selection.id,
+                  );
+                  return (
+                    <p key={selection.id} className="text-xs text-slate-600">
+                      {line ? (
+                        <>
+                          Recorded extra: {line.name} · {line.quantity} ×{" "}
+                          {moneyFmt(line.unit_price)} ={" "}
+                          {moneyFmt(line.gross_total)}
+                        </>
+                      ) : (
+                        "This selected extra is no longer available."
+                      )}
+                      {!moneyLocked ? (
+                        <button
+                          type="button"
+                          onClick={() => updateExtra(selection.id, null)}
+                          className="ml-2 underline"
+                        >
+                          Remove extra
+                        </button>
+                      ) : null}
+                    </p>
+                  );
+                })}
+              {moneyLocked ? (
+                <p className="text-xs text-slate-500">
+                  Extras are locked with this invoice.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+          {extrasPreview.error ? (
+            <p role="alert" className="mt-3 text-sm text-rose-700">
+              {extrasPreview.error}
+            </p>
+          ) : null}
 
           {sellerMode ? (
             <>
@@ -712,7 +1194,9 @@ export function ShowOpsBookingForm({
               <input
                 type="hidden"
                 name="sales_channel"
-                value={supplier?.partner_type || defaults.sales_channel || "partner"}
+                value={
+                  supplier?.partner_type || defaults.sales_channel || "partner"
+                }
               />
             </>
           ) : (
@@ -729,18 +1213,28 @@ export function ShowOpsBookingForm({
               />
               {canPickBilling ? (
                 <>
-                  <FieldLabel className="mt-4">Billing for this booking</FieldLabel>
+                  <FieldLabel className="mt-4">
+                    Billing for this booking
+                  </FieldLabel>
                   <select
                     name="billing_mode"
                     value={billingMode || supplier?.billing_mode || "deposit"}
-                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice")}
+                    onChange={(e) =>
+                      setBillingMode(e.target.value as "deposit" | "invoice")
+                    }
                     className={INPUT}
                   >
-                    <option value="deposit">Deposit — collect {supplier?.deposit_percent}% now</option>
-                    <option value="invoice">Invoice — nett {supplier?.invoice_nett_percent}% on the monthly pack</option>
+                    <option value="deposit">
+                      Deposit — collect {supplier?.deposit_percent}% now
+                    </option>
+                    <option value="invoice">
+                      Invoice — nett {supplier?.invoice_nett_percent}% on the
+                      monthly pack
+                    </option>
                   </select>
                   <p className="mt-1 text-xs text-slate-500">
-                    {supplier?.name} is allowed to switch. Their default is {supplier?.billing_mode}.
+                    {supplier?.name} is allowed to switch. Their default is{" "}
+                    {supplier?.billing_mode}.
                   </p>
                 </>
               ) : null}
@@ -755,7 +1249,13 @@ export function ShowOpsBookingForm({
                   setChannel(e.target.value);
                 }}
               >
-                {[...new Set([...config.sales_channels, ...suppliers.map((s) => s.partner_type).filter(Boolean), channel])]
+                {[
+                  ...new Set([
+                    ...config.sales_channels,
+                    ...suppliers.map((s) => s.partner_type).filter(Boolean),
+                    channel,
+                  ]),
+                ]
                   .filter(Boolean)
                   .map((c) => (
                     <option key={c} value={c}>
@@ -764,7 +1264,9 @@ export function ShowOpsBookingForm({
                   ))}
               </select>
               <p className="mt-1 text-xs text-slate-500">
-                {supplier ? `Set from ${supplier.name}'s partner type.` : "Set from the partner once you pick one."}
+                {supplier
+                  ? `Set from ${supplier.name}'s partner type.`
+                  : "Set from the partner once you pick one."}
               </p>
             </>
           )}
@@ -776,27 +1278,45 @@ export function ShowOpsBookingForm({
                 {product ? (
                   <span className="text-slate-400">
                     : {adults} × {moneyFmt(product.adult_price)}
-                    {children > 0 ? ` + ${children} × ${moneyFmt(product.child_price)}` : ""}
-                    {supplementTotal > 0 ? ` + bus ${moneyFmt(supplementTotal)}` : ""}
+                    {children > 0
+                      ? ` + ${children} × ${moneyFmt(product.child_price)}`
+                      : ""}
+                    {supplementTotal > 0
+                      ? ` + bus ${moneyFmt(supplementTotal)}`
+                      : ""}
                   </span>
                 ) : null}
               </span>
-              <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(money.total_cost)}</span>
+              <span className="font-semibold tabular-nums text-slate-900">
+                {moneyFmt(money.total_cost)}
+              </span>
             </div>
             {commissionPct > 0 ? (
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-slate-600">
-                  {sellerMode ? "Your commission" : "Partner commission"} ({commissionPct}%)
+                  {sellerMode ? "Your commission" : "Partner commission"} (
+                  {commissionPct}%)
                 </span>
-                <span className="font-semibold tabular-nums text-rose-600">−{moneyFmt(commissionAmount)}</span>
+                <span className="font-semibold tabular-nums text-rose-600">
+                  −{moneyFmt(commissionAmount)}
+                </span>
               </div>
             ) : null}
             <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-1.5">
               <span className="font-semibold text-slate-900">
-                {money.billing_mode === "invoice" ? "Nett to invoice" : "Deposit to collect"}
+                {money.billing_mode === "invoice"
+                  ? "Nett to invoice"
+                  : "Deposit to collect"}
               </span>
-              <span className="text-lg font-semibold tabular-nums" style={{ color: ACCENT }}>
-                {moneyFmt(money.billing_mode === "invoice" ? money.nett_total : money.deposit_amount)}
+              <span
+                className="text-lg font-semibold tabular-nums"
+                style={{ color: ACCENT }}
+              >
+                {moneyFmt(
+                  money.billing_mode === "invoice"
+                    ? money.nett_total
+                    : money.deposit_amount,
+                )}
               </span>
             </div>
           </div>
@@ -827,7 +1347,9 @@ export function ShowOpsBookingForm({
                 Capacity left tonight
               </p>
               <p className="text-lg font-semibold tabular-nums text-violet-900">
-                {nightLoad.show_free != null ? `${nightLoad.show_free} tickets` : `${nightLoad.show_pax} booked`}
+                {nightLoad.show_free != null
+                  ? `${nightLoad.show_free} tickets`
+                  : `${nightLoad.show_pax} booked`}
               </p>
               <p className="text-[11px] text-violet-900/60">
                 {nightLoad.seats_ordered != null
@@ -835,32 +1357,62 @@ export function ShowOpsBookingForm({
                   : "No bus ordered for this night yet"}
               </p>
               {nightLoad.close_kind === "full" ? (
-                <p className="mt-1 text-xs font-semibold text-rose-800">Fully closed — partners cannot add more. Office can still override.</p>
+                <p className="mt-1 text-xs font-semibold text-rose-800">
+                  Fully closed — partners cannot add more. Office can still
+                  override.
+                </p>
               ) : nightLoad.close_kind === "part" ? (
-                <p className="mt-1 text-xs font-semibold text-amber-800">Part close — last seats only.</p>
+                <p className="mt-1 text-xs font-semibold text-amber-800">
+                  Part close — last seats only.
+                </p>
               ) : null}
             </div>
           ) : null}
         </StepColumn>
 
         {/* ── 2 · Attendees ────────────────────────────── */}
-        <StepColumn step={2} label="Attendees" note={paxSlots ? `${paxSlots} of ${paxSlots}` : undefined}>
+        <StepColumn
+          step={2}
+          label="Attendees"
+          note={paxSlots ? `${paxSlots} of ${paxSlots}` : undefined}
+        >
           <FieldLabel>Lead booking name</FieldLabel>
-          <input name="guest_name" required defaultValue={defaults.guest_name} className={INPUT} />
+          <input
+            name="guest_name"
+            required
+            defaultValue={defaults.guest_name}
+            className={INPUT}
+          />
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div>
               <FieldLabel>Mobile</FieldLabel>
-              <input name="guest_mobile" defaultValue={defaults.guest_mobile ?? ""} className={INPUT} />
+              <input
+                name="guest_mobile"
+                defaultValue={defaults.guest_mobile ?? ""}
+                className={INPUT}
+              />
             </div>
             <div>
               <FieldLabel>Email</FieldLabel>
-              <input type="email" name="guest_email" defaultValue={defaults.guest_email ?? ""} className={INPUT} />
+              <input
+                type="email"
+                name="guest_email"
+                defaultValue={defaults.guest_email ?? ""}
+                className={INPUT}
+              />
             </div>
           </div>
           {mode === "create" ? (
             <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
-              <input type="checkbox" name="send_ticket" value="1" defaultChecked className="mt-0.5" />
-              Send the guest their ticket (email / text) with QR and pick-up details
+              <input
+                type="checkbox"
+                name="send_ticket"
+                value="1"
+                defaultChecked
+                className="mt-0.5"
+              />
+              Send the guest their ticket (email / text) with QR and pick-up
+              details
             </label>
           ) : null}
 
@@ -874,29 +1426,42 @@ export function ShowOpsBookingForm({
                   <div
                     key={i}
                     className={`rounded-xl px-3 py-2.5 ring-1 ${
-                      flagged ? "bg-violet-50 ring-violet-200" : "bg-white ring-slate-200"
+                      flagged
+                        ? "bg-violet-50 ring-violet-200"
+                        : "bg-white ring-slate-200"
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                      <Users
+                        className="h-4 w-4 shrink-0 text-slate-400"
+                        aria-hidden
+                      />
                       <input
                         name={`attendee_name_${i}`}
                         value={attNames[i] ?? ""}
-                        onChange={(e) => setAttNames((l) => setAt(l, i, e.target.value))}
+                        onChange={(e) =>
+                          setAttNames((l) => setAt(l, i, e.target.value))
+                        }
                         placeholder={`${type === "adult" ? "Adult" : type === "child" ? "Child" : "Infant"} ${i + 1}`}
                         className="w-full border-0 bg-transparent p-0 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-0"
                       />
                     </div>
                     <div className="mt-1 flex items-center gap-2 pl-6">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{type}</span>
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {type}
+                      </span>
                       <span className="text-slate-300">·</span>
                       <input
                         name={`attendee_note_${i}`}
                         value={note}
-                        onChange={(e) => setAttNotes((l) => setAt(l, i, e.target.value))}
+                        onChange={(e) =>
+                          setAttNotes((l) => setAt(l, i, e.target.value))
+                        }
                         placeholder="no notes"
                         className={`w-full border-0 bg-transparent p-0 text-xs focus:outline-none focus:ring-0 ${
-                          flagged ? "font-medium text-violet-900" : "text-slate-500 placeholder:text-slate-400"
+                          flagged
+                            ? "font-medium text-violet-900"
+                            : "text-slate-500 placeholder:text-slate-400"
                         }`}
                       />
                       {flagged ? (
@@ -909,7 +1474,8 @@ export function ShowOpsBookingForm({
                 );
               })}
               <p className="rounded-xl border border-dashed border-slate-300 px-3 py-2 text-center text-xs text-slate-500">
-                Change the adult / child / infant counts to add or remove attendees
+                Change the adult / child / infant counts to add or remove
+                attendees
               </p>
             </div>
           ) : null}
@@ -924,25 +1490,39 @@ export function ShowOpsBookingForm({
             />
             Dietary restriction on this booking
           </label>
-          {dietary && config.dietary_mode === "options" && config.dietary_options.length ? (
+          {dietary &&
+          config.dietary_mode === "options" &&
+          config.dietary_options.length ? (
             <fieldset className="mt-2 space-y-2 text-sm">
               <div className="flex flex-wrap gap-3">
                 {config.dietary_options.map((opt) => (
-                  <label key={opt} className="flex items-center gap-1.5 text-xs">
+                  <label
+                    key={opt}
+                    className="flex items-center gap-1.5 text-xs"
+                  >
                     <input
                       type="checkbox"
                       name="dietary_option"
                       value={opt}
-                      defaultChecked={Boolean(defaults.dietary_notes?.includes(opt))}
+                      defaultChecked={Boolean(
+                        defaults.dietary_notes?.includes(opt),
+                      )}
                     />
                     {opt}
                   </label>
                 ))}
               </div>
-              <input name="dietary_notes" defaultValue="" placeholder="Extra notes" className={INPUT} />
+              <input
+                name="dietary_notes"
+                defaultValue=""
+                placeholder="Extra notes"
+                className={INPUT}
+              />
             </fieldset>
           ) : null}
-          {dietary && (config.dietary_mode !== "options" || !config.dietary_options.length) ? (
+          {dietary &&
+          (config.dietary_mode !== "options" ||
+            !config.dietary_options.length) ? (
             <input
               name="dietary_notes"
               defaultValue={defaults.dietary_notes ?? ""}
@@ -966,10 +1546,12 @@ export function ShowOpsBookingForm({
             onChange={setHotelId}
             options={hotelOptions}
             ariaLabel="Hotel"
-            placeholder="Type a hotel or resort…"
+            placeholder="Type a hotel or pickup name…"
           />
           {activeIsland && hotelsForIsland.length === 0 ? (
-            <p className="mt-1 text-xs text-amber-700">No hotels on {activeIsland} yet — add under Master data.</p>
+            <p className="mt-1 text-xs text-amber-700">
+              No hotels on {activeIsland} yet — add under Master data.
+            </p>
           ) : null}
 
           <FieldLabel className="mt-3">Getting there</FieldLabel>
@@ -981,13 +1563,22 @@ export function ShowOpsBookingForm({
             className={INPUT}
             aria-label="Getting there"
           >
-            <option value="bus" disabled={product?.transport_available === false}>
+            <option
+              value="bus"
+              disabled={product?.transport_available === false}
+            >
               Bus
             </option>
             <option value="private">Private</option>
             <option value="own_way">Own way</option>
           </select>
-          {moneyLocked ? null : <input type="hidden" name="transport_required" value={transport ? "1" : "0"} />}
+          {moneyLocked ? null : (
+            <input
+              type="hidden"
+              name="transport_required"
+              value={transport ? "1" : "0"}
+            />
+          )}
           <p className="mt-1 text-xs text-slate-500">
             {product?.transport_available === false
               ? "No bus on this show."
@@ -1025,7 +1616,8 @@ export function ShowOpsBookingForm({
                   aria-label="Resort"
                 >
                   <option value="">Pick a resort…</option>
-                  {privateZone && !zoneOptions.some((z) => z.code === privateZone) ? (
+                  {privateZone &&
+                  !zoneOptions.some((z) => z.code === privateZone) ? (
                     <option value={privateZone}>{privateZone}</option>
                   ) : null}
                   {zoneOptions.map((z) => (
@@ -1044,7 +1636,9 @@ export function ShowOpsBookingForm({
                   aria-label="Resort"
                 />
               )}
-              <p className="mt-1 text-xs text-slate-500">Office list shows: {privateLabel}.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Office list shows: {privateLabel}.
+              </p>
             </>
           ) : null}
 
@@ -1057,7 +1651,7 @@ export function ShowOpsBookingForm({
                 onChange={setPickupStopId}
                 options={stopOptions}
                 ariaLabel="Pick-up point"
-                placeholder="Type a resort, stop or time…"
+                placeholder="Type a pickup or hotel name…"
                 emptyLabel="— pick a stop —"
               />
               <p className="mt-1 text-xs text-slate-500">
@@ -1070,18 +1664,28 @@ export function ShowOpsBookingForm({
 
               <div className="mt-3 space-y-2 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Pick-up</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Pick-up
+                  </p>
                   <p className="text-2xl font-semibold tabular-nums text-slate-900">
-                    {stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : "—"}
+                    {stop?.pickup_time
+                      ? String(stop.pickup_time).slice(0, 5)
+                      : "—"}
                   </p>
                 </div>
                 <div className="border-t border-slate-200 pt-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Show starts</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Show starts
+                  </p>
                   {product?.show_time ? (
-                    <p className="text-2xl font-semibold tabular-nums text-slate-900">{String(product.show_time).slice(0, 5)}</p>
+                    <p className="text-2xl font-semibold tabular-nums text-slate-900">
+                      {String(product.show_time).slice(0, 5)}
+                    </p>
                   ) : (
                     <p className="text-xs text-amber-700">
-                      {product ? `No start time saved for ${product.name} — set it under Shows.` : "Pick a show first."}
+                      {product
+                        ? `No start time saved for ${product.name} — set it under Shows.`
+                        : "Pick a show first."}
                     </p>
                   )}
                 </div>
@@ -1124,14 +1728,20 @@ export function ShowOpsBookingForm({
             <SummaryLine label="Show" value={product?.name ?? "—"} />
             <SummaryLine
               label="Date"
-              value={showDate ? `${showOpsDayName(showDate) ?? ""}, ${showDate}` : "—"}
+              value={
+                showDate
+                  ? `${showOpsDayName(showDate) ?? ""}, ${showDate}`
+                  : "—"
+              }
             />
             <SummaryLine
               label="Attendees"
               value={
                 [
                   adults ? `${adults} Adult${adults === 1 ? "" : "s"}` : "",
-                  children ? `${children} Child${children === 1 ? "" : "ren"}` : "",
+                  children
+                    ? `${children} Child${children === 1 ? "" : "ren"}`
+                    : "",
                   infants ? `${infants} Infant${infants === 1 ? "" : "s"}` : "",
                 ]
                   .filter(Boolean)
@@ -1140,10 +1750,19 @@ export function ShowOpsBookingForm({
             />
             {transport ? (
               <>
-                <SummaryLine label="Pick-up point" value={stop ? `${stop.resort} · ${stop.stop_name}` : "Not set"} />
+                <SummaryLine
+                  label="Pick-up point"
+                  value={
+                    stop ? `${stop.resort} · ${stop.stop_name}` : "Not set"
+                  }
+                />
                 <SummaryLine
                   label="Pick-up time"
-                  value={stop?.pickup_time ? String(stop.pickup_time).slice(0, 5) : "—"}
+                  value={
+                    stop?.pickup_time
+                      ? String(stop.pickup_time).slice(0, 5)
+                      : "—"
+                  }
                 />
               </>
             ) : pickupKind === "private" ? (
@@ -1151,11 +1770,20 @@ export function ShowOpsBookingForm({
             ) : (
               <SummaryLine label="Transport" value="Guest makes own way" />
             )}
-            <SummaryLine label="Show time" value={product?.show_time ? String(product.show_time).slice(0, 5) : "—"} />
+            <SummaryLine
+              label="Show time"
+              value={
+                product?.show_time ? String(product.show_time).slice(0, 5) : "—"
+              }
+            />
             {specialMeals > 0 || dietary ? (
               <SummaryLine
                 label="Special notes"
-                value={specialMeals > 0 ? `${specialMeals} special meal${specialMeals === 1 ? "" : "s"}` : "Dietary noted"}
+                value={
+                  specialMeals > 0
+                    ? `${specialMeals} special meal${specialMeals === 1 ? "" : "s"}`
+                    : "Dietary noted"
+                }
               />
             ) : null}
           </dl>
@@ -1173,13 +1801,17 @@ export function ShowOpsBookingForm({
                 {children > 0 ? (
                   <PriceLine
                     label={`Children (${children} × ${moneyFmt(product.child_price)})`}
-                    value={moneyFmt(round2(children * Number(product.child_price)))}
+                    value={moneyFmt(
+                      round2(children * Number(product.child_price)),
+                    )}
                   />
                 ) : null}
                 {infants > 0 && Number(product.infant_price) > 0 ? (
                   <PriceLine
                     label={`Infants (${infants} × ${moneyFmt(product.infant_price)})`}
-                    value={moneyFmt(round2(infants * Number(product.infant_price)))}
+                    value={moneyFmt(
+                      round2(infants * Number(product.infant_price)),
+                    )}
                   />
                 ) : null}
                 {supplementTotal > 0 ? (
@@ -1192,8 +1824,23 @@ export function ShowOpsBookingForm({
             ) : (
               <p className="text-slate-500">Pick a show to see the price.</p>
             )}
+            {extraLines.map((line) => (
+              <PriceLine
+                key={line.id}
+                label={`${line.name} (${line.quantity} × ${moneyFmt(line.unit_price)})`}
+                value={moneyFmt(line.gross_total)}
+              />
+            ))}
             <div className="border-t border-slate-200 pt-2">
-              <PriceLine label={sellerMode ? "Your rate" : "Ticket total"} value={moneyFmt(money.total_cost)} strong />
+              <PriceLine
+                label={
+                  sellerMode
+                    ? "Your rate including extras"
+                    : "Total including extras"
+                }
+                value={moneyFmt(money.total_cost)}
+                strong
+              />
             </div>
             {commissionPct > 0 ? (
               <PriceLine
@@ -1208,15 +1855,26 @@ export function ShowOpsBookingForm({
             style={{ backgroundColor: "rgba(124,58,237,0.08)" }}
           >
             <span className="font-semibold" style={{ color: ACCENT }}>
-              {money.billing_mode === "invoice" ? "Nett to invoice" : "Deposit to collect"}
+              {money.billing_mode === "invoice"
+                ? "Nett to invoice"
+                : "Deposit to collect"}
             </span>
-            <span className="text-lg font-semibold tabular-nums" style={{ color: ACCENT }}>
-              {moneyFmt(money.billing_mode === "invoice" ? money.nett_total : money.deposit_amount)}
+            <span
+              className="text-lg font-semibold tabular-nums"
+              style={{ color: ACCENT }}
+            >
+              {moneyFmt(
+                money.billing_mode === "invoice"
+                  ? money.nett_total
+                  : money.deposit_amount,
+              )}
             </span>
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
             Once confirmed, the booking appears in that night&apos;s lists
-            {money.billing_mode === "invoice" ? " and on the next invoice." : " and on the bus board."}
+            {money.billing_mode === "invoice"
+              ? " and on the next invoice."
+              : " and on the bus board."}
           </p>
         </div>
       </div>
@@ -1231,12 +1889,16 @@ export function ShowOpsBookingForm({
         </button>
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || Boolean(extrasPreview.error)}
           className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
           <Check className="h-4 w-4" aria-hidden />
-          {pending ? "Saving…" : mode === "edit" ? "Update booking" : "Confirm booking"}
+          {pending
+            ? "Saving…"
+            : mode === "edit"
+              ? "Update booking"
+              : "Confirm booking"}
         </button>
       </div>
     </form>
@@ -1247,9 +1909,19 @@ const INPUT =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100";
 const ACCENT = "var(--show-ops-primary,#7c3aed)";
 
-function FieldLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function FieldLabel({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <p className={`mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}>{children}</p>
+    <p
+      className={`mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -1278,7 +1950,11 @@ function StepColumn({
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
         <div className="mb-3 flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <h3 className="text-sm font-semibold text-slate-900">{label}</h3>
-          {note ? <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{note}</span> : null}
+          {note ? (
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              {note}
+            </span>
+          ) : null}
         </div>
         {children}
       </section>
@@ -1351,7 +2027,11 @@ function PriceLine({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className={strong ? "font-semibold text-slate-900" : "text-slate-600"}>{label}</dt>
+      <dt
+        className={strong ? "font-semibold text-slate-900" : "text-slate-600"}
+      >
+        {label}
+      </dt>
       <dd
         className={`tabular-nums ${tone === "rose" ? "text-rose-600" : strong ? "font-semibold text-slate-900" : "text-slate-700"}`}
       >
@@ -1392,9 +2072,15 @@ function BookingSavedPanel({
   backHref: string;
 }) {
   const pax = [
-    saved.pax.adults ? `${saved.pax.adults} adult${saved.pax.adults === 1 ? "" : "s"}` : "",
-    saved.pax.children ? `${saved.pax.children} child${saved.pax.children === 1 ? "" : "ren"}` : "",
-    saved.pax.infants ? `${saved.pax.infants} infant${saved.pax.infants === 1 ? "" : "s"}` : "",
+    saved.pax.adults
+      ? `${saved.pax.adults} adult${saved.pax.adults === 1 ? "" : "s"}`
+      : "",
+    saved.pax.children
+      ? `${saved.pax.children} child${saved.pax.children === 1 ? "" : "ren"}`
+      : "",
+    saved.pax.infants
+      ? `${saved.pax.infants} infant${saved.pax.infants === 1 ? "" : "s"}`
+      : "",
   ]
     .filter(Boolean)
     .join(", ");
@@ -1402,11 +2088,18 @@ function BookingSavedPanel({
   return (
     <div className="mt-6 print:mt-0">
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-        <div className="flex flex-wrap items-center gap-3 px-6 py-5" style={{ backgroundColor: ACCENT }}>
+        <div
+          className="flex flex-wrap items-center gap-3 px-6 py-5"
+          style={{ backgroundColor: ACCENT }}
+        >
           <Check className="h-6 w-6 text-white" aria-hidden />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/70">Booking saved</p>
-            <p className="font-mono text-2xl font-bold tracking-tight text-white">{saved.ref}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
+              Booking saved
+            </p>
+            <p className="font-mono text-2xl font-bold tracking-tight text-white">
+              {saved.ref}
+            </p>
           </div>
         </div>
         <dl className="divide-y divide-slate-100">
@@ -1414,14 +2107,26 @@ function BookingSavedPanel({
           <SavedLine label="Show" value={saved.show} />
           <SavedLine
             label="Date"
-            value={saved.date ? `${showOpsDayName(saved.date) ?? ""} ${saved.date}`.trim() : "—"}
+            value={
+              saved.date
+                ? `${showOpsDayName(saved.date) ?? ""} ${saved.date}`.trim()
+                : "—"
+            }
             strong
           />
           <SavedLine label="Party" value={pax || "—"} />
           {saved.transport ? (
             <>
-              <SavedLine label="Pick-up stop" value={saved.stopName ?? "Not set"} strong />
-              <SavedLine label="Pick-up time" value={saved.pickupTime ?? "—"} strong />
+              <SavedLine
+                label="Pick-up stop"
+                value={saved.stopName ?? "Not set"}
+                strong
+              />
+              <SavedLine
+                label="Pick-up time"
+                value={saved.pickupTime ?? "—"}
+                strong
+              />
             </>
           ) : saved.privateLabel ? (
             <SavedLine label="Transport" value={saved.privateLabel} strong />
@@ -1460,11 +2165,21 @@ function BookingSavedPanel({
   );
 }
 
-function SavedLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function SavedLine({
+  label,
+  value,
+  strong,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4 px-6 py-3">
       <dt className="shrink-0 text-sm text-slate-500">{label}</dt>
-      <dd className={`text-right text-sm ${strong ? "text-base font-semibold text-slate-900" : "text-slate-800"}`}>
+      <dd
+        className={`text-right text-sm ${strong ? "text-base font-semibold text-slate-900" : "text-slate-800"}`}
+      >
         {value}
       </dd>
     </div>

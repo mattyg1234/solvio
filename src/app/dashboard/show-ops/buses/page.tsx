@@ -1,7 +1,9 @@
+import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
+import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import Link from "next/link";
 
 import { upsertBusOrderAction, upsertBusStopAction } from "@/app/dashboard/show-ops/actions";
-import { BusStopReorder } from "@/components/show-ops/bus-stop-reorder";
+import { BusNightBoard } from "@/components/show-ops/bus-night-board";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
@@ -25,22 +27,16 @@ export default async function BusBoardPage({
   const showUntimed = sp.stops === "all";
 
   const [{ data: stops }, { data: bookings }, { data: orders }, { data: hotels }] = await Promise.all([
-    ctx.supabase
-      .from("show_bus_stops")
-      .select("id,island,resort,stop_name,pickup_time,sort_order,guide_notes,active,runs_on")
-      .eq("business_id", ctx.business.id)
-      .eq("active", true)
-      .order("island")
-      .order("sort_order"),
-    ctx.supabase
-      .from("show_bookings")
-      .select("island,adults,children,infants,transport_required,pickup_stop_id,show_name")
-      .eq("business_id", ctx.business.id)
-      .eq("show_date", date)
-      .eq("transport_required", true)
-      .is("cancelled_at", null),
+    loadDirectoryStops(ctx.supabase, ctx.business.id, true),
+    collectPartnerPages<{island:string;adults:number;children:number;infants:number;transport_required:boolean;pickup_stop_id:string|null;show_name:string}>(async (offset, limit) => {
+      const { data, error } = await ctx.supabase.from("show_bookings").select("island,adults,children,infants,transport_required,pickup_stop_id,show_name")
+        .eq("business_id", ctx.business.id).eq("show_date", date).eq("transport_required", true).is("cancelled_at", null)
+        .order("id").range(offset, offset + limit - 1);
+      if (error) throw new Error("Could not load bus bookings. Refresh and try again.");
+      return data ?? [];
+    }).then(data => ({data})),
     ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,cost_total,notes,guide_name").eq("business_id", ctx.business.id).eq("show_date", date),
-    ctx.supabase.from("show_hotels").select("bus_stop_id").eq("business_id", ctx.business.id).eq("active", true),
+    loadDirectoryHotels(ctx.supabase, ctx.business.id, true),
   ]);
 
   const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
@@ -301,8 +297,10 @@ export default async function BusBoardPage({
               );
             })}
 
-            {canManageCatalogue && (islStops.length ? (
-              <BusStopReorder
+            {(["owner", "admin", "finance", "office"].includes(ctx.role)) && (islStops.length ? (
+              <BusNightBoard
+                key={`${date}-${isl}`}
+                date={date}
                 island={isl}
                 stops={islStops.map((s) => ({ id: s.id, label: `${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
               />

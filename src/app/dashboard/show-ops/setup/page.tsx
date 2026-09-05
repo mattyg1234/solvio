@@ -2,10 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { enableShowOpsAction } from "@/app/dashboard/show-ops/actions";
-import { requireShowOpsContext } from "@/lib/show-ops/access";
+import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 
 export default async function ShowOpsSetupPage() {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireGlobalShowOpsAdmin();
   if (ctx.business.show_ops_enabled) redirect("/dashboard/show-ops");
 
   return (

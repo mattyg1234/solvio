@@ -1,6 +1,6 @@
 /**
  * Booking edit history: what changed between two saves, and how to print it.
- * Pure — the row write lives in the server action.
+ * Pure presentation helpers; automatic audit rows are written by the database.
  */
 
 export type BookingFieldChange = { from: unknown; to: unknown };
@@ -70,6 +70,28 @@ export const BOOKING_HISTORY_LABELS: Record<string, string> = {
   payment_method: "Paid by",
   supplier_ticket_number: "Ticket #",
   cancelled: "Cancelled",
+  created: "Booking created",
+  created_at: "Created at",
+  created_by: "Created by account",
+  created_by_name: "Creator",
+  cancelled_at: "Cancelled at",
+  cancelled_by: "Cancelled by account",
+  cancellation_reason: "Cancellation reason",
+  cancel_reason: "Cancellation reason",
+  ticket_type_name: "Ticket type",
+  ticket_type_id: "Ticket type id",
+  extras_snapshot: "Extras",
+  pricing_snapshot: "Recorded prices",
+  infant_nett_total: "Infant nett",
+  adult_nett_total: "Adult nett",
+  child_nett_total: "Child nett",
+  payment_status: "Payment status",
+  arrived_pax: "Arrived passengers",
+  arrived_at: "Arrival recorded at",
+  no_show: "No-show",
+  no_show_charge: "No-show charge decision",
+  no_show_proof_path: "Ticket photo",
+  invoice_id: "Invoice id",
 };
 
 /** Ids duplicate their name column; skip them in the printed line when the name moved too. */
@@ -125,6 +147,7 @@ function printValue(v: unknown): string {
   if (v === true) return "yes";
   if (v === false) return "no";
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  if (typeof v === "object") return JSON.stringify(v, null, 2);
   return String(v);
 }
 
@@ -146,7 +169,7 @@ export function formatBookingChanges(changes: BookingChanges | null | undefined,
   return parts.join("; ");
 }
 
-/** "4 Sep 21:14" — office clock, Canary time. */
+/** Full date and office clock, including year and time-zone label. */
 export function formatBookingHistoryWhen(iso: string, timeZone = "Atlantic/Canary"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -155,13 +178,15 @@ export function formatBookingHistoryWhen(iso: string, timeZone = "Atlantic/Canar
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "numeric",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
     timeZone,
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const month = MONTHS[Number(get("month")) - 1] ?? get("month");
   const hour = get("hour") === "24" ? "00" : get("hour");
-  return `${Number(get("day"))} ${month} ${hour}:${get("minute")}`;
+  return `${Number(get("day"))} ${month} ${get("year")} ${hour}:${get("minute")}:${get("second")} · ${timeZone === "Atlantic/Canary" ? "Canary time" : timeZone}`;
 }

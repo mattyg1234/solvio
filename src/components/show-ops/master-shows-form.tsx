@@ -13,6 +13,7 @@ import {
   TicketTypesEditor,
   type MasterTicketType,
 } from "./ticket-types-editor";
+import { ExtrasEditor, type MasterExtra } from "./extras-editor";
 import { NumberInput } from "@/components/ui/number-input";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
@@ -92,6 +93,8 @@ export function MasterShowsForm({
   config,
   ticketTypes,
   ticketTypesError = false,
+  extras,
+  extrasError = false,
 }: {
   products: MasterShowRow[];
   islands: string[];
@@ -99,6 +102,8 @@ export function MasterShowsForm({
   config: ShowOpsConfig;
   ticketTypes: MasterTicketType[];
   ticketTypesError?: boolean;
+  extras: MasterExtra[];
+  extrasError?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
@@ -299,6 +304,19 @@ export function MasterShowsForm({
                   island={p.island}
                   config={config}
                   types={ticketTypes.filter((type) => type.product_id === p.id)}
+                />
+              )}
+              {extrasError ? (
+                <p role="alert" className="mt-4 text-sm text-rose-700">
+                  Could not load extras. Please reload before editing them.
+                </p>
+              ) : (
+                <ExtrasEditor
+                  productId={p.id}
+                  showName={p.name}
+                  island={p.island}
+                  config={config}
+                  extras={extras.filter((extra) => extra.product_id === p.id)}
                 />
               )}
               <details className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">

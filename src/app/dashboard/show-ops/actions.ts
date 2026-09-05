@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { redirect } from "next/navigation";
 
@@ -8,6 +9,7 @@ import { cookies } from "next/headers";
 
 import {
   requireShowOpsContext,
+  requireGlobalShowOpsAdmin,
   requirePartnerAdmin,
   requireShowOpsRole,
   requireShowOpsSellerContext,
@@ -44,6 +46,8 @@ import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticke
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
+import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
+import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSnapshot, type ShowExtra } from "@/lib/show-ops/extras";
 import { applyTicketType, ticketBookingSnapshotPatch, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
 import { invitePartnerSeller, assertRemovableSeller } from "@/lib/show-ops/partner-invitations";
 import { partnerBookingErrorMessage } from "@/lib/show-ops/partner-booking";
@@ -58,7 +62,6 @@ import {
 } from "@/lib/show-ops/invoice";
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
-import { diffBookingFields, type BookingChanges } from "@/lib/show-ops/booking-history";
 import {
   normaliseZone,
   parsePickupKind,
@@ -125,7 +128,7 @@ export async function switchShowOpsWorkspaceAction(businessId: string): Promise<
 }
 
 export async function enableShowOpsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireGlobalShowOpsAdmin();
   const seedPreset = String(formData.get("seed_preset") ?? "generic");
   const displayName = String(formData.get("display_name") ?? ctx.business.name).trim();
   const locationsRaw = String(formData.get("locations") ?? "");
@@ -183,6 +186,7 @@ function guestTicketFromBooking(
     guestEmail: (f.guest_email as string | null) ?? null,
     guestMobile: (f.guest_mobile as string | null) ?? null,
     showName: String(f.show_name ?? ""),
+    extrasSummary: bookingExtrasSummary(f.extras_snapshot),
     showDate: String(f.show_date ?? ""),
     adults: Number(f.adults) || 0,
     children: Number(f.children) || 0,
@@ -342,7 +346,7 @@ export async function updateShowOpsMyNameAction(formData: FormData): Promise<voi
 }
 
 export async function updateShowOpsBrandingAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireGlobalShowOpsAdmin();
   const { error } = await ctx.supabase
     .from("businesses")
     .update({
@@ -367,7 +371,7 @@ function splitLines(raw: string): string[] {
 }
 
 export async function updateShowOpsIslandsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const islands = splitLines(String(formData.get("islands") ?? ""));
   const config = { ...ctx.config, islands: islands.length ? islands : ctx.config.islands };
   const { error } = await ctx.supabase
@@ -381,7 +385,7 @@ export async function updateShowOpsIslandsAction(formData: FormData): Promise<vo
 
 /** Full ops customisation: labels, channels, dietary, custom booking questions. */
 export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const islands = splitLines(String(formData.get("islands") ?? ""));
   const partner_types = splitLines(String(formData.get("partner_types") ?? ""));
   const sales_channels = splitLines(String(formData.get("sales_channels") ?? ""));
@@ -762,12 +766,13 @@ export async function getNightLoadAction(
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
   const db = createSupabaseServiceRoleClient();
 
-  const { data: product } = await db
+  const { data: product } = await ctx.supabase
     .from("show_products")
     .select("id,name,island,capacity")
     .eq("id", productId.trim())
     .eq("business_id", ctx.business.id)
     .maybeSingle();
+  if (product && !islandAllowed(ctx.allowedIslands, product.island)) return { ok: false, message: "You do not have access to this island." };
   if (!product) return { ok: false, message: "Show not found." };
 
   const [{ data: bookings }, { data: order }, { data: closes }] = await Promise.all([
@@ -857,7 +862,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   const { data: bookings } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,ticket_type_id,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at",
+      "id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at",
     )
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
@@ -873,12 +878,20 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   if (typesError) throw new Error("Could not load ticket prices. Nothing repriced.");
   const byTicketType = new Map((ticketTypes ?? []).map((t) => [t.id, t as ShowTicketType]));
   if ((bookings ?? []).some((b) => b.ticket_type_id && !byTicketType.has(b.ticket_type_id))) throw new Error("A booking has an unavailable ticket type. Review it before repricing.");
+  const { data: extrasCatalogue, error: extrasError } = await ctx.supabase.from("show_extras").select("*").eq("business_id", ctx.business.id).eq("product_id", productId);
+  if (extrasError) throw new Error("Could not load extras. Nothing repriced.");
+  const repricedExtras = new Map((bookings ?? []).map((b) => {
+    const supplier = b.supplier_id ? supplierById.get(b.supplier_id) : null;
+    return [b.id, calculateExtras((extrasCatalogue ?? []) as ShowExtra[], (b.extras_snapshot ?? []).map((line: ExtraSnapshot) => ({ id: line.id, quantity: line.charge_basis === "quantity" ? line.quantity : 1 })), b.adults + b.children + b.infants, Number(supplier?.invoice_nett_percent ?? 100), { allowArchived: true })];
+  }));
   const now = new Date().toISOString();
 
   for (const b of bookings ?? []) {
     const supplier = b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null;
     const pricedProduct = applyTicketType(product as import("@/lib/show-ops/types").ShowProduct, b.ticket_type_id ? byTicketType.get(b.ticket_type_id)! : null);
+    const extras = repricedExtras.get(b.id) ?? [];
     const money = computeBookingMoney({
+      extras,
       adults: b.adults,
       children: b.children,
       infants: b.infants,
@@ -897,6 +910,8 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
       nett_total: money.nett_total,
       adult_nett_total: money.adult_nett_total,
       child_nett_total: money.child_nett_total,
+      infant_nett_total: money.infant_nett_total,
+      extras_snapshot: extras,
       billing_mode: money.billing_mode,
       updated_at: now,
       updated_by: ctx.user.id,
@@ -1527,7 +1542,7 @@ async function buildBookingFields(
   ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
   formData: FormData,
   existingTicketTypeId?: string | null,
-  existingTransport?: { product_id: string | null; ticket_type_id: string | null; transport_required: boolean },
+  existingTransport?: { product_id: string | null; ticket_type_id: string | null; transport_required: boolean; extras_snapshot?: unknown; adults?: number; children?: number; infants?: number; supplier_id?: string | null; billing_mode?: string },
 ) {
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const productId = String(formData.get("product_id") ?? "").trim() || null;
@@ -1626,10 +1641,39 @@ async function buildBookingFields(
       ? (requestedBilling as ShowOpsBillingMode)
       : undefined;
 
+  let extras: ExtraSnapshot[];
+  try {
+    const selection = parseExtraSelections(formData.get("extras") ?? "[]");
+    const historical = existingTransport?.product_id === productId && Array.isArray(existingTransport.extras_snapshot) ? existingTransport.extras_snapshot as ExtraSnapshot[] : [];
+    const historicalSelection = historical.map((line) => ({ id: line.id, quantity: line.charge_basis === "quantity" ? line.quantity : 1 }));
+    const preserveExtras = existingTransport
+      && existingTransport.product_id === productId && existingTransport.ticket_type_id === ticketTypeId
+      && existingTransport.supplier_id === supplierId && existingTransport.adults === adults
+      && existingTransport.children === children && existingTransport.infants === infants
+      && existingTransport.transport_required === transport
+      && existingTransport.billing_mode === (billingMode ?? supplier?.billing_mode ?? "deposit")
+      && sameExtraSelection(selection, historicalSelection);
+    if (preserveExtras) {
+      extras = historical;
+    } else {
+      const { data: catalogue, error: extrasError } = selection.length
+        ? await ctx.supabase.from("show_extras").select("*").eq("business_id", ctx.business.id).eq("product_id", productId ?? "").in("id", selection.map((line) => line.id))
+        : { data: [], error: null };
+      if (extrasError) throw new Error("Could not load extras. Please retry.");
+      extras = calculateExtras((catalogue ?? []) as ShowExtra[], selection, adults + children + infants, Number(supplier?.invoice_nett_percent ?? 100), { allowArchived: true });
+      for (const line of extras) {
+        if (!(catalogue ?? []).find((item) => item.id === line.id)?.active && !historical.some((old) => old.id === line.id && old.quantity === line.quantity)) throw new Error("An archived extra cannot be newly selected or changed.");
+      }
+    }
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : "Invalid extras." };
+  }
+
   const money = computeBookingMoney({
     adults,
     children,
     infants,
+    extras,
     product: product as never,
     supplier: supplier as never,
     billingMode,
@@ -1726,6 +1770,8 @@ async function buildBookingFields(
       payment_status: money.payment_status,
       // Freeze the rates behind these numbers. Editing a partner nett or a show
       // price later must not move money on a booking already taken.
+      extras_snapshot: extras,
+      infant_nett_total: money.infant_nett_total,
       pricing_snapshot: { ...money.pricing_snapshot, priced_at: new Date().toISOString() },
       updated_by: ctx.user.id,
       updated_at: new Date().toISOString(),
@@ -1764,6 +1810,7 @@ export async function createBookingAction(
       guestEmail: (f.guest_email as string | null) ?? null,
       guestMobile: (f.guest_mobile as string | null) ?? null,
       showName: String(f.show_name ?? ""),
+    extrasSummary: bookingExtrasSummary(f.extras_snapshot),
       showDate: String(f.show_date ?? ""),
       adults: Number(f.adults) || 0,
       children: Number(f.children) || 0,
@@ -1793,29 +1840,6 @@ export async function createBookingAction(
  * One history row per save that changed something. Never blocks the save —
  * a failed audit line is logged, not surfaced to the desk.
  */
-async function writeBookingHistory(
-  ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
-  bookingId: string,
-  changes: BookingChanges,
-): Promise<void> {
-  if (!Object.keys(changes).length) return;
-  try {
-    const { data: me } = await ctx.supabase.from("profiles").select("full_name,email").eq("id", ctx.user.id).maybeSingle();
-    const name =
-      (me?.full_name && String(me.full_name).trim()) || (me?.email && String(me.email).trim()) || ctx.user.email || null;
-    const { error } = await ctx.supabase.from("show_booking_history").insert({
-      business_id: ctx.business.id,
-      booking_id: bookingId,
-      changed_by: ctx.user.id,
-      changed_by_name: name,
-      changes,
-    });
-    if (error) console.error("[show-ops] booking history not written:", error.message);
-  } catch (e) {
-    console.error("[show-ops] booking history not written:", e);
-  }
-}
-
 export async function updateBookingAction(
   formData: FormData,
 ): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
@@ -1826,7 +1850,7 @@ export async function updateBookingAction(
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
+      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -1835,10 +1859,13 @@ export async function updateBookingAction(
   if (existing.cancelled_at) return { ok: false, message: "This booking is cancelled." };
 
   if (!formData.has("ticket_type_id")) formData.set("ticket_type_id", existing.ticket_type_id ?? "");
+  if (!formData.has("extras")) formData.set("extras", JSON.stringify((existing.extras_snapshot ?? []).map((line: ExtraSnapshot) => ({ id: line.id, quantity: line.charge_basis === "quantity" ? line.quantity : 1 }))));
   const built = await buildBookingFields(ctx, formData, existing.ticket_type_id, existing);
   if (!built.ok) return { ok: false, message: built.error };
 
   const moneyTouched =
+    existing.billing_mode !== built.fields.billing_mode ||
+    !sameExtraSelection(existing.extras_snapshot ?? [], built.fields.extras_snapshot) ||
     existing.adults !== built.fields.adults ||
     existing.children !== built.fields.children ||
     existing.infants !== built.fields.infants ||
@@ -1892,6 +1919,8 @@ export async function updateBookingAction(
 
   const patch = {
     ...restFields,
+    extras_snapshot: moneyTouched ? restFields.extras_snapshot : existing.extras_snapshot ?? [],
+    infant_nett_total: moneyTouched ? restFields.infant_nett_total : Number(existing.infant_nett_total ?? 0),
     ...ticketBookingSnapshotPatch(existing, {
       show_name: restFields.show_name,
       ticket_type_name: restFields.ticket_type_name,
@@ -1912,7 +1941,6 @@ export async function updateBookingAction(
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
-  await writeBookingHistory(ctx, id, diffBookingFields(existing as Record<string, unknown>, patch as Record<string, unknown>));
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }
@@ -1950,7 +1978,6 @@ export async function cancelBookingAction(
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
-  await writeBookingHistory(ctx, id, { cancelled: { from: null, to: reason } });
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }
@@ -1974,6 +2001,7 @@ async function provisionAndEmailSeller(opts: {
   businessId: string; supplierId: string; supplierName: string;
   email: string; merchantName: string; invitedBy?: string;
   ctx: import("@/lib/show-ops/access").ShowOpsContext;
+  inviteIslands?: string[] | null;
 }): Promise<{ userId: string }> {
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
   const { getSiteUrl } = await import("@/lib/site-url");
@@ -1986,14 +2014,15 @@ async function provisionAndEmailSeller(opts: {
       const { data: owner, error: ownerError } = await client.from("businesses").select("owner_id")
         .eq("id", opts.businessId).maybeSingle();
       if (ownerError) throw new Error("Could not verify invitation permission. Please retry.");
-      if (owner?.owner_id === opts.ctx.user.id) return;
+      if (owner?.owner_id === opts.ctx.user.id) { opts.ctx.allowedIslands = null; return; }
       const { data: member, error } = await client.from("show_ops_members")
-        .select("role,supplier_id,partner_admin").eq("business_id", opts.businessId)
+        .select("role,supplier_id,partner_admin,allowed_islands").eq("business_id", opts.businessId)
         .eq("user_id", opts.ctx.user.id).maybeSingle();
       if (error || !member || !( ["office", "finance", "admin"].includes(member.role)
         || (member.role === "seller" && member.partner_admin === true && member.supplier_id === opts.supplierId))) {
         throw new Error("Your invitation permission has changed. Refresh and ask your administrator for access.");
       }
+      opts.ctx.allowedIslands = member.allowed_islands;
     },
     findUser: async (email) => {
       for (let page = 1; ; page++) {
@@ -2024,7 +2053,7 @@ async function provisionAndEmailSeller(opts: {
     },
     addMember: async (userId) => {
       const { error } = await opts.ctx.supabase.from("show_ops_members").insert({
-        business_id: opts.businessId, user_id: userId, role: "seller", supplier_id: opts.supplierId, partner_admin: false,
+        business_id: opts.businessId, user_id: userId, role: "seller", supplier_id: opts.supplierId, partner_admin: false, allowed_islands: opts.inviteIslands === undefined ? opts.ctx.allowedIslands : opts.inviteIslands,
       });
       if (error) throw new Error("Could not add the seller. Please retry or ask the office to check their existing access.");
     },
@@ -2053,6 +2082,7 @@ export async function inviteSellerPortalAction(formData: FormData): Promise<void
   try {
     await provisionAndEmailSeller({
       ctx,
+      inviteIslands: isGlobalShowOpsAdmin(ctx.role, ctx.allowedIslands) ? parseMemberIslands(formData, ctx.config.islands) : undefined,
       businessId: ctx.business.id, supplierId: supplier.id, supplierName: supplier.name,
       email, merchantName: ctx.branding.displayName,
     });
@@ -2104,7 +2134,7 @@ export async function removeSellerColleagueAction(formData: FormData): Promise<v
 }
 
 export async function setSellerPartnerAdminAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const memberId = String(formData.get("member_id") ?? "").trim();
   const partnerAdmin = formData.get("partner_admin") === "true";
   if (!memberId) throw new Error("Person required.");
@@ -2163,7 +2193,7 @@ export async function createSellerBookingAction(
 }
 
 export async function inviteShowOpsMemberAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const role = String(formData.get("role") ?? "office").trim();
   if (!email) throw new Error("Email required.");
@@ -2185,11 +2215,12 @@ export async function inviteShowOpsMemberAction(formData: FormData): Promise<voi
     throw new Error("No Solvio user with that email yet — ask them to sign up first, then invite.");
   }
 
-  const { error } = await admin.from("show_ops_members").upsert(
+  const { error } = await ctx.supabase.from("show_ops_members").upsert(
     {
       business_id: ctx.business.id,
       user_id: userId,
       role,
+      allowed_islands: parseMemberIslands(formData, ctx.config.islands),
     },
     { onConflict: "business_id,user_id" },
   );
@@ -2206,7 +2237,7 @@ export async function inviteShowOpsMemberAction(formData: FormData): Promise<voi
  * on a bus stop), and files the membership with an explicit page allow-list.
  */
 export async function createShowOpsStaffAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const displayName = String(formData.get("display_name") ?? "").trim();
@@ -2223,6 +2254,7 @@ export async function createShowOpsStaffAction(formData: FormData): Promise<void
   const allowedPages = showOpsAllowedPages(role, valid);
   if (!allowedPages.length) throw new Error("Pick at least one page available to this role.");
 
+  const allowedIslands = parseMemberIslands(formData, ctx.config.islands);
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
   const admin = createSupabaseServiceRoleClient();
 
@@ -2233,28 +2265,19 @@ export async function createShowOpsStaffAction(formData: FormData): Promise<void
     user_metadata: { full_name: displayName || email.split("@")[0] },
   });
 
-  let userId = created?.user?.id;
+  const userId = created?.user?.id;
   if (createErr) {
-    // Already registered: reuse the account and just set the password.
-    if (!/already|registered|exists/i.test(createErr.message)) throw new Error(createErr.message);
-    let found: string | undefined;
-    for (let page = 1; page <= 10 && !found; page++) {
-      const { data } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-      found = data.users.find((u) => (u.email || "").toLowerCase() === email)?.id;
-      if (data.users.length < 200) break;
-    }
-    if (!found) throw new Error("That email is taken but the account could not be found.");
-    userId = found;
-    const { error: pwErr } = await admin.auth.admin.updateUserById(found, { password });
-    if (pwErr) throw new Error(pwErr.message);
+    if (/already|registered|exists/i.test(createErr.message)) throw new Error("That email already has a Solvio account. Use the existing-account invitation instead; its password has not been changed.");
+    throw new Error(createErr.message);
   }
   if (!userId) throw new Error("Could not create that login.");
 
-  const { error } = await admin.from("show_ops_members").upsert(
+  const { error } = await ctx.supabase.from("show_ops_members").upsert(
     {
       business_id: ctx.business.id,
       user_id: userId,
       role,
+      allowed_islands: allowedIslands,
       allowed_pages: allowedPages,
       display_name: displayName || null,
       created_by: ctx.user.id,
@@ -2267,16 +2290,14 @@ export async function createShowOpsStaffAction(formData: FormData): Promise<void
 
 /** Change which pages an existing member can see. */
 export async function updateShowOpsMemberPagesAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const memberId = String(formData.get("member_id") ?? "").trim();
   if (!memberId) throw new Error("Member required.");
   const pages = formData.getAll("pages").map((p) => String(p));
   const valid = pages.filter((p) => (SHOW_OPS_PAGE_KEYS as readonly string[]).includes(p));
   if (!valid.length) throw new Error("Pick at least one page this person can see.");
 
-  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
-  const admin = createSupabaseServiceRoleClient();
-  const { data: member } = await admin
+  const { data: member } = await ctx.supabase
     .from("show_ops_members")
     .select("id,role")
     .eq("id", memberId)
@@ -2295,7 +2316,7 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
     patch.supplier_id = String(formData.get("default_supplier_id") ?? "").trim() || null;
   }
 
-  const { error } = await admin
+  const { error } = await ctx.supabase
     .from("show_ops_members")
     .update(patch)
     .eq("id", memberId)
@@ -2306,7 +2327,7 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
 
 /** Reset a staff password without deleting the account. */
 export async function resetShowOpsStaffPasswordAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const memberId = String(formData.get("member_id") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   if (password.length < 8) throw new Error("Password must be at least 8 characters.");
@@ -2320,13 +2341,20 @@ export async function resetShowOpsStaffPasswordAction(formData: FormData): Promi
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!member) throw new Error("Member not found in this workspace.");
+  const [{ data: memberships, error: membershipsError }, { data: owned, error: ownedError }] = await Promise.all([
+    admin.from("show_ops_members").select("business_id,role").eq("user_id", member.user_id),
+    admin.from("businesses").select("id").eq("owner_id", member.user_id).limit(1),
+  ]);
+  if (membershipsError || ownedError) throw new Error("Could not verify this account. No password was changed.");
+  assertWorkspaceOnlyStaffAccount(ctx.business.id, memberships ?? [], Boolean(owned?.length));
+  await requireGlobalShowOpsAdmin();
   const { error } = await admin.auth.admin.updateUserById(member.user_id, { password });
   if (error) throw new Error(error.message);
   revalidateShowOps();
 }
 
 export async function removeShowOpsMemberAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const memberId = String(formData.get("member_id") ?? "").trim();
   if (!memberId) throw new Error("Member required.");
   const { error } = await ctx.supabase
@@ -2576,7 +2604,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       business_id: ctx.business.id,
       supplier_id,
       supplier_name,
-      island: island || null,
+      island: packIsland,
       period_start,
       period_end,
       invoice_date,
@@ -2674,25 +2702,28 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       line_kind: "booking",
     };
   });
-  const { error: lineErr } = await ctx.supabase.from("show_invoice_lines").insert(lines);
+  const supplementRows = billedRows.flatMap(({ b, billed }) => invoiceSupplements({
+    extras: b.extras_snapshot, infantNett: Number(b.infant_nett_total || 0), infants: Number(b.infants),
+    booked: paxTotal(Number(b.adults), Number(b.children), Number(b.infants)),
+    missing: billed.missing, writeOff: billed.charge === "write_off", vatRate,
+  }).map(({ description, money }) => ({
+    business_id: ctx.business.id, invoice_id: inv.id, booking_id: null, source_booking_id: b.id,
+    booking_ref: b.booking_ref, guest_name: b.guest_name, supplier_ticket_number: b.supplier_ticket_number,
+    adults: 0, children: 0, adult_nett_total: 0, child_nett_total: 0,
+    line_total: money.lineTotal, notes: billed.invoiceNote,
+    description: `${b.booking_ref} · ${description}`, quantity: money.quantity, unit_price: money.unitPrice,
+    adult_unit_price: 0, child_unit_price: 0, vat_rate: money.vatRate, vat_amount: money.vatAmount,
+    net_total: money.netTotal, line_kind: "manual",
+  })));
+  const { error: lineErr } = await ctx.supabase.from("show_invoice_lines").insert([...lines, ...supplementRows]);
   if (lineErr) {
     await ctx.supabase.from("show_invoices").delete().eq("id", inv.id);
     throw new Error(lineErr.message);
   }
 
-  const totals = sumInvoiceLines(
-    billedRows.map(({ b, billed }) => {
-      const adults = Number(b.adults);
-      const children = Number(b.children);
-      return recalcInvoiceLine({
-        adults,
-        children,
-        adultUnit: adults > 0 ? round2(billed.billedAdultNett / adults) : 0,
-        childUnit: children > 0 ? round2(billed.billedChildNett / children) : 0,
-        vatRate,
-      });
-    }),
-  );
+  const totals = sumInvoiceLines([...lines, ...supplementRows].map((line) => ({
+    netTotal: line.net_total, vatAmount: line.vat_amount, lineTotal: line.line_total,
+  })));
   await ctx.supabase
     .from("show_invoices")
     .update({
@@ -3273,7 +3304,7 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
 }
 
 export async function importCsvAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireGlobalShowOpsAdmin();
   const kind = String(formData.get("kind") ?? "").trim();
   const csv = String(formData.get("csv") ?? "");
   const lines = csv
@@ -3330,7 +3361,7 @@ export async function importCsvAction(formData: FormData): Promise<void> {
 }
 
 export async function updateShowOpsDailyReportAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireGlobalShowOpsAdmin();
   const emails = String(formData.get("office_report_emails") ?? "")
     .split(/[\n,;]+/)
     .map((e) => e.trim().toLowerCase())
@@ -3454,4 +3485,16 @@ export async function reopenSaleAction(formData: FormData): Promise<void> {
 /** Used by commercial stats — no-op write, kept for future. */
 export async function noopPax(adults: number, children: number, infants: number) {
   return paxTotal(adults, children, infants);
+}
+
+export async function setShowOpsMemberIslandsAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const memberId = String(formData.get("member_id") ?? "").trim();
+  if (!memberId) throw new Error("Member required.");
+  const { data, error } = await ctx.supabase.from("show_ops_members")
+    .update({ allowed_islands: parseMemberIslands(formData, ctx.config.islands) })
+    .eq("id", memberId).eq("business_id", ctx.business.id).select("id");
+  if (error || !data?.length) throw new Error("Could not change this member’s island access.");
+  revalidateShowOps();
+  revalidatePath("/partner");
 }

@@ -1,3 +1,4 @@
+import { isGlobalShowOpsAdmin } from "./island-access";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -51,6 +52,7 @@ export type ShowOpsContext = {
   isOwner: boolean;
   /** Explicit page allow-list for this member; null means use the role default. */
   allowedPages: string[] | null;
+  allowedIslands: string[] | null;
   /**
    * The partner this staff member books for by default — the desk pre-selects it
    * so whoever answers the phone is not re-picking their own outlet every time.
@@ -104,6 +106,7 @@ async function loadWorkspaces(
       displayName: (b.show_ops_display_name || b.name || "My business").trim(),
       role: "owner",
       allowedPages: null,
+      allowedIslands: null,
       isOwner: true,
       showOpsEnabled: Boolean(b.show_ops_enabled),
       supplierId: null,
@@ -112,7 +115,7 @@ async function loadWorkspaces(
 
   const { data: memberships } = await supabase
     .from("show_ops_members")
-    .select("business_id,role,supplier_id,allowed_pages")
+    .select("business_id,role,supplier_id,allowed_pages,allowed_islands")
     .eq("user_id", userId);
 
   const memberBizIds = (memberships ?? []).map((m) => m.business_id).filter((id) => !seen.has(id));
@@ -138,6 +141,7 @@ async function loadWorkspaces(
         showOpsEnabled: Boolean(b.show_ops_enabled),
         supplierId: m.supplier_id ?? null,
         allowedPages: (m.allowed_pages as string[] | null) ?? null,
+        allowedIslands: (m.allowed_islands as string[] | null) ?? null,
       });
     }
   }
@@ -159,7 +163,7 @@ async function loadSellerMembership(
 ) {
   const { data } = await supabase
     .from("show_ops_members")
-    .select("business_id,supplier_id,partner_admin")
+    .select("business_id,supplier_id,partner_admin,allowed_islands")
     .eq("user_id", userId)
     .eq("role", "seller")
     .not("supplier_id", "is", null)
@@ -201,6 +205,7 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
     isOwner: false,
     // Sellers never reach the Show Ops staff nav; their portal is separate.
     allowedPages: [],
+    allowedIslands: (mem.allowed_islands as string[] | null) ?? null,
     defaultSupplierId: supplier.id,
     workspaces: [],
     supplier,
@@ -259,6 +264,7 @@ export async function requireShowOpsContext(): Promise<ShowOpsContext> {
     role,
     isOwner,
     allowedPages: picked.allowedPages ?? null,
+    allowedIslands: picked.isOwner ? null : picked.allowedIslands ?? null,
     defaultSupplierId: picked.supplierId ?? null,
     workspaces,
   };
@@ -313,6 +319,19 @@ export async function requireShowOpsPage(key: ShowOpsPageKey): Promise<ShowOpsCo
 export async function requirePartnerAdmin(): Promise<ShowOpsSellerContext> {
   const ctx = await requireShowOpsSellerContext();
   const { assertPartnerAdmin } = await import("@/lib/show-ops/partner-invitations");
-  assertPartnerAdmin(ctx.partnerAdmin);
+  const { data: member, error } = await ctx.supabase.from("show_ops_members").select("partner_admin,allowed_islands").eq("business_id", ctx.business.id).eq("supplier_id", ctx.supplier.id).eq("user_id", ctx.user.id).eq("role", "seller").maybeSingle();
+  assertPartnerAdmin(!error && member?.partner_admin === true);
+  ctx.allowedIslands = (member?.allowed_islands as string[] | null) ?? null;
   return ctx;
+}
+
+/** Tenant-wide settings and identity management require unrestricted administrator access. */
+export async function requireGlobalShowOpsAdmin(): Promise<ShowOpsContext> {
+  const ctx = await requireShowOpsContext();
+  const { data: business, error: businessError } = await ctx.supabase.from("businesses").select("owner_id").eq("id", ctx.business.id).maybeSingle();
+  if (businessError || !business) throw new Error("Could not verify workspace access.");
+  if (business.owner_id === ctx.user.id) return { ...ctx, role: "owner", isOwner: true, allowedIslands: null };
+  const { data: member, error } = await ctx.supabase.from("show_ops_members").select("role,allowed_islands").eq("business_id", ctx.business.id).eq("user_id", ctx.user.id).maybeSingle();
+  if (error || !member || !isGlobalShowOpsAdmin(member.role, member.allowed_islands)) throw new Error("This action requires an administrator with access to all islands.");
+  return { ...ctx, role: member.role, allowedIslands: member.allowed_islands };
 }

@@ -1,3 +1,5 @@
+import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
+import { hotelNamesForStops } from "@/lib/show-ops/directory-search";
 import {
   upsertBusOrderAction,
   upsertProductAction,
@@ -136,24 +138,8 @@ export default async function MasterDataPage({
           .eq("business_id", biz)
           .order("name")
       : Promise.resolve({ data: [] as never[] }),
-    wantsMaster
-      ? sb
-          .from("show_bus_stops")
-          .select(
-            "id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active,map_url,photo_url",
-          )
-          .eq("business_id", biz)
-          .order("island")
-          .order("sort_order")
-          .order("stop_name")
-      : Promise.resolve({ data: [] as never[] }),
-    wantsMaster
-      ? sb
-          .from("show_hotels")
-          .select("id,name,island,bus_stop_id,active")
-          .eq("business_id", biz)
-          .order("name")
-      : Promise.resolve({ data: [] as never[] }),
+    wantsMaster ? loadDirectoryStops(sb, biz) : Promise.resolve({ data: [] }),
+    wantsMaster ? loadDirectoryHotels(sb, biz) : Promise.resolve({ data: [] }),
     tab === "stops"
       ? sb
           .from("show_bus_orders")
@@ -196,6 +182,31 @@ export default async function MasterDataPage({
     }
   }
 
+  const extras: import("@/components/show-ops/extras-editor").MasterExtra[] =
+    [];
+  let extrasError = false;
+  if (tab === "shows") {
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await sb
+        .from("show_extras")
+        .select(
+          "id,product_id,name,description,unit_price,charge_basis,commissionable,active",
+        )
+        .eq("business_id", biz)
+        .order("product_id")
+        .order("name")
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) {
+        extrasError = true;
+        extras.length = 0;
+        break;
+      }
+      extras.push(...(data ?? []));
+      if (!data || data.length < 500) break;
+    }
+  }
+
   // Per-partner sales for the list rows — aggregated in SQL, never row-fetched.
   const statsYear = new Date().getUTCFullYear();
   const { data: partnerTotals } =
@@ -224,6 +235,7 @@ export default async function MasterDataPage({
     ]),
   );
 
+  const hotelNamesByStop = hotelNamesForStops(hotels ?? []);
   const hotelsByStop: Record<string, number> = {};
   for (const h of (hotels ?? []) as Array<{ bus_stop_id: string | null }>) {
     if (h.bus_stop_id)
@@ -426,6 +438,8 @@ export default async function MasterDataPage({
               .join("|")}
             islands={islands}
             config={ctx.config}
+            extras={extras}
+            extrasError={extrasError}
             ticketTypes={ticketTypes}
             ticketTypesError={ticketTypesError}
             products={pinCreated((products ?? []) as never, created)}
@@ -489,6 +503,7 @@ export default async function MasterDataPage({
                   <PickupPointsDirectory
                     stops={(stops ?? []) as never}
                     hotelsByStop={hotelsByStop}
+                    hotelNamesByStop={hotelNamesByStop}
                     islands={islands}
                     highlightId={created}
                   />

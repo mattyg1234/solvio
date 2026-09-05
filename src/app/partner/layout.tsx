@@ -58,6 +58,14 @@ export default async function PartnerLayout({
               </p>
             </div>
           </div>
+          <p className="w-full text-xs text-slate-500">
+            Island access:{" "}
+            {ctx.allowedIslands === null
+              ? "All islands"
+              : ctx.allowedIslands.length
+                ? ctx.allowedIslands.join(", ")
+                : "No islands"}
+          </p>
           <nav className="flex flex-wrap gap-2 text-sm font-medium">
             <Link
               href="/partner"

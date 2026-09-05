@@ -259,6 +259,7 @@ export async function sendShowOpsHtmlEmail(opts: {
   subject: string;
   html: string;
   text: string;
+  attachments?: { filename: string; content: string }[];
 }): Promise<NotificationSendResult> {
   const client = resendClient();
   const gated = gatedTo(opts.to);
@@ -276,6 +277,7 @@ export async function sendShowOpsHtmlEmail(opts: {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    attachments: opts.attachments,
   });
   if (error) {
     console.error("[show-ops-email] html:", error.message);

@@ -16,7 +16,11 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function ShowOpsLayout({ children }: { children: React.ReactNode }) {
+export default async function ShowOpsLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const ctx = await requireShowOpsContext();
   const { branding } = ctx;
 
@@ -30,14 +34,26 @@ export default async function ShowOpsLayout({ children }: { children: React.Reac
         } as React.CSSProperties
       }
     >
+      <p className="text-xs text-slate-500">
+        Your access: {ctx.role} ·{" "}
+        {ctx.allowedIslands === null
+          ? "All islands"
+          : ctx.allowedIslands.length
+            ? ctx.allowedIslands.join(", ")
+            : "No islands"}
+      </p>
       {ctx.workspaces.length > 1 ? (
         <header className="mb-3 flex justify-end">
-          <ShowOpsWorkspaceSwitcher workspaces={ctx.workspaces} activeBusinessId={ctx.business.id} />
+          <ShowOpsWorkspaceSwitcher
+            workspaces={ctx.workspaces}
+            activeBusinessId={ctx.business.id}
+          />
         </header>
       ) : null}
       {!showOpsOutboundLive() ? (
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-          Show Ops is in test mode. Emails are only sent to approved test addresses; other recipients stay blocked.
+          Show Ops is in test mode. Emails are only sent to approved test
+          addresses; other recipients stay blocked.
         </p>
       ) : null}
       {children}

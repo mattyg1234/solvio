@@ -4,13 +4,32 @@ import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { BookingFlags } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
-import { NightListChips, nightListsHref } from "@/components/show-ops/night-list-chips";
-import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
+import {
+  NightListChips,
+  nightListsHref,
+} from "@/components/show-ops/night-list-chips";
+import {
+  NoShowDecisionForm,
+  TicketPhotoControl,
+} from "@/components/show-ops/no-show-decision";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
+import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
+import {
+  loadDirectoryHotels,
+  loadDirectoryStops,
+} from "@/lib/show-ops/directory-data";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
-import { formatShowOpsMoney, formatShowOpsPax, paxTotal, showOpsArrivalMark, showOpsBookingPayView, showOpsDoorPayPhrase, surnameKey } from "@/lib/show-ops/calc";
+import {
+  formatShowOpsMoney,
+  formatShowOpsPax,
+  paxTotal,
+  showOpsArrivalMark,
+  showOpsBookingPayView,
+  showOpsDoorPayPhrase,
+  surnameKey,
+} from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   clickNightListSort,
@@ -83,21 +102,29 @@ export default async function DailyListsPage({
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("lists");
   if (!hasShowOpsModule(ctx.config, ctx.tier, "lists")) {
-    return <p className="text-sm text-slate-600">Lists are not enabled for this workspace.</p>;
+    return (
+      <p className="text-sm text-slate-600">
+        Lists are not enabled for this workspace.
+      </p>
+    );
   }
 
   const date = sp.date || new Date().toISOString().slice(0, 10);
   const island = sp.island || "";
   const views = parseNightListViews(sp);
   const showFilter = sp.show || "";
-  const sortKeys = parseNightListSort(sp.sort, views.includes("bus") && views.length === 1 ? ["time"] : ["supplier"]);
+  const sortKeys = parseNightListSort(
+    sp.sort,
+    views.includes("bus") && views.length === 1 ? ["time"] : ["supplier"],
+  );
   const sort = sortKeys.join(",");
   const q = (sp.q || "").trim().toLowerCase();
   const dietOnly = sp.diet === "1";
   const timeFrom = sp.time_from || "";
   const timeTo = sp.time_to || "";
   const spacesOnly = sp.spaces === "1";
-  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
+  const money = (n: number) =>
+    formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
 
   let query = ctx.supabase
     .from("show_bookings")
@@ -107,13 +134,26 @@ export default async function DailyListsPage({
   if (island) query = query.eq("island", island);
   query = query.is("cancelled_at", null);
 
-  const [{ data: bookingRows }, { data: stopRows }, { data: busOrders }, { data: savedShows }] = await Promise.all([
-    query,
-    ctx.supabase
-      .from("show_bus_stops")
-      .select("id,island,resort,stop_name,pickup_time,sort_order,guide_notes,active,runs_on")
-      .eq("business_id", ctx.business.id)
-      .order("sort_order"),
+  const [
+    { data: bookingRows },
+    { data: stopRows },
+    { data: busOrders },
+    { data: savedShows },
+    { data: directoryHotels },
+  ] = await Promise.all([
+    (async () => ({
+      data: await collectPartnerPages<BookingRow>(async (offset, limit) => {
+        const { data, error } = await query
+          .order("id")
+          .range(offset, offset + limit - 1);
+        if (error)
+          throw new Error(
+            "Could not load this night list. Please reload before printing.",
+          );
+        return (data ?? []) as BookingRow[];
+      }),
+    }))(),
+    loadDirectoryStops(ctx.supabase, ctx.business.id),
     ctx.supabase
       .from("show_bus_orders")
       .select("island,seats_ordered")
@@ -125,6 +165,7 @@ export default async function DailyListsPage({
       .eq("business_id", ctx.business.id)
       .eq("active", true)
       .order("name"),
+    loadDirectoryHotels(ctx.supabase, ctx.business.id),
   ]);
 
   const bookings = (bookingRows ?? []) as BookingRow[];
@@ -140,7 +181,9 @@ export default async function DailyListsPage({
   );
   const stops = stopRows ?? [];
   const stopById = new Map(stops.map((s) => [s.id, s]));
-  const seatsByIsland = new Map((busOrders ?? []).map((o) => [o.island, Number(o.seats_ordered) || 0]));
+  const seatsByIsland = new Map(
+    (busOrders ?? []).map((o) => [o.island, Number(o.seats_ordered) || 0]),
+  );
 
   const showNames = [
     ...new Set(
@@ -175,16 +218,23 @@ export default async function DailyListsPage({
   const filtered = bookings.filter(matchesSearch);
 
   function compareRows(a: BookingRow, b: BookingRow, key: string): number {
-    if (key === "name") return surnameKey(a.guest_name).localeCompare(surnameKey(b.guest_name));
-    if (key === "hotel") return (a.hotel_name || "").localeCompare(b.hotel_name || "");
-    if (key === "show") return (a.show_name || "").localeCompare(b.show_name || "");
+    if (key === "name")
+      return surnameKey(a.guest_name).localeCompare(surnameKey(b.guest_name));
+    if (key === "hotel")
+      return (a.hotel_name || "").localeCompare(b.hotel_name || "");
+    if (key === "show")
+      return (a.show_name || "").localeCompare(b.show_name || "");
     if (key === "diet") {
       const d = Number(b.dietary_required) - Number(a.dietary_required);
       if (d !== 0) return d;
       return (a.dietary_notes || "").localeCompare(b.dietary_notes || "");
     }
-    if (key === "ticket") return (a.supplier_ticket_number || "").localeCompare(b.supplier_ticket_number || "");
-    if (key === "time") return timeKey(a.pickup_time).localeCompare(timeKey(b.pickup_time));
+    if (key === "ticket")
+      return (a.supplier_ticket_number || "").localeCompare(
+        b.supplier_ticket_number || "",
+      );
+    if (key === "time")
+      return timeKey(a.pickup_time).localeCompare(timeKey(b.pickup_time));
     if (key === "ref") return a.booking_ref.localeCompare(b.booking_ref);
     const s = (a.supplier_name || "").localeCompare(b.supplier_name || "");
     if (s !== 0) return s;
@@ -205,7 +255,9 @@ export default async function DailyListsPage({
 
   const office = sortRows(filtered);
   const meals = sortRows(filtered.filter((b) => b.dietary_required));
-  const door = sortRows(filtered.filter((b) => !b.no_show || views.includes("door")));
+  const door = sortRows(
+    filtered.filter((b) => !b.no_show || views.includes("door")),
+  );
   const busAll = filtered.filter((b) => b.transport_required);
   const bus = busAll
     .map((b) => {
@@ -215,8 +267,12 @@ export default async function DailyListsPage({
         resort: stop?.resort || "",
         stop_sort: stop?.sort_order ?? 9999,
         guide_notes: stop?.guide_notes || "",
+        mapUrl: stop?.map_url ?? null,
+        photoUrl: stop?.photo_url ?? null,
         time_key: timeKey(stop?.pickup_time || b.pickup_time),
-        stop_label: stop ? `${stop.resort} · ${stop.stop_name}` : b.pickup_stop_name || "—",
+        stop_label: stop
+          ? `${stop.resort} · ${stop.stop_name}`
+          : b.pickup_stop_name || "—",
       };
     })
     .filter((b) => {
@@ -235,7 +291,11 @@ export default async function DailyListsPage({
 
   const busPaxByIsland = new Map<string, number>();
   for (const b of busAll) {
-    busPaxByIsland.set(b.island, (busPaxByIsland.get(b.island) || 0) + paxTotal(b.adults, b.children, b.infants));
+    busPaxByIsland.set(
+      b.island,
+      (busPaxByIsland.get(b.island) || 0) +
+        paxTotal(b.adults, b.children, b.infants),
+    );
   }
 
   const busGrouped = (() => {
@@ -245,6 +305,8 @@ export default async function DailyListsPage({
       time: string;
       label: string;
       notes: string;
+      mapUrl: string | null;
+      photoUrl: string | null;
       pax: number;
       rows: typeof bus;
       seatsLeft: number | null;
@@ -252,7 +314,9 @@ export default async function DailyListsPage({
     const index = new Map<string, number>();
     for (const b of bus) {
       const key = b.pickup_stop_id || `none-${b.island}`;
-      const seats = seatsByIsland.has(b.island) ? seatsByIsland.get(b.island)! : null;
+      const seats = seatsByIsland.has(b.island)
+        ? seatsByIsland.get(b.island)!
+        : null;
       const used = busPaxByIsland.get(b.island) || 0;
       if (spacesOnly && (seats == null || seats - used <= 0)) continue;
       let gi = index.get(key);
@@ -265,6 +329,8 @@ export default async function DailyListsPage({
           time: b.time_key === "99:99" ? "—" : b.time_key,
           label: b.stop_label,
           notes: b.guide_notes,
+          mapUrl: b.mapUrl,
+          photoUrl: b.photoUrl,
           pax: 0,
           rows: [],
           seatsLeft: seats != null ? seats - used : null,
@@ -280,16 +346,23 @@ export default async function DailyListsPage({
   }
 
   const usedStopIds = new Set(
-    bookings.map((b) => b.pickup_stop_id).filter((id): id is string => Boolean(id)),
+    bookings
+      .map((b) => b.pickup_stop_id)
+      .filter((id): id is string => Boolean(id)),
   );
   const stopOptions = stops
     .filter(
       (s) =>
         s.active !== false &&
-        (usedStopIds.has(s.id) || pickupStopOffered(s, { island, showDate: date })),
+        (usedStopIds.has(s.id) ||
+          pickupStopOffered(s, { island, showDate: date })),
     )
     .map((s) => ({
       id: s.id,
+      keywords: directoryHotels
+        .filter((hotel) => hotel.bus_stop_id === s.id)
+        .map((hotel) => hotel.name)
+        .join(" "),
       label: `${s.island} · ${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}${s.runs_on ? ` · ${s.runs_on}` : ""}`,
     }));
 
@@ -299,7 +372,11 @@ export default async function DailyListsPage({
   for (const b of bookings) {
     byIsland.set(b.island, (byIsland.get(b.island) || 0) + 1);
     byChannel.set(b.sales_channel, (byChannel.get(b.sales_channel) || 0) + 1);
-    byShow.set(b.show_name, (byShow.get(b.show_name) || 0) + paxTotal(b.adults, b.children, b.infants));
+    byShow.set(
+      b.show_name,
+      (byShow.get(b.show_name) || 0) +
+        paxTotal(b.adults, b.children, b.infants),
+    );
   }
 
   const qs = (next?: { views?: NightListView[]; sort?: string }) =>
@@ -315,18 +392,22 @@ export default async function DailyListsPage({
       spacesOnly,
     });
 
-  const sortHref = (key: string) => qs({ sort: clickNightListSort(sortKeys, key).join(",") });
+  const sortHref = (key: string) =>
+    qs({ sort: clickNightListSort(sortKeys, key).join(",") });
 
   return (
     <div className="space-y-4 print:space-y-2">
       <div className="print:hidden space-y-3">
-          <ShowOpsPageHeader
-            eyebrow="Analytics"
-            title="Night lists"
-            subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
-            actions={<PrintButton label="Print / send this list" />}
-          />
-        <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80">
+        <ShowOpsPageHeader
+          eyebrow="Analytics"
+          title="Night lists"
+          subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
+          actions={<PrintButton label="Print / send this list" />}
+        />
+        <form
+          method="get"
+          className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80"
+        >
           <input type="hidden" name="views" value={views.join(",")} />
           <label className="text-xs font-medium text-slate-600">
             Date
@@ -339,7 +420,11 @@ export default async function DailyListsPage({
           </label>
           <label className="text-xs font-medium text-slate-600">
             Island
-            <select name="island" defaultValue={island} className="mt-1 block min-w-[10rem] rounded-lg border px-2 py-1.5 text-sm">
+            <select
+              name="island"
+              defaultValue={island}
+              className="mt-1 block min-w-[10rem] rounded-lg border px-2 py-1.5 text-sm"
+            >
               <option value="">All islands</option>
               {ctx.config.islands.map((i) => (
                 <option key={i} value={i}>
@@ -350,7 +435,11 @@ export default async function DailyListsPage({
           </label>
           <label className="text-xs font-medium text-slate-600">
             Show
-            <select name="show" defaultValue={showFilter} className="mt-1 block min-w-[12rem] rounded-lg border px-2 py-1.5 text-sm">
+            <select
+              name="show"
+              defaultValue={showFilter}
+              className="mt-1 block min-w-[12rem] rounded-lg border px-2 py-1.5 text-sm"
+            >
               <option value="">All shows</option>
               {showNames.map((s) => (
                 <option key={s} value={s}>
@@ -361,7 +450,11 @@ export default async function DailyListsPage({
           </label>
           <label className="text-xs font-medium text-slate-600">
             Sort
-            <select name="sort" defaultValue={sortKeys[0] || "supplier"} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm">
+            <select
+              name="sort"
+              defaultValue={sortKeys[0] || "supplier"}
+              className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
+            >
               <option value="supplier">Supplier + surname</option>
               <option value="name">Surname</option>
               <option value="hotel">Hotel</option>
@@ -382,24 +475,49 @@ export default async function DailyListsPage({
             />
           </label>
           <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-700">
-            <input type="checkbox" name="diet" value="1" defaultChecked={dietOnly} /> Diet only
+            <input
+              type="checkbox"
+              name="diet"
+              value="1"
+              defaultChecked={dietOnly}
+            />{" "}
+            Diet only
           </label>
           {views.includes("bus") ? (
             <>
               <label className="text-xs font-medium text-slate-600">
                 From
-                <input name="time_from" type="time" defaultValue={timeFrom} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm" />
+                <input
+                  name="time_from"
+                  type="time"
+                  defaultValue={timeFrom}
+                  className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
+                />
               </label>
               <label className="text-xs font-medium text-slate-600">
                 To
-                <input name="time_to" type="time" defaultValue={timeTo} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm" />
+                <input
+                  name="time_to"
+                  type="time"
+                  defaultValue={timeTo}
+                  className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
+                />
               </label>
               <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-700">
-                <input type="checkbox" name="spaces" value="1" defaultChecked={spacesOnly} /> Island still has bus seats
+                <input
+                  type="checkbox"
+                  name="spaces"
+                  value="1"
+                  defaultChecked={spacesOnly}
+                />{" "}
+                Island still has bus seats
               </label>
             </>
           ) : null}
-          <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
+          <button
+            type="submit"
+            className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white"
+          >
             Apply
           </button>
         </form>
@@ -409,10 +527,17 @@ export default async function DailyListsPage({
         <div className="flex items-center gap-3 border-b border-slate-300 pb-3">
           {ctx.branding.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={ctx.branding.logoUrl} alt="" className="h-10 w-auto object-contain" />
+            <img
+              src={ctx.branding.logoUrl}
+              alt=""
+              className="h-10 w-auto object-contain"
+            />
           ) : null}
           <div>
-            <p className="text-lg font-semibold" style={{ color: ctx.branding.primaryColor }}>
+            <p
+              className="text-lg font-semibold"
+              style={{ color: ctx.branding.primaryColor }}
+            >
               {ctx.branding.displayName}
             </p>
             <p className="text-xs text-slate-600">
@@ -432,7 +557,8 @@ export default async function DailyListsPage({
         />
       </div>
       <p className="print:hidden text-sm text-slate-500">
-        Click a list to add it. Click again to remove. Click column headers to sort — each extra click adds another sort.
+        Click a list to add it. Click again to remove. Click column headers to
+        sort — each extra click adds another sort.
         {sortKeys.length > 1 ? ` Sorting by ${sortKeys.join(" then ")}.` : ""}
       </p>
 
@@ -441,7 +567,9 @@ export default async function DailyListsPage({
           date={date}
           title="Office list"
           rows={office}
-          questions={ctx.config.booking_questions.filter((q) => q.show_on_office_list)}
+          questions={ctx.config.booking_questions.filter(
+            (q) => q.show_on_office_list,
+          )}
           money={money}
           sortKeys={sortKeys}
           sortHref={sortHref}
@@ -453,25 +581,38 @@ export default async function DailyListsPage({
           date={date}
           title="Special meals"
           rows={meals}
-          questions={ctx.config.booking_questions.filter((q) => q.show_on_office_list)}
+          questions={ctx.config.booking_questions.filter(
+            (q) => q.show_on_office_list,
+          )}
           money={money}
           sortKeys={sortKeys}
           sortHref={sortHref}
         />
       ) : null}
 
-      {views.includes("door") ? <DoorTable rows={door} money={money} sortKeys={sortKeys} sortHref={sortHref} /> : null}
+      {views.includes("door") ? (
+        <DoorTable
+          rows={door}
+          money={money}
+          sortKeys={sortKeys}
+          sortHref={sortHref}
+        />
+      ) : null}
 
       {views.includes("bus") ? (
         <BusRunSheet
+          canManageOrders={["owner", "admin", "finance", "office"].includes(ctx.role)}
           date={date}
           groups={busGrouped as never}
           stopOptions={stopOptions}
           sortKeys={sortKeys}
-          sortHref={{ name: sortHref("name"), hotel: sortHref("hotel"), diet: sortHref("diet") }}
+          sortHref={{
+            name: sortHref("name"),
+            hotel: sortHref("hotel"),
+            diet: sortHref("diet"),
+          }}
         />
       ) : null}
-
     </div>
   );
 }
@@ -490,9 +631,16 @@ function SortCol({
   const rank = sortKeys.indexOf(k);
   return (
     <th className="px-3 py-2">
-      <Link href={sortHref(k)} className={rank >= 0 ? "text-slate-900 underline" : "hover:underline"}>
+      <Link
+        href={sortHref(k)}
+        className={rank >= 0 ? "text-slate-900 underline" : "hover:underline"}
+      >
         {label}
-        {rank >= 0 ? <span className="ml-1 text-[10px] font-semibold text-slate-500">{rank + 1}</span> : null}
+        {rank >= 0 ? (
+          <span className="ml-1 text-[10px] font-semibold text-slate-500">
+            {rank + 1}
+          </span>
+        ) : null}
       </Link>
     </th>
   );
@@ -503,17 +651,32 @@ function SortCol({
  * amber = special meal, rose = money still due at the door, violet = office comment.
  * Tints are forced through on print so a paper list reads the same way.
  */
-const TINT_PRINT = "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
+const TINT_PRINT =
+  "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
 
 function DietCell({ row }: { row: BookingRow }) {
   if (!row.dietary_required) return <span className="text-slate-400">—</span>;
-  return <span className={`rounded bg-amber-100 px-1.5 py-0.5 text-amber-950 ${TINT_PRINT}`}>{row.dietary_notes || "Yes"}</span>;
+  return (
+    <span
+      className={`rounded bg-amber-100 px-1.5 py-0.5 text-amber-950 ${TINT_PRINT}`}
+    >
+      {row.dietary_notes || "Yes"}
+    </span>
+  );
 }
 
-function OwedCell({ pay, money }: { pay: ReturnType<typeof showOpsBookingPayView>; money: (n: number) => string }) {
+function OwedCell({
+  pay,
+  money,
+}: {
+  pay: ReturnType<typeof showOpsBookingPayView>;
+  money: (n: number) => string;
+}) {
   if (pay.outstandingAmount != null && pay.outstandingAmount > 0) {
     return (
-      <span className={`whitespace-nowrap rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-900 ${TINT_PRINT}`}>
+      <span
+        className={`whitespace-nowrap rounded bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-900 ${TINT_PRINT}`}
+      >
         {money(pay.outstandingAmount)} due
       </span>
     );
@@ -524,7 +687,13 @@ function OwedCell({ pay, money }: { pay: ReturnType<typeof showOpsBookingPayView
 function CommentsCell({ row }: { row: BookingRow }) {
   const note = row.office_comments?.trim();
   if (!note) return <span className="text-slate-400">—</span>;
-  return <span className={`inline-block rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-950 whitespace-pre-wrap ${TINT_PRINT}`}>{note}</span>;
+  return (
+    <span
+      className={`inline-block rounded bg-violet-100 px-1.5 py-0.5 font-medium text-violet-950 whitespace-pre-wrap ${TINT_PRINT}`}
+    >
+      {note}
+    </span>
+  );
 }
 
 /**
@@ -572,19 +741,29 @@ function ListCard({
         : arrival.status === "absent"
           ? "bg-slate-100 ring-slate-200 opacity-70"
           : "bg-white ring-slate-200";
-  const owed = pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : pay.label;
+  const owed =
+    pay.outstandingAmount != null && pay.outstandingAmount > 0
+      ? money(pay.outstandingAmount)
+      : pay.label;
   return (
     <div className={`rounded-2xl p-3 ring-1 ${tone}`}>
       <div className="flex items-start justify-between gap-2">
-        <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="text-[15px] font-semibold leading-tight hover:underline">
+        <Link
+          href={`/dashboard/show-ops/bookings/${b.id}`}
+          className="text-[15px] font-semibold leading-tight hover:underline"
+        >
           {b.guest_name}
         </Link>
         <span className="whitespace-nowrap text-right text-sm font-medium">
           {formatShowOpsPax(b.adults, b.children, b.infants)}
           {arrival.status !== "pending" ? (
-            <span className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}>
+            <span
+              className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}
+            >
               {arrival.shortLabel}
-              {arrival.status === "partial" && arrival.missing ? ` · ${arrival.missing} missing` : ""}
+              {arrival.status === "partial" && arrival.missing
+                ? ` · ${arrival.missing} missing`
+                : ""}
             </span>
           ) : null}
         </span>
@@ -594,9 +773,15 @@ function ListCard({
         {b.hotel_name ? ` · ${b.hotel_name}` : ""}
       </p>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-        {variant === "office" ? <span className="font-mono">{b.booking_ref}</span> : null}
-        {b.supplier_ticket_number ? <span>Ticket {b.supplier_ticket_number}</span> : null}
-        {variant === "office" && b.supplier_name ? <span>{b.supplier_name}</span> : null}
+        {variant === "office" ? (
+          <span className="font-mono">{b.booking_ref}</span>
+        ) : null}
+        {b.supplier_ticket_number ? (
+          <span>Ticket {b.supplier_ticket_number}</span>
+        ) : null}
+        {variant === "office" && b.supplier_name ? (
+          <span>{b.supplier_name}</span>
+        ) : null}
         <span>
           {arrival.doorLabel}
           {payPhrase ? ` · ${payPhrase}` : ""}
@@ -606,14 +791,25 @@ function ListCard({
       <BookingFlags
         dietaryRequired={b.dietary_required}
         dietaryNotes={b.dietary_notes}
-        balanceDueLabel={pay.outstandingAmount != null && pay.outstandingAmount > 0 ? money(pay.outstandingAmount) : null}
+        balanceDueLabel={
+          pay.outstandingAmount != null && pay.outstandingAmount > 0
+            ? money(pay.outstandingAmount)
+            : null
+        }
         comments={b.office_comments}
       />
       {variant === "office" && questions.length ? (
         <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-slate-500">
           {questions.map((q) => {
             const v = answers[q.id];
-            const text = typeof v === "boolean" ? (v ? "Yes" : "No") : v != null && String(v).trim() ? String(v) : null;
+            const text =
+              typeof v === "boolean"
+                ? v
+                  ? "Yes"
+                  : "No"
+                : v != null && String(v).trim()
+                  ? String(v)
+                  : null;
             return text ? (
               <span key={q.id}>
                 {q.label}: {text}
@@ -623,10 +819,18 @@ function ListCard({
         </div>
       ) : null}
       <div className="mt-2 flex flex-col gap-1.5 border-t border-black/5 pt-2">
-        <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
+        <ArrivalPaxForm
+          key={`${b.id}:${arrival.arrived}`}
+          bookingId={b.id}
+          mark={arrival}
+        />
         <NoShowDecisionForm
           bookingId={b.id}
-          charge={b.no_show_charge === "write_off" || b.no_show_charge === "charge" ? b.no_show_charge : null}
+          charge={
+            b.no_show_charge === "write_off" || b.no_show_charge === "charge"
+              ? b.no_show_charge
+              : null
+          }
           missing={arrival.missing ?? 0}
           booked={arrival.booked}
           invoiced={Boolean(b.invoice_id)}
@@ -634,12 +838,52 @@ function ListCard({
           compact
           photo={false}
         />
-        <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} big />
+        <TicketPhotoControl
+          key={b.no_show_proof_path ?? "none"}
+          bookingId={b.id}
+          proofUrl={b.proofUrl ?? null}
+          big
+        />
         <div className="flex flex-wrap gap-1">
-          <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} big />
-          <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" big />
-          <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo big />
-          <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo big />
+          <ListFlagButton
+            bookingId={b.id}
+            flag="cash"
+            label="Cash"
+            hide={Boolean(
+              b.door_pay_method ||
+              arrival.status === "absent" ||
+              b.billing_mode === "invoice",
+            )}
+            big
+          />
+          <ListFlagButton
+            bookingId={b.id}
+            flag="card"
+            label="On card"
+            hide={Boolean(
+              b.door_pay_method ||
+              arrival.status === "absent" ||
+              b.billing_mode === "invoice",
+            )}
+            tone="sky"
+            big
+          />
+          <ListFlagButton
+            bookingId={b.id}
+            flag="cash"
+            label="Undo cash"
+            hide={b.door_pay_method !== "cash"}
+            undo
+            big
+          />
+          <ListFlagButton
+            bookingId={b.id}
+            flag="card"
+            label="Undo card"
+            hide={b.door_pay_method !== "card"}
+            undo
+            big
+          />
         </div>
       </div>
     </div>
@@ -666,140 +910,255 @@ function OfficeTable({
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200">
       <h3 className="border-b px-4 py-3 font-semibold">
-        {title} · {date} · {rows.length} {rows.length === 1 ? "booking" : "bookings"}
+        {title} · {date} · {rows.length}{" "}
+        {rows.length === 1 ? "booking" : "bookings"}
       </h3>
       {/* Phone: readable cards with the same door actions */}
       <div className="space-y-2 p-3 lg:hidden print:hidden">
         {rows.length ? (
-          rows.map((b) => <ListCard key={b.id} b={b} variant="office" questions={questions} money={money} />)
+          rows.map((b) => (
+            <ListCard
+              key={b.id}
+              b={b}
+              variant="office"
+              questions={questions}
+              money={money}
+            />
+          ))
         ) : (
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
       {/* Laptop and print: the full sheet */}
       <div className="hidden overflow-x-auto lg:block print:block">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-          <tr>
-            <SortCol label="Ref" k="ref" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Supplier" k="supplier" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Guest" k="name" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Show" k="show" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Hotel" k="hotel" sortKeys={sortKeys} sortHref={sortHref} />
-            <th className="px-3 py-2">Pax</th>
-            <SortCol label="Ticket" k="ticket" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Diet" k="diet" sortKeys={sortKeys} sortHref={sortHref} />
-            {questions.map((q) => (
-              <th key={q.id} className="px-3 py-2">
-                {q.label}
-              </th>
-            ))}
-            <th className="px-3 py-2">Door</th>
-            <th className="px-3 py-2">Owed</th>
-            <th className="px-3 py-2">Comments</th>
-            <th className="px-3 py-2 print:hidden">Tick</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((b) => {
-            const answers =
-              b.custom_answers && typeof b.custom_answers === "object"
-                ? (b.custom_answers as Record<string, string | boolean | number>)
-                : {};
-            const pay = showOpsBookingPayView({
-              billingMode: b.billing_mode,
-              totalCost: b.total_cost,
-              balanceRemaining: b.balance_remaining,
-              nettTotal: b.nett_total,
-              paymentStatus: b.payment_status,
-              cancelledAt: b.cancelled_at,
-            });
-            const arrival = showOpsArrivalMark({
-              adults: b.adults,
-              children: b.children,
-              infants: b.infants,
-              arrivedPax: b.arrived_pax,
-              arrivedAt: b.arrived_at,
-              noShow: b.no_show,
-            });
-            const payPhrase = showOpsDoorPayPhrase(b.door_pay_method);
-            return (
-              <tr key={b.id} className={`border-t border-slate-100 ${arrival.status === "all_in" ? "bg-emerald-50/40" : ""} ${arrival.status === "partial" ? "bg-amber-50/70" : ""} ${arrival.status === "absent" ? "bg-slate-100 text-slate-500" : ""}`}>
-                <td className="px-3 py-1.5 font-mono text-xs">{b.booking_ref}</td>
-                <td className="px-3 py-1.5">{b.supplier_name || "—"}</td>
-                <td className="px-3 py-1.5">
-                  <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="font-medium hover:underline">
-                    {b.guest_name}
-                  </Link>
-                </td>
-                <td className="px-3 py-1.5">{b.show_name}</td>
-                <td className="px-3 py-1.5">{b.hotel_name || "—"}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap">
-                  {formatShowOpsPax(b.adults, b.children, b.infants)}
-                  {arrival.status !== "pending" ? (
-                    <span className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}>
-                      {arrival.shortLabel}
-                      {arrival.status === "partial" && arrival.missing ? ` · ${arrival.missing} missing` : ""}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-1.5">{b.supplier_ticket_number || "—"}</td>
-                <td className="px-3 py-1.5">
-                  <DietCell row={b} />
-                </td>
-                {questions.map((q) => {
-                  const v = answers[q.id];
-                  const text = typeof v === "boolean" ? (v ? "Yes" : "No") : v != null && String(v).trim() ? String(v) : "—";
-                  return (
-                    <td key={q.id} className="px-3 py-1.5">
-                      {text}
-                    </td>
-                  );
-                })}
-                <td className="px-3 py-1.5 whitespace-nowrap text-xs">
-                  {arrival.doorLabel}
-                  {payPhrase ? ` · ${payPhrase}` : ""}
-                </td>
-                <td className="px-3 py-1.5">
-                  <OwedCell pay={pay} money={money} />
-                </td>
-                <td className="px-3 py-1.5">
-                  <CommentsCell row={b} />
-                </td>
-                <td className="px-3 py-1.5">
-                  <div className="flex flex-col gap-1">
-                    <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
-                    <NoShowDecisionForm
-                      bookingId={b.id}
-                      charge={b.no_show_charge === "write_off" || b.no_show_charge === "charge" ? b.no_show_charge : null}
-                      missing={arrival.missing ?? 0}
-                      booked={arrival.booked}
-                      invoiced={Boolean(b.invoice_id)}
-                      proofUrl={b.proofUrl ?? null}
-                      compact
-                      photo={false}
-                    />
-                    <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} />
-                    <div className="flex flex-wrap gap-1">
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
-                      <ListFlagButton bookingId={b.id} flag="card" label="On card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo />
-                      <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo />
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <SortCol
+                label="Ref"
+                k="ref"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Supplier"
+                k="supplier"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Guest"
+                k="name"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Show"
+                k="show"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Hotel"
+                k="hotel"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <th className="px-3 py-2">Pax</th>
+              <SortCol
+                label="Ticket"
+                k="ticket"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Diet"
+                k="diet"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              {questions.map((q) => (
+                <th key={q.id} className="px-3 py-2">
+                  {q.label}
+                </th>
+              ))}
+              <th className="px-3 py-2">Door</th>
+              <th className="px-3 py-2">Owed</th>
+              <th className="px-3 py-2">Comments</th>
+              <th className="px-3 py-2 print:hidden">Tick</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => {
+              const answers =
+                b.custom_answers && typeof b.custom_answers === "object"
+                  ? (b.custom_answers as Record<
+                      string,
+                      string | boolean | number
+                    >)
+                  : {};
+              const pay = showOpsBookingPayView({
+                billingMode: b.billing_mode,
+                totalCost: b.total_cost,
+                balanceRemaining: b.balance_remaining,
+                nettTotal: b.nett_total,
+                paymentStatus: b.payment_status,
+                cancelledAt: b.cancelled_at,
+              });
+              const arrival = showOpsArrivalMark({
+                adults: b.adults,
+                children: b.children,
+                infants: b.infants,
+                arrivedPax: b.arrived_pax,
+                arrivedAt: b.arrived_at,
+                noShow: b.no_show,
+              });
+              const payPhrase = showOpsDoorPayPhrase(b.door_pay_method);
+              return (
+                <tr
+                  key={b.id}
+                  className={`border-t border-slate-100 ${arrival.status === "all_in" ? "bg-emerald-50/40" : ""} ${arrival.status === "partial" ? "bg-amber-50/70" : ""} ${arrival.status === "absent" ? "bg-slate-100 text-slate-500" : ""}`}
+                >
+                  <td className="px-3 py-1.5 font-mono text-xs">
+                    {b.booking_ref}
+                  </td>
+                  <td className="px-3 py-1.5">{b.supplier_name || "—"}</td>
+                  <td className="px-3 py-1.5">
+                    <Link
+                      href={`/dashboard/show-ops/bookings/${b.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {b.guest_name}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-1.5">{b.show_name}</td>
+                  <td className="px-3 py-1.5">{b.hotel_name || "—"}</td>
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {formatShowOpsPax(b.adults, b.children, b.infants)}
+                    {arrival.status !== "pending" ? (
+                      <span
+                        className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}
+                      >
+                        {arrival.shortLabel}
+                        {arrival.status === "partial" && arrival.missing
+                          ? ` · ${arrival.missing} missing`
+                          : ""}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {b.supplier_ticket_number || "—"}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <DietCell row={b} />
+                  </td>
+                  {questions.map((q) => {
+                    const v = answers[q.id];
+                    const text =
+                      typeof v === "boolean"
+                        ? v
+                          ? "Yes"
+                          : "No"
+                        : v != null && String(v).trim()
+                          ? String(v)
+                          : "—";
+                    return (
+                      <td key={q.id} className="px-3 py-1.5">
+                        {text}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-1.5 whitespace-nowrap text-xs">
+                    {arrival.doorLabel}
+                    {payPhrase ? ` · ${payPhrase}` : ""}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <OwedCell pay={pay} money={money} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <CommentsCell row={b} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex flex-col gap-1">
+                      <ArrivalPaxForm
+                        key={`${b.id}:${arrival.arrived}`}
+                        bookingId={b.id}
+                        mark={arrival}
+                      />
+                      <NoShowDecisionForm
+                        bookingId={b.id}
+                        charge={
+                          b.no_show_charge === "write_off" ||
+                          b.no_show_charge === "charge"
+                            ? b.no_show_charge
+                            : null
+                        }
+                        missing={arrival.missing ?? 0}
+                        booked={arrival.booked}
+                        invoiced={Boolean(b.invoice_id)}
+                        proofUrl={b.proofUrl ?? null}
+                        compact
+                        photo={false}
+                      />
+                      <TicketPhotoControl
+                        key={b.no_show_proof_path ?? "none"}
+                        bookingId={b.id}
+                        proofUrl={b.proofUrl ?? null}
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="cash"
+                          label="Cash"
+                          hide={Boolean(
+                            b.door_pay_method ||
+                            arrival.status === "absent" ||
+                            b.billing_mode === "invoice",
+                          )}
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="card"
+                          label="On card"
+                          hide={Boolean(
+                            b.door_pay_method ||
+                            arrival.status === "absent" ||
+                            b.billing_mode === "invoice",
+                          )}
+                          tone="sky"
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="cash"
+                          label="Undo cash"
+                          hide={b.door_pay_method !== "cash"}
+                          undo
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="card"
+                          label="Undo card"
+                          hide={b.door_pay_method !== "card"}
+                          undo
+                        />
+                      </div>
                     </div>
-                  </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length ? (
+              <tr>
+                <td
+                  colSpan={12 + questions.length}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
+                  No rows
                 </td>
               </tr>
-            );
-          })}
-          {!rows.length ? (
-            <tr>
-              <td colSpan={12 + questions.length} className="px-3 py-6 text-center text-slate-500">
-                No rows
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+            ) : null}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -818,103 +1177,189 @@ function DoorTable({
 }) {
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200">
-      <h3 className="border-b px-4 py-3 font-semibold">Door · how many showed / paid cash / paid on card</h3>
+      <h3 className="border-b px-4 py-3 font-semibold">
+        Door · how many showed / paid cash / paid on card
+      </h3>
       <div className="space-y-2 p-3 lg:hidden print:hidden">
         {rows.length ? (
-          rows.map((b) => <ListCard key={b.id} b={b} variant="door" questions={[]} money={money} />)
+          rows.map((b) => (
+            <ListCard
+              key={b.id}
+              b={b}
+              variant="door"
+              questions={[]}
+              money={money}
+            />
+          ))
         ) : (
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
       <div className="hidden overflow-x-auto lg:block print:block">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-          <tr>
-            <SortCol label="Guest" k="name" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Show" k="show" sortKeys={sortKeys} sortHref={sortHref} />
-            <th className="px-3 py-2">Pax</th>
-            <SortCol label="Ticket" k="ticket" sortKeys={sortKeys} sortHref={sortHref} />
-            <SortCol label="Diet" k="diet" sortKeys={sortKeys} sortHref={sortHref} />
-            <th className="px-3 py-2">Owed</th>
-            <th className="px-3 py-2">Comments</th>
-            <th className="px-3 py-2 print:hidden">Mark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((b) => {
-            const pay = showOpsBookingPayView({
-              billingMode: b.billing_mode,
-              totalCost: b.total_cost,
-              balanceRemaining: b.balance_remaining,
-              nettTotal: b.nett_total,
-              paymentStatus: b.payment_status,
-              cancelledAt: b.cancelled_at,
-            });
-            const arrival = showOpsArrivalMark({
-              adults: b.adults,
-              children: b.children,
-              infants: b.infants,
-              arrivedPax: b.arrived_pax,
-              arrivedAt: b.arrived_at,
-              noShow: b.no_show,
-            });
-            return (
-              <tr key={b.id} className={`border-t border-slate-100 ${arrival.status === "all_in" ? "bg-emerald-50/50" : ""} ${arrival.status === "partial" ? "bg-amber-50/70" : ""} ${arrival.status === "absent" ? "opacity-50" : ""}`}>
-                <td className="px-3 py-2 font-medium">{b.guest_name}</td>
-                <td className="px-3 py-2">{b.show_name}</td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {formatShowOpsPax(b.adults, b.children, b.infants)}
-                  {arrival.status !== "pending" ? (
-                    <span className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}>
-                      {arrival.shortLabel}
-                      {arrival.status === "partial" && arrival.missing ? ` · ${arrival.missing} missing` : ""}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2">{b.supplier_ticket_number || "—"}</td>
-                <td className="px-3 py-2">
-                  <DietCell row={b} />
-                </td>
-                <td className="px-3 py-2">
-                  <OwedCell pay={pay} money={money} />
-                </td>
-                <td className="px-3 py-2">
-                  <CommentsCell row={b} />
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-col gap-1">
-                    <ArrivalPaxForm key={`${b.id}:${arrival.arrived}`} bookingId={b.id} mark={arrival} />
-                    <NoShowDecisionForm
-                      bookingId={b.id}
-                      charge={b.no_show_charge === "write_off" || b.no_show_charge === "charge" ? b.no_show_charge : null}
-                      missing={arrival.missing ?? 0}
-                      booked={arrival.booked}
-                      invoiced={Boolean(b.invoice_id)}
-                      proofUrl={b.proofUrl ?? null}
-                      compact
-                      photo={false}
-                    />
-                    <TicketPhotoControl key={b.no_show_proof_path ?? "none"} bookingId={b.id} proofUrl={b.proofUrl ?? null} />
-                    <div className="flex flex-wrap gap-1">
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Paid cash" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} />
-                      <ListFlagButton bookingId={b.id} flag="card" label="Paid on card" hide={Boolean(b.door_pay_method || arrival.status === "absent" || b.billing_mode === "invoice")} tone="sky" />
-                      <ListFlagButton bookingId={b.id} flag="cash" label="Undo cash" hide={b.door_pay_method !== "cash"} undo />
-                      <ListFlagButton bookingId={b.id} flag="card" label="Undo card" hide={b.door_pay_method !== "card"} undo />
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <SortCol
+                label="Guest"
+                k="name"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Show"
+                k="show"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <th className="px-3 py-2">Pax</th>
+              <SortCol
+                label="Ticket"
+                k="ticket"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <SortCol
+                label="Diet"
+                k="diet"
+                sortKeys={sortKeys}
+                sortHref={sortHref}
+              />
+              <th className="px-3 py-2">Owed</th>
+              <th className="px-3 py-2">Comments</th>
+              <th className="px-3 py-2 print:hidden">Mark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b) => {
+              const pay = showOpsBookingPayView({
+                billingMode: b.billing_mode,
+                totalCost: b.total_cost,
+                balanceRemaining: b.balance_remaining,
+                nettTotal: b.nett_total,
+                paymentStatus: b.payment_status,
+                cancelledAt: b.cancelled_at,
+              });
+              const arrival = showOpsArrivalMark({
+                adults: b.adults,
+                children: b.children,
+                infants: b.infants,
+                arrivedPax: b.arrived_pax,
+                arrivedAt: b.arrived_at,
+                noShow: b.no_show,
+              });
+              return (
+                <tr
+                  key={b.id}
+                  className={`border-t border-slate-100 ${arrival.status === "all_in" ? "bg-emerald-50/50" : ""} ${arrival.status === "partial" ? "bg-amber-50/70" : ""} ${arrival.status === "absent" ? "opacity-50" : ""}`}
+                >
+                  <td className="px-3 py-2 font-medium">{b.guest_name}</td>
+                  <td className="px-3 py-2">{b.show_name}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {formatShowOpsPax(b.adults, b.children, b.infants)}
+                    {arrival.status !== "pending" ? (
+                      <span
+                        className={`block text-[11px] font-semibold ${arrival.status === "partial" ? "text-amber-800" : arrival.status === "all_in" ? "text-emerald-800" : "text-rose-700"}`}
+                      >
+                        {arrival.shortLabel}
+                        {arrival.status === "partial" && arrival.missing
+                          ? ` · ${arrival.missing} missing`
+                          : ""}
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2">
+                    {b.supplier_ticket_number || "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <DietCell row={b} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <OwedCell pay={pay} money={money} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <CommentsCell row={b} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col gap-1">
+                      <ArrivalPaxForm
+                        key={`${b.id}:${arrival.arrived}`}
+                        bookingId={b.id}
+                        mark={arrival}
+                      />
+                      <NoShowDecisionForm
+                        bookingId={b.id}
+                        charge={
+                          b.no_show_charge === "write_off" ||
+                          b.no_show_charge === "charge"
+                            ? b.no_show_charge
+                            : null
+                        }
+                        missing={arrival.missing ?? 0}
+                        booked={arrival.booked}
+                        invoiced={Boolean(b.invoice_id)}
+                        proofUrl={b.proofUrl ?? null}
+                        compact
+                        photo={false}
+                      />
+                      <TicketPhotoControl
+                        key={b.no_show_proof_path ?? "none"}
+                        bookingId={b.id}
+                        proofUrl={b.proofUrl ?? null}
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="cash"
+                          label="Paid cash"
+                          hide={Boolean(
+                            b.door_pay_method ||
+                            arrival.status === "absent" ||
+                            b.billing_mode === "invoice",
+                          )}
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="card"
+                          label="Paid on card"
+                          hide={Boolean(
+                            b.door_pay_method ||
+                            arrival.status === "absent" ||
+                            b.billing_mode === "invoice",
+                          )}
+                          tone="sky"
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="cash"
+                          label="Undo cash"
+                          hide={b.door_pay_method !== "cash"}
+                          undo
+                        />
+                        <ListFlagButton
+                          bookingId={b.id}
+                          flag="card"
+                          label="Undo card"
+                          hide={b.door_pay_method !== "card"}
+                          undo
+                        />
+                      </div>
                     </div>
-                  </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!rows.length ? (
+              <tr>
+                <td
+                  colSpan={8}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
+                  No rows
                 </td>
               </tr>
-            );
-          })}
-          {!rows.length ? (
-            <tr>
-              <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
-                No rows
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+            ) : null}
+          </tbody>
+        </table>
       </div>
     </div>
   );
