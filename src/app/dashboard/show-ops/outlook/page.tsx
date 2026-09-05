@@ -112,13 +112,14 @@ export default async function WeeklyOutlookPage({
   // "which hotel is sending them" — so the night detail groups by either.
   const groupBy: "resort" | "hotel" = sp.by === "resort" ? "resort" : "hotel";
   // 7 nights for the phone-desk view, 14 for bus planning. Default 14.
-  const days: 7 | 14 = sp.days === "7" ? 7 : 14;
+  // Default to 7 nights (Joel, 5 Sept); 14 is the opt-in view.
+  const days: 7 | 14 = sp.days === "14" ? 14 : 7;
   const hrefFor = (next: { by?: "resort" | "hotel"; days?: 7 | 14 }) => {
     const by = next.by ?? groupBy;
     const d = next.days ?? days;
     const p = new URLSearchParams();
     if (by === "resort") p.set("by", "resort");
-    if (d !== 14) p.set("days", String(d));
+    if (d !== 7) p.set("days", String(d));
     const q = p.toString();
     return q ? `/dashboard/show-ops/outlook?${q}` : "/dashboard/show-ops/outlook";
   };
