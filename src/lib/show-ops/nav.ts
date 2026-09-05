@@ -105,6 +105,9 @@ export const SHOW_OPS_PAGE_KEYS = [
 export const SHOW_OPS_LEGACY_PAGE_KEYS = { stats: "reports" } as const satisfies Record<string, ShowOpsPageKey>;
 export type ShowOpsLegacyPageKey = keyof typeof SHOW_OPS_LEGACY_PAGE_KEYS;
 
+/** Catalogue management and settings cannot be delegated below admin. */
+export const SHOW_OPS_SENIOR_PAGE_KEYS: readonly ShowOpsPageKey[] = ["shows", "partners", "hotels", "settings"];
+
 /** Current key for any saved key — legacy aliases resolve, junk returns null. */
 export function resolveShowOpsPageKey(key: string): ShowOpsPageKey | null {
   if ((SHOW_OPS_PAGE_KEYS as readonly string[]).includes(key)) return key as ShowOpsPageKey;
@@ -136,16 +139,16 @@ export const SHOW_OPS_PAGE_LABELS: Record<ShowOpsPageKey, string> = {
 const ROLE_DEFAULT_PAGES: Record<string, ShowOpsPageKey[]> = {
   seller: [],
   booker: ["dashboard", "calendar", "bookings", "door", "lists"],
-  office: ["dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels", "buses", "outlook", "reports"],
+  office: ["dashboard", "calendar", "bookings", "door", "lists", "buses", "outlook", "reports"],
   finance: [
-    "dashboard", "calendar", "bookings", "door", "lists", "shows", "partners", "hotels",
+    "dashboard", "calendar", "bookings", "door", "lists",
     "buses", "outlook", "reports", "invoices",
   ],
   admin: [...SHOW_OPS_PAGE_KEYS],
   owner: [...SHOW_OPS_PAGE_KEYS],
 };
 
-/** Pages this member may reach. An explicit allow-list always wins over the role default. */
+/** Explicit page grants override defaults, subject to the senior-only floor. */
 export function showOpsAllowedPages(
   role: string,
   allowedPages?: string[] | null,
@@ -161,8 +164,7 @@ export function showOpsAllowedPages(
 
   if (allowedPages && allowedPages.length) {
     const picked = valid(allowedPages);
-    // Settings stays owner/admin only, whatever the allow-list claims.
-    return role === "owner" || role === "admin" ? picked : picked.filter((k) => k !== "settings");
+    return role === "owner" || role === "admin" ? picked : picked.filter((k) => !SHOW_OPS_SENIOR_PAGE_KEYS.includes(k));
   }
   return ROLE_DEFAULT_PAGES[role] ?? ROLE_DEFAULT_PAGES.booker;
 }

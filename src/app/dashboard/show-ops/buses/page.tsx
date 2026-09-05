@@ -17,6 +17,7 @@ export default async function BusBoardPage({
 }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("buses");
+  const canManageCatalogue = ctx.role === "owner" || ctx.role === "admin";
   const today = new Date().toISOString().slice(0, 10);
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? (sp.date as string) : today;
   const island = sp.island || "";
@@ -257,7 +258,7 @@ export default async function BusBoardPage({
                             <td className="py-2 pr-3 text-xs text-slate-400">{s.sort_order}</td>
                             <td className="py-2 pr-3 font-medium text-slate-900">{s.stop_name}</td>
                             <td className="py-2 pr-3">
-                              <form action={upsertBusStopAction} className="flex items-center gap-1.5">
+                              {canManageCatalogue ? <form action={upsertBusStopAction} className="flex items-center gap-1.5">
                                 <input type="hidden" name="id" value={s.id} />
                                 <input type="hidden" name="island" value={s.island} />
                                 <input type="hidden" name="resort" value={s.resort} />
@@ -281,7 +282,7 @@ export default async function BusBoardPage({
                                 <SubmitOnce className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-60">
                                   Save
                                 </SubmitOnce>
-                              </form>
+                              </form> : (s.pickup_time ? String(s.pickup_time).slice(0, 5) : "—")}
                             </td>
                             <td className="py-2 pr-3 text-xs text-slate-500">
                               {s.runs_on || "Every night"}
@@ -300,14 +301,14 @@ export default async function BusBoardPage({
               );
             })}
 
-            {islStops.length ? (
+            {canManageCatalogue && (islStops.length ? (
               <BusStopReorder
                 island={isl}
                 stops={islStops.map((s) => ({ id: s.id, label: `${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
               />
             ) : (
               <p className="mt-3 text-sm text-slate-500">No stops on {isl} yet — add them under Hotels &amp; pick-ups.</p>
-            )}
+            ))}
             {!tonightOnly && hiddenUntimed > 0 && !showUntimed ? (
               <p className="mt-3 text-sm text-slate-500">
                 {hiddenUntimed} more {isl} stops have no pick-up time yet.{" "}

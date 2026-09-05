@@ -71,7 +71,7 @@ export default async function MasterDataPage({
   const allowed = new Set(["shows", "partners", "hotels", "stops"]);
   const tab = sp.tab === "rates" ? "partners" : sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "") ? sp.created : undefined;
-  const ctx = await requireShowOpsPage("shows");
+  const ctx = await requireShowOpsPage(tab === "partners" ? "partners" : tab === "hotels" || tab === "stops" ? "hotels" : "shows");
   const biz = ctx.business.id;
   const islands = ctx.config.islands;
   const sb = ctx.supabase;

@@ -13,7 +13,7 @@ import {
 } from "@/app/dashboard/show-ops/actions";
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS } from "@/lib/show-ops/nav";
+import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS, SHOW_OPS_PAGE_LABELS, SHOW_OPS_SENIOR_PAGE_KEYS } from "@/lib/show-ops/nav";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 
@@ -98,7 +98,7 @@ export default async function ShowOpsSettingsPage({
             Role
             <select name="role" defaultValue="booker" className="mt-1 w-full rounded-lg border px-3 py-2">
               <option value="booker">Booker — takes bookings</option>
-              <option value="office">Office — bookings + master data</option>
+              <option value="office">Office — bookings + operations</option>
               <option value="finance">Finance — adds invoicing</option>
               <option value="admin">Admin — full access</option>
             </select>
@@ -120,8 +120,8 @@ export default async function ShowOpsSettingsPage({
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Settings stays owner and admin only. Anything unticked is blocked on the server too, not
-              just hidden from the menu.
+              Shows, Partners, Hotels & pick-ups and Settings require owner or admin access, even if ticked.
+              Booking staff can still use the catalogue when taking bookings.
             </p>
           </fieldset>
           <button
@@ -199,6 +199,7 @@ export default async function ShowOpsSettingsPage({
                             type="checkbox"
                             name="pages"
                             value={key}
+                            disabled={m.role !== "owner" && m.role !== "admin" && SHOW_OPS_SENIOR_PAGE_KEYS.includes(key)}
                             defaultChecked={showOpsAllowedPages(
                               m.role,
                               (m as { allowed_pages?: string[] | null }).allowed_pages,

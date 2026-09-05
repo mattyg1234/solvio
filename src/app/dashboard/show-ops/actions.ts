@@ -37,11 +37,12 @@ import {
 } from "@/lib/notifications/show-ops-emails";
 import { sendGuestTicket } from "@/lib/notifications/show-ops-guest-ticket";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
-import { SHOW_OPS_PAGE_KEYS } from "@/lib/show-ops/nav";
+import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS } from "@/lib/show-ops/nav";
 import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
+import { partnerBookingErrorMessage } from "@/lib/show-ops/partner-booking";
 import { genericSeedConfig, mhtSeedConfig, showOpsCurrencyFor, slugifyQuestionId } from "@/lib/show-ops/config";
 import {
   buildVerifactuPayload,
@@ -457,7 +458,7 @@ async function nextRef(ctx: Awaited<ReturnType<typeof requireShowOpsContext>>) {
 }
 
 export async function upsertSupplierAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const tab = masterTabFromForm(formData, "partners");
   const id = String(formData.get("id") ?? "").trim();
   const emailRaw = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -504,7 +505,7 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
 }
 
 export async function upsertProductAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const tab = masterTabFromForm(formData, "shows");
   const id = String(formData.get("id") ?? "").trim();
   const row = productRowFromForm(formData, ctx.business.id, "");
@@ -589,7 +590,7 @@ export async function repriceUninvoicedBoundAction(productId: string, formData: 
 }
 
 export async function saveMasterProductsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const intent = String(formData.get("intent") ?? "");
   const ids = formData.getAll("product_ids").map(String).filter(Boolean);
   const ticked = formData.getAll("ticked").map(String).filter(Boolean);
@@ -657,7 +658,7 @@ export async function saveMasterSupplierOneAction(supplierId: string, formData: 
 }
 
 export async function saveMasterSuppliersAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const intent = String(formData.get("intent") ?? "");
   const ids = formData.getAll("supplier_id").map(String).filter(Boolean);
   const ticked = formData.getAll("ticked").map(String).filter(Boolean);
@@ -768,10 +769,9 @@ export async function getNightLoadAction(
   const [{ data: bookings }, { data: order }, { data: closes }] = await Promise.all([
     db
       .from("show_bookings")
-      .select("adults,children,infants,transport_required,product_id")
+      .select("adults,children,infants,transport_required,product_id,island")
       .eq("business_id", ctx.business.id)
       .eq("show_date", date)
-      .eq("island", product.island)
       .is("cancelled_at", null),
     db
       .from("show_bus_orders")
@@ -795,7 +795,7 @@ export async function getNightLoadAction(
   let showInfants = 0;
   for (const b of bookings ?? []) {
     const pax = paxTotal(b.adults, b.children, b.infants);
-    if (b.transport_required) busPax += pax;
+    if (b.transport_required && b.island === product.island) busPax += pax;
     if (b.product_id === product.id) {
       showPax += pax;
       showAdults += Number(b.adults) || 0;
@@ -836,7 +836,7 @@ export async function getNightLoadAction(
 }
 
 export async function repriceUninvoicedForProductAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireShowOpsRole("admin");
   const productId = String(formData.get("product_id") ?? "").trim();
   if (!productId) throw new Error("Show required.");
 
@@ -917,7 +917,7 @@ function cleanHttpUrl(raw: unknown): string | null {
 }
 
 export async function upsertBusStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const id = String(formData.get("id") ?? "").trim();
   const pickup = String(formData.get("pickup_time") ?? "").trim();
   const row = {
@@ -998,7 +998,7 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
 }
 
 export async function nudgeBusStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const id = String(formData.get("id") ?? "").trim();
   const dir = String(formData.get("dir") ?? "") === "up" ? -1 : 1;
   if (!id) throw new Error("Stop required.");
@@ -1043,7 +1043,7 @@ export async function nudgeBusStopAction(formData: FormData): Promise<void> {
 }
 
 export async function reorderBusStopsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const island = String(formData.get("island") ?? "").trim();
   const ids = String(formData.get("ordered_ids") ?? "")
     .split(",")
@@ -1400,7 +1400,7 @@ export async function uploadNoShowProofAction(formData: FormData): Promise<void>
 }
 
 export async function upsertHotelAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const tab = masterTabFromForm(formData, "hotels");
   const id = String(formData.get("id") ?? "").trim();
   const row = {
@@ -2162,7 +2162,7 @@ export async function createSellerBookingAction(
     })
     .select("id")
     .maybeSingle();
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: partnerBookingErrorMessage(error) };
   revalidatePath("/partner");
   return { ok: true, id: data?.id, message: booking_ref };
 }
@@ -2224,8 +2224,9 @@ export async function createShowOpsStaffAction(formData: FormData): Promise<void
 
   const valid = pages.filter((p) => (SHOW_OPS_PAGE_KEYS as readonly string[]).includes(p));
   if (!valid.length) throw new Error("Pick at least one page this person can see.");
-  // Only an owner or admin may hand out Settings.
-  const allowedPages = role === "admin" ? valid : valid.filter((p) => p !== "settings");
+  // Catalogue pages and Settings cannot be granted below admin.
+  const allowedPages = showOpsAllowedPages(role, valid);
+  if (!allowedPages.length) throw new Error("Pick at least one page available to this role.");
 
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
   const admin = createSupabaseServiceRoleClient();
@@ -2287,7 +2288,8 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!member) throw new Error("Member not found in this workspace.");
-  const allowedPages = member.role === "admin" ? valid : valid.filter((p) => p !== "settings");
+  const allowedPages = showOpsAllowedPages(member.role, valid);
+  if (!allowedPages.length) throw new Error("Pick at least one page available to this role.");
 
   /*
    * The partner this person books for. Sellers are locked to theirs by the portal,
@@ -3293,7 +3295,7 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
 }
 
 export async function importCsvAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsRole("admin");
   const kind = String(formData.get("kind") ?? "").trim();
   const csv = String(formData.get("csv") ?? "");
   const lines = csv

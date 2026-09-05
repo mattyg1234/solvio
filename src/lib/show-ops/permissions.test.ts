@@ -49,6 +49,31 @@ test("owner and admin reach everything by default", () => {
   }
 });
 
+test("catalogue pages remain senior-only even with an explicit saved grant", () => {
+  for (const role of ["booker", "office", "finance", "seller", "unknown"]) {
+    for (const key of ["shows", "partners", "hotels"] as const) {
+      assert.equal(canSeeShowOpsPage(role, null, key), false, `${role} default ${key}`);
+      assert.equal(canSeeShowOpsPage(role, [key, "bookings"], key), false, `${role} saved ${key}`);
+    }
+  }
+});
+
+test("catalogue restriction preserves booking and night bus access", () => {
+  for (const role of ["booker", "office", "finance"]) {
+    assert.equal(canSeeShowOpsPage(role, null, "bookings"), true);
+    assert.equal(canSeeShowOpsPage(role, ["buses", "lists"], "buses"), true);
+    assert.equal(canSeeShowOpsPage(role, ["buses", "lists"], "lists"), true);
+  }
+});
+
+test("senior catalogue grants remain tab-specific", () => {
+  for (const role of ["owner", "admin"]) {
+    assert.equal(canSeeShowOpsPage(role, ["partners"], "partners"), true);
+    assert.equal(canSeeShowOpsPage(role, ["partners"], "shows"), false);
+    assert.equal(canSeeShowOpsPage(role, ["hotels"], "hotels"), true);
+  }
+});
+
 test("sellers get no staff pages at all", () => {
   assert.deepEqual(showOpsAllowedPages("seller", null), []);
   assert.equal(canSeeShowOpsPage("seller", null, "lists"), false);
