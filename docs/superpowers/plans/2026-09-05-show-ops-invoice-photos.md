@@ -7,3 +7,5 @@ Staff review shows the invoice and original images for its seller, with every mi
 Limits:50 ticket images,5MiB per image,18MiB combined invoice+images; JPEG/PNG/WebP/HEIC/HEIF originals. Provider payload uses embedded bytes, not public URLs. [Resend attachment documentation](https://resend.com/docs/dashboard/emails/attachments) permits up to40MB after Base64 encoding; application bounds retain headroom. Actual recipient limits and viewing capabilities still need acceptance testing.
 
 Checks:130 Show Ops/notification tests pass, full TypeScript and targeted lint pass. Independent security/edge-case review approved. Mocked transport verifies original attachment bytes and recipient/CC gates. No real emails sent. No database migration required. Authenticated operational acceptance and actual delivery are not claimed by unit checks or a READY deployment.
+
+Release: commit `32955a5` pushed to main and deployed from its clean archive. Production `dpl_FqGen3mJ7RPepaivpYjKb5hFRnir` READY, with www.solviosystems.com verified on that exact deployment. HTTP root200 and unauthenticated invoice PDF307. No live email sent.
