@@ -867,6 +867,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
     .is("invoice_id", null)
+    .is("legacy_id", null) // imported Lanzasoft bookings keep the money they were sold at
     .is("cancelled_at", null);
 
   const supplierIds = [...new Set((bookings ?? []).map((b) => b.supplier_id).filter(Boolean))] as string[];
@@ -2526,6 +2527,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     .eq("supplier_id", supplier_id)
     .eq("billing_mode", "invoice")
     .is("invoice_id", null)
+    .or("legacy_status.is.null,legacy_status.neq.Invoiced") // already invoiced in Lanzasoft
     .is("cancelled_at", null)
     .gte("show_date", period_start)
     .lte("show_date", period_end);
@@ -2798,6 +2800,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
     .eq("business_id", ctx.business.id)
     .eq("billing_mode", "invoice")
     .is("invoice_id", null)
+    .or("legacy_status.is.null,legacy_status.neq.Invoiced") // already invoiced in Lanzasoft
     .is("cancelled_at", null)
     .gte("show_date", period_start)
     .lte("show_date", period_end);
