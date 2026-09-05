@@ -19,11 +19,6 @@ const PRICE_FIELDS = [
   "adult_price",
   "child_price",
   "infant_price",
-  "adult_price_no_transport",
-  "child_price_no_transport",
-  "infant_price_no_transport",
-  "adult_nett",
-  "child_nett",
 ] as const;
 type PriceField = (typeof PRICE_FIELDS)[number];
 
@@ -131,7 +126,7 @@ function TicketTypeFields({
         ))
     ) {
       setError(
-        "Enter a ticket type name and each standard price. Use 0 only when that ticket is free.",
+        "Enter a ticket type name and each ticket price. Use 0 only when that ticket is free.",
       );
       return;
     }
@@ -239,37 +234,15 @@ function TicketTypeFields({
         price, not an extra amount to add to the base ticket.
       </p>
       <div className="grid gap-3 sm:grid-cols-3">
-        {moneyField("adult_price", "Adult standard price")}
-        {moneyField("child_price", "Child standard price")}
-        {moneyField("infant_price", "Infant standard price")}
+        {moneyField("adult_price", "Adult ticket price")}
+        {moneyField("child_price", "Child ticket price")}
+        {moneyField("infant_price", "Infant ticket price")}
       </div>
       <p className="text-xs leading-relaxed text-slate-500">
-        The same bus pricing rules as the base ticket apply to each age band:
-        blank without-bus uses standard price plus the configured bus supplement
-        for adults and children. An explicit without-bus price uses the two
-        prices exactly, with no extra supplement.
+        Transport adds {formatShowOpsMoney(config.transport_supplement, currency)}
+        {" "}per adult and child when selected. Infants have no transport charge.
+        Nett rates are set in Partners.
       </p>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {moneyField("adult_price_no_transport", "Adult without bus (optional)")}
-        {moneyField("child_price_no_transport", "Child without bus (optional)")}
-        {moneyField(
-          "infant_price_no_transport",
-          "Infant without bus (optional)",
-        )}
-      </div>
-      <details className="rounded-lg bg-slate-50 p-3">
-        <summary className="cursor-pointer text-xs font-medium text-slate-700">
-          Optional invoice nett fallback
-        </summary>
-        <p className="my-3 text-xs text-slate-500">
-          Partner nett percentages other than 100% take priority. At 100%, these
-          fixed amounts apply; blank uses the calculated guest price.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {moneyField("adult_nett", "Adult nett fallback")}
-          {moneyField("child_nett", "Child nett fallback")}
-        </div>
-      </details>
       {existing ? (
         <label className="flex items-center gap-2 text-xs">
           <input

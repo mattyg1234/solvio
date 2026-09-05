@@ -555,27 +555,19 @@ export function ShowOpsBookingForm({
   const productPriceLabel = (p: BookingFormProduct) => {
     if (sellerMode && supplier?.billing_mode === "invoice") {
       const pct = Number(supplier.invoice_nett_percent);
-      const adult =
-        pct !== 100
-          ? p.adult_price * (pct / 100)
-          : Number(p.adult_nett ?? p.adult_price);
-      const child =
-        pct !== 100
-          ? p.child_price * (pct / 100)
-          : Number(p.child_nett ?? p.child_price);
+      const adult = p.adult_price * (pct / 100);
+      const child = p.child_price * (pct / 100);
       return `${p.name} (${moneyFmt(adult)} / ${moneyFmt(child)} nett)`;
     }
     return `${p.name} (${moneyFmt(p.adult_price)} / ${moneyFmt(p.child_price)})`;
   };
 
-  // Per-head bus supplement — adults and children only, and only when the show
-  // does not carry its own explicit without-transport price.
+  // Transport is a separate per-head charge for adults and children.
   const supplement = Number(config.transport_supplement) || 0;
   const supplementApplies =
     transport &&
     supplement > 0 &&
-    product != null &&
-    product.adult_price_no_transport == null;
+    product != null;
   const supplementTotal = supplementApplies
     ? round2(supplement * (adults + children))
     : 0;
@@ -1582,7 +1574,7 @@ export function ShowOpsBookingForm({
           <p className="mt-1 text-xs text-slate-500">
             {product?.transport_available === false
               ? "No bus on this show."
-              : supplement > 0 && product?.adult_price_no_transport == null
+              : supplement > 0
                 ? `Bus adds ${moneyFmt(supplement)} per adult & child, infants free.`
                 : "Bus puts them on the coach list. Private and own way pay the no-bus price."}
           </p>

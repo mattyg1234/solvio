@@ -35,37 +35,15 @@ function num(n: unknown, fallback = 0): number {
   return Number.isFinite(v) ? v : fallback;
 }
 
-/**
- * Unit price for one head.
- *
- * Two pricing shapes live side by side:
- *  - a show that carries an explicit without-transport price owns both halves, so the
- *    stored pair is used verbatim and no supplement is added on top;
- *  - every other show prices the ticket show-only, and taking the bus adds `supplement`.
- *
- * `supplement` is passed as 0 for infants, who never pay for the seat.
- */
-function pickUnit(
-  listPrice: number,
-  noTransport: number | null | undefined,
-  transportRequired: boolean,
-  supplement: number,
-): number {
-  if (noTransport != null) {
-    return round2(num(transportRequired ? listPrice : noTransport));
-  }
-  const base = round2(num(listPrice));
-  return transportRequired ? round2(base + Math.max(0, num(supplement))) : base;
+/** Ticket price plus the bus supplement when selected. Infants use zero supplement. */
+function pickUnit(listPrice: number, transportRequired: boolean, supplement: number): number {
+  return round2(num(listPrice) + (transportRequired ? Math.max(0, num(supplement)) : 0));
 }
 
-/** Supplier % wins when it is not 100. Product nett is the 100% fallback. */
-export function unitNett(gross: number, productNett: number | null | undefined, invoiceNettPercent: number): number {
+/** Nett rates belong to the partner. Legacy show nett fields are not used. */
+export function unitNett(gross: number, invoiceNettPercent: number): number {
   const pct = Number.isFinite(invoiceNettPercent) ? invoiceNettPercent : 100;
-  if (pct !== 100) return round2(gross * (pct / 100));
-  if (productNett != null && Number.isFinite(Number(productNett))) {
-    return round2(Number(productNett));
-  }
-  return round2(gross);
+  return round2(gross * (pct / 100));
 }
 
 export function computeBookingMoney(input: {
@@ -88,20 +66,17 @@ export function computeBookingMoney(input: {
 
   const adultPrice = pickUnit(
     num(input.product?.adult_price),
-    input.product?.adult_price_no_transport,
     transport,
     supplement,
   );
   const childPrice = pickUnit(
     num(input.product?.child_price),
-    input.product?.child_price_no_transport,
     transport,
     supplement,
   );
   // Infants ride free — no seat, no supplement.
   const infantPrice = pickUnit(
     num(input.product?.infant_price),
-    input.product?.infant_price_no_transport,
     transport,
     0,
   );
@@ -112,9 +87,9 @@ export function computeBookingMoney(input: {
   const depositPct = num(input.supplier?.deposit_percent, 30);
   const nettPct = num(input.supplier?.invoice_nett_percent, 100);
 
-  const adultNettUnit = unitNett(adultPrice, input.product?.adult_nett, nettPct);
-  const childNettUnit = unitNett(childPrice, input.product?.child_nett, nettPct);
-  const infantNettUnit = unitNett(infantPrice, null, nettPct);
+  const adultNettUnit = unitNett(adultPrice, nettPct);
+  const childNettUnit = unitNett(childPrice, nettPct);
+  const infantNettUnit = unitNett(infantPrice, nettPct);
   const infant_nett_total = round2(infants * infantNettUnit);
   const adult_nett_total = round2(adults * adultNettUnit);
   const child_nett_total = round2(children * childNettUnit);

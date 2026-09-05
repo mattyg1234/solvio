@@ -27,7 +27,7 @@ test("prices reject negative and nonfinite amounts, optional blank values stay n
   fd.set("adult_price", "20");
   fd.set("child_price", "10");
   fd.set("infant_price", "0");
-  assert.equal(parseTicketTypeFields(fd).adult_nett, null);
+  assert.equal("adult_nett" in parseTicketTypeFields(fd), false);
   for (const bad of ["-1", "NaN", "Infinity", "bad"]) {
     fd.set("adult_price", bad);
     assert.throws(() => parseTicketTypeFields(fd));
@@ -70,8 +70,8 @@ test("zero optional prices and explicit disabled transport survive validation", 
   fd.set("name", "Child");
   fd.set("transport_available", "0");
   const fields = parseTicketTypeFields(fd);
-  assert.equal(fields.adult_nett, 0);
-  assert.equal(fields.adult_price_no_transport, 0);
+  assert.equal("adult_nett" in fields, false);
+  assert.equal(fields.adult_price_no_transport, null);
   assert.equal(fields.transport_available, false);
 });
 

@@ -164,13 +164,13 @@ export function MasterShowsForm({
             </select>
           </label>
           <Field
-            label="Set adult standard price"
+            label="Set adult ticket price"
             name="bulk_adult_price"
             type="number"
             step="0.01"
           />
           <Field
-            label="Set child standard price"
+            label="Set child ticket price"
             name="bulk_child_price"
             type="number"
             step="0.01"
@@ -530,99 +530,37 @@ export function ShowProductFields({
         <p className="mb-3 text-xs leading-relaxed text-slate-500">
           All prices below use {currency.toUpperCase()}, the currency for the
           selected island. Changing island does not convert the amounts.
-          Standard price is the show-only price when its without-bus field is
-          blank.
+          Transport is added separately when booking.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           <Field
-            label="Adult standard price"
+            label="Adult ticket price"
             name={name("adult_price")}
             type="number"
             step="0.01"
             defaultValue={product?.adult_price ?? 0}
           />
           <Field
-            label="Child standard price"
+            label="Child ticket price"
             name={name("child_price")}
             type="number"
             step="0.01"
             defaultValue={product?.child_price ?? 0}
           />
           <Field
-            label="Infant standard price"
+            label="Infant ticket price"
             name={name("infant_price")}
             type="number"
             step="0.01"
             defaultValue={product?.infant_price ?? 0}
           />
         </div>
-        <div className="my-3 rounded-lg bg-sky-50 p-3 text-xs leading-relaxed text-sky-950">
-          <strong>How bus pricing works</strong>
-          <p className="mt-1">
-            For each age band, leave the without-bus price blank to use the
-            standard price for own-way or private-transfer guests. A bus booking
-            then adds the configured supplement ({supplement}) per adult and
-            child; infants have no supplement.
-          </p>
-          <p className="mt-1">
-            If you enter a without-bus price, that age band uses the two amounts
-            exactly: standard price with bus, without-bus price for own-way or
-            private transfer. No supplement is added for that age band. A value
-            of 0 is a free ticket, not a blank field.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field
-            label="Adult without bus (optional)"
-            name={name("adult_price_no_transport")}
-            type="number"
-            step="0.01"
-            defaultValue={product?.adult_price_no_transport}
-          />
-          <Field
-            label="Child without bus (optional)"
-            name={name("child_price_no_transport")}
-            type="number"
-            step="0.01"
-            defaultValue={product?.child_price_no_transport}
-          />
-          <Field
-            label="Infant without bus (optional)"
-            name={name("infant_price_no_transport")}
-            type="number"
-            step="0.01"
-            defaultValue={product?.infant_price_no_transport}
-          />
-        </div>
-      </fieldset>
-      <fieldset className="rounded-xl border border-slate-200 bg-white p-4">
-        <legend className="px-1 text-sm font-semibold text-slate-900">
-          3. Optional invoice nett fallback · {currency.toUpperCase()}
-        </legend>
-        <p className="mb-3 text-xs leading-relaxed text-slate-500">
-          For invoice partners, a partner nett percentage other than 100% takes
-          priority over these fields. At 100%, the amounts below are used per
-          adult and child. Leave them blank to use the calculated guest ticket
-          price; 0 means zero nett. These are fixed nett amounts, not commission
-          percentages.
+        <p className="mt-3 text-xs text-slate-500">
+          Ticking transport adds {supplement} per adult and child to these ticket
+          prices. Infants have no transport charge. Nett rates are set in Partners.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label="Adult nett fallback (optional)"
-            name={name("adult_nett")}
-            type="number"
-            step="0.01"
-            defaultValue={product?.adult_nett}
-          />
-          <Field
-            label="Child nett fallback (optional)"
-            name={name("child_nett")}
-            type="number"
-            step="0.01"
-            defaultValue={product?.child_nett}
-          />
-        </div>
       </fieldset>
+
     </div>
   );
 }

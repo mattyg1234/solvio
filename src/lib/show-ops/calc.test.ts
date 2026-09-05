@@ -58,7 +58,7 @@ test("Island Agency 85% applies to ticket gross, not product nett", () => {
   assert.equal(money.adult_nett_total, 221);
 });
 
-test("100% supplier still uses product nett when set", () => {
+test("100% partner invoices the full ticket price even when legacy show netts exist", () => {
   const money = computeBookingMoney({
     adults: 4,
     children: 0,
@@ -68,10 +68,10 @@ test("100% supplier still uses product nett when set", () => {
     transportRequired: true,
   });
   assert.equal(money.total_cost, 260);
-  assert.equal(money.nett_total, 180);
+  assert.equal(money.nett_total, 260);
 });
 
-test("no-transport uses the cheaper price set", () => {
+test("the ticket price stays the same and transport adds ten per adult", () => {
   const withBus = computeBookingMoney({
     adults: 2,
     children: 0,
@@ -79,6 +79,7 @@ test("no-transport uses the cheaper price set", () => {
     product,
     supplier: depositSupplier,
     transportRequired: true,
+    transportSupplement: 10,
   });
   const noBus = computeBookingMoney({
     adults: 2,
@@ -88,8 +89,8 @@ test("no-transport uses the cheaper price set", () => {
     supplier: depositSupplier,
     transportRequired: false,
   });
-  assert.equal(withBus.total_cost, 130);
-  assert.equal(noBus.total_cost, 100);
+  assert.equal(withBus.total_cost, 150);
+  assert.equal(noBus.total_cost, 130);
 });
 
 test("new deposit booking outstanding is the full total, not total minus deposit", () => {
@@ -373,7 +374,7 @@ test("a seller still takes 30% of the transport-inclusive total", () => {
   assert.equal(money.deposit_amount, 35.4); // 30% of 118, not of 98
 });
 
-test("a show with its own without-transport price keeps that pair, no supplement on top", () => {
+test("legacy secondary price fields cannot change the single ticket price", () => {
   const paired = { ...CANARIES_SHOW, adult_price: 130, adult_price_no_transport: 110 };
   const withBus = computeBookingMoney({
     adults: 1,
@@ -393,8 +394,8 @@ test("a show with its own without-transport price keeps that pair, no supplement
     transportRequired: false,
     transportSupplement: 10,
   });
-  assert.equal(withBus.total_cost, 130); // not 140
-  assert.equal(without.total_cost, 110);
+  assert.equal(withBus.total_cost, 140);
+  assert.equal(without.total_cost, 130);
 });
 
 test("supplement of zero leaves every price exactly where it was", () => {
@@ -439,4 +440,19 @@ test("every booking priced through the desk carries a snapshot of its rates", ()
   assert.equal(money.pricing_snapshot.invoice_nett_percent, 85);
   assert.equal(money.pricing_snapshot.transport_supplement, 10);
   assert.equal(hasPricingSnapshot(null), false);
+});
+
+test("partner rate controls every age band including zero commission and free partner tickets", () => {
+  for (const percent of [100, 80, 0]) {
+    const money = computeBookingMoney({
+      adults: 1, children: 1, infants: 1,
+      product: { ...product, infant_price: 10, infant_price_no_transport: 10, adult_nett: 1, child_nett: 0 },
+      supplier: { ...hundredPct, invoice_nett_percent: percent },
+      transportRequired: true,
+    });
+    assert.equal(money.nett_total, 115 * percent / 100);
+    assert.equal(money.pricing_snapshot.adult_nett_unit, 65 * percent / 100);
+    assert.equal(money.pricing_snapshot.child_nett_unit, 40 * percent / 100);
+    assert.equal(money.pricing_snapshot.infant_nett_unit, 10 * percent / 100);
+  }
 });
