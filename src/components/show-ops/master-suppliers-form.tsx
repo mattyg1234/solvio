@@ -9,7 +9,7 @@ import {
   saveMasterSupplierOneAction,
   saveMasterSuppliersAllAction,
 } from "@/app/dashboard/show-ops/actions";
-import { partnerIslands, partnerSearchHaystack } from "@/lib/show-ops/partners";
+import { partnerIslands, partnerSearchHaystack, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
 import { NumberInput } from "@/components/ui/number-input";
 
@@ -114,11 +114,13 @@ export function MasterSuppliersForm({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
-  const locations = [...new Set(suppliers.map((s) => (s.island || "").trim()).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b),
-  );
+  const locations = [...new Set(
+    [...islands, ...suppliers.flatMap((s) => partnerIslands(s.island))]
+      .map((island) => island.trim())
+      .filter((island) => island && island.toUpperCase() !== "ALL"),
+  )].sort((a, b) => a.localeCompare(b));
   const visible = suppliers.filter((s) => {
-    if (location && (s.island || "").trim() !== location) return false;
+    if (!partnerSellsOnIsland(s.island, location)) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return partnerSearchHaystack(s).includes(q);
@@ -209,18 +211,18 @@ export function MasterSuppliersForm({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name, type or location"
+              placeholder="Name, type or island"
               className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm"
             />
           </label>
           <label className="text-xs font-medium text-slate-600">
-            Location
+            Island
             <select
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="mt-1 w-full min-w-[10rem] rounded-lg border px-2 py-1.5 text-sm"
             >
-              <option value="">All locations</option>
+              <option value="">All islands</option>
               {locations.map((loc) => (
                 <option key={loc} value={loc}>
                   {loc}
