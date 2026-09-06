@@ -2,8 +2,9 @@ import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import Link from "next/link";
 
-import { upsertBusOrderAction, upsertBusStopAction } from "@/app/dashboard/show-ops/actions";
+import { upsertBusOrderAction } from "@/app/dashboard/show-ops/actions";
 import { BusNightBoard } from "@/components/show-ops/bus-night-board";
+import { PickupTimetable } from "@/components/show-ops/pickup-timetable";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
@@ -85,7 +86,7 @@ export default async function BusBoardPage({
       <ShowOpsPageHeader
         eyebrow="Operations"
         title="Bus board"
-        subtitle={`${showOpsDayName(date)} ${date} · printed pick-up times stay on the board even when that route is not running tonight. Times save straight to every booking on that stop.`}
+        subtitle={`${showOpsDayName(date)} ${date} · buses ordered per night, plus the permanent pick-up timetable per island: drag to reorder, edit a stop in place, download or print. Time changes save straight to every booking on that stop.`}
         actions={
           <form method="get" className="flex flex-wrap items-end gap-2">
             <label className="text-xs font-medium text-slate-600">
@@ -100,7 +101,7 @@ export default async function BusBoardPage({
         }
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 print:hidden">
         <ShowOpsPill href={qs({ island: "" })} on={!island}>
           All islands
         </ShowOpsPill>
@@ -119,7 +120,7 @@ export default async function BusBoardPage({
       </div>
 
       {unassignedPax > 0 ? (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 print:hidden">
           {unassignedPax} bus pax tonight have no pick-up stop assigned —{" "}
           <Link href={`/dashboard/show-ops/bookings?date=${date}`} className="underline">
             find them in Bookings
@@ -143,7 +144,6 @@ export default async function BusBoardPage({
         const seats = order ? Number(order.seats_ordered) : null;
         const buses = order ? Math.max(1, Number(order.bus_count) || 1) : null;
         const cost = order ? Number(order.cost_total) : null;
-        const resorts = [...new Set(islStops.map((s) => s.resort))];
         return (
           <section key={isl} className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -176,7 +176,7 @@ export default async function BusBoardPage({
               </div>
             </div>
 
-            <form action={upsertBusOrderAction} className="mt-3 flex flex-wrap items-end gap-2 text-xs">
+            <form action={upsertBusOrderAction} className="mt-3 flex flex-wrap items-end gap-2 text-xs print:hidden">
               <input type="hidden" name="show_date" value={date} />
               <input type="hidden" name="island" value={isl} />
               <input type="hidden" name="next" value={`/dashboard/show-ops/buses?date=${date}${island ? `&island=${encodeURIComponent(island)}` : ""}`} />
@@ -225,77 +225,18 @@ export default async function BusBoardPage({
               </SubmitOnce>
             </form>
 
-            {resorts.map((resort) => {
-              const rStops = islStops.filter((s) => s.resort === resort);
-              const rPax = rStops.reduce((sum, s) => sum + (paxByStop.get(s.id) ?? 0), 0);
-              return (
-                <div key={resort} className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    {resort} · {rPax} pax tonight
-                  </p>
-                  <div className="mt-1 overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead className="text-xs uppercase text-slate-400">
-                        <tr>
-                          <th className="py-1.5 pr-3">#</th>
-                          <th className="py-1.5 pr-3">Stop</th>
-                          <th className="py-1.5 pr-3">Time</th>
-                          <th className="py-1.5 pr-3">Days</th>
-                          <th className="py-1.5 pr-3">Tonight</th>
-                          <th className="py-1.5 pr-3">Hotels</th>
-                          <th className="py-1.5">Guide notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rStops.map((s) => {
-                          const runningTonight = stopRunsOnDate(s.runs_on, date) || hasPax(s.id);
-                          return (
-                          <tr key={s.id} className={`border-t border-slate-100 ${runningTonight ? "" : "bg-slate-50/70 text-slate-500"}`}>
-                            <td className="py-2 pr-3 text-xs text-slate-400">{s.sort_order}</td>
-                            <td className="py-2 pr-3 font-medium text-slate-900">{s.stop_name}</td>
-                            <td className="py-2 pr-3">
-                              {canManageCatalogue ? <form action={upsertBusStopAction} className="flex items-center gap-1.5">
-                                <input type="hidden" name="id" value={s.id} />
-                                <input type="hidden" name="island" value={s.island} />
-                                <input type="hidden" name="resort" value={s.resort} />
-                                <input type="hidden" name="stop_name" value={s.stop_name} />
-                                <input type="hidden" name="sort_order" value={s.sort_order} />
-                                <input type="hidden" name="guide_notes" value={s.guide_notes ?? ""} />
-                                <input type="hidden" name="active" value="1" />
-                                <input
-                                  type="time"
-                                  name="pickup_time"
-                                  defaultValue={s.pickup_time ? String(s.pickup_time).slice(0, 5) : ""}
-                                  className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                                />
-                                <label
-                                  className="flex items-center gap-1 text-[11px] text-slate-500"
-                                  title="Email/text upcoming guests on this stop that their pick-up time changed"
-                                >
-                                  <input type="checkbox" name="notify_guests" value="1" />
-                                  Tell guests
-                                </label>
-                                <SubmitOnce className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-60">
-                                  Save
-                                </SubmitOnce>
-                              </form> : (s.pickup_time ? String(s.pickup_time).slice(0, 5) : "—")}
-                            </td>
-                            <td className="py-2 pr-3 text-xs text-slate-500">
-                              {s.runs_on || "Every night"}
-                              {!runningTonight && s.runs_on ? " · not tonight" : ""}
-                            </td>
-                            <td className="py-2 pr-3 tabular-nums">{paxByStop.get(s.id) ?? 0}</td>
-                            <td className="py-2 pr-3 tabular-nums">{hotelsByStop.get(s.id) ?? 0}</td>
-                            <td className="py-2 text-xs text-slate-500">{s.guide_notes ?? "—"}</td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
+            <PickupTimetable
+              key={`${isl}-${islStops.map((s) => s.id).join(",")}`}
+              island={isl}
+              date={date}
+              stops={islStops as never}
+              hotelsByStop={Object.fromEntries(islStops.map((s) => [s.id, hotelsByStop.get(s.id) ?? 0]))}
+              paxByStop={Object.fromEntries(islStops.map((s) => [s.id, paxByStop.get(s.id) ?? 0]))}
+              runningTonight={Object.fromEntries(islStops.map((s) => [s.id, stopRunsOnDate(s.runs_on, date) || hasPax(s.id)]))}
+              islands={ctx.config.islands}
+              canManage={canManageCatalogue}
+              next={qs({})}
+            />
 
             {(["owner", "admin", "finance", "office"].includes(ctx.role)) && (islStops.length ? (
               <BusNightBoard
@@ -305,7 +246,7 @@ export default async function BusBoardPage({
                 stops={islStops.map((s) => ({ id: s.id, label: `${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
               />
             ) : (
-              <p className="mt-3 text-sm text-slate-500">No stops on {isl} yet — add them under Hotels &amp; pick-ups.</p>
+              <p className="mt-3 text-sm text-slate-500 print:hidden">No stops on {isl} yet — use “Add pick-up point” above.</p>
             ))}
             {!tonightOnly && hiddenUntimed > 0 && !showUntimed ? (
               <p className="mt-3 text-sm text-slate-500">

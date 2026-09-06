@@ -305,7 +305,6 @@ function StopRow({
               Map
             </a>
           ) : null}
-          {stop.photo_url ? <span className="ml-2 text-[11px] text-slate-400">photo</span> : null}
         </td>
         <td className="px-3 py-2 text-slate-600">{stop.island}</td>
         <td className="px-3 py-2 text-right tabular-nums text-slate-700">{hhmm(stop.pickup_time) || "—"}</td>
@@ -388,17 +387,6 @@ function StopForm({
               inputMode="url"
               placeholder="https://maps.google.com/…"
               defaultValue={initial.map_url ?? ""}
-              className={INPUT}
-            />
-          </label>
-          <label className="text-xs font-medium text-slate-600 sm:col-span-2">
-            Photo link
-            <input
-              name="photo_url"
-              type="url"
-              inputMode="url"
-              placeholder="https://… (jpg / png)"
-              defaultValue={initial.photo_url ?? ""}
               className={INPUT}
             />
           </label>

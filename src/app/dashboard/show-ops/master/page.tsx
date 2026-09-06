@@ -13,6 +13,7 @@ import {
   ShowProductFields,
 } from "@/components/show-ops/master-shows-form";
 import { MasterSuppliersForm } from "@/components/show-ops/master-suppliers-form";
+import { redirect } from "next/navigation";
 import { PickupPointsDirectory } from "@/components/show-ops/pickup-points-directory";
 import { ScrollToCreated } from "@/components/show-ops/scroll-to-created";
 import {
@@ -89,6 +90,8 @@ export default async function MasterDataPage({
    * old link lands on Partners instead. The rate-card rows are still on the
    * partner record for reference.
    */
+  // Pick-up points moved onto the Bus board (Sept 2026); old links follow them there.
+  if (sp.tab === "stops") redirect("/dashboard/show-ops/buses");
   const allowed = new Set(["shows", "partners", "hotels", "stops"]);
   const tab =
     sp.tab === "rates"
@@ -249,7 +252,7 @@ export default async function MasterDataPage({
       : tab === "rates"
         ? "Rates & commissions"
         : tab === "hotels"
-          ? "Hotels & pick-ups"
+          ? "Hotels"
           : tab === "stops"
             ? "Pick-up points"
             : "Shows";
@@ -259,7 +262,7 @@ export default async function MasterDataPage({
       : tab === "rates"
         ? "Commission cards (sale vs invoice). Partners pick one of these — they are not sellers."
         : tab === "hotels"
-          ? "Every hotel and the pick-up point it uses. Pick-up points, run order and bus orders are on their own tab."
+          ? "Every hotel and the pick-up point it uses. The pick-up points themselves, their times and the run order are on the Bus board."
           : tab === "stops"
             ? "Bus stops, printed times, permanent run order and buses ordered per night. Changing a stop never wipes bookings."
             : "Set each show’s schedule, capacity and guest prices. Saving a price applies it to new bookings; changing existing bookings is a separate action.";
@@ -437,11 +440,8 @@ export default async function MasterDataPage({
             >
               Hotels
             </ShowOpsPill>
-            <ShowOpsPill
-              href="/dashboard/show-ops/master?tab=stops"
-              on={tab === "stops"}
-            >
-              Pick-up points
+            <ShowOpsPill href="/dashboard/show-ops/buses" on={false}>
+              Pick-up points → Bus board
             </ShowOpsPill>
           </div>
 

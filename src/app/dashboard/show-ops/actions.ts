@@ -979,7 +979,18 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
   if (formData.has("map_url")) row.map_url = cleanHttpUrl(formData.get("map_url"));
   if (formData.has("photo_url")) row.photo_url = cleanHttpUrl(formData.get("photo_url"));
   const tab = masterTabFromForm(formData, "hotels");
-  if (!row.island || !row.resort || !row.stop_name) redirectMaster(tab, { error: "Island, resort and stop required." });
+  // The Bus board opens this form in place; send it back there rather than to the master page.
+  const nextRaw = String(formData.get("next") ?? "").trim();
+  const nextPath = nextRaw.startsWith("/dashboard/show-ops/") && !nextRaw.includes("//") ? nextRaw : null;
+  const back = (opts?: { saved?: "1" | "bulk" | "exists"; created?: string; error?: string }): never => {
+    if (!nextPath) redirectMaster(tab, opts);
+    const url = new URL(nextPath, "http://x");
+    if (opts?.saved) url.searchParams.set("saved", opts.saved);
+    if (opts?.created) url.searchParams.set("created", opts.created);
+    if (opts?.error) url.searchParams.set("error", opts.error.slice(0, 180));
+    redirect(`${url.pathname}${url.search}`);
+  };
+  if (!row.island || !row.resort || !row.stop_name) back({ error: "Island, resort and stop required." });
   row.active = id ? formData.get("active") === "1" : formData.get("active") !== "0";
   if (id) {
     const { data: before } = await ctx.supabase
@@ -991,7 +1002,7 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
     const timeChanged = (before?.pickup_time ?? null) !== row.pickup_time;
 
     const { error } = await ctx.supabase.from("show_bus_stops").update(row).eq("id", id).eq("business_id", ctx.business.id);
-    if (error) redirectMaster(tab, { error: error.message });
+    if (error) back({ error: error.message });
     const label = `${row.resort} · ${row.stop_name}`;
     await ctx.supabase
       .from("show_bookings")
@@ -1017,12 +1028,12 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
     }
   } else {
     const { data, error } = await ctx.supabase.from("show_bus_stops").insert(row).select("id").single();
-    if (error) redirectMaster(tab, { error: error.message });
+    if (error) back({ error: error.message });
     revalidateShowOps();
-    redirectMaster(tab, { saved: "1", created: data?.id });
+    back({ saved: "1", created: data?.id });
   }
   revalidateShowOps();
-  redirectMaster(tab, { saved: "1", created: id });
+  back({ saved: "1", created: id });
 }
 
 export async function nudgeBusStopAction(formData: FormData): Promise<void> {
