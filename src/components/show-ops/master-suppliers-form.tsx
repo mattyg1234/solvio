@@ -8,8 +8,9 @@ import {
   deleteSupplierAction,
   saveMasterSupplierOneAction,
   saveMasterSuppliersAllAction,
-  sendPartnerLoginAction,
+  sendPartnerLinkAction,
 } from "@/app/dashboard/show-ops/actions";
+import { isPartnerLinkToken, partnerLinkPath } from "@/lib/show-ops/partner-link";
 import { partnerIslands, partnerSearchHaystack, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
 import { NumberInput } from "@/components/ui/number-input";
@@ -25,6 +26,7 @@ export type MasterSupplierRow = {
   id: string;
   name: string;
   email: string | null;
+  booking_token?: string | null;
   partner_type: string;
   island?: string | null;
   billing_mode: string;
@@ -122,9 +124,9 @@ export function MasterSuppliersForm({
     const fd = new FormData();
     fd.set("supplier_id", id);
     startLoginSend(() => {
-      void sendPartnerLoginAction(fd)
+      void sendPartnerLinkAction(fd)
         .then((res) => setLoginNotice({ id, ok: res.ok, message: res.message }))
-        .catch(() => setLoginNotice({ id, ok: false, message: "Login link not sent. Please retry." }))
+        .catch(() => setLoginNotice({ id, ok: false, message: "Link not sent. Please retry." }))
         .finally(() => setSendingLogin(null));
     });
   }
@@ -158,10 +160,15 @@ export function MasterSuppliersForm({
     });
   }
 
-  /** Partner booking link — they sign in and only ever see their own bookings. */
+  /** Partner booking link — no login; the token in the link is how we know who booked. */
   async function copyPortalLink(id: string) {
+    const row = suppliers.find((s) => s.id === id);
+    if (!isPartnerLinkToken(row?.booking_token)) {
+      setLoginNotice({ id, ok: false, message: "No booking link yet — save this partner once and try again." });
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/partner`);
+      await navigator.clipboard.writeText(`${window.location.origin}${partnerLinkPath(row.booking_token)}`);
       setCopied(id);
       setTimeout(() => setCopied((c) => (c === id ? null : c)), 2000);
     } catch {
@@ -387,7 +394,7 @@ export function MasterSuppliersForm({
               <button
                 type="button"
                 onClick={() => void copyPortalLink(s.id)}
-                title="Copy this partner's booking link — they sign in and only see their own bookings"
+                title="Copy this partner's private booking link — no login, every booking made through it is recorded under them"
                 className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
               >
                 {copied === s.id ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Link2 className="h-3.5 w-3.5" aria-hidden />}
@@ -397,11 +404,11 @@ export function MasterSuppliersForm({
                 type="button"
                 onClick={() => sendLogin(s.id)}
                 disabled={!s.email || sendingLogin === s.id}
-                title={s.email ? `Email a one-time sign-in link to ${s.email}` : "Add an invoice email to this partner first"}
+                title={s.email ? `Email their private booking link to ${s.email}` : "Add an invoice email to this partner first"}
                 className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {sendingLogin === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Mail className="h-3.5 w-3.5" aria-hidden />}
-                {sendingLogin === s.id ? "Sending" : "Send login"}
+                {sendingLogin === s.id ? "Sending" : "Email link"}
               </button>
               <button
                 type="button"
@@ -499,9 +506,9 @@ export function MasterSuppliersForm({
                 </select>
               </label>
               <p className="text-xs text-slate-500 sm:col-span-2">
-                Booking link: <span className="font-mono text-slate-700">/partner</span> — send it only to partners you
-                want booking directly. They need a login (Settings → Seller portals); without one the link does nothing,
-                and they only ever see their own bookings.
+                Booking link: each partner has a private <span className="font-mono text-slate-700">/p/…</span> link. No login —
+                every booking made through it is recorded under that partner, and the page shows only their own bookings.
+                Use <span className="font-semibold">Email link</span> on the row to send it to their invoice email.
               </p>
               <label className="flex items-center gap-2 self-end pb-2 text-xs">
                 <input type="checkbox" name={`${prefix}active`} value="1" defaultChecked={s.active !== false} /> Active

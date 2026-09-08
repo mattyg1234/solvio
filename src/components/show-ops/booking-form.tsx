@@ -112,6 +112,8 @@ export type BookingFormStop = {
 export type BookingFormDefaults = {
   extras_snapshot?: ExtraSnapshot[];
   id?: string;
+  /** Partner booking link token — the action resolves the partner from it, no login. */
+  partner_token?: string;
   show_date?: string;
   guest_name?: string;
   guest_mobile?: string | null;
@@ -814,6 +816,9 @@ export function ShowOpsBookingForm({
       />
       {defaults.id ? (
         <input type="hidden" name="id" value={defaults.id} />
+      ) : null}
+      {defaults.partner_token ? (
+        <input type="hidden" name="partner_token" value={defaults.partner_token} />
       ) : null}
       {moneyLocked ? (
         <>

@@ -89,6 +89,56 @@ export async function sendShowOpsPaymentLinkEmail(opts: {
   return { ok: true, id: data?.id };
 }
 
+/** The partner's private booking link. No password: the link itself identifies them. */
+export async function sendShowOpsPartnerLinkEmail(opts: {
+  to: string;
+  partnerName: string;
+  merchantName: string;
+  linkUrl: string;
+}): Promise<NotificationSendResult> {
+  const client = resendClient();
+  const gated = gatedTo(opts.to);
+  if (!Array.isArray(gated)) return gated;
+  const to = gated[0] ?? "";
+  if (!client) {
+    return { ok: false, reason: "not_configured", message: "Email is not configured on this deployment." };
+  }
+  if (!to.includes("@")) {
+    return { ok: false, reason: "invalid_recipient", message: "Invalid email address." };
+  }
+  const subject = `${opts.merchantName} — your booking link for ${opts.partnerName}`;
+  const { data, error } = await client.emails.send({
+    from: fromAddr(),
+    to,
+    subject,
+    html: `
+      <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
+        <p style="font-size:16px">Hi,</p>
+        <p style="font-size:15px;line-height:1.5">
+          Here is the private booking link for <strong>${escapeHtml(opts.partnerName)}</strong> with ${escapeHtml(opts.merchantName)}.
+          Open it to book guests at your contracted rate and see the bookings you have made. No password needed.
+        </p>
+        <p style="margin:24px 0">
+          <a href="${escapeHtml(opts.linkUrl)}"
+             style="display:inline-block;background:#7c3aed;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600">
+            Open your booking page
+          </a>
+        </p>
+        <p style="font-size:13px;line-height:1.5;color:#475569">
+          Save this email or bookmark the link. It is unique to ${escapeHtml(opts.partnerName)}, so please do not forward it outside your team.
+          Link: <a href="${escapeHtml(opts.linkUrl)}" style="color:#7c3aed">${escapeHtml(opts.linkUrl)}</a>
+        </p>
+      </div>
+    `,
+    text: `Your private booking link for ${opts.partnerName} with ${opts.merchantName}:\n${opts.linkUrl}\n\nOpen it to book guests at your contracted rate and see your bookings. No password needed. It is unique to you, so do not forward it outside your team.`,
+  });
+  if (error) {
+    console.error("[show-ops-email] partner link:", error.message);
+    return { ok: false, reason: "provider_error", message: error.message };
+  }
+  return { ok: true, id: data?.id };
+}
+
 export async function sendShowOpsSellerInviteEmail(opts: {
   to: string;
   sellerName: string;

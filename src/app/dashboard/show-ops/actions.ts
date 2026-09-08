@@ -1,6 +1,8 @@
 "use server";
 
 import { uploadBusinessLogo, validateLogoFile } from "@/lib/business-logo";
+import { bookingRefSeries, isPartnerLinkToken, isUniqueViolation, nextBookingRefWithoutSession, partnerLinkUrl } from "@/lib/show-ops/partner-link";
+import { sendShowOpsPartnerLinkEmail } from "@/lib/notifications/show-ops-emails";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
@@ -53,7 +55,7 @@ import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSn
 import { applyTicketType, ticketBookingSnapshotPatch, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
 import { invitePartnerSeller, assertRemovableSeller } from "@/lib/show-ops/partner-invitations";
 import { partnerBookingErrorMessage } from "@/lib/show-ops/partner-booking";
-import { genericSeedConfig, mhtSeedConfig, showOpsCurrencyFor, slugifyQuestionId } from "@/lib/show-ops/config";
+import { genericSeedConfig, mhtSeedConfig, showOpsCurrencyFor, slugifyQuestionId, parseShowOpsConfig, brandingFromBusiness } from "@/lib/show-ops/config";
 import {
   buildVerifactuPayload,
   formatInvoiceNumber,
@@ -71,7 +73,7 @@ import {
   privatePickupLabel,
   type PrivateAccommodation,
 } from "@/lib/show-ops/private-pickup";
-import { parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
+import { type ShowOpsBillingTier, parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
 import type {
   ShowOpsBookingQuestion,
   ShowOpsBookingQuestionType,
@@ -2119,12 +2121,11 @@ export async function inviteSellerPortalAction(formData: FormData): Promise<void
 }
 
 /**
- * "Send login" on a partner row: emails the partner's invoice address a one-time
- * sign-in link for their booking page. Returns a result instead of redirecting so
- * the Partners list can show "Sent" inline. Held in test mode unless the address
- * is on the outbound allowlist.
+ * "Email link" on a partner row: sends the partner's private booking link to their
+ * invoice address. No account, no password — the link identifies them. Held in
+ * test mode unless the address is on the outbound allowlist.
  */
-export async function sendPartnerLoginAction(
+export async function sendPartnerLinkAction(
   formData: FormData,
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   try {
@@ -2133,23 +2134,103 @@ export async function sendPartnerLoginAction(
     if (!/^[0-9a-f-]{36}$/i.test(supplierId)) return { ok: false, message: "Pick a partner first." };
     const { data: supplier, error } = await ctx.supabase
       .from("show_suppliers")
-      .select("id,name,email")
+      .select("id,name,email,booking_token")
       .eq("id", supplierId)
       .eq("business_id", ctx.business.id)
       .maybeSingle();
     if (error || !supplier) return { ok: false, message: "Partner not found. Refresh and try again." };
     const email = String(supplier.email ?? "").trim().toLowerCase();
-    if (!email.includes("@")) return { ok: false, message: "Add an invoice email to this partner first, then send the login." };
-    await provisionAndEmailSeller({
-      ctx,
-      businessId: ctx.business.id, supplierId: supplier.id, supplierName: supplier.name,
-      email, merchantName: ctx.branding.displayName,
+    if (!email.includes("@")) return { ok: false, message: "Add an invoice email to this partner first, then send the link." };
+    if (!isPartnerLinkToken(supplier.booking_token)) return { ok: false, message: "This partner has no booking link yet. Save the partner once and try again." };
+    if (!filterShowOpsOutboundTo(email).length) {
+      return { ok: false, message: `Not sent: Show Ops is in test mode and ${email} is not on the allowlist.` };
+    }
+    const { getSiteUrl } = await import("@/lib/site-url");
+    const sent = await sendShowOpsPartnerLinkEmail({
+      to: email, partnerName: supplier.name, merchantName: ctx.branding.displayName,
+      linkUrl: partnerLinkUrl(await getSiteUrl(), supplier.booking_token),
     });
-    revalidateShowOps();
-    return { ok: true, message: `Login link sent to ${email}.` };
+    if (!sent.ok) return { ok: false, message: `Not sent: ${sent.message || "email delivery failed."}` };
+    return { ok: true, message: `Booking link emailed to ${email}.` };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : "Login link not sent. Please retry." };
+    return { ok: false, message: error instanceof Error ? error.message : "Link not sent. Please retry." };
   }
+}
+
+/**
+ * Context for a booking made through a partner link: the service role stands in
+ * for the session, scoped to the partner the token resolves to.
+ */
+export async function partnerLinkContext(token: unknown) {
+  if (!isPartnerLinkToken(token)) return null;
+  const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
+  const admin = createSupabaseServiceRoleClient();
+  const { data: supplier } = await admin.from("show_suppliers").select("*").eq("booking_token", token).eq("active", true).maybeSingle();
+  if (!supplier) return null;
+  const { data: business } = await admin.from("businesses").select(
+    "id,name,owner_id,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_logo_url,show_ops_primary_color,show_ops_accent_color,show_ops_custom_domain,logo_url,stripe_connect_account_id,stripe_connect_charges_enabled",
+  ).eq("id", supplier.business_id).maybeSingle();
+  if (!business || !business.show_ops_enabled) return null;
+  const config = parseShowOpsConfig(business.show_ops_config);
+  const ctx = {
+    supabase: admin,
+    user: { id: "partner-link" },
+    business,
+    config,
+    branding: brandingFromBusiness(business),
+    tier: (business.show_ops_billing_tier || "starter") as ShowOpsBillingTier,
+    role: "seller" as const,
+    isOwner: false,
+    allowedPages: null,
+    allowedIslands: null,
+  } as unknown as Awaited<ReturnType<typeof requireShowOpsContext>>;
+  return { ctx, supplier, admin };
+}
+
+/** Booking made through a partner link. The token, not a login, decides the partner. */
+export async function createPartnerLinkBookingAction(
+  formData: FormData,
+): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
+  const link = await partnerLinkContext(formData.get("partner_token"));
+  if (!link) return { ok: false, message: "This booking link is no longer valid. Ask the office for a new one." };
+  const { ctx, supplier } = link;
+  formData.set("supplier_id", supplier.id);
+  formData.set("sales_channel", supplier.partner_type || "partner");
+  formData.delete("office_only_comments");
+  const built = await buildBookingFields(ctx, formData);
+  if (!built.ok) return { ok: false, message: built.error };
+  if (built.fields.supplier_id !== supplier.id) return { ok: false, message: "You can only book as your company." };
+
+  const { data: closes } = await ctx.supabase
+    .from("show_night_closes")
+    .select("show_date,island,product_id,close_kind")
+    .eq("business_id", ctx.business.id)
+    .eq("show_date", built.fields.show_date)
+    .eq("island", built.fields.island);
+  if (saleBlockedForPartner((closes ?? []) as never, { showDate: built.fields.show_date, island: built.fields.island, productId: built.fields.product_id })) {
+    return { ok: false, message: "This night is fully closed — ring the office if you still need to add someone." };
+  }
+
+  const series = bookingRefSeries(ctx.config);
+  const id = crypto.randomUUID();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const booking_ref = await nextBookingRefWithoutSession(ctx.supabase as never, ctx.business.id, series);
+    const { error } = await ctx.supabase.from("show_bookings").insert({
+      ...built.fields,
+      id,
+      office_only_comments: `Booked by ${supplier.name} via their partner link`,
+      business_id: ctx.business.id,
+      booking_ref,
+      created_by: null,
+    });
+    if (!error) {
+      revalidatePath(`/p/${String(formData.get("partner_token"))}`);
+      revalidateShowOps();
+      return { ok: true, id, message: booking_ref };
+    }
+    if (!isUniqueViolation(error)) return { ok: false, message: partnerBookingErrorMessage(error) };
+  }
+  return { ok: false, message: "The desk is busy right now — please try again in a moment." };
 }
 
 export async function inviteSellerColleagueAction(
