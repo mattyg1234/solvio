@@ -107,6 +107,8 @@ export default async function AllBookingsPage({
     .eq("business_id", ctx.business.id)
     .order(SORT_COLUMNS[sortKey], { ascending, nullsFirst: ascending })
     .order("show_date", { ascending: true })
+    // Within one night the newest booking sits first, so a just-made booking is visible without hunting.
+    .order("booking_ref_num", { ascending: false, nullsFirst: false })
     .range(fromIdx, toIdx);
 
   if (!includeCancelled) query = query.is("cancelled_at", null);
