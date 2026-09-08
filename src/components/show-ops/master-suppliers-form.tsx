@@ -7,7 +7,6 @@ import {
   applyMasterSuppliersBulkAction,
   deleteSupplierAction,
   saveMasterSupplierOneAction,
-  saveMasterSuppliersAllAction,
   sendPartnerLinkAction,
 } from "@/app/dashboard/show-ops/actions";
 import { isPartnerLinkToken, partnerLinkPath } from "@/lib/show-ops/partner-link";
@@ -51,34 +50,32 @@ export type MasterRateRow = {
   active: boolean;
 };
 
-function setField(form: HTMLFormElement, name: string, value: string) {
-  const el = form.elements.namedItem(name);
-  if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
-    el.value = value;
+const MASTER_SUPPLIER_BULK_FIELDS = [
+  "bulk_billing_mode",
+  "bulk_deposit_percent",
+  "bulk_invoice_nett_percent",
+  "bulk_add_island",
+  "bulk_no_show_policy",
+  "bulk_active",
+] as const;
+
+/** Keep bulk requests independent from whichever partner editors happen to be open. */
+export function buildMasterSuppliersBulkPayload(
+  formData: FormData,
+  selectedIds: Iterable<string>,
+  tab: "partners" | "rates",
+) {
+  const payload = new FormData();
+  payload.set("tab", tab);
+  for (const id of selectedIds) {
+    payload.append("supplier_id", id);
+    payload.append("ticked", id);
   }
-}
-
-function setCheckbox(form: HTMLFormElement, name: string, on: boolean) {
-  const el = form.elements.namedItem(name);
-  if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = on;
-}
-
-/**
- * Ticks one value inside a same-named checkbox group (the partner location boxes),
- * leaving the partner's other locations alone. A partner already set to All is
- * left alone too — it already sells there.
- */
-function tickLocation(form: HTMLFormElement, name: string, value: string) {
-  const group = form.elements.namedItem(name);
-  const boxes =
-    group instanceof RadioNodeList
-      ? [...group].filter((el): el is HTMLInputElement => el instanceof HTMLInputElement)
-      : group instanceof HTMLInputElement
-        ? [group]
-        : [];
-  if (boxes.some((b) => b.value.toUpperCase() === "ALL" && b.checked)) return;
-  const target = boxes.find((b) => b.value === value);
-  if (target) target.checked = true;
+  for (const field of MASTER_SUPPLIER_BULK_FIELDS) {
+    const value = formData.get(field);
+    if (value != null) payload.set(field, value);
+  }
+  return payload;
 }
 
 export type MasterSupplierStat = { bookings: number; pax: number; revenue: number };
@@ -183,6 +180,10 @@ export function MasterSuppliersForm({
 
   const allOn = visible.length > 0 && visible.every((s) => ticked.has(s.id));
 
+  async function submitBulk(formData: FormData) {
+    await applyMasterSuppliersBulkAction(buildMasterSuppliersBulkPayload(formData, ticked, tab));
+  }
+
   return (
     <form
       ref={formRef}
@@ -220,13 +221,9 @@ export function MasterSuppliersForm({
             {ticked.size || "None"} selected · {visible.length} shown
             {visible.length !== suppliers.length ? ` of ${suppliers.length}` : ""}
           </span>
-          <button
-            type="submit"
-            formAction={saveMasterSuppliersAllAction}
-            className="ml-auto rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white"
-          >
-            Save all partners
-          </button>
+          <span className="ml-auto text-xs font-medium text-slate-500">
+            Open a partner to edit it, then use Save this partner.
+          </span>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <label className="min-w-[12rem] flex-1 text-xs font-medium text-slate-600">
@@ -301,31 +298,9 @@ export function MasterSuppliersForm({
           </label>
           <button
             type="submit"
-            name="intent"
-            value="bulk"
-            formAction={applyMasterSuppliersBulkAction}
+            formAction={submitBulk}
             disabled={!ticked.size}
             className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white sm:col-span-4 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              const form = formRef.current;
-              if (!form || !ticked.size) return;
-              const fd = new FormData(form);
-              const billing = String(fd.get("bulk_billing_mode") ?? "").trim();
-              const deposit = String(fd.get("bulk_deposit_percent") ?? "").trim();
-              const nett = String(fd.get("bulk_invoice_nett_percent") ?? "").trim();
-              const active = String(fd.get("bulk_active") ?? "");
-              const addIsland = String(fd.get("bulk_add_island") ?? "").trim();
-              for (const id of ticked) {
-                const p = `${id}::`;
-                if (billing) setField(form, `${p}billing_mode`, billing);
-                if (deposit) setField(form, `${p}deposit_percent`, deposit);
-                if (nett) setField(form, `${p}invoice_nett_percent`, nett);
-                if (active === "1" || active === "0") setCheckbox(form, `${p}active`, active === "1");
-                // Adds the island alongside whatever the partner already sells —
-                // it never takes one away.
-                if (addIsland) tickLocation(form, `${p}island`, addIsland);
-              }
-            }}
           >
             Apply to ticked
           </button>
@@ -345,7 +320,6 @@ export function MasterSuppliersForm({
                 : "ring-slate-200"
             }`}
           >
-            <input type="hidden" name="supplier_id" value={s.id} />
             <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
               <input
                 type="checkbox"
@@ -430,8 +404,9 @@ export function MasterSuppliersForm({
                 {loginNotice.message}
               </p>
             ) : null}
-            {/* Fields stay mounted when collapsed so "Save all" and bulk-apply keep working. */}
-            <div className={open ? "grid gap-2 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-3" : "hidden"}>
+            {open ? (
+            <div className="grid gap-2 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-3">
+              <input type="hidden" name="supplier_id" value={s.id} />
               <label className="text-xs font-medium text-slate-600">
                 Name
                 <input name={`${prefix}name`} required defaultValue={s.name} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
@@ -533,6 +508,7 @@ export function MasterSuppliersForm({
                 </button>
               </div>
             </div>
+            ) : null}
           </div>
         );
       })}
