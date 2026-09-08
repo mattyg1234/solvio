@@ -1,19 +1,9 @@
 "use server";
 
+import { uploadBusinessLogo, validateLogoFile } from "@/lib/business-logo";
 import { sendSignupConfirmEmail } from "@/lib/notifications/auth-emails";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-
-export type SignUpActionInput = {
-  email: string;
-  password: string;
-  businessName: string;
-  /** E.164 mobile for booking-alert SMS (required). */
-  merchantPhone: string;
-  websiteUrl?: string;
-  logoUrl?: string;
-  businessCategory?: string;
-};
 
 export type SignUpActionState =
   | { ok: true; needsEmailConfirm: false }
@@ -24,11 +14,17 @@ function buildConfirmUrl(siteUrl: string, tokenHash: string, type: "signup" | "r
   return `${siteUrl}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=${type}`;
 }
 
-/** Creates the account and sends a cross-device-safe confirm link via Resend. */
-export async function signUpAction(input: SignUpActionInput): Promise<SignUpActionState> {
-  const email = input.email.trim().toLowerCase();
-  const password = input.password;
-  const businessName = input.businessName.trim();
+/**
+ * Creates the account and sends a cross-device-safe confirm link via Resend.
+ * Takes FormData because the logo is a required file: it is stored in the
+ * business-logos bucket and printed on every invoice the business sends.
+ */
+export async function signUpAction(formData: FormData): Promise<SignUpActionState> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const businessName = String(formData.get("business_name") ?? "").trim();
+  const merchantPhone = String(formData.get("merchant_phone") ?? "").trim();
+  const businessCategory = String(formData.get("business_category") ?? "").trim();
 
   if (!email.includes("@")) {
     return { ok: false, message: "Enter a valid email address." };
@@ -39,10 +35,16 @@ export async function signUpAction(input: SignUpActionInput): Promise<SignUpActi
   if (!businessName) {
     return { ok: false, message: "Enter your business name." };
   }
-
-  const merchantPhone = input.merchantPhone.trim();
   if (!merchantPhone.startsWith("+") || merchantPhone.length < 10) {
     return { ok: false, message: "Enter a valid mobile number for booking alerts." };
+  }
+
+  // Validate the logo before touching auth so a bad file never leaves a half-made account.
+  let logo;
+  try {
+    logo = await validateLogoFile(formData.get("logo"));
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Upload your logo as a PNG or JPEG." };
   }
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || (await getSiteUrl())).replace(/\/$/, "");
@@ -55,9 +57,7 @@ export async function signUpAction(input: SignUpActionInput): Promise<SignUpActi
     user_metadata: {
       business_name: businessName,
       merchant_phone: merchantPhone,
-      ...(input.websiteUrl?.trim() ? { website_url: input.websiteUrl.trim() } : {}),
-      ...(input.logoUrl?.trim() ? { logo_url: input.logoUrl.trim() } : {}),
-      ...(input.businessCategory?.trim() ? { business_category: input.businessCategory.trim() } : {}),
+      ...(businessCategory ? { business_category: businessCategory } : {}),
     },
   });
 
@@ -67,6 +67,32 @@ export async function signUpAction(input: SignUpActionInput): Promise<SignUpActi
       return { ok: false, message: "An account with this email already exists — try logging in." };
     }
     return { ok: false, message: createErr.message };
+  }
+
+  // The auth trigger created the business row; attach the logo to it now.
+  if (created.user?.id) {
+    const { data: business } = await admin
+      .from("businesses")
+      .select("id")
+      .eq("owner_id", created.user.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (business?.id) {
+      try {
+        const { publicUrl } = await uploadBusinessLogo(admin.storage, business.id, logo);
+        const { error: logoErr } = await admin
+          .from("businesses")
+          .update({ logo_url: publicUrl, updated_at: new Date().toISOString() })
+          .eq("id", business.id);
+        if (logoErr) console.error("[signup] logo_url update:", logoErr.message);
+      } catch (error) {
+        // The account exists and works; the logo can be re-added under Settings.
+        console.error("[signup] logo upload:", error instanceof Error ? error.message : error);
+      }
+    } else {
+      console.error("[signup] no business row for new user", created.user.id);
+    }
   }
 
   if (created.user?.email_confirmed_at) {

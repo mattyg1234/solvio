@@ -1,7 +1,34 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildInvoicePdf, invoicePdfFilename } from "./invoice-pdf";
+import { fetchLogoForPdf } from "@/lib/business-logo";
+import { brandingFromBusiness, parseShowOpsConfig } from "./config";
+import { buildInvoicePdf, invoicePdfFilename, type InvoicePdfBranding } from "./invoice-pdf";
 import { loadInvoicePhotos, MAX_INVOICE_DELIVERY_BYTES, type InvoicePhotoBooking } from "./invoice-photos";
 import { invoiceDeliveryFingerprint } from "./invoice-delivery-fingerprint";
+
+/**
+ * Logo, accent colour, tax label and footer for the PDF come from the business row,
+ * not the invoice, so a rebrand shows on every download without reissuing invoices.
+ * Returns a warning instead of failing when the logo cannot be embedded.
+ */
+export async function loadInvoicePdfBranding(supabase: SupabaseClient, businessId: string): Promise<{ branding: InvoicePdfBranding; logoWarning: string | null }> {
+  const { data: business, error } = await supabase.from("businesses")
+    .select("name,logo_url,show_ops_logo_url,show_ops_display_name,show_ops_primary_color,show_ops_accent_color,show_ops_config")
+    .eq("id", businessId).maybeSingle();
+  if (error || !business) throw new Error("Could not load business branding for the invoice PDF.");
+  const brand = brandingFromBusiness(business);
+  const config = parseShowOpsConfig(business.show_ops_config);
+  const fetched = await fetchLogoForPdf(brand.logoUrl);
+  return {
+    branding: {
+      logo: fetched.logo,
+      accentColor: brand.primaryColor,
+      taxLabel: config.invoice.taxLabel,
+      footerNote: config.invoice.footerNote,
+      thankYouName: config.invoice.thankYouName || brand.displayName,
+    },
+    logoWarning: fetched.logo ? null : fetched.warning,
+  };
+}
 
 /** Same stored invoice + attachment bundle for download and email. Uses the caller's authenticated client. */
 export async function loadInvoiceDelivery(supabase: SupabaseClient, businessId: string, invoiceId: string, options: { includeEvidence?: boolean } = {}) {
@@ -33,9 +60,10 @@ export async function loadInvoiceDelivery(supabase: SupabaseClient, businessId: 
   bookings.sort((a, b) => a.id.localeCompare(b.id));
   const dateByBooking = new Map(bookings.map((b) => [b.id, b.show_date]));
   const datedLines = lines.map((line) => ({ ...line, show_date: dateByBooking.get(line.booking_id) || invoice.invoice_date }));
-  const bytes = await buildInvoicePdf({ invoice, lines: datedLines });
+  const { branding, logoWarning } = await loadInvoicePdfBranding(supabase, businessId);
+  const bytes = await buildInvoicePdf({ invoice, lines: datedLines, branding });
   const evidence = includeEvidence ? await loadInvoicePhotos(supabase.storage, businessId, invoice.supplier_id, bookings) : { photos: [], missing: [], totalBytes: 0 };
   if (bytes.length + evidence.totalBytes > MAX_INVOICE_DELIVERY_BYTES) throw new Error("Invoice and ticket photos exceed the email attachment limit. Split the invoice pack.");
   const evidenceFingerprint = invoiceDeliveryFingerprint(invoice, datedLines, { photos: evidence.photos.map(({ bookingId, path, sha256 }) => ({ bookingId, path, sha256 })), missing: evidence.missing });
-  return { invoice, lines: datedLines, bytes, evidence, evidenceFingerprint, filename: invoicePdfFilename(invoice.invoice_number || invoice.verifactu_number) };
+  return { invoice, lines: datedLines, bytes, evidence, evidenceFingerprint, logoWarning, filename: invoicePdfFilename(invoice.invoice_number || invoice.verifactu_number) };
 }

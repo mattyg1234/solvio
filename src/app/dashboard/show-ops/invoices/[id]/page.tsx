@@ -155,6 +155,12 @@ export default async function InvoicePrintPage({
           Invoice emailed{inv.emailed_to ? ` to ${inv.emailed_to}` : ""}.
         </p>
       ) : null}
+      {delivery?.logoWarning ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
+          The PDF will go out without your logo: {delivery.logoWarning}{" "}
+          <Link href="/dashboard/show-ops/settings" className="font-semibold underline">Open settings</Link>
+        </p>
+      ) : null}
 
       {!locked ? (
         <InvoiceEditor
@@ -278,7 +284,7 @@ export default async function InvoicePrintPage({
               <th className="py-2 pr-2">Description</th>
               <th className="py-2 pr-2 text-right">Qty</th>
               <th className="py-2 pr-2 text-right">Net</th>
-              <th className="py-2 pr-2 text-right">Tax</th>
+              <th className="py-2 pr-2 text-right">{ctx.config.invoice.taxLabel}</th>
               <th className="py-2 text-right">Total</th>
             </tr>
           </thead>
@@ -300,10 +306,12 @@ export default async function InvoicePrintPage({
           </tbody>
         </table>
 
-        <div className="mt-6 space-y-1 text-right text-sm">
-          <p className="text-slate-600">Net {money(Number(inv.net_total || inv.total_amount))}</p>
-          <p className="text-slate-600">Tax {money(Number(inv.vat_total || 0))}</p>
-          <p className="text-lg font-semibold text-slate-900">Total {money(Number(inv.total_amount))}</p>
+        <div className="mt-6 ml-auto w-full max-w-xs space-y-1 text-sm">
+          <p className="flex justify-between text-slate-600"><span>Net</span><span className="tabular-nums">{money(Number(inv.net_total || inv.total_amount))}</span></p>
+          <p className="flex justify-between text-slate-600"><span>{ctx.config.invoice.taxLabel}</span><span className="tabular-nums">{money(Number(inv.vat_total || 0))}</span></p>
+          <p className="flex justify-between rounded-lg px-3 py-2 text-base font-semibold text-slate-900 ring-1" style={{ borderColor: ctx.branding.primaryColor, backgroundColor: `${ctx.branding.primaryColor}12`, boxShadow: `0 0 0 1px ${ctx.branding.primaryColor}` }}>
+            <span>Total</span><span className="tabular-nums">{money(Number(inv.total_amount))}</span>
+          </p>
         </div>
         {inv.notes ? <p className="mt-4 text-sm text-slate-600">{inv.notes}</p> : null}
         {delivery ? (

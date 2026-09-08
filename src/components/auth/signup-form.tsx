@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { signUpAction } from "@/app/signup/actions";
+import { BUSINESS_LOGO_ACCEPT, BUSINESS_LOGO_MAX_BYTES } from "@/lib/business-logo";
 import { PhoneDialCodeField } from "@/components/ui/phone-dial-code-field";
 import { BOOKING_TRIAL_DAYS, trialExploreLine } from "@/lib/solvio-pricing";
 import { SIGNUP_EMAIL_PLACEHOLDER } from "@/lib/site-contact";
@@ -20,6 +21,36 @@ export function SignupForm() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [phoneDial, setPhoneDial] = useState("+44");
   const [phoneLocal, setPhoneLocal] = useState("");
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoName, setLogoName] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  function onLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setError(null);
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    if (!file) {
+      setLogoPreview(null);
+      setLogoName(null);
+      return;
+    }
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      setError("Your logo must be a PNG or JPEG so it can be printed on invoices.");
+      e.target.value = "";
+      setLogoPreview(null);
+      setLogoName(null);
+      return;
+    }
+    if (file.size > BUSINESS_LOGO_MAX_BYTES) {
+      setError("Your logo is larger than 2 MB — export a smaller version and try again.");
+      e.target.value = "";
+      setLogoPreview(null);
+      setLogoName(null);
+      return;
+    }
+    setLogoPreview(URL.createObjectURL(file));
+    setLogoName(file.name);
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,13 +62,13 @@ export function SignupForm() {
     }
     setLoading(true);
 
-    const fd = new FormData(e.currentTarget);
-    const businessName = String(fd.get("business") ?? "").trim();
-    const email = String(fd.get("email") ?? "").trim();
-    const password = String(fd.get("password") ?? "");
-    const websiteUrl = "";
-    const logoUrl = "";
-    const businessCategory = String(fd.get("business_category") ?? "").trim();
+    const form = e.currentTarget;
+    const logoFile = logoInputRef.current?.files?.[0];
+    if (!logoFile) {
+      setError("Upload your logo — it goes on every invoice you send from Solvio.");
+      setLoading(false);
+      return;
+    }
     const phoneCheck = validateBookingPhone(phoneDial, phoneLocal);
     if (!phoneCheck.ok) {
       setError(phoneCheck.message);
@@ -45,16 +76,16 @@ export function SignupForm() {
       return;
     }
 
+    const fd = new FormData();
+    fd.set("business_name", String(new FormData(form).get("business") ?? "").trim());
+    fd.set("email", String(new FormData(form).get("email") ?? "").trim());
+    fd.set("password", String(new FormData(form).get("password") ?? ""));
+    fd.set("business_category", String(new FormData(form).get("business_category") ?? "").trim());
+    fd.set("merchant_phone", phoneCheck.e164);
+    fd.set("logo", logoFile);
+
     try {
-      const result = await signUpAction({
-        email,
-        password,
-        businessName,
-        merchantPhone: phoneCheck.e164,
-        websiteUrl,
-        logoUrl,
-        businessCategory,
-      });
+      const result = await signUpAction(fd);
 
       if (!result.ok) {
         setError(result.message);
@@ -111,6 +142,39 @@ export function SignupForm() {
         </select>
         <p className="text-[13px] leading-relaxed text-[#64748b]">
           Helps us tailor your booking setup — you can change this later.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="signup-logo" className="text-sm font-semibold text-[#0f172a]">
+          Your logo
+        </label>
+        <div className="flex items-center gap-4 rounded-2xl border border-dashed border-[#c4b5fd] bg-[#faf5ff] px-4 py-3">
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="Logo preview" className="h-14 w-24 shrink-0 rounded-lg bg-white object-contain p-1 ring-1 ring-[#ebe7f7]" />
+          ) : (
+            <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded-lg bg-white text-[11px] font-semibold uppercase tracking-wide text-[#a78bfa] ring-1 ring-[#ebe7f7]">
+              Logo
+            </div>
+          )}
+          <div className="min-w-0 flex-1 space-y-1">
+            <input
+              ref={logoInputRef}
+              id="signup-logo"
+              name="logo"
+              type="file"
+              accept={BUSINESS_LOGO_ACCEPT}
+              required
+              onChange={onLogoChange}
+              className="block w-full text-[13px] text-[#475569] file:mr-3 file:rounded-full file:border-0 file:bg-[#7c3aed] file:px-3 file:py-1.5 file:text-[13px] file:font-semibold file:text-white hover:file:bg-[#6d28d9]"
+            />
+            <p className="truncate text-[12px] text-[#64748b]">{logoName ?? "PNG or JPEG, up to 2 MB"}</p>
+          </div>
+        </div>
+        <p className="text-[13px] leading-relaxed text-[#64748b]">
+          This goes in the header of every invoice you issue and on your public booking page, so upload the version
+          you would print. You can swap it later under Settings.
         </p>
       </div>
 

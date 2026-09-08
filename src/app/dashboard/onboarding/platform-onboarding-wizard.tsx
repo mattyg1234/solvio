@@ -79,7 +79,7 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
 
   const [name, setName] = useState(props.initialName);
   const [timeZone, setTimeZone] = useState(props.initialTimeZone || "UTC");
-  const [logoUrl, setLogoUrl] = useState(props.initialLogoUrl ?? "");
+  const [logoUrl] = useState(props.initialLogoUrl ?? "");
   const [websiteUrl, setWebsiteUrl] = useState(props.initialWebsiteUrl ?? "");
   const initialPhone = parsePhoneDialFields(props.merchantProfile.phone ?? "");
   const [phoneDial, setPhoneDial] = useState<string>(initialPhone.dial);
@@ -135,7 +135,6 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
     fd.append("business_id", props.businessId);
     fd.append("name", name.trim());
     fd.append("time_zone", picked);
-    fd.append("logo_url", logoUrl.trim());
     fd.append("website_url", websiteUrl.trim());
     fd.append("merchant_phone", phoneCheck.e164);
     fd.append("merchant_address_line1", addressLine1.trim());
@@ -282,20 +281,23 @@ export function PlatformOnboardingWizard(props: PlatformOnboardingWizardProps) {
 
             {showOptionalDetails ? (
               <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-logo">
-                Logo URL{" "}
-                <span className="font-normal text-[#94a3b8]">(optional)</span>
-                <input
-                  id="onb-logo"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://…"
-                  className="h-11 w-full rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] outline-none focus:border-[#c4b5fd] focus:ring-4 focus:ring-[#7c3aed]/25"
-                />
-                <p className="text-[13px] font-normal text-[#64748b]">
-                  Shown on your public <span className="font-medium">/book</span> page.
-                </p>
-              </label>
+              <div className="space-y-2 text-sm font-semibold text-[#0f172a]">
+                Logo
+                <div className="flex items-center gap-3 rounded-2xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3">
+                  {logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoUrl} alt="Your logo" className="h-12 w-24 shrink-0 rounded-lg bg-white object-contain p-1 ring-1 ring-[#ebe7f7]" />
+                  ) : (
+                    <div className="flex h-12 w-24 shrink-0 items-center justify-center rounded-lg bg-white text-[11px] font-semibold uppercase tracking-wide text-[#a78bfa] ring-1 ring-[#ebe7f7]">
+                      No logo
+                    </div>
+                  )}
+                  <p className="text-[13px] font-normal leading-relaxed text-[#64748b]">
+                    {logoUrl ? "Uploaded at signup — printed on your invoices and shown on /book." : "Add one under Settings — it prints on every invoice."}{" "}
+                    <a href="/dashboard/settings" className="font-semibold text-[#7c3aed] hover:underline">Change in Settings</a>
+                  </p>
+                </div>
+              </div>
               <label className="space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="onb-www">
                 Website{" "}
                 <span className="font-normal text-[#94a3b8]">(optional)</span>

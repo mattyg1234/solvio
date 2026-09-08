@@ -631,32 +631,35 @@ export default async function ShowOpsSettingsPage({
               guest emails.
             </span>
           </label>
-          <label className="text-sm sm:col-span-2">
-            Logo URL
-            <input
-              name="logo_url"
-              defaultValue={b.logoUrl ?? ""}
-              placeholder="https://yourbrand.com/logo.png"
-              className="mt-1 w-full rounded-lg border px-3 py-2"
-            />
-            <span className="mt-1 block text-xs text-slate-500">
-              Paste a link to your logo (PNG or SVG, transparent background
-              works best).
-            </span>
-          </label>
-          {b.logoUrl ? (
-            <div className="sm:col-span-2 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-500">
-                Current logo
-              </span>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={b.logoUrl}
-                alt=""
-                className="h-8 w-auto max-w-[10rem] object-contain"
-              />
+          <div className="text-sm sm:col-span-2">
+            Logo
+            <div className="mt-1 flex items-center gap-4 rounded-xl border bg-slate-50 px-3 py-3">
+              {b.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={b.logoUrl}
+                  alt="Current logo"
+                  className="h-14 w-28 shrink-0 rounded-lg bg-white object-contain p-1 ring-1 ring-slate-200"
+                />
+              ) : (
+                <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-lg bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-400 ring-1 ring-slate-200">
+                  No logo yet
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <input
+                  name="logo"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--show-ops-primary,#7c3aed)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  PNG or JPEG, up to 2 MB. Printed in the header of every invoice PDF, on
+                  printed lists and in the sidebar. Leave empty to keep the current logo.
+                </span>
+              </div>
             </div>
-          ) : null}
+          </div>
           <label className="text-sm">
             Primary colour
             <input
@@ -913,6 +916,19 @@ export default async function ShowOpsSettingsPage({
                   className="mt-1 w-full rounded-lg border px-3 py-2"
                 />
               </label>
+              <label className="text-sm">
+                Tax name on invoices
+                <input
+                  name="invoice_tax_label"
+                  defaultValue={ctx.config.invoice.taxLabel}
+                  maxLength={12}
+                  placeholder="IGIC"
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  IGIC for the Canaries, IVA for mainland Spain, VAT for the UK.
+                </span>
+              </label>
               <label className="text-sm sm:col-span-2">
                 Legal name
                 <input
@@ -937,6 +953,35 @@ export default async function ShowOpsSettingsPage({
                   defaultValue={ctx.config.invoice.issuerAddress}
                   className="mt-1 w-full rounded-lg border px-3 py-2"
                 />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                Name on the thank-you line
+                <input
+                  name="invoice_thank_you_name"
+                  defaultValue={ctx.config.invoice.thankYouName}
+                  maxLength={60}
+                  placeholder={ctx.branding.displayName}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Every invoice ends with &ldquo;Thank you for working with {ctx.config.invoice.thankYouName || ctx.branding.displayName}.&rdquo;
+                  Leave blank to use the workspace name.
+                </span>
+              </label>
+              <label className="text-sm sm:col-span-2">
+                Invoice footer (bank details, registration line)
+                <textarea
+                  name="invoice_footer_note"
+                  defaultValue={ctx.config.invoice.footerNote}
+                  maxLength={600}
+                  rows={2}
+                  placeholder="Bank: … · IBAN ES00 0000 0000 0000 0000 0000 · Registro Mercantil …"
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Printed in small type at the bottom of every invoice page, under the legal
+                  name, NIF, address and payment terms.
+                </span>
               </label>
             </div>
           </div>

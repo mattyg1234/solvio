@@ -92,6 +92,12 @@ export type ShowOpsConfig = {
     issuerName: string;
     issuerTaxId: string;
     issuerAddress: string;
+    /** Printed against the tax line on invoices: IGIC (Canaries), IVA, VAT. */
+    taxLabel: string;
+    /** Free text printed in the invoice footer: bank details, registration line. */
+    footerNote: string;
+    /** Short name for the footer line "Thank you for working with …"; falls back to the workspace name. */
+    thankYouName: string;
   };
 };
 
@@ -119,6 +125,9 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
     issuerName: "",
     issuerTaxId: "",
     issuerAddress: "",
+    taxLabel: "IGIC",
+    footerNote: "",
+    thankYouName: "",
   },
 };
 

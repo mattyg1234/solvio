@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BUSINESS_LOGO_ACCEPT, BUSINESS_LOGO_MAX_BYTES } from "@/lib/business-logo";
 import { updateBusinessProfileAction } from "./actions";
 
 const TIMEZONES = [
@@ -38,6 +39,7 @@ export function BusinessProfileForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   return (
     <form
@@ -102,20 +104,48 @@ export function BusinessProfileForm({
         </label>
       </div>
 
-      <label className="block space-y-2 text-sm font-semibold text-[#0f172a]" htmlFor="settings-biz-logo">
-        Logo URL <span className="font-normal text-[#94a3b8]">(optional)</span>
-        <input
-          id="settings-biz-logo"
-          name="logo_url"
-          type="url"
-          defaultValue={initialLogoUrl}
-          placeholder="https://…"
-          className="h-11 w-full rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 text-[15px] font-normal outline-none focus:border-[#c4b5fd] focus:ring-2 focus:ring-[#7c3aed]/25"
-        />
-        <p className="text-[13px] font-normal text-[#64748b]">
-          Shown at the top of your public <span className="font-medium">/book</span> page — use a square image URL.
-        </p>
-      </label>
+      <div className="space-y-2 text-sm font-semibold text-[#0f172a]">
+        <label htmlFor="settings-biz-logo">Logo</label>
+        <div className="flex items-center gap-4 rounded-xl border border-[#ebe7f7] bg-[#fafbff] px-4 py-3">
+          {logoPreview || initialLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoPreview || initialLogoUrl}
+              alt="Current logo"
+              className="h-14 w-28 shrink-0 rounded-lg bg-white object-contain p-1 ring-1 ring-[#ebe7f7]"
+            />
+          ) : (
+            <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-lg bg-white text-[11px] font-semibold uppercase tracking-wide text-[#a78bfa] ring-1 ring-[#ebe7f7]">
+              No logo yet
+            </div>
+          )}
+          <div className="min-w-0 flex-1 space-y-1">
+            <input
+              id="settings-biz-logo"
+              name="logo"
+              type="file"
+              accept={BUSINESS_LOGO_ACCEPT}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (logoPreview) URL.revokeObjectURL(logoPreview);
+                if (!file) return setLogoPreview(null);
+                if (!["image/png", "image/jpeg"].includes(file.type) || file.size > BUSINESS_LOGO_MAX_BYTES) {
+                  setError("Logo must be a PNG or JPEG under 2 MB.");
+                  e.target.value = "";
+                  return setLogoPreview(null);
+                }
+                setError(null);
+                setLogoPreview(URL.createObjectURL(file));
+              }}
+              className="block w-full text-[13px] font-normal text-[#475569] file:mr-3 file:rounded-full file:border-0 file:bg-[#7c3aed] file:px-3 file:py-1.5 file:text-[13px] file:font-semibold file:text-white hover:file:bg-[#6d28d9]"
+            />
+            <p className="text-[13px] font-normal text-[#64748b]">
+              PNG or JPEG, up to 2 MB. Printed in the header of every invoice and shown on your{" "}
+              <span className="font-medium">/book</span> page.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {bookingSlug ? (
         <p className="text-sm text-[#64748b]">

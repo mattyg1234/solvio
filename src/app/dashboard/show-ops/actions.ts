@@ -1,5 +1,7 @@
 "use server";
 
+import { uploadBusinessLogo, validateLogoFile } from "@/lib/business-logo";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
@@ -347,11 +349,19 @@ export async function updateShowOpsMyNameAction(formData: FormData): Promise<voi
 
 export async function updateShowOpsBrandingAction(formData: FormData): Promise<void> {
   const ctx = await requireGlobalShowOpsAdmin();
+  // A new logo file replaces the stored one; no file keeps whatever is there.
+  let logoUrl = ctx.business.show_ops_logo_url;
+  const logoFile = formData.get("logo");
+  if (logoFile instanceof File && logoFile.size > 0) {
+    const logo = await validateLogoFile(logoFile);
+    // Service role: the admin check above is the authorisation; storage policies are belt-and-braces.
+    logoUrl = (await uploadBusinessLogo(createSupabaseServiceRoleClient().storage, ctx.business.id, logo)).publicUrl;
+  }
   const { error } = await ctx.supabase
     .from("businesses")
     .update({
       show_ops_display_name: String(formData.get("display_name") ?? "").trim() || null,
-      show_ops_logo_url: String(formData.get("logo_url") ?? "").trim() || null,
+      show_ops_logo_url: logoUrl,
       show_ops_primary_color: String(formData.get("primary_color") ?? "").trim() || null,
       show_ops_accent_color: String(formData.get("accent_color") ?? "").trim() || null,
       show_ops_custom_domain: String(formData.get("custom_domain") ?? "").trim().toLowerCase() || null,
@@ -443,6 +453,9 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
       issuerName: String(formData.get("invoice_issuer_name") ?? "").trim(),
       issuerTaxId: String(formData.get("invoice_issuer_tax_id") ?? "").trim(),
       issuerAddress: String(formData.get("invoice_issuer_address") ?? "").trim(),
+      taxLabel: String(formData.get("invoice_tax_label") ?? "").trim().slice(0, 12) || ctx.config.invoice.taxLabel,
+      footerNote: String(formData.get("invoice_footer_note") ?? "").trim().slice(0, 600),
+      thankYouName: String(formData.get("invoice_thank_you_name") ?? "").trim().slice(0, 60),
     },
   };
 

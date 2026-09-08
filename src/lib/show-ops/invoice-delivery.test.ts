@@ -13,6 +13,7 @@ function client(options: { missingBooking?: boolean; truncatedLines?: boolean; i
     supabase: { from(table: string) {
       const call = { table, filters: [] as Array<[string, unknown]> }; calls.push(call);
       const result: Result = table === "show_invoices" ? { data: options.invoiceMissing ? null : invoice, error: null }
+        : table === "businesses" ? { data: { name: "Test Co", logo_url: null, show_ops_logo_url: null, show_ops_display_name: "Test Co", show_ops_primary_color: "#7c3aed", show_ops_accent_color: null, show_ops_config: { invoice: { taxLabel: "IGIC" } } }, error: null }
         : table === "show_invoice_lines" ? { data: [line], count: options.truncatedLines ? 2 : 1, error: null }
         : { data: options.missingBooking ? [] : [{ id: "booking-1", business_id: "business-1", supplier_id: options.wrongSeller ? "other-seller" : "seller-1", booking_ref: "BK-1", guest_name: "Guest", no_show_proof_path: options.badPhoto ? "https://example.com/photo.png" : null, show_date: "2026-09-05" }], error: null };
       const query = {
@@ -34,7 +35,11 @@ test("every invoice attachment query is scoped to the authenticated business", a
   assert.equal(Buffer.from(result.bytes).subarray(0, 5).toString(), "%PDF-");
   assert.equal(result.filename, "invoice-TEST-42.pdf");
   assert.equal(result.lines[0].show_date, "2026-09-05");
-  for (const call of stub.calls) assert.ok(call.filters.some(([key, value]) => key === "business_id" && value === "business-1"), `${call.table} requires tenant scope`);
+  assert.match(result.logoWarning ?? "", /No logo uploaded/);
+  for (const call of stub.calls) {
+    const scopeKey = call.table === "businesses" ? "id" : "business_id";
+    assert.ok(call.filters.some(([key, value]) => key === scopeKey && value === "business-1"), `${call.table} requires tenant scope`);
+  }
   assert.ok(stub.calls[0].filters.some(([key, value]) => key === "id" && value === "invoice-1"));
   assert.ok(stub.calls[1].filters.some(([key, value]) => key === "invoice_id" && value === "invoice-1"));
 });

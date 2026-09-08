@@ -60,7 +60,6 @@ export async function saveOnboardingBusinessProfile(formData: FormData) {
   const bizId = String(formData.get("business_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const time_zone = String(formData.get("time_zone") ?? "").trim();
-  const logo_url = String(formData.get("logo_url") ?? "").trim();
   const website_url = String(formData.get("website_url") ?? "").trim();
 
   const phone = String(formData.get("merchant_phone") ?? "").trim();
@@ -112,7 +111,6 @@ export async function saveOnboardingBusinessProfile(formData: FormData) {
     .update({
       name,
       time_zone: time_zone || "UTC",
-      logo_url: logo_url.length > 0 ? logo_url : null,
       website_url: website_url.length > 0 ? website_url : null,
       booking_flow_details,
       updated_at: new Date().toISOString(),

@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { isValidBookingSlug } from "@/lib/booking-slug";
+import { uploadBusinessLogo, validateLogoFile } from "@/lib/business-logo";
 import { pickUniqueBookingSlug } from "@/lib/booking-slug-server";
 import { sendAuthTestEmail } from "@/lib/notifications/auth-emails";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export type SettingsActionResult = { ok: true } | { ok: false; message: string };
 
@@ -32,7 +33,6 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<S
   const businessId = String(formData.get("business_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const websiteUrl = String(formData.get("website_url") ?? "").trim();
-  const logoUrl = String(formData.get("logo_url") ?? "").trim();
   const timeZone = String(formData.get("time_zone") ?? "").trim() || "UTC";
 
   if (!businessId) return { ok: false, message: "Missing business." };
@@ -44,10 +44,21 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<S
   const patch: Record<string, string> = {
     name,
     website_url: websiteUrl,
-    logo_url: logoUrl,
     time_zone: timeZone,
     updated_at: new Date().toISOString(),
   };
+
+  // A new logo file replaces the stored one; no file keeps whatever is there.
+  const logoFile = formData.get("logo");
+  if (logoFile instanceof File && logoFile.size > 0) {
+    try {
+      const logo = await validateLogoFile(logoFile);
+      const { publicUrl } = await uploadBusinessLogo(createSupabaseServiceRoleClient().storage, businessId, logo);
+      patch.logo_url = publicUrl;
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Logo upload failed." };
+    }
+  }
 
   if (!auth.row.booking_slug?.trim()) {
     patch.booking_slug = await pickUniqueBookingSlug(auth.supabase, name, businessId);
