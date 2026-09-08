@@ -1,0 +1,11 @@
+Claude, please continue this in our existing Solvio business conversation, using the business context you already have.
+
+I want to get three Solvio fixes live: preserving imported payment balances, preventing partner-link overbooking, and closing staff-permission gaps.
+
+The other two attachments are the Codex deployment handoff and the repair report. Treat their implementation and test results as reported evidence, not proof of the current production state. The handoff was initially given to a separate read-only Claude Code session, not this conversation.
+
+Please reconcile the handoff with your existing knowledge and the current workspace. Avoid repeating the full business audit or rebuilding work already done. Preserve unrelated changes and keep this release separate from new paid extras.
+
+Before changing production, confirm the correct Solvio application and database, the migration dependencies and current migration history, and a safe release and recovery plan. Do not blindly apply all migrations or deploy the application without its required database changes. Show me any blocker and ask for my go-ahead before live changes.
+
+After an approved release, check the affected flows and clearly distinguish what is locally tested, deployed, and live-verified. Tell me what still remains outside these three fixes.

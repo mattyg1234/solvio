@@ -13,6 +13,7 @@ import { cookies } from "next/headers";
 
 import {
   requireShowOpsContext,
+  requireShowOpsAction,
   requireGlobalShowOpsAdmin,
   requirePartnerAdmin,
   requireShowOpsRole,
@@ -221,7 +222,7 @@ const TICKET_FIELDS =
 export async function resendGuestTicketAction(
   formData: FormData,
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsAction("booker", ["bookings", "door", "lists"]);
   const id = String(formData.get("booking_id") ?? "").trim();
   if (!id) return { ok: false, message: "Missing booking." };
 
@@ -265,7 +266,7 @@ export type TicketScanResult = {
 
 /** Door scan: mark the whole party arrived. */
 export async function checkInShowOpsTicketAction(formData: FormData): Promise<TicketScanResult> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["door", "lists"]);
   const token = parseTicketTokenFromScan(String(formData.get("scan") ?? ""));
   if (!token) return { ok: false, alreadyIn: false, message: "Not a valid ticket QR." };
 
@@ -482,7 +483,7 @@ async function nextRef(ctx: Awaited<ReturnType<typeof requireShowOpsContext>>) {
 }
 
 export async function upsertSupplierAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "partners");
   const tab = masterTabFromForm(formData, "partners");
   const id = String(formData.get("id") ?? "").trim();
   const emailRaw = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -530,7 +531,7 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
 }
 
 export async function upsertProductAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "shows");
   const tab = masterTabFromForm(formData, "shows");
   const id = String(formData.get("id") ?? "").trim();
   const row = productRowFromForm(formData, ctx.business.id, "");
@@ -613,7 +614,7 @@ export async function repriceUninvoicedBoundAction(productId: string, formData: 
 }
 
 export async function saveMasterProductsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "shows");
   const intent = String(formData.get("intent") ?? "");
   const ids = formData.getAll("product_ids").map(String).filter(Boolean);
   const ticked = formData.getAll("ticked").map(String).filter(Boolean);
@@ -681,7 +682,7 @@ export async function saveMasterSupplierOneAction(supplierId: string, formData: 
 }
 
 export async function saveMasterSuppliersAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "partners");
   const intent = String(formData.get("intent") ?? "");
   const ids = formData.getAll("supplier_id").map(String).filter(Boolean);
   const ticked = formData.getAll("ticked").map(String).filter(Boolean);
@@ -862,7 +863,7 @@ export async function getNightLoadAction(
 }
 
 export async function repriceUninvoicedForProductAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "shows");
   const productId = String(formData.get("product_id") ?? "").trim();
   if (!productId) throw new Error("Show required.");
 
@@ -877,7 +878,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   const { data: bookings } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at,total_cost,balance_remaining",
+      "id,legacy_id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at,total_cost,balance_remaining",
     )
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
@@ -960,7 +961,7 @@ function cleanHttpUrl(raw: unknown): string | null {
 }
 
 export async function upsertBusStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "hotels");
   const id = String(formData.get("id") ?? "").trim();
   const pickup = String(formData.get("pickup_time") ?? "").trim();
   const row = {
@@ -1052,7 +1053,7 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
 }
 
 export async function nudgeBusStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "hotels");
   const id = String(formData.get("id") ?? "").trim();
   const dir = String(formData.get("dir") ?? "") === "up" ? -1 : 1;
   if (!id) throw new Error("Stop required.");
@@ -1097,7 +1098,7 @@ export async function nudgeBusStopAction(formData: FormData): Promise<void> {
 }
 
 export async function reorderBusStopsAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "hotels");
   const island = String(formData.get("island") ?? "").trim();
   const ids = String(formData.get("ordered_ids") ?? "")
     .split(",")
@@ -1119,7 +1120,7 @@ export async function reorderBusStopsAction(formData: FormData): Promise<void> {
 }
 
 export async function setBookingPickupAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["bookings", "lists", "buses"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const stopId = String(formData.get("pickup_stop_id") ?? "").trim();
   if (!bookingId) throw new Error("Booking required.");
@@ -1173,14 +1174,14 @@ export async function setBookingPickupAction(formData: FormData): Promise<void> 
 }
 
 export async function markListFlagAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["door", "lists"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const flag = String(formData.get("flag") ?? "").trim();
   if (!bookingId) throw new Error("Booking required.");
 
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
-    .select("id,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,billing_mode,total_cost,balance_remaining,adults,children,infants,supplier_id,invoice_id,no_show_charge")
+    .select("id,legacy_id,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,billing_mode,total_cost,balance_remaining,adults,children,infants,supplier_id,invoice_id,no_show_charge")
     .eq("id", bookingId)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
@@ -1198,6 +1199,9 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
     const turningOn = !booking.arrived_at;
     Object.assign(patch, arrivalFlagPatch(turningOn ? booked : null, booked, now, turningOn ? booking.arrived_at : null));
   } else if (flag === "cash" || flag === "card") {
+    if (booking.billing_mode === "deposit" && booking.door_pay_method) {
+      throw new Error("A recorded payment cannot be undone or relabelled here. Ask finance to reconcile the receipt.");
+    }
     const turningOn = booking.door_pay_method !== flag;
     patch.door_pay_method = turningOn ? flag : null;
     if (turningOn && !booking.no_show) patch.arrived_at = booking.arrived_at || now;
@@ -1205,6 +1209,7 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
       // Ledger plus the imported opening balance — a paid-in-Lanzasoft guest owes the remainder, not the full ticket.
       const paidSum = await paidOnBooking(ctx.supabase, booking);
       const { balance: outstanding } = paymentStatusAfter(Number(booking.total_cost), paidSum);
+      if (outstanding <= 0) throw new Error("Nothing due on this booking.");
       if (outstanding > 0) {
         const { error: payErr } = await ctx.supabase.from("show_booking_payments").insert({
           business_id: ctx.business.id,
@@ -1215,11 +1220,9 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
           note: flag === "cash" ? "Door · paid cash" : "Door · paid card",
         });
         if (payErr) throw new Error(payErr.message);
-        await ctx.supabase
+        const { error: summaryError } = await ctx.supabase
           .from("show_bookings")
           .update({
-            balance_remaining: 0,
-            payment_status: "paid",
             door_pay_method: flag,
             arrived_at: booking.arrived_at || now,
             updated_at: now,
@@ -1228,6 +1231,7 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
           })
           .eq("id", bookingId)
           .eq("business_id", ctx.business.id);
+        if (summaryError) throw new Error("Payment recorded, but the door status could not be saved. Refresh before retrying.");
         revalidateShowOps();
         return;
       }
@@ -1253,7 +1257,7 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
 }
 
 export async function markArrivedPaxAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["bookings", "door", "lists"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const intent = String(formData.get("intent") ?? "count").trim() || "count";
   if (!bookingId) throw new Error("Booking required.");
@@ -1357,7 +1361,7 @@ async function arrivalNoShowDecisionPatch(
 }
 
 export async function decideNoShowChargeAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["bookings", "door", "lists"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const charge = resolveNoShowCharge(String(formData.get("charge") ?? ""), null);
   if (!bookingId) throw new Error("Booking required.");
@@ -1410,7 +1414,7 @@ const NO_SHOW_PROOF_TYPES: Record<string, string> = {
 };
 
 export async function uploadNoShowProofAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("booker");
+  const ctx = await requireShowOpsAction("booker", ["bookings", "door", "lists"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const file = formData.get("proof");
   if (!bookingId) throw new Error("Booking required.");
@@ -1451,7 +1455,7 @@ export async function uploadNoShowProofAction(formData: FormData): Promise<void>
 }
 
 export async function upsertHotelAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "hotels");
   const tab = masterTabFromForm(formData, "hotels");
   const id = String(formData.get("id") ?? "").trim();
   const row = {
@@ -1481,7 +1485,7 @@ export async function upsertHotelAction(formData: FormData): Promise<void> {
  * gets switched off instead, so history never loses its labels.
  */
 export async function deleteProductAction(productId: string, formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "shows");
   const tab = masterTabFromForm(formData, "shows");
   const id = productId.trim();
   if (!id) redirectMaster(tab, { error: "Show required." });
@@ -1501,7 +1505,7 @@ export async function deleteProductAction(productId: string, formData: FormData)
 }
 
 export async function deleteSupplierAction(supplierId: string, formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("admin");
+  const ctx = await requireShowOpsAction("admin", "partners");
   const tab = masterTabFromForm(formData, "partners");
   const id = supplierId.trim();
   if (!id) redirectMaster(tab, { error: "Partner required." });
@@ -1522,7 +1526,7 @@ export async function deleteSupplierAction(supplierId: string, formData: FormDat
 }
 
 export async function upsertBusOrderAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsAction("office", "buses");
   const tab = masterTabFromForm(formData, "hotels");
   const next = safeShowOpsNext(String(formData.get("next") ?? ""));
   const row = {
@@ -1805,7 +1809,7 @@ async function buildBookingFields(
 export async function createBookingAction(
   formData: FormData,
 ): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsAction("booker", "bookings");
   const built = await buildBookingFields(ctx, formData);
   if (!built.ok) return { ok: false, message: built.error };
 
@@ -1866,14 +1870,14 @@ export async function createBookingAction(
 export async function updateBookingAction(
   formData: FormData,
 ): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
-  const ctx = await requireShowOpsContext();
+  const ctx = await requireShowOpsAction("booker", "bookings");
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { ok: false, message: "Missing booking id." };
 
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
+      "id,legacy_id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -1972,7 +1976,7 @@ export async function updateBookingAction(
 export async function cancelBookingAction(
   formData: FormData,
 ): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireShowOpsAction("office", "bookings");
   const id = String(formData.get("id") ?? "").trim();
   const reason = String(formData.get("cancel_reason") ?? "").trim();
   if (!id) return { ok: false, message: "Missing booking id." };
@@ -2216,15 +2220,16 @@ export async function createPartnerLinkBookingAction(
   const id = crypto.randomUUID();
   for (let attempt = 0; attempt < 5; attempt++) {
     const booking_ref = await nextBookingRefWithoutSession(ctx.supabase as never, ctx.business.id, series);
-    const { error } = await ctx.supabase.from("show_bookings").insert({
-      ...built.fields,
-      id,
-      office_only_comments: `Booked by ${supplier.name} via their partner link`,
-      business_id: ctx.business.id,
-      booking_ref,
-      // No app session behind a partner link: the partner, not a user, is the author.
-      created_by: null,
-      updated_by: null,
+    const { error } = await ctx.supabase.rpc("show_ops_create_partner_link_booking", {
+      p_token: String(formData.get("partner_token")),
+      p_booking: {
+        ...built.fields,
+        id,
+        business_id: ctx.business.id,
+        booking_ref,
+        created_by: null,
+        updated_by: null,
+      },
     });
     if (!error) {
       revalidatePath(`/p/${String(formData.get("partner_token"))}`);
@@ -2513,11 +2518,12 @@ export async function removeShowOpsMemberAction(formData: FormData): Promise<voi
 }
 
 export async function recordPaymentAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireShowOpsAction("office", "bookings");
   const bookingId = String(formData.get("booking_id") ?? "").trim();
   const amount = Number(formData.get("amount") ?? 0);
   const method = String(formData.get("method") ?? "cash");
-  if (!bookingId || amount <= 0) throw new Error("Booking and amount required.");
+  if (!bookingId || !Number.isFinite(amount) || round2(amount) <= 0) throw new Error("Booking and a positive amount required.");
+  if (!["cash", "card", "transfer", "other"].includes(method)) throw new Error("Choose a manual payment method.");
 
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
@@ -2545,27 +2551,14 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
   });
   if (payErr) throw new Error(payErr.message);
 
-  const { balance, payment_status } = paymentStatusAfter(
-    Number(booking.total_cost),
-    await paidOnBooking(ctx.supabase, booking),
-  );
-
-  await ctx.supabase
-    .from("show_bookings")
-    .update({
-      balance_remaining: balance,
-      payment_status,
-      updated_by: ctx.user.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", bookingId);
+  // The payment insert and booking summary are committed atomically by the database.
 
   revalidateShowOps();
   return;
 }
 
 export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("office");
+  const ctx = await requireShowOpsAction("office", "bookings");
   if (!ctx.config.guest_stripe_enabled) {
     throw new Error("Guest Stripe links are off in Settings.");
   }
@@ -2579,7 +2572,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,guest_email,show_name,show_date,deposit_amount,balance_remaining,total_cost,payment_status,billing_mode,cancelled_at",
+      "id,legacy_id,island,booking_ref,guest_name,guest_email,show_name,show_date,deposit_amount,balance_remaining,total_cost,payment_status,billing_mode,cancelled_at",
     )
     .eq("id", bookingId)
     .eq("business_id", ctx.business.id)
@@ -2887,7 +2880,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
 }
 
 export async function generateInvoicePackAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const period_start = String(formData.get("period_start") ?? "").trim();
   const period_end = String(formData.get("period_end") ?? "").trim();
   const island = String(formData.get("island") ?? "").trim();
@@ -2921,7 +2914,7 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
  * did by hand, supplier by supplier.
  */
 export async function generateAllInvoicePacksAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const period_start = String(formData.get("period_start") ?? "").trim();
   const period_end = String(formData.get("period_end") ?? "").trim();
   const island = String(formData.get("island") ?? "").trim();
@@ -2965,7 +2958,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
 }
 
 export async function markInvoicePaidAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const paid_at = String(formData.get("paid_at") ?? "").trim() || new Date().toISOString().slice(0, 10);
   const { error } = await ctx.supabase
@@ -2980,7 +2973,7 @@ export async function markInvoicePaidAction(formData: FormData): Promise<void> {
 }
 
 export async function voidInvoiceAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   if (!id) throw new Error("Invoice required.");
 
@@ -3018,7 +3011,7 @@ export async function voidInvoiceAction(formData: FormData): Promise<void> {
 }
 
 export async function updateInvoiceMetaAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
@@ -3234,14 +3227,14 @@ async function persistInvoiceDraft(
 }
 
 export async function saveInvoiceDraftAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const saved = await persistInvoiceDraft(ctx, formData);
   revalidateShowOps();
   redirect(`/dashboard/show-ops/invoices/${saved.inv.id}?saved=1`);
 }
 
 export async function issueInvoiceAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const saved = await persistInvoiceDraft(ctx, formData);
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
@@ -3342,7 +3335,7 @@ export async function issueInvoiceAction(formData: FormData): Promise<void> {
 }
 
 export async function retryVerifactuAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
@@ -3372,7 +3365,7 @@ export async function retryVerifactuAction(formData: FormData): Promise<void> {
 }
 
 export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const { canSeeShowOpsPage } = await import("@/lib/show-ops/nav");
   if (!canSeeShowOpsPage(ctx.role, ctx.allowedPages, "invoices")) throw new Error("Invoice page access is required.");
   const id = String(formData.get("invoice_id") ?? "").trim();

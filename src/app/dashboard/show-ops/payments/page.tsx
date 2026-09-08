@@ -4,7 +4,7 @@ import { recordPaymentAction, sendShowOpsPaymentLinkAction } from "@/app/dashboa
 import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { formatShowOpsMoney, showOpsAmountDue } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 
@@ -14,7 +14,7 @@ export default async function PaymentsPage({
   searchParams: Promise<{ date?: string; show?: string; island?: string; sent?: string }>;
 }) {
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("bookings", "office");
   if (!hasShowOpsModule(ctx.config, ctx.tier, "payments")) {
     return <p className="text-sm text-slate-600">Payments are not enabled for this workspace.</p>;
   }

@@ -11,7 +11,11 @@ import { round2 } from "@/lib/show-ops/calc";
  * amount (total − balance) is the paid basis. Never treat an empty or failed
  * ledger read as "nothing paid" when the booking says otherwise.
  */
-export type PaidBasis = { total_cost: number | string | null; balance_remaining: number | string | null };
+export type PaidBasis = {
+  total_cost: number | string | null;
+  balance_remaining: number | string | null;
+  legacy_id?: string | number | null;
+};
 
 export function recordedPaid(b: PaidBasis): number {
   const total = Number(b.total_cost ?? 0);
@@ -27,14 +31,27 @@ export function effectivePaid(b: PaidBasis, ledgerSum: number): number {
 }
 
 /** Sum of ledger rows for a booking. Throws on a failed read — a failed read must never zero a balance. */
-export async function sumBookingLedger(client: SupabaseClient, bookingId: string): Promise<number> {
-  const { data, error } = await client.from("show_booking_payments").select("amount").eq("booking_id", bookingId);
+async function readBookingLedger(client: SupabaseClient, bookingId: string) {
+  const { data, error } = await client.from("show_booking_payments").select("amount,method").eq("booking_id", bookingId);
   if (error) throw new Error(`Could not read payments for this booking: ${error.message}`);
-  return round2((data ?? []).reduce((s, p) => s + Number(p.amount), 0));
+  const rows = data ?? [];
+  if (rows.some((p) => p.amount == null || !Number.isFinite(Number(p.amount)))) {
+    throw new Error("Invalid payment amount in this booking's ledger. Reconcile it before continuing.");
+  }
+  return { rows, total: round2(rows.reduce((s, p) => s + Number(p.amount), 0)) };
+}
+
+export async function sumBookingLedger(client: SupabaseClient, bookingId: string): Promise<number> {
+  return (await readBookingLedger(client, bookingId)).total;
 }
 
 /** Ledger sum plus the imported opening basis, in one call. */
 export async function paidOnBooking(client: SupabaseClient, booking: PaidBasis & { id: string }): Promise<number> {
-  const ledger = await sumBookingLedger(client, booking.id);
-  return effectivePaid(booking, ledger);
+  const ledger = await readBookingLedger(client, booking.id);
+  if (booking.legacy_id != null && ledger.rows.length && !ledger.rows.some((p) => p.method === "import")) {
+    throw new Error("This imported booking's opening balance needs reconciliation before continuing.");
+  }
+  // Once a ledger exists, it includes the opening receipt (including a zero
+  // opening). Never substitute a stale booking summary for a zero ledger total.
+  return ledger.rows.length ? ledger.total : recordedPaid(booking);
 }

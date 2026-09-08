@@ -4,14 +4,14 @@ import { ArrowLeft } from "lucide-react";
 
 import { createBookingAction } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   loadBookedDatesByProduct,
   withBookedDates,
 } from "@/lib/show-ops/nights";
 
 export default async function NewBookingPage() {
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("bookings");
   const biz = ctx.business.id;
 
   const [

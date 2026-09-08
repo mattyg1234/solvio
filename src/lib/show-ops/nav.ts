@@ -148,11 +148,13 @@ const ROLE_DEFAULT_PAGES: Record<string, ShowOpsPageKey[]> = {
   owner: [...SHOW_OPS_PAGE_KEYS],
 };
 
-/** Explicit page grants override defaults, subject to the senior-only floor. */
+/** Explicit page grants override defaults, but cannot raise the member's role. */
 export function showOpsAllowedPages(
   role: string,
   allowedPages?: string[] | null,
 ): ShowOpsPageKey[] {
+  // The partner portal never grants staff access, even with stale saved page keys.
+  if (role === "seller") return [];
   const valid = (keys: readonly string[]) => {
     const out: ShowOpsPageKey[] = [];
     for (const k of keys) {
@@ -164,7 +166,9 @@ export function showOpsAllowedPages(
 
   if (allowedPages && allowedPages.length) {
     const picked = valid(allowedPages);
-    return role === "owner" || role === "admin" ? picked : picked.filter((k) => !SHOW_OPS_SENIOR_PAGE_KEYS.includes(k));
+    return role === "owner" || role === "admin" ? picked : picked.filter((k) =>
+      !SHOW_OPS_SENIOR_PAGE_KEYS.includes(k) && (k !== "invoices" || role === "finance"),
+    );
   }
   return ROLE_DEFAULT_PAGES[role] ?? ROLE_DEFAULT_PAGES.booker;
 }

@@ -1,5 +1,4 @@
-import { paymentStatusAfter, round2 } from "@/lib/show-ops/calc";
-import { paidOnBooking } from "@/lib/show-ops/booking-paid";
+import { round2 } from "@/lib/show-ops/calc";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /** Idempotent: unique on stripe_checkout_session_id. Used by Stripe webhook. */
@@ -44,20 +43,7 @@ export async function applyShowOpsStripePayment(args: {
     throw payErr;
   }
 
-  const { balance, payment_status } = paymentStatusAfter(
-    Number(booking.total_cost),
-    await paidOnBooking(admin, booking),
-  );
-
-  await admin
-    .from("show_bookings")
-    .update({
-      balance_remaining: balance,
-      payment_status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", args.bookingId)
-    .eq("business_id", args.businessId);
+  // The receipt insert updates the booking summary in the same database transaction.
 
   try {
     const { sendGuestTicketByBookingId } = await import("@/lib/notifications/show-ops-guest-ticket");

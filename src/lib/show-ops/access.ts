@@ -303,6 +303,22 @@ export async function requireShowOpsRole(needed: ShowOpsMemberRole): Promise<Sho
   return ctx;
 }
 
+/** Fresh authorization for mutations. Page alternatives are OR, never a role override. */
+export async function requireShowOpsAction(
+  needed: ShowOpsMemberRole,
+  pages: ShowOpsPageKey | readonly ShowOpsPageKey[],
+): Promise<ShowOpsContext> {
+  const ctx = await requireShowOpsEnabled();
+  if (!roleAtLeast(ctx.role, needed)) {
+    throw new Error(`This action needs ${needed} access or higher.`);
+  }
+  const alternatives = typeof pages === "string" ? [pages] : pages;
+  if (!alternatives.some((key) => canSeeShowOpsPage(ctx.role, ctx.allowedPages, key))) {
+    throw new Error("You do not have permission for this action.");
+  }
+  return ctx;
+}
+
 /**
  * Server-side page guard.
  *
@@ -310,10 +326,13 @@ export async function requireShowOpsRole(needed: ShowOpsMemberRole): Promise<Sho
  * Show Ops page calls this so a check-in-only login genuinely cannot open
  * Invoicing by guessing the path.
  */
-export async function requireShowOpsPage(key: ShowOpsPageKey): Promise<ShowOpsContext> {
+export async function requireShowOpsPage(
+  key: ShowOpsPageKey,
+  needed?: ShowOpsMemberRole,
+): Promise<ShowOpsContext> {
   const ctx = await getShowOpsRenderContext();
   if (!ctx.business.show_ops_enabled) redirect("/dashboard/show-ops/setup");
-  if (!canSeeShowOpsPage(ctx.role, ctx.allowedPages, key)) {
+  if ((needed && !roleAtLeast(ctx.role, needed)) || !canSeeShowOpsPage(ctx.role, ctx.allowedPages, key)) {
     const fallback = showOpsAllowedPages(ctx.role, ctx.allowedPages)[0];
     const target = SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === fallback);
     redirect(target?.href ?? "/dashboard");

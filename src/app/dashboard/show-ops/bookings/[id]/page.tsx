@@ -12,7 +12,7 @@ import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsEnabled } from "@/lib/show-ops/access";
+import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   applyNoShowBilling,
   formatShowOpsPax,
@@ -46,7 +46,7 @@ export default async function EditBookingPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const ctx = await requireShowOpsEnabled();
+  const ctx = await requireShowOpsPage("bookings");
   const biz = ctx.business.id;
 
   const { data: booking } = await ctx.supabase
