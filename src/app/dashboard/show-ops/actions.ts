@@ -2224,7 +2224,9 @@ export async function createPartnerLinkBookingAction(
       office_only_comments: `Booked by ${supplier.name} via their partner link`,
       business_id: ctx.business.id,
       booking_ref,
+      // No app session behind a partner link: the partner, not a user, is the author.
       created_by: null,
+      updated_by: null,
     });
     if (!error) {
       revalidatePath(`/p/${String(formData.get("partner_token"))}`);
