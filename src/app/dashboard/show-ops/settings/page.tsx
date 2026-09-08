@@ -14,6 +14,8 @@ import {
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
+import { connectHoldedAction, disconnectHoldedAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
+import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import {
   MemberIslandsForm,
   IslandScopeFields,
@@ -37,6 +39,8 @@ export default async function ShowOpsSettingsPage({
     seller_error?: string;
     sample_sent?: string;
     sample_error?: string;
+    holded?: string;
+    holded_error?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -113,6 +117,8 @@ export default async function ShowOpsSettingsPage({
   const staffMembers = (members ?? []).filter((m) => m.role !== "seller");
   const sellerMembers = (members ?? []).filter((m) => m.role === "seller");
   const supplierName = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
+
+  const holded = await loadHoldedConnection(ctx);
 
   return (
     <div className="space-y-8">
@@ -991,6 +997,87 @@ export default async function ShowOpsSettingsPage({
             className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2.5 text-sm font-semibold text-white"
           >
             Save ops customisation
+          </button>
+        </form>
+      </section>
+
+      <section id="holded" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h2 className="font-semibold">Holded — accounts &amp; Verifactu</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Connect the company&apos;s Holded account and issued partner packs can be sent there as draft sales
+          invoices. Holded assigns the legal number and reports to the tax office (Verifactu) when the office
+          approves; the number and payment status flow back here. The token is stored encrypted and never shown again.
+        </p>
+        {sp.holded === "connected" ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Holded connected and verified.</p>
+        ) : sp.holded === "ok" ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Connection test passed.</p>
+        ) : sp.holded === "disconnected" ? (
+          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Holded disconnected. Packs already sent keep their Holded numbers.</p>
+        ) : null}
+        {sp.holded_error ? (
+          <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{sp.holded_error}</p>
+        ) : null}
+
+        {holded.status !== "none" ? (
+          <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3 text-sm">
+            <p>
+              <span className={`font-medium ${holded.connected ? "text-emerald-700" : "text-rose-700"}`}>
+                {holded.connected ? "Connected" : holded.status === "error" ? "Connection error" : "Paused"}
+              </span>
+              {holded.hint ? <span className="text-slate-600"> · token {holded.hint}</span> : null}
+              {holded.lastCheckedAt ? (
+                <span className="text-slate-500"> · checked {new Date(holded.lastCheckedAt).toLocaleString()}</span>
+              ) : null}
+            </p>
+            {holded.lastError ? <p className="text-rose-700">{holded.lastError}</p> : null}
+            <p className="text-slate-600">
+              Tax regime seen in Holded:{" "}
+              {holded.companyRegime === "igic" ? (
+                <span className="font-medium text-emerald-700">IGIC (Canaries) — correct for this workspace</span>
+              ) : holded.companyRegime === "iva" ? (
+                <span className="font-medium text-amber-800">
+                  IVA only — ask the accountant to set the Holded company to the Canary Islands regime before approving invoices.
+                </span>
+              ) : (
+                "unknown"
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <form action={testHoldedAction}>
+                <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+                  Test connection
+                </button>
+              </form>
+              <form action={disconnectHoldedAction}>
+                <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">
+                  Disconnect
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        <form action={connectHoldedAction} className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            {holded.status === "none" ? "Holded API token" : "Replace token"}
+            <input
+              name="holded_token"
+              type="password"
+              autoComplete="off"
+              required
+              placeholder="pat_… or 32-character API key"
+              className="mt-1 block min-w-[22rem] rounded-lg border px-3 py-2 font-mono text-sm"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              In Holded: Configuración → Más → Desarrolladores → API Token V2. Paste it here, nowhere else.
+            </span>
+          </label>
+          <button
+            type="submit"
+            className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white"
+          >
+            {holded.status === "none" ? "Connect Holded" : "Save new token"}
           </button>
         </form>
       </section>

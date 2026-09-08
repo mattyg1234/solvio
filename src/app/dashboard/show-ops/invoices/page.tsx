@@ -6,6 +6,8 @@ import {
 } from "@/app/dashboard/show-ops/actions";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
+import { syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
+import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
@@ -23,6 +25,9 @@ export default async function InvoicesPage({
     as_of?: string;
     sort?: string;
     generated?: string;
+    holded_synced?: string;
+    holded_failed?: string;
+    holded_error?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -32,6 +37,7 @@ export default async function InvoicesPage({
   }
 
   const view = sp.view || "generate";
+  const holded = await loadHoldedConnection(ctx);
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = calendarMonthBounds(today);
   const lastMonth = calendarMonthBounds(shiftMonth(today, -1));
@@ -189,8 +195,30 @@ export default async function InvoicesPage({
       <ShowOpsPageHeader
         eyebrow="Operations"
         title="Invoicing"
-        subtitle="Draft invoices, edit prices, issue a number. Verifactu API when you add the key."
+        subtitle={
+          holded.connected
+            ? "Draft invoices, edit prices, issue a number, then send to Holded for the legal number and Verifactu."
+            : "Draft invoices, edit prices, issue a number. Connect Holded in Settings for legal numbering and Verifactu."
+        }
+        actions={
+          holded.connected ? (
+            <form action={syncHoldedInvoicesAction}>
+              <button type="submit" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+                Sync with Holded
+              </button>
+            </form>
+          ) : undefined
+        }
       />
+      {sp.holded_synced != null ? (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          Holded sync: {sp.holded_synced} invoice{sp.holded_synced === "1" ? "" : "s"} updated
+          {sp.holded_failed && sp.holded_failed !== "0" ? `, ${sp.holded_failed} could not be read` : ""}.
+        </p>
+      ) : null}
+      {sp.holded_error ? (
+        <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 ring-1 ring-rose-200">{sp.holded_error}</p>
+      ) : null}
       {sp.generated ? (
         <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
           Generated {sp.generated} draft invoice{sp.generated === "1" ? "" : "s"} — review and issue below.
@@ -455,7 +483,7 @@ export default async function InvoicesPage({
                       </a>
                     </p>
                     <p className="text-sm text-slate-600">
-                      {inv.invoice_number || inv.verifactu_number || "No number yet"} · Invoice {inv.invoice_date || "—"} · shows{" "}
+                      {inv.holded_doc_number ? `${inv.holded_doc_number} (Holded)` : inv.invoice_number || inv.verifactu_number || "No number yet"} · Invoice {inv.invoice_date || "—"} · shows{" "}
                       {inv.period_start} → {inv.period_end} · due {inv.due_date || "—"} · {guests} guests / {pax} pax
                       {inv.emailed_at ? ` · emailed ${inv.emailed_to || ""}` : ""}
                     </p>
