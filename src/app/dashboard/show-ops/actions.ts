@@ -65,6 +65,7 @@ import {
   sumInvoiceLines,
 } from "@/lib/show-ops/invoice";
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
+import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
   normaliseZone,
@@ -876,7 +877,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   const { data: bookings } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at",
+      "id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at,total_cost,balance_remaining",
     )
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
@@ -932,8 +933,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
       updated_by: ctx.user.id,
     };
     if (money.billing_mode === "deposit") {
-      const { data: pays } = await ctx.supabase.from("show_booking_payments").select("amount").eq("booking_id", b.id);
-      const paid = round2((pays ?? []).reduce((s, p) => s + Number(p.amount), 0));
+      const paid = await paidOnBooking(ctx.supabase, b);
       const next = paymentStatusAfter(money.total_cost, paid);
       patch.balance_remaining = next.balance;
       patch.payment_status = next.payment_status;
@@ -1180,7 +1180,7 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
 
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
-    .select("id,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,billing_mode,total_cost,adults,children,infants,supplier_id,invoice_id,no_show_charge")
+    .select("id,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,billing_mode,total_cost,balance_remaining,adults,children,infants,supplier_id,invoice_id,no_show_charge")
     .eq("id", bookingId)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
@@ -1202,11 +1202,8 @@ export async function markListFlagAction(formData: FormData): Promise<void> {
     patch.door_pay_method = turningOn ? flag : null;
     if (turningOn && !booking.no_show) patch.arrived_at = booking.arrived_at || now;
     if (turningOn && booking.billing_mode === "deposit") {
-      const { data: existingPays } = await ctx.supabase
-        .from("show_booking_payments")
-        .select("amount")
-        .eq("booking_id", bookingId);
-      const paidSum = round2((existingPays ?? []).reduce((s, p) => s + Number(p.amount), 0));
+      // Ledger plus the imported opening balance — a paid-in-Lanzasoft guest owes the remainder, not the full ticket.
+      const paidSum = await paidOnBooking(ctx.supabase, booking);
       const { balance: outstanding } = paymentStatusAfter(Number(booking.total_cost), paidSum);
       if (outstanding > 0) {
         const { error: payErr } = await ctx.supabase.from("show_booking_payments").insert({
@@ -1918,8 +1915,9 @@ export async function updateBookingAction(
   const child_nett_total = moneyTouched ? built.fields.child_nett_total : Number(existing.child_nett_total);
 
   if (existing.billing_mode === "deposit" || built.fields.billing_mode === "deposit") {
-    const { data: pays } = await ctx.supabase.from("show_booking_payments").select("amount").eq("booking_id", id);
-    const paid = round2((pays ?? []).reduce((s, p) => s + Number(p.amount), 0));
+    // Imported bookings recorded their paid amount on the row with no ledger rows;
+    // a note-only edit must never turn "paid 70 of 100" back into "owes 100".
+    const paid = await paidOnBooking(ctx.supabase, existing);
     if (paid > 0 && built.fields.billing_mode === "invoice") {
       return { ok: false, message: "This booking already has payments — keep it on deposit or refund first." };
     }
@@ -2531,11 +2529,7 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
   if (booking.cancelled_at) throw new Error("This booking is cancelled.");
   if (booking.billing_mode !== "deposit") throw new Error("Payments are for deposit bookings.");
 
-  const { data: existingPays } = await ctx.supabase
-    .from("show_booking_payments")
-    .select("amount")
-    .eq("booking_id", bookingId);
-  const paidSum = round2((existingPays ?? []).reduce((s, p) => s + Number(p.amount), 0));
+  const paidSum = await paidOnBooking(ctx.supabase, booking);
   const { balance: outstanding } = paymentStatusAfter(Number(booking.total_cost), paidSum);
   if (outstanding <= 0) throw new Error("Nothing due on this booking.");
   if (round2(amount) - outstanding > 0.009) {
@@ -2551,13 +2545,9 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
   });
   if (payErr) throw new Error(payErr.message);
 
-  const { data: pays } = await ctx.supabase
-    .from("show_booking_payments")
-    .select("amount")
-    .eq("booking_id", bookingId);
   const { balance, payment_status } = paymentStatusAfter(
     Number(booking.total_cost),
-    (pays ?? []).reduce((s, p) => s + Number(p.amount), 0),
+    await paidOnBooking(ctx.supabase, booking),
   );
 
   await ctx.supabase
@@ -2604,8 +2594,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
     throw new Error("Add a guest email on the booking before sending a link.");
   }
 
-  const { data: pays } = await ctx.supabase.from("show_booking_payments").select("amount").eq("booking_id", booking.id);
-  const paidSum = round2((pays ?? []).reduce((s, p) => s + Number(p.amount), 0));
+  const paidSum = await paidOnBooking(ctx.supabase, booking);
   const dueInfo = showOpsAmountDue({
     billingMode: "deposit",
     totalCost: Number(booking.total_cost),

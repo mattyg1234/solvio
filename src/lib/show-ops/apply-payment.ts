@@ -1,4 +1,5 @@
 import { paymentStatusAfter, round2 } from "@/lib/show-ops/calc";
+import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /** Idempotent: unique on stripe_checkout_session_id. Used by Stripe webhook. */
@@ -21,7 +22,7 @@ export async function applyShowOpsStripePayment(args: {
 
   const { data: booking } = await admin
     .from("show_bookings")
-    .select("id,total_cost,business_id,cancelled_at")
+    .select("id,total_cost,balance_remaining,business_id,cancelled_at")
     .eq("id", args.bookingId)
     .eq("business_id", args.businessId)
     .maybeSingle();
@@ -43,10 +44,9 @@ export async function applyShowOpsStripePayment(args: {
     throw payErr;
   }
 
-  const { data: pays } = await admin.from("show_booking_payments").select("amount").eq("booking_id", args.bookingId);
   const { balance, payment_status } = paymentStatusAfter(
     Number(booking.total_cost),
-    (pays ?? []).reduce((s, p) => s + Number(p.amount), 0),
+    await paidOnBooking(admin, booking),
   );
 
   await admin
