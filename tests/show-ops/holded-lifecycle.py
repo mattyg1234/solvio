@@ -16,6 +16,30 @@ staff = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(staff)
 s = staff.s
 MIGRATION = '20260908230000_show_ops_holded.sql'
+REPAIR = '20260908230100_show_ops_holded_lifecycle_safeguards.sql'
+ORIGINAL_PARENT_SQL = r"""
+create table if not exists public.show_ops_integrations (
+  id uuid primary key default gen_random_uuid(), business_id uuid not null references public.businesses(id) on delete cascade,
+  provider text not null check(provider in ('holded')), secret_ciphertext text not null,
+  status text not null default 'connected' check(status in ('connected','error','disabled')),
+  meta jsonb not null default '{}'::jsonb, last_checked_at timestamptz, last_error text,
+  created_by uuid references auth.users(id) on delete set null, created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(), unique(business_id,provider));
+alter table public.show_ops_integrations enable row level security;
+create policy show_ops_integrations_sel on public.show_ops_integrations for select to authenticated
+  using(public.show_ops_can_access(business_id));
+create policy show_ops_integrations_w on public.show_ops_integrations for all to authenticated
+  using(public.show_ops_can_access(business_id)) with check(public.show_ops_can_access(business_id));
+alter table public.show_suppliers add column if not exists holded_contact_id text;
+alter table public.show_invoices add column if not exists holded_document_id text,
+  add column if not exists holded_doc_number text, add column if not exists holded_status text not null default 'not_sent',
+  add column if not exists holded_pushed_at timestamptz, add column if not exists holded_synced_at timestamptz,
+  add column if not exists holded_error text;
+alter table public.show_invoices add constraint show_invoices_holded_status_check
+  check(holded_status in ('not_sent','draft','approved','paid','error'));
+create index show_invoices_holded_doc_idx on public.show_invoices(business_id,holded_document_id)
+  where holded_document_id is not null;
+"""
 
 
 class HoldedLifecycle(unittest.TestCase):
@@ -30,6 +54,9 @@ class HoldedLifecycle(unittest.TestCase):
         staff.StaffPermissions.setUpClass.__func__(cls)
 
     def setUp(self):
+        self.prepare_database()
+
+    def prepare_database(self, original_parent=False):
         staff.partners.PartnerOrganisations.setUp(self)
         s.sql('''alter table show_suppliers add column island text;
           create table show_rate_prices(id uuid primary key default gen_random_uuid(), business_id uuid,
@@ -67,10 +94,11 @@ class HoldedLifecycle(unittest.TestCase):
           update show_suppliers set island='Tenerife';''')
         self.migration('20260908221214_show_ops_opening_paid_balance.sql')
         self.migration('20260908221252_show_ops_staff_action_permissions.sql')
-        self.migration(MIGRATION)
-        repairs = list((s.ROOT/'supabase/migrations').glob('*_show_ops_holded_lifecycle_safeguards.sql'))
-        if repairs:
-            self.migration(repairs[-1].name)
+        if original_parent:
+            s.sql(ORIGINAL_PARENT_SQL)
+        else:
+            self.migration(MIGRATION)
+        self.migration(REPAIR)
         s.sql(s.booking() + ';')
         self.booking = s.sql('select id from show_bookings;').stdout.strip()
         s.sql('update show_bookings set total_cost=100,balance_remaining=100;')
@@ -88,6 +116,9 @@ class HoldedLifecycle(unittest.TestCase):
         return s.sql(
             f"select claim_status, external_id, claim_token from private.show_ops_claim_holded_credit_note("
             f"'{s.BIZ}','{self.invoice}','{token}',25.00,'Supplier correction');", role)
+
+    def service(self, query, check=True):
+        return s.sql('set role service_role; ' + query, check=check)
 
     def test_credentials_are_owner_admin_only_and_tenant_scoped(self):
         s.sql(f"""insert into show_ops_integrations(business_id,provider,secret_ciphertext,created_by)
@@ -125,7 +156,10 @@ class HoldedLifecycle(unittest.TestCase):
         self.denied(
             f"select * from private.show_ops_claim_holded_invoice('{s.BIZ}','{self.invoice}','{recovered}');",
             'finance', 'SHOW_OPS_HOLDED_RECONCILIATION_REQUIRED')
-        s.sql(f"select private.show_ops_resolve_holded_invoice_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');", 'finance')
+        self.denied(
+            f"select private.show_ops_resolve_holded_invoice_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');",
+            'finance')
+        self.service(f"select private.show_ops_resolve_holded_invoice_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');")
         self.assertIn(f'claimed||{recovered}', self.claim_invoice(recovered).stdout)
         self.assertEqual(s.sql("select count(*) from show_invoice_external_events where action in ('invoice_claim','invoice_reconciliation');").stdout.strip(), '4')
 
@@ -191,7 +225,10 @@ class HoldedLifecycle(unittest.TestCase):
             f"select * from private.show_ops_claim_holded_credit_note('{s.BIZ}','{self.invoice}',"
             f"'{retry}',25.00,'Supplier correction');", 'finance',
             'SHOW_OPS_HOLDED_RECONCILIATION_REQUIRED')
-        s.sql(f"select private.show_ops_resolve_holded_credit_note_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');", 'finance')
+        self.denied(
+            f"select private.show_ops_resolve_holded_credit_note_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');",
+            'finance')
+        self.service(f"select private.show_ops_resolve_holded_credit_note_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');")
         self.assertIn(f'claimed||{retry}', s.sql(
             f"select * from private.show_ops_claim_holded_credit_note('{s.BIZ}','{self.invoice}',"
             f"'{retry}',25.00,'Supplier correction');", 'finance').stdout)
@@ -285,6 +322,71 @@ class HoldedLifecycle(unittest.TestCase):
               holded_credit_status='not_requested',holded_credit_amount=null,holded_credit_reason=null;""")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('SHOW_OPS_HOLDED_CREDIT_INPUT_INVALID', result.stderr)
+
+    def test_exact_original_parent_is_fully_upgraded_by_repair_only(self):
+        self.prepare_database(original_parent=True)
+        lifecycle_columns = [
+            'holded_document_id', 'holded_doc_number', 'holded_status', 'holded_pushed_at',
+            'holded_synced_at', 'holded_error',
+            'holded_claim_token', 'holded_claimed_at', 'holded_expected_net', 'holded_expected_tax',
+            'holded_expected_total', 'holded_actual_net', 'holded_actual_tax', 'holded_actual_total',
+            'holded_amounts_match', 'holded_verification_status', 'holded_reconciliation_status',
+            'holded_credit_note_id', 'holded_credit_note_number', 'holded_credit_status',
+            'holded_credit_amount', 'holded_credit_reason', 'holded_credit_claim_token',
+            'holded_credit_claimed_at',
+        ]
+        names = ','.join("'" + name + "'" for name in lifecycle_columns)
+        count = s.sql(f"select count(*) from information_schema.columns where table_schema='public' "
+                      f"and table_name='show_invoices' and column_name in ({names});").stdout.strip()
+        self.assertEqual(count, str(len(lifecycle_columns)))
+        self.assertEqual(s.sql("select to_regclass('public.show_invoice_external_events');").stdout.strip(),
+                         'show_invoice_external_events')
+        s.sql(f"insert into show_ops_integrations(business_id,provider,secret_ciphertext) values('{s.BIZ}','holded','encrypted');")
+        self.assertEqual(self.count('select count(*) from show_ops_integrations;', 'finance'), 0)
+        self.assertEqual(self.count('select count(*) from show_ops_integrations;', 'owner'), 1)
+        s.sql("update show_invoices set holded_status='corrected';")
+
+    def test_service_role_atomically_completes_invoice_and_credit_claims(self):
+        invoice_token = '59000000-0000-0000-0000-000000000001'
+        self.claim_invoice(invoice_token)
+        invoice_completion = (
+            f"select private.show_ops_complete_holded_invoice_claim('{s.BIZ}','{self.invoice}',"
+            f"'{invoice_token}','created','doc_complete','draft',90,10,100,null);")
+        self.denied(invoice_completion, 'finance')
+        wrong = self.service(invoice_completion.replace(invoice_token, '59000000-0000-0000-0000-000000000099'), check=False)
+        self.assertNotEqual(wrong.returncode, 0)
+        self.assertIn('SHOW_OPS_HOLDED_CLAIM_TOKEN_MISMATCH', wrong.stderr)
+        self.service(invoice_completion)
+        invoice_state = s.sql(f"select holded_document_id,holded_status,holded_amounts_match,holded_claim_token is null "
+                              f"from show_invoices where id='{self.invoice}';").stdout
+        self.assertIn('doc_complete|draft|t|t', invoice_state)
+
+        credit_token = '59000000-0000-0000-0000-000000000002'
+        s.sql(f"update show_invoices set holded_status='approved' where id='{self.invoice}';")
+        self.claim_credit(credit_token)
+        credit_completion = (
+            f"select private.show_ops_complete_holded_credit_note_claim('{s.BIZ}','{self.invoice}',"
+            f"'{credit_token}','created','credit_complete','draft',25,null);")
+        self.denied(credit_completion, 'finance')
+        self.service(credit_completion)
+        credit_state = s.sql(f"select holded_credit_note_id,holded_credit_status,holded_credit_claim_token is null "
+                             f"from show_invoices where id='{self.invoice}';").stdout
+        self.assertIn('credit_complete|draft|t', credit_state)
+        self.assertEqual(s.sql("select count(*) from show_invoice_external_events where action in "
+                               "('invoice_complete','credit_note_complete');").stdout.strip(), '2')
+
+    def test_finance_requests_but_service_role_attests_reconciliation(self):
+        token = '59100000-0000-0000-0000-000000000001'
+        self.claim_invoice(token)
+        s.sql(f"select private.show_ops_request_holded_reconciliation('{s.BIZ}','{self.invoice}','create_timeout');",
+              'finance')
+        self.denied(
+            f"select private.show_ops_resolve_holded_invoice_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');",
+            'finance')
+        self.service(f"select private.show_ops_resolve_holded_invoice_claim('{s.BIZ}','{self.invoice}',null,'confirmed_not_found');")
+        state = s.sql(f"select holded_status,holded_reconciliation_status,holded_claim_token is null "
+                      f"from show_invoices where id='{self.invoice}';").stdout
+        self.assertIn('not_sent|resolved|t', state)
 
 
 if __name__ == '__main__':
