@@ -175,13 +175,16 @@ export function unixDay(iso: string | null | undefined, fallback = new Date()): 
  * (adults, children) so Holded's maths matches Solvio's to the cent; manual
  * lines pass through as quantity × unit price.
  */
-export function holdedItemsFromLines(lines: PackLine[], taxKeyFor: (rate: number) => string | null): HoldedItem[] {
+export function holdedItemsFromLines(
+  lines: PackLine[],
+  taxKeyFor: (rate: number) => string | null,
+  taxes: HoldedTax[] = [],
+): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
     const rate = strictMoney(l.vat_rate ?? 0, "line tax rate");
     if (rate < 0) throw new Error("Line tax rate cannot be negative.");
-    const key = taxKeyFor(rate);
-    if (!key) throw new Error(`No configured Canary/IGIC sales tax mapping for ${rate}%`);
+    const key = requireHoldedIgicTaxKey(taxes, rate, taxKeyFor(rate));
     const tax = { taxes: [key] };
     const base = String(l.description || l.guest_name || "Line").trim();
     const ref = String(l.booking_ref || "").trim();
@@ -209,6 +212,7 @@ export function holdedInvoiceFromPack(
   lines: PackLine[],
   contactId: string,
   taxKeyFor: (rate: number) => string | null,
+  taxes: HoldedTax[] = [],
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
   const tags = ["solvio"];
@@ -218,7 +222,7 @@ export function holdedInvoiceFromPack(
     contactId,
     desc: `${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
-    items: holdedItemsFromLines(lines, taxKeyFor),
+    items: holdedItemsFromLines(lines, taxKeyFor, taxes),
     notes,
     tags,
     approveDoc: false,
@@ -233,7 +237,9 @@ export function summariseHoldedDocument(raw: unknown): HoldedDocumentSummary {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Holded returned a malformed document.");
   const d = raw as Record<string, unknown>;
   const id = requiredString(d.id, "document id");
-  const draft = d.draft === true || (d.docNumber == null && !d.approvedAt);
+  const docNumber = optionalDocumentNumber(d.docNumber);
+  const approvedAt = optionalApprovedAt(d.approvedAt);
+  const draft = d.draft === true || (docNumber === null && approvedAt === null);
   const net = strictMoney(d.subtotal ?? d.net, "document net");
   const tax = strictMoney(d.tax ?? d.taxTotal ?? d.taxesTotal, "document tax");
   const total = strictMoney(d.total, "document total");
@@ -241,15 +247,31 @@ export function summariseHoldedDocument(raw: unknown): HoldedDocumentSummary {
   const status: HoldedDocumentSummary["status"] = draft ? "draft" : total > 0 && pending <= 0 ? "paid" : "approved";
   return {
     id,
-    docNumber: d.docNumber ? String(d.docNumber) : null,
+    docNumber,
     draft,
     status,
     net,
     tax,
     total,
     paymentsPending: pending,
-    approvedAt: d.approvedAt ? new Date(n(d.approvedAt) * 1000).toISOString() : null,
+    approvedAt,
   };
+}
+
+function optionalDocumentNumber(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string" || !value.trim()) throw new Error("Holded returned a malformed document number.");
+  return value.trim();
+}
+
+function optionalApprovedAt(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error("Holded returned a malformed approval timestamp.");
+  }
+  const date = new Date(value * 1000);
+  if (!Number.isFinite(date.getTime())) throw new Error("Holded returned a malformed approval timestamp.");
+  return date.toISOString();
 }
 
 function requiredString(value: unknown, label: string): string {

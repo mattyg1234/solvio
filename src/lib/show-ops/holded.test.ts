@@ -61,17 +61,23 @@ test("booking line splits into adult and child items with exact unit prices", ()
   const items = holdedItemsFromLines(
     [{ description: "MHT ACE 12 Sept", booking_ref: "MHT-319001", guest_name: "Smith", adults: 2, children: 1, adult_unit_price: 27.95, child_unit_price: 15, vat_rate: 7 }],
     (r) => (r === 7 ? "s_igic_7" : null),
+    TAXES,
   );
   assert.equal(items.length, 2);
   assert.deepEqual(items[0], { name: "MHT ACE 12 Sept — 2 adults", desc: "MHT-319001", units: 2, subtotal: 27.95, taxes: ["s_igic_7"] });
   assert.deepEqual(items[1], { name: "MHT ACE 12 Sept — 1 child", desc: "MHT-319001", units: 1, subtotal: 15, taxes: ["s_igic_7"] });
 });
 
-test("manual line requires an explicit tax key", () => {
-  const items = holdedItemsFromLines([{ description: "Bus supplement", quantity: 3, unit_price: 4.5, vat_rate: 7, notes: "Sept" }], () => "s_igic_7");
+test("manual line requires a configured and validated IGIC sales tax key", () => {
+  const line = [{ description: "Bus supplement", quantity: 3, unit_price: 4.5, vat_rate: 7, notes: "Sept" }];
+  const items = holdedItemsFromLines(line, () => "s_igic_7", TAXES);
   assert.deepEqual(items, [{ name: "Bus supplement", desc: "Sept", units: 3, subtotal: 4.5, taxes: ["s_igic_7"] }]);
-  assert.throws(() => holdedItemsFromLines([{ description: "Bus supplement", quantity: 1, unit_price: 4.5, vat_rate: 7 }], () => null), /No configured Canary\/IGIC/);
-  assert.throws(() => holdedItemsFromLines([{ description: "Bad", quantity: 1, unit_price: Number.NaN, vat_rate: 7 }], () => "s_igic_7"), /non-finite unit price/);
+  assert.throws(() => holdedItemsFromLines(line, () => null, TAXES), /No Canary\/IGIC/);
+  assert.throws(() => holdedItemsFromLines(line, () => "made_up_igic", TAXES), /not an IGIC sales tax/);
+  assert.throws(() => holdedItemsFromLines(line, () => "s_iva_7", TAXES), /not an IGIC sales tax/);
+  assert.throws(() => holdedItemsFromLines(line, () => "p_igic_7", TAXES), /not an IGIC sales tax/);
+  assert.throws(() => holdedItemsFromLines(line, () => "s_igic_7"), /not an IGIC sales tax/);
+  assert.throws(() => holdedItemsFromLines([{ description: "Bad", quantity: 1, unit_price: Number.NaN, vat_rate: 7 }], () => "s_igic_7", TAXES), /non-finite unit price/);
 });
 
 test("pack → Holded invoice is a draft with Solvio reference, dates as unix days, non-EUR currency passed", () => {
@@ -80,6 +86,7 @@ test("pack → Holded invoice is a draft with Solvio reference, dates as unix da
     [{ description: "Line", quantity: 1, unit_price: 10, vat_rate: 0 }],
     "contact-1",
     () => "s_igic_0",
+    [...TAXES, { key: "s_igic_0", name: "IGIC 0%", amount: 0, scope: "sales" }],
   );
   assert.equal(inv.approveDoc, false);
   assert.equal(inv.contactId, "contact-1");
@@ -88,7 +95,7 @@ test("pack → Holded invoice is a draft with Solvio reference, dates as unix da
   assert.equal(inv.dueDate, unixDay("2026-10-31"));
   assert.equal(inv.currency, undefined);
   assert.match(inv.notes ?? "", /Thanks\nSolvio pack pack-1/);
-  const gbp = holdedInvoiceFromPack({ id: "p", supplier_name: "UK Coach", period_start: "2026-09-01", period_end: "2026-09-30", currency: "gbp" }, [], "c", () => null);
+  const gbp = holdedInvoiceFromPack({ id: "p", supplier_name: "UK Coach", period_start: "2026-09-01", period_end: "2026-09-30", currency: "gbp" }, [], "c", () => null, TAXES);
   assert.equal(gbp.currency, "gbp");
 });
 
@@ -100,4 +107,9 @@ test("Holded document summary distinguishes draft, approved and paid", () => {
   assert.equal(approved.approvedAt, new Date(1788900000 * 1000).toISOString());
   assert.equal(summariseHoldedDocument({ id: "c", draft: false, docNumber: "F260002", subtotal: 93.46, tax: 6.54, total: 100, paymentsPending: 0 }).status, "paid");
   assert.throws(() => summariseHoldedDocument({ id: "bad", subtotal: 1, tax: 1, total: "NaN" }), /malformed document total/);
+  assert.throws(() => summariseHoldedDocument({ id: "bad", docNumber: 123, subtotal: 1, tax: 1, total: 2 }), /malformed document number/);
+  assert.throws(() => summariseHoldedDocument({ id: "bad", docNumber: "", subtotal: 1, tax: 1, total: 2 }), /malformed document number/);
+  assert.throws(() => summariseHoldedDocument({ id: "bad", approvedAt: "1788900000", subtotal: 1, tax: 1, total: 2 }), /malformed approval timestamp/);
+  assert.throws(() => summariseHoldedDocument({ id: "bad", approvedAt: "not-a-date", subtotal: 1, tax: 1, total: 2 }), /malformed approval timestamp/);
+  assert.throws(() => summariseHoldedDocument({ id: "bad", approvedAt: Number.NaN, subtotal: 1, tax: 1, total: 2 }), /malformed approval timestamp/);
 });
