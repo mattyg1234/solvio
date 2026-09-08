@@ -2198,7 +2198,10 @@ export async function createPartnerLinkBookingAction(
   formData.set("sales_channel", supplier.partner_type || "partner");
   formData.delete("office_only_comments");
   const built = await buildBookingFields(ctx, formData);
-  if (!built.ok) return { ok: false, message: built.error };
+  if (!built.ok) {
+    console.error("[partner-link] booking fields rejected:", supplier.id, built.error);
+    return { ok: false, message: built.error };
+  }
   if (built.fields.supplier_id !== supplier.id) return { ok: false, message: "You can only book as your company." };
 
   const { data: closes } = await ctx.supabase
@@ -2228,8 +2231,12 @@ export async function createPartnerLinkBookingAction(
       revalidateShowOps();
       return { ok: true, id, message: booking_ref };
     }
-    if (!isUniqueViolation(error)) return { ok: false, message: partnerBookingErrorMessage(error) };
+    if (!isUniqueViolation(error)) {
+      console.error("[partner-link] booking insert failed:", supplier.id, booking_ref, error.code, error.message, error.details ?? "");
+      return { ok: false, message: partnerBookingErrorMessage(error) };
+    }
   }
+  console.error("[partner-link] booking ref contention after 5 attempts:", supplier.id);
   return { ok: false, message: "The desk is busy right now — please try again in a moment." };
 }
 
