@@ -1,13 +1,14 @@
 "use client";
 
-import { Check, Link2, Pencil } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Check, Link2, Loader2, Mail, Pencil } from "lucide-react";
+import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 
 import {
   applyMasterSuppliersBulkAction,
   deleteSupplierAction,
   saveMasterSupplierOneAction,
   saveMasterSuppliersAllAction,
+  sendPartnerLoginAction,
 } from "@/app/dashboard/show-ops/actions";
 import { partnerIslands, partnerSearchHaystack, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
@@ -111,6 +112,22 @@ export function MasterSuppliersForm({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [openIds, setOpenIds] = useState<Set<string>>(() => (highlightId ? new Set([highlightId]) : new Set()));
   const [copied, setCopied] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<{ id: string; ok: boolean; message: string } | null>(null);
+  const [sendingLogin, setSendingLogin] = useState<string | null>(null);
+  const [, startLoginSend] = useTransition();
+
+  function sendLogin(id: string) {
+    setSendingLogin(id);
+    setLoginNotice(null);
+    const fd = new FormData();
+    fd.set("supplier_id", id);
+    startLoginSend(() => {
+      void sendPartnerLoginAction(fd)
+        .then((res) => setLoginNotice({ id, ok: res.ok, message: res.message }))
+        .catch(() => setLoginNotice({ id, ok: false, message: "Login link not sent. Please retry." }))
+        .finally(() => setSendingLogin(null));
+    });
+  }
   const [bulkOpen, setBulkOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
@@ -378,6 +395,16 @@ export function MasterSuppliersForm({
               </button>
               <button
                 type="button"
+                onClick={() => sendLogin(s.id)}
+                disabled={!s.email || sendingLogin === s.id}
+                title={s.email ? `Email a one-time sign-in link to ${s.email}` : "Add an invoice email to this partner first"}
+                className="flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingLogin === s.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Mail className="h-3.5 w-3.5" aria-hidden />}
+                {sendingLogin === s.id ? "Sending" : "Send login"}
+              </button>
+              <button
+                type="button"
                 onClick={() => toggleOpen(s.id)}
                 aria-label={`Edit ${s.name}`}
                 aria-expanded={open}
@@ -391,6 +418,11 @@ export function MasterSuppliersForm({
               </button>
             </div>
 
+            {loginNotice?.id === s.id ? (
+              <p className={`px-3 pb-2 text-xs ${loginNotice.ok ? "text-emerald-700" : "text-rose-700"}`} role="status">
+                {loginNotice.message}
+              </p>
+            ) : null}
             {/* Fields stay mounted when collapsed so "Save all" and bulk-apply keep working. */}
             <div className={open ? "grid gap-2 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-3" : "hidden"}>
               <label className="text-xs font-medium text-slate-600">

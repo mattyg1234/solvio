@@ -2118,6 +2118,40 @@ export async function inviteSellerPortalAction(formData: FormData): Promise<void
   redirect("/dashboard/show-ops/settings?seller=sent");
 }
 
+/**
+ * "Send login" on a partner row: emails the partner's invoice address a one-time
+ * sign-in link for their booking page. Returns a result instead of redirecting so
+ * the Partners list can show "Sent" inline. Held in test mode unless the address
+ * is on the outbound allowlist.
+ */
+export async function sendPartnerLoginAction(
+  formData: FormData,
+): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  try {
+    const ctx = await requireShowOpsRole("office");
+    const supplierId = String(formData.get("supplier_id") ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(supplierId)) return { ok: false, message: "Pick a partner first." };
+    const { data: supplier, error } = await ctx.supabase
+      .from("show_suppliers")
+      .select("id,name,email")
+      .eq("id", supplierId)
+      .eq("business_id", ctx.business.id)
+      .maybeSingle();
+    if (error || !supplier) return { ok: false, message: "Partner not found. Refresh and try again." };
+    const email = String(supplier.email ?? "").trim().toLowerCase();
+    if (!email.includes("@")) return { ok: false, message: "Add an invoice email to this partner first, then send the login." };
+    await provisionAndEmailSeller({
+      ctx,
+      businessId: ctx.business.id, supplierId: supplier.id, supplierName: supplier.name,
+      email, merchantName: ctx.branding.displayName,
+    });
+    revalidateShowOps();
+    return { ok: true, message: `Login link sent to ${email}.` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Login link not sent. Please retry." };
+  }
+}
+
 export async function inviteSellerColleagueAction(
   formData: FormData,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
