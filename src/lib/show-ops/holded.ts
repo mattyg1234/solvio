@@ -8,7 +8,8 @@
 
 export const HOLDED_BASE = "https://api.holded.com/api";
 
-export type HoldedTax = { id?: string; key: string; name: string; amount: number; scope?: string };
+export type HoldedTax = { id?: string; key: string; name: string; amount: number; scope?: string; legalTreatment?: string; category?: string };
+export type HoldedIgicTaxApproval = { id: string; key: string; rate: number; legalTreatment: "igic"; category: "sales" };
 
 export type HoldedContactInput = {
   name: string;
@@ -60,9 +61,8 @@ export type HoldedTotalsComparison = {
   difference: HoldedDocumentTotals;
 };
 
-export type HoldedCreditNoteInput = HoldedInvoiceInput & {
-  invoiceId: string;
-};
+export type HoldedCreditNoteInput = HoldedInvoiceInput;
+export type HoldedDraftOperation = { reference: string; knownDocumentId?: string; ambiguous?: boolean };
 
 export type HoldedStatus = "not_sent" | "draft" | "approved" | "paid" | "error";
 
@@ -126,13 +126,14 @@ export function pickHoldedTaxKey(taxes: HoldedTax[], rate: number, opts: { prefe
 }
 
 /** Resolve a deliberately configured Canary sales-tax key and verify it against Holded's tax catalogue. */
-export function requireHoldedIgicTaxKey(taxes: HoldedTax[], rate: number, configuredKey: string | null | undefined): string {
-  const key = String(configuredKey ?? "").trim();
-  if (!key) throw new Error(`No Canary/IGIC sales tax is configured for ${strictMoney(rate, "tax rate")}%`);
+export function requireHoldedIgicTaxKey(taxes: HoldedTax[], rate: number, approval: HoldedIgicTaxApproval | null | undefined): string {
+  if (!approval) throw new Error(`No approved Canary/IGIC sales tax is configured for ${strictMoney(rate, "tax rate")}%`);
+  const id = requiredString(approval.id, "approved Holded tax id");
+  const key = requiredString(approval.key, "approved Holded tax key");
   const wanted = moneyCents(rate, "tax rate");
-  const match = taxes.find((tax) => tax.key === key);
-  if (!match || (match.scope ?? "sales") !== "sales" || !/igic/i.test(`${match.key} ${match.name}`) || moneyCents(match.amount, "Holded tax rate") !== wanted) {
-    throw new Error(`Configured Holded tax ${key} is not an IGIC sales tax at ${strictMoney(rate, "tax rate")}%`);
+  const match = taxes.find((tax) => tax.id === id && tax.key === key);
+  if (approval.legalTreatment !== "igic" || approval.category !== "sales" || !match || match.legalTreatment !== "igic" || match.category !== "sales" || match.scope !== "sales" || moneyCents(match.amount, "Holded tax rate") !== wanted || moneyCents(approval.rate, "approved tax rate") !== wanted) {
+    throw new Error(`Approved Holded tax ${key} does not match the required IGIC sales treatment at ${strictMoney(rate, "tax rate")}%`);
   }
   return key;
 }
@@ -177,14 +178,14 @@ export function unixDay(iso: string | null | undefined, fallback = new Date()): 
  */
 export function holdedItemsFromLines(
   lines: PackLine[],
-  taxKeyFor: (rate: number) => string | null,
+  taxForRate: (rate: number) => HoldedIgicTaxApproval | null,
   taxes: HoldedTax[] = [],
 ): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
     const rate = strictMoney(l.vat_rate ?? 0, "line tax rate");
     if (rate < 0) throw new Error("Line tax rate cannot be negative.");
-    const key = requireHoldedIgicTaxKey(taxes, rate, taxKeyFor(rate));
+    const key = requireHoldedIgicTaxKey(taxes, rate, taxForRate(rate));
     const tax = { taxes: [key] };
     const base = String(l.description || l.guest_name || "Line").trim();
     const ref = String(l.booking_ref || "").trim();
@@ -211,7 +212,7 @@ export function holdedInvoiceFromPack(
   pack: Pack,
   lines: PackLine[],
   contactId: string,
-  taxKeyFor: (rate: number) => string | null,
+  taxForRate: (rate: number) => HoldedIgicTaxApproval | null,
   taxes: HoldedTax[] = [],
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
@@ -222,7 +223,7 @@ export function holdedInvoiceFromPack(
     contactId,
     desc: `${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
-    items: holdedItemsFromLines(lines, taxKeyFor, taxes),
+    items: holdedItemsFromLines(lines, taxForRate, taxes),
     notes,
     tags,
     approveDoc: false,
@@ -237,14 +238,22 @@ export function summariseHoldedDocument(raw: unknown): HoldedDocumentSummary {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Holded returned a malformed document.");
   const d = raw as Record<string, unknown>;
   const id = requiredString(d.id, "document id");
+  if (typeof d.draft !== "boolean") throw new Error("Holded returned a malformed draft flag.");
+  const draft = d.draft;
   const docNumber = optionalDocumentNumber(d.docNumber);
   const approvedAt = optionalApprovedAt(d.approvedAt);
-  const draft = d.draft === true || (docNumber === null && approvedAt === null);
+  if (draft && approvedAt !== null) throw new Error("Holded returned an approved timestamp for a draft document.");
+  if (!draft && docNumber === null) throw new Error("Holded returned an approved document without a document number.");
+  if (!draft && approvedAt === null) throw new Error("Holded returned an approved document without an approval timestamp.");
   const net = strictMoney(d.subtotal ?? d.net, "document net");
   const tax = strictMoney(d.tax ?? d.taxTotal ?? d.taxesTotal, "document tax");
   const total = strictMoney(d.total, "document total");
   const pending = d.paymentsPending == null ? total : strictMoney(d.paymentsPending, "document pending total");
-  const status: HoldedDocumentSummary["status"] = draft ? "draft" : total > 0 && pending <= 0 ? "paid" : "approved";
+  const status: HoldedDocumentSummary["status"] = draft ? "draft" : moneyCents(pending, "document pending total") === 0 ? "paid" : "approved";
+  if (d.status != null) {
+    if (d.status !== "draft" && d.status !== "approved" && d.status !== "paid") throw new Error("Holded returned a malformed document status.");
+    if (d.status !== status) throw new Error("Holded returned an inconsistent document status.");
+  }
   return {
     id,
     docNumber,
@@ -288,7 +297,16 @@ function strictMoney(value: unknown, label: string): number {
 }
 
 function moneyCents(value: unknown, label: string): number {
-  return Math.round(strictMoney(value, label) * 100);
+  const raw = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : "";
+  if (!/^-?\d+(?:\.\d+)?$/.test(raw)) { strictMoney(value, label); throw new Error(`Holded returned malformed ${label}.`); }
+  const negative = raw.startsWith("-");
+  const [whole, fraction = ""] = (negative ? raw.slice(1) : raw).split(".");
+  let cents = BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2));
+  if (fraction.slice(2)[0] >= "5") cents += 1n;
+  if (negative) cents = -cents;
+  const result = Number(cents);
+  if (!Number.isSafeInteger(result)) throw new Error(`Holded returned out-of-range ${label}.`);
+  return result;
 }
 
 export function compareHoldedDocumentTotals(expected: HoldedDocumentTotals, actual: HoldedDocumentTotals): HoldedTotalsComparison {
@@ -325,8 +343,21 @@ export class HoldedApiError extends Error {
   }
 }
 
+export class HoldedWriteAmbiguousError extends Error {
+  constructor(public readonly documentKind: "invoice" | "creditnote", public readonly operationReference: string) {
+    super(`Holded ${documentKind} write outcome is ambiguous. Reconcile operation ${operationReference} before retrying.`);
+  }
+}
+export class HoldedReconciliationRequiredError extends Error {
+  constructor(public readonly documentKind: "invoice" | "creditnote", public readonly operationReference: string, public readonly documentId: string) {
+    super(`Holded created ${documentKind} ${documentId}, but status retrieval failed. Reconcile it before retrying.`);
+  }
+}
+
 export class HoldedClient {
   private token: string;
+  private knownOperations = new Map<string, { kind: "invoice" | "creditnote"; id: string }>();
+  private ambiguousOperations = new Set<string>();
   constructor(token: string) {
     this.token = token.trim();
     if (!this.token) throw new Error("Holded token is empty.");
@@ -386,9 +417,8 @@ export class HoldedClient {
     return { id: requiredString((res as Record<string, unknown>).id, "invoice id") };
   }
 
-  async createInvoiceDraft(input: HoldedInvoiceInput): Promise<HoldedDocumentSummary> {
-    const created = await this.createInvoice(input);
-    return this.getInvoice(created.id);
+  async createInvoiceDraft(input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
+    return this.createDraft("invoice", input, operation);
   }
 
   async getInvoice(id: string): Promise<HoldedDocumentSummary> {
@@ -396,17 +426,9 @@ export class HoldedClient {
     return summariseHoldedDocument(raw);
   }
 
-  async createCreditNoteDraft(input: HoldedCreditNoteInput): Promise<HoldedDocumentSummary> {
+  async createCreditNoteDraft(input: HoldedCreditNoteInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
     if (input.approveDoc !== false) throw new Error("Solvio may only create Holded credit-note drafts.");
-    const { invoiceId, ...document } = input;
-    const res = await this.request<unknown>("POST", "/invoicing/v1/documents/creditnote", {
-      ...document,
-      approveDoc: false,
-      relatedDocuments: [requiredString(invoiceId, "source invoice id")],
-    });
-    if (!res || typeof res !== "object" || Array.isArray(res)) throw new Error("Holded returned a malformed credit-note response.");
-    const id = requiredString((res as Record<string, unknown>).id, "credit-note id");
-    return this.getCreditNote(id);
+    return this.createDraft("creditnote", input, operation);
   }
 
   async getCreditNote(id: string): Promise<HoldedDocumentSummary> {
@@ -414,10 +436,72 @@ export class HoldedClient {
     return summariseHoldedDocument(raw);
   }
 
+  reconcileInvoiceDraft(operation: HoldedDraftOperation) { return this.reconcileDraft("invoice", operation); }
+  reconcileCreditNoteDraft(operation: HoldedDraftOperation) { return this.reconcileDraft("creditnote", operation); }
+
+  private async createDraft(kind: "invoice" | "creditnote", input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
+    if (input.approveDoc !== false) throw new Error(`Solvio may only create Holded ${kind === "invoice" ? "invoice" : "credit-note"} drafts.`);
+    const reference = validOperationReference(operation.reference);
+    const known = operation.knownDocumentId ?? this.knownOperations.get(reference)?.id;
+    if (known) return this.readDraft(kind, known);
+    const reconciled = await this.reconcileDraft(kind, operation);
+    if (reconciled) return reconciled;
+    if (operation.ambiguous || this.ambiguousOperations.has(reference)) throw new HoldedWriteAmbiguousError(kind, reference);
+    let raw: unknown;
+    try {
+      raw = await this.request("POST", `/invoicing/v1/documents/${kind}`, withOperationReference(input, reference));
+    } catch {
+      this.ambiguousOperations.add(reference);
+      throw new HoldedWriteAmbiguousError(kind, reference);
+    }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      this.ambiguousOperations.add(reference);
+      throw new HoldedWriteAmbiguousError(kind, reference);
+    }
+    let id: string;
+    try { id = requiredString((raw as Record<string, unknown>).id, `${kind} id`); }
+    catch { this.ambiguousOperations.add(reference); throw new HoldedWriteAmbiguousError(kind, reference); }
+    this.knownOperations.set(reference, { kind, id });
+    try { return await this.readDraft(kind, id); }
+    catch { throw new HoldedReconciliationRequiredError(kind, reference, id); }
+  }
+
+  private async reconcileDraft(kind: "invoice" | "creditnote", operation: HoldedDraftOperation): Promise<HoldedDocumentSummary | null> {
+    const reference = validOperationReference(operation.reference);
+    const known = operation.knownDocumentId ?? this.knownOperations.get(reference)?.id;
+    if (known) return this.readDraft(kind, known);
+    const raw = await this.request("GET", `/invoicing/v1/documents/${kind}`);
+    if (!Array.isArray(raw)) throw new Error(`Holded returned a malformed ${kind} list.`);
+    const marker = operationMarker(reference);
+    const hits = raw.filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && String((entry as Record<string, unknown>).notes ?? "").includes(marker));
+    if (hits.length > 1) throw new Error(`Holded returned duplicate documents for operation ${reference}.`);
+    if (!hits.length) return null;
+    const id = requiredString((hits[0] as Record<string, unknown>).id, `${kind} id`);
+    this.knownOperations.set(reference, { kind, id });
+    return this.readDraft(kind, id);
+  }
+
+  private readDraft(kind: "invoice" | "creditnote", id: string) {
+    return kind === "invoice" ? this.getInvoice(id) : this.getCreditNote(id);
+  }
+
   async getInvoicePdf(id: string): Promise<Buffer | null> {
     const res = await this.request<{ status?: number; data?: string }>("GET", `/invoicing/v1/documents/invoice/${encodeURIComponent(id)}/pdf`);
     return res?.data ? Buffer.from(res.data, "base64") : null;
   }
+}
+
+function validOperationReference(value: unknown): string {
+  const reference = requiredString(value, "operation reference");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(reference)) throw new Error("Holded operation reference is malformed.");
+  return reference;
+}
+function operationMarker(reference: string) { return `[solvio-operation:${reference}]`; }
+function withOperationReference(input: HoldedInvoiceInput, reference: string): HoldedInvoiceInput {
+  const marker = operationMarker(reference);
+  const existing = input.notes?.match(/\[solvio-operation:[^\]]+\]/)?.[0];
+  if (existing && existing !== marker) throw new Error("Holded draft already contains a different operation reference.");
+  return { ...input, approveDoc: false, notes: [input.notes?.trim(), existing ? null : marker].filter(Boolean).join("\n") };
 }
 
 export function holdedErrorMessage(err: unknown): string {
