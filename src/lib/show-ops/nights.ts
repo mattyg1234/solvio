@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /** UTC weekday (0=Sun..6=Sat) for a YYYY-MM-DD date. */
 export function isoWeekday(iso: string): number {
   return new Date(`${iso}T12:00:00Z`).getUTCDay();
@@ -130,20 +132,32 @@ export function withBookedDates<T extends { id: string }>(
 }
 
 export async function loadBookedDatesByProduct(
-  supabase: { from: (table: string) => any },
+  supabase: SupabaseClient,
   businessId: string,
 ): Promise<Record<string, string[]>> {
   const from = todayIsoUtc();
   const end = new Date(`${from}T12:00:00Z`);
   end.setUTCMonth(end.getUTCMonth() + 12);
-  const { data } = await supabase
-    .from("show_bookings")
-    .select("product_id,show_date")
-    .eq("business_id", businessId)
-    .is("cancelled_at", null)
-    .gte("show_date", from)
-    .lte("show_date", end.toISOString().slice(0, 10));
-  return bookedDatesByProduct(data ?? []);
+  // A busy operator has well over 1,000 future bookings; the API caps a single read at 1,000
+  // rows, so page until a short page comes back or the picker silently loses nights.
+  const rows: Array<{ product_id: string; show_date: string }> = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < 50000; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("show_bookings")
+      .select("product_id,show_date")
+      .eq("business_id", businessId)
+      .is("cancelled_at", null)
+      .gte("show_date", from)
+      .lte("show_date", end.toISOString().slice(0, 10))
+      .order("show_date")
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Could not load booked dates: ${error.message}`);
+    rows.push(...((data ?? []) as Array<{ product_id: string; show_date: string }>));
+    if (!data || data.length < pageSize) break;
+  }
+  return bookedDatesByProduct(rows);
 }
 
 export const SHOW_OPS_WEEKDAYS = [

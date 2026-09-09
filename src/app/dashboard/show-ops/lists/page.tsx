@@ -123,8 +123,9 @@ export default async function DailyListsPage({
   const timeFrom = sp.time_from || "";
   const timeTo = sp.time_to || "";
   const spacesOnly = sp.spaces === "1";
-  const money = (n: number) =>
-    formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
+  // Each row formats in its own island's currency; the island filter is only the fallback.
+  const money = (n: number, rowIsland?: string | null) =>
+    formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, rowIsland || island));
 
   let query = ctx.supabase
     .from("show_bookings")
@@ -660,7 +661,7 @@ function ListCard({
   b: BookingRow;
   variant: "office" | "door";
   questions: Array<{ id: string; label: string }>;
-  money: (n: number) => string;
+  money: (n: number, island?: string | null) => string;
 }) {
   const answers =
     b.custom_answers && typeof b.custom_answers === "object"
@@ -693,7 +694,7 @@ function ListCard({
           : "bg-white ring-slate-200";
   const owed =
     pay.outstandingAmount != null && pay.outstandingAmount > 0
-      ? money(pay.outstandingAmount)
+      ? money(pay.outstandingAmount, b.island)
       : pay.label;
   return (
     <div className={`rounded-2xl p-3 ring-1 ${tone}`}>
@@ -743,7 +744,7 @@ function ListCard({
         dietaryNotes={b.dietary_notes}
         balanceDueLabel={
           pay.outstandingAmount != null && pay.outstandingAmount > 0
-            ? money(pay.outstandingAmount)
+            ? money(pay.outstandingAmount, b.island)
             : null
         }
         comments={b.office_comments}
@@ -853,7 +854,7 @@ function OfficeTable({
   title: string;
   rows: BookingRow[];
   questions: Array<{ id: string; label: string }>;
-  money: (n: number) => string;
+  money: (n: number, island?: string | null) => string;
   sortKeys: string[];
   sortHref: (key: string) => string;
 }) {
@@ -1019,7 +1020,7 @@ function OfficeTable({
                       dietaryNotes={b.dietary_notes}
                       balanceDueLabel={
                         pay.outstandingAmount != null && pay.outstandingAmount > 0
-                          ? money(pay.outstandingAmount)
+                          ? money(pay.outstandingAmount, b.island)
                           : null
                       }
                       comments={b.office_comments}
@@ -1141,7 +1142,7 @@ function DoorTable({
   sortHref,
 }: {
   rows: BookingRow[];
-  money: (n: number) => string;
+  money: (n: number, island?: string | null) => string;
   sortKeys: string[];
   sortHref: (key: string) => string;
 }) {
@@ -1254,7 +1255,7 @@ function DoorTable({
                       dietaryNotes={b.dietary_notes}
                       balanceDueLabel={
                         pay.outstandingAmount != null && pay.outstandingAmount > 0
-                          ? money(pay.outstandingAmount)
+                          ? money(pay.outstandingAmount, b.island)
                           : null
                       }
                       comments={b.office_comments}

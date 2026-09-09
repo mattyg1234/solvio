@@ -1149,12 +1149,17 @@ export async function setBookingPickupAction(formData: FormData): Promise<void> 
 
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
-    .select("id,cancelled_at,transport_required")
+    .select("id,cancelled_at,transport_required,pickup_kind")
     .eq("id", bookingId)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!booking) throw new Error("Booking not found.");
   if (booking.cancelled_at) throw new Error("Cancelled bookings stay off the bus list.");
+  // The quick setter moves an existing bus passenger between stops. Putting an own-way or
+  // private-pickup guest on a bus changes what they pay, so that goes through Edit booking.
+  if (stopId && (!booking.transport_required || (booking.pickup_kind && booking.pickup_kind !== "bus"))) {
+    throw new Error("This booking has no bus. Use Edit booking to add transport so the price and supplement update.");
+  }
 
   if (!stopId) {
     await ctx.supabase
@@ -1828,6 +1833,51 @@ async function buildBookingFields(
   };
 }
 
+/**
+ * The "Send the guest their ticket" box is on the staff, seller and partner-link
+ * forms alike; every create path honours it the same way. Never blocks the booking.
+ */
+async function sendGuestTicketIfRequested(
+  formData: FormData,
+  ctx: { branding: { displayName: string }; config: ShowOpsConfig },
+  f: Record<string, unknown>,
+  booking_ref: string,
+  token: string | null,
+): Promise<void> {
+  if (String(formData.get("send_ticket") ?? "") !== "1") return;
+  try {
+    await sendGuestTicket({
+      merchantName: ctx.branding.displayName,
+      bookingRef: booking_ref,
+      guestName: String(f.guest_name ?? ""),
+      guestEmail: (f.guest_email as string | null) ?? null,
+      guestMobile: (f.guest_mobile as string | null) ?? null,
+      showName: String(f.show_name ?? ""),
+      extrasSummary: bookingExtrasSummary(f.extras_snapshot),
+      showDate: String(f.show_date ?? ""),
+      adults: Number(f.adults) || 0,
+      children: Number(f.children) || 0,
+      infants: Number(f.infants) || 0,
+      hotelName: (f.hotel_name as string | null) ?? null,
+      transportRequired: Boolean(f.transport_required),
+      pickupStopName: (f.pickup_stop_name as string | null) ?? null,
+      pickupTime: (f.pickup_time as string | null) ?? null,
+      billingMode: String(f.billing_mode ?? "deposit"),
+      totalCost: f.total_cost == null ? null : Number(f.total_cost),
+      depositAmount: f.deposit_amount == null ? null : Number(f.deposit_amount),
+      balanceRemaining: f.balance_remaining == null ? null : Number(f.balance_remaining),
+      currency: showOpsCurrencyFor(ctx.config, (f as { island?: string | null }).island ?? null),
+      dietaryNotes: (f.dietary_notes as string | null) ?? null,
+      ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
+      showTime: (f.ampm as string | null) ?? null,
+      pickupKind: (f.pickup_kind as string | null) ?? null,
+      privateZone: (f.private_zone as string | null) ?? null,
+    });
+  } catch (err) {
+    console.error("[guest-ticket] send failed for", booking_ref, err instanceof Error ? err.message : err);
+  }
+}
+
 export async function createBookingAction(
   formData: FormData,
 ): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
@@ -1849,37 +1899,7 @@ export async function createBookingAction(
   if (error) return { ok: false, message: error.message };
 
   // Guest ticket by email/SMS on save (opt-out checkbox on the form). Never blocks the booking.
-  if (String(formData.get("send_ticket") ?? "") === "1") {
-    const f = built.fields as Record<string, unknown>;
-    const token = data?.ticket_token ? String(data.ticket_token) : null;
-    await sendGuestTicket({
-      merchantName: ctx.branding.displayName,
-      bookingRef: booking_ref,
-      guestName: String(f.guest_name ?? ""),
-      guestEmail: (f.guest_email as string | null) ?? null,
-      guestMobile: (f.guest_mobile as string | null) ?? null,
-      showName: String(f.show_name ?? ""),
-    extrasSummary: bookingExtrasSummary(f.extras_snapshot),
-      showDate: String(f.show_date ?? ""),
-      adults: Number(f.adults) || 0,
-      children: Number(f.children) || 0,
-      infants: Number(f.infants) || 0,
-      hotelName: (f.hotel_name as string | null) ?? null,
-      transportRequired: Boolean(f.transport_required),
-      pickupStopName: (f.pickup_stop_name as string | null) ?? null,
-      pickupTime: (f.pickup_time as string | null) ?? null,
-      billingMode: String(f.billing_mode ?? "deposit"),
-      totalCost: f.total_cost == null ? null : Number(f.total_cost),
-      depositAmount: f.deposit_amount == null ? null : Number(f.deposit_amount),
-      balanceRemaining: f.balance_remaining == null ? null : Number(f.balance_remaining),
-      currency: showOpsCurrencyFor(ctx.config, (f as { island?: string | null }).island ?? null),
-      dietaryNotes: (f.dietary_notes as string | null) ?? null,
-      ticketUrl: token ? showOpsTicketUrl(getDeploymentSiteUrl(), token) : null,
-      showTime: (f.ampm as string | null) ?? null,
-      pickupKind: (f.pickup_kind as string | null) ?? null,
-      privateZone: (f.private_zone as string | null) ?? null,
-    });
-  }
+  await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null);
 
   revalidateShowOps();
   return { ok: true, id: data?.id, message: booking_ref };
@@ -2254,6 +2274,8 @@ export async function createPartnerLinkBookingAction(
       },
     });
     if (!error) {
+      const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
+      await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
       revalidatePath(`/p/${String(formData.get("partner_token"))}`);
       revalidateShowOps();
       return { ok: true, id, message: booking_ref };
@@ -2361,6 +2383,8 @@ export async function createSellerBookingAction(
       created_by: ctx.user.id,
     });
   if (error) return { ok: false, message: partnerBookingErrorMessage(error) };
+  const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
+  await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
   revalidatePath("/partner");
   return { ok: true, id, message: booking_ref };
 }

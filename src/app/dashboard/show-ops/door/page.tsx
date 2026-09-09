@@ -24,6 +24,7 @@ import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 
 type DoorRow = {
+  island: string | null;
   id: string;
   booking_ref: string;
   guest_name: string;
@@ -65,23 +66,27 @@ export default async function ShowOpsDoorPage({
   const date = sp.date || isoDateInTimeZone(new Date(), "Atlantic/Canary");
   const island = sp.island || "";
   const showFilter = sp.show || "";
-  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
+  // Money is shown in each booking's own island currency (UK legs in pounds), not the filter's.
+  const moneyFor = (rowIsland: string | null | undefined) => (n: number) =>
+    formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, rowIsland || island));
   const day = showOpsDayName(date);
 
   let query = ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,show_name,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,dietary_required,dietary_notes,office_comments,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show,door_pay_method,no_show_charge,no_show_proof_path,invoice_id",
+      "id,island,booking_ref,guest_name,show_name,hotel_name,pickup_stop_name,pickup_time,adults,children,infants,dietary_required,dietary_notes,office_comments,billing_mode,payment_status,total_cost,balance_remaining,nett_total,cancelled_at,arrived_at,arrived_pax,no_show,door_pay_method,no_show_charge,no_show_proof_path,invoice_id",
     )
     .eq("business_id", ctx.business.id)
     .eq("show_date", date)
     .is("cancelled_at", null);
   if (island) query = query.eq("island", island);
 
-  const [{ data: bookingRows }, { data: savedShows }] = await Promise.all([
-    query,
+  const [{ data: bookingRows, error: bookingsError }, { data: savedShows }] = await Promise.all([
+    query.order("id").range(0, 1999),
     ctx.supabase.from("show_products").select("name").eq("business_id", ctx.business.id).eq("active", true).order("name"),
   ]);
+  // A failed read must look like a failure at the door, never like "everyone is in".
+  const loadError = bookingsError ? bookingsError.message : (bookingRows ?? []).length >= 2000 ? "This night has more than 2,000 bookings; the list is cut off. Filter by island or show." : null;
 
   const bookings = ((bookingRows ?? []) as DoorRow[]).filter((b) => !showFilter || b.show_name === showFilter);
 
@@ -145,8 +150,12 @@ export default async function ShowOpsDoorPage({
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Waiting</h3>
-        {waiting.length ? (
-          waiting.map((b) => <DoorCard key={b.id} row={b} money={money} />)
+        {loadError ? (
+          <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">
+            The door list could not be loaded: {loadError} Refresh before checking anyone in.
+          </p>
+        ) : waiting.length ? (
+          waiting.map((b) => <DoorCard key={b.id} row={b} money={moneyFor(b.island)} />)
         ) : (
           <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Everyone on this list is in.</p>
         )}
@@ -155,7 +164,7 @@ export default async function ShowOpsDoorPage({
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Arrived</h3>
         {inNow.length ? (
-          inNow.map((b) => <DoorCard key={b.id} row={b} money={money} />)
+          inNow.map((b) => <DoorCard key={b.id} row={b} money={moneyFor(b.island)} />)
         ) : (
           <p className="rounded-2xl bg-white px-4 py-3 text-sm text-slate-500 ring-1 ring-slate-200">Nobody scanned in yet.</p>
         )}
@@ -165,7 +174,7 @@ export default async function ShowOpsDoorPage({
         <section className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">No-show</h3>
           {absent.map((b) => (
-            <DoorCard key={b.id} row={b} money={money} />
+            <DoorCard key={b.id} row={b} money={moneyFor(b.island)} />
           ))}
         </section>
       ) : null}
