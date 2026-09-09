@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
+import { testAvailabilityPush, type PushVariant } from "@/lib/show-ops/gyg-data";
 
 function back(param: string, value: string): never {
   revalidatePath("/dashboard/show-ops/settings");
@@ -66,4 +67,17 @@ export async function deleteChannelProductAction(formData: FormData): Promise<vo
   const { error } = await ctx.supabase.from("show_channel_products").delete().eq("id", id).eq("business_id", ctx.business.id);
   if (error) back("channel_error", error.message);
   back("channel", "deleted");
+}
+
+/** Admin diagnostic: push one night's availability to GetYourGuide and show the raw answer. */
+export async function testChannelPushAction(formData: FormData): Promise<void> {
+  await requireGlobalShowOpsAdmin();
+  const externalId = String(formData.get("external_product_id") ?? "").trim();
+  const date = String(formData.get("show_date") ?? "").trim();
+  const variantRaw = String(formData.get("variant") ?? "standard");
+  const variant: PushVariant = (["standard", "item-product", "zulu", "cutoff"] as const).includes(variantRaw as PushVariant) ? (variantRaw as PushVariant) : "standard";
+  if (!externalId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) back("channel_error", "Pick a mapped product and a night (YYYY-MM-DD) to test the push.");
+  const result = await testAvailabilityPush(externalId, date, variant);
+  const summary = `${result.ok ? "ACCEPTED" : "REJECTED"} HTTP ${result.status} from ${result.base} · sent ${JSON.stringify(result.payload)} · answer ${result.body}`;
+  back("channel_push", summary.slice(0, 900));
 }

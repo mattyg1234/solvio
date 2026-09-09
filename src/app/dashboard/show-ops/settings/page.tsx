@@ -16,7 +16,7 @@ import {
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
-import { deleteChannelProductAction, saveChannelProductAction } from "@/app/dashboard/show-ops/actions-channels";
+import { deleteChannelProductAction, saveChannelProductAction, testChannelPushAction } from "@/app/dashboard/show-ops/actions-channels";
 import {
   MemberIslandsForm,
   IslandScopeFields,
@@ -44,6 +44,7 @@ export default async function ShowOpsSettingsPage({
     holded_error?: string;
     channel?: string;
     channel_error?: string;
+    channel_push?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -1152,6 +1153,7 @@ export default async function ShowOpsSettingsPage({
         {sp.channel === "saved" ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Product mapping saved.</p> : null}
         {sp.channel === "deleted" ? <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Product mapping removed.</p> : null}
         {sp.channel_error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{sp.channel_error}</p> : null}
+        {sp.channel_push ? <p className="mt-3 break-all rounded-lg bg-slate-100 px-3 py-2 font-mono text-xs text-slate-800" data-testid="channel-push-result">{sp.channel_push}</p> : null}
         {(channelRows ?? []).length ? (
           <table className="mt-3 w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
@@ -1242,6 +1244,31 @@ export default async function ShowOpsSettingsPage({
             <button type="submit" className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white">Map product</button>
           </div>
         </form>
+        {(channelRows ?? []).length ? (
+          <form action={testChannelPushAction} className="mt-4 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3 text-xs">
+            <span className="w-full text-slate-600">Diagnostic: push one night&apos;s vacancies to GetYourGuide now and show their raw answer (certification test for notify-availability-update).</span>
+            <label className="font-medium text-slate-600">
+              Product
+              <select name="external_product_id" className="mt-1 block rounded-lg border px-2 py-1.5 font-mono text-xs">
+                {(channelRows ?? []).map((r) => <option key={r.id} value={r.external_product_id}>{r.external_product_id}</option>)}
+              </select>
+            </label>
+            <label className="font-medium text-slate-600">
+              Night
+              <input name="show_date" type="date" required className="mt-1 block rounded-lg border px-2 py-1.5 text-xs" />
+            </label>
+            <label className="font-medium text-slate-600">
+              Payload variant
+              <select name="variant" className="mt-1 block rounded-lg border px-2 py-1.5 text-xs">
+                <option value="standard">Standard (spec example)</option>
+                <option value="item-product">productId repeated per item</option>
+                <option value="zulu">Z instead of +00:00</option>
+                <option value="cutoff">With cutoffSeconds</option>
+              </select>
+            </label>
+            <button type="submit" className="rounded-lg bg-white px-3 py-2 font-semibold text-slate-800 ring-1 ring-slate-300" data-testid="channel-push-test">Send test push</button>
+          </form>
+        ) : null}
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">

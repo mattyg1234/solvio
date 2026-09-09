@@ -352,7 +352,48 @@ async function channelProductForShow(db: SupabaseClient, businessId: string, pro
   return data ? findChannelProduct(db, data.external_product_id) : null;
 }
 
-const GYG_PUSH_BASE = "https://supplier-api.getyourguide.com/1"; // their spec defines one host only — no sandbox
+/**
+ * Where availability pushes go. Production is the only host in their public spec, but the
+ * Integrator Portal's "Test GetYourGuide endpoints" page gives a sandbox URL for the
+ * PUSH_AVAILABILITY certification test (…/sandbox/1/…), so the base stays configurable.
+ */
+function gygPushBase(): string {
+  return (process.env.GYG_API_BASE || "https://supplier-api.getyourguide.com/1").replace(/\/$/, "");
+}
+
+export type PushVariant = "standard" | "item-product" | "zulu" | "cutoff";
+
+function pushPayload(cp: ChannelProduct, date: string, vacancies: number, variant: PushVariant = "standard") {
+  let dateTime = gygDateTime(date, cp.availability_type === "time_period" ? "00:00" : cp.product.show_time, cp.product.island);
+  if (variant === "zulu") dateTime = dateTime.replace(/\+00:00$/, "Z");
+  const item: Record<string, unknown> = { dateTime, vacancies };
+  if (variant === "item-product") item.productId = cp.external_product_id;
+  if (variant === "cutoff") item.cutoffSeconds = Math.max(0, cp.cutoff_minutes) * 60;
+  return { data: { productId: cp.external_product_id, availabilities: [item] } };
+}
+
+async function postAvailability(payload: unknown, user: string, pass: string): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${gygPushBase()}/notify-availability-update`, {
+    method: "POST",
+    headers: { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`, "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: (await res.text()).slice(0, 400) };
+}
+
+/** Admin diagnostic: send one push for a mapped product and night and return what GetYourGuide answered. */
+export async function testAvailabilityPush(externalProductId: string, date: string, variant: PushVariant): Promise<{ ok: boolean; status: number; body: string; payload: unknown; base: string }> {
+  const user = process.env.GYG_OUTBOUND_BASIC_USER;
+  const pass = process.env.GYG_OUTBOUND_BASIC_PASSWORD;
+  if (!user || !pass) return { ok: false, status: 0, body: "GYG_OUTBOUND_BASIC_USER / GYG_OUTBOUND_BASIC_PASSWORD are not set on the server.", payload: null, base: gygPushBase() };
+  const db = createSupabaseServiceRoleClient();
+  const cp = await findChannelProduct(db, externalProductId);
+  if (!cp) return { ok: false, status: 0, body: `Unknown mapped product ${externalProductId}.`, payload: null, base: gygPushBase() };
+  const [night] = await availabilityBetween(db, cp, date, date);
+  const payload = pushPayload(cp, date, night ? night.vacancies : 0, variant);
+  const res = await postAvailability(payload, user, pass);
+  return { ok: res.status >= 200 && res.status < 300, ...res, payload, base: gygPushBase() };
+}
 /**
  * Push the night's vacancies to GetYourGuide after our own change (channel booking
  * or cancel, desk booking/edit/cancel, partner-link booking, night close/reopen).
@@ -373,16 +414,12 @@ export async function notifyAvailability(db: SupabaseClient, cp: ChannelProduct,
       await db.from("show_channel_availability_pushes").upsert({ ...key, last_vacancies: night.vacancies, updated_at: now }, { onConflict: "business_id,channel,external_product_id,show_date" });
       return;
     }
-    const payload = { data: { productId: cp.external_product_id, availabilities: [{ dateTime: gygDateTime(date, cp.product.show_time, cp.product.island), vacancies: night.vacancies }] } };
-    const res = await fetch(`${GYG_PUSH_BASE}/notify-availability-update`, {
-      method: "POST",
-      headers: { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`, "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const text = res.ok ? "" : (await res.text()).slice(0, 200);
+    const payload = pushPayload(cp, date, night.vacancies);
+    const res = await postAvailability(payload, user, pass);
+    const ok = res.status >= 200 && res.status < 300;
     // INVALID_PRODUCT is expected until the operator has connected this product id in GYG's supplier portal.
-    const status = res.ok ? "accepted" : /INVALID_PRODUCT/.test(text) ? "not-connected" : `error ${res.status}`;
-    if (!res.ok && status !== "not-connected") console.error("[gyg] notify-availability-update", res.status, text, "payload:", JSON.stringify(payload).slice(0, 300));
+    const status = ok ? "accepted" : /INVALID_PRODUCT/.test(res.body) ? "not-connected" : `error ${res.status}`;
+    if (!ok && status !== "not-connected") console.error("[gyg] notify-availability-update", res.status, res.body.slice(0, 200), "payload:", JSON.stringify(payload).slice(0, 300), "base:", gygPushBase());
     await db.from("show_channel_availability_pushes").upsert({ ...key, last_vacancies: night.vacancies, pushed_at: now, last_status: status, updated_at: now }, { onConflict: "business_id,channel,external_product_id,show_date" });
   } catch (err) {
     console.error("[gyg] notify-availability-update failed:", err instanceof Error ? err.message : err);
