@@ -14,8 +14,8 @@ import {
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
-import { connectHoldedAction, disconnectHoldedAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
-import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
+import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import {
   MemberIslandsForm,
   IslandScopeFields,
@@ -119,6 +119,7 @@ export default async function ShowOpsSettingsPage({
   const supplierName = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
 
   const holded = await loadHoldedConnection(ctx);
+  const igic = holded.connected ? await listHoldedIgicTaxes(ctx) : { taxes: [], error: null };
 
   return (
     <div className="space-y-8">
@@ -1012,6 +1013,8 @@ export default async function ShowOpsSettingsPage({
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Holded connected and verified.</p>
         ) : sp.holded === "ok" ? (
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Connection test passed.</p>
+        ) : sp.holded === "taxes_saved" ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Approved IGIC taxes saved.</p>
         ) : sp.holded === "disconnected" ? (
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Holded disconnected. Packs already sent keep their Holded numbers.</p>
         ) : null}
@@ -1056,6 +1059,38 @@ export default async function ShowOpsSettingsPage({
               </form>
             </div>
           </div>
+        ) : null}
+
+        {holded.connected ? (
+          <form action={saveHoldedTaxApprovalsAction} className="mt-3 space-y-2 rounded-xl border border-slate-200 p-3">
+            <p className="text-sm font-medium">Approved IGIC taxes for invoice lines</p>
+            <p className="text-xs text-slate-600">
+              Solvio only puts a tax on a Holded invoice line if the accountant has approved it here, one Holded tax per rate.
+              Nothing is sent to Holded until every rate used on the pack has an approved tax.
+            </p>
+            {igic.error ? <p className="text-xs text-rose-700">{igic.error}</p> : null}
+            {!igic.taxes.length && !igic.error ? (
+              <p className="text-xs text-amber-800">
+                Holded returned no IGIC sales taxes for this company. Ask the accountant to set the company to the Canary
+                Islands regime (or add the IGIC taxes) in Holded, then reload this page.
+              </p>
+            ) : null}
+            <div className="grid gap-1 sm:grid-cols-2">
+              {igic.taxes.map((t) => (
+                <label key={t.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="approve_tax" value={t.id} defaultChecked={t.approved} />
+                  <span>
+                    {t.name} <span className="text-xs text-slate-500">· {t.rate}% · {t.key}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {igic.taxes.length ? (
+              <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+                Save approved taxes
+              </button>
+            ) : null}
+          </form>
         ) : null}
 
         <form action={connectHoldedAction} className="mt-3 flex flex-wrap items-end gap-3">

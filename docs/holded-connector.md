@@ -38,3 +38,15 @@ operational system. Nothing here talks to AEAT directly — Holded does that whe
 - Holded contact match is by `code`/`vatnumber` scan of the contact list; fine to ~2k contacts.
 - Holded test company (Matty's "Solvio systems") has IVA taxes only — MHT's real account must be on the
   Canary regime or invoices carry the wrong tax type in Verifactu.
+
+## 9 Sept 2026 — lifecycle wiring
+- Lifecycle functions (claim → external write → complete/resolve, plus a new status **sync**) live in `private`;
+  `20260909010000_show_ops_holded_rpc_wrappers.sql` adds the `public.show_ops_holded_*` wrappers PostgREST can call.
+  Finance users may claim / request reconciliation; only the backend (service role) may complete, resolve or sync.
+- `actions-holded.ts`: Send = prepare (contact, approved IGIC tax per rate) → claim → Holded draft with immutable
+  operation reference `solvio-inv-<pack id>` → complete(created|failed|unknown). Refresh/Sync read Holded and call
+  sync. Reconcile recovers an unconfirmed write by looking the reference up in Holded → resolve(found|not found).
+- IGIC approvals: Settings → "Approved IGIC taxes" lists Holded's IGIC sales taxes; one approved per rate, stored in
+  integration meta. No approval for a rate ⇒ the pack is not sent (fail closed). Test company has no IGIC taxes —
+  add a custom tax named "IGIC 7%" there to test.
+- Direct writes to `holded_*` columns from the app are refused by the DB trigger; never bypass the wrappers.

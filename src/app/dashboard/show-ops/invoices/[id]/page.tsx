@@ -7,7 +7,7 @@ import {
   sendShowOpsInvoiceEmailAction,
   voidInvoiceAction,
 } from "@/app/dashboard/show-ops/actions";
-import { pushInvoiceToHoldedAction, refreshHoldedInvoiceAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction } from "@/app/dashboard/show-ops/actions-holded";
 import { InvoiceEditor } from "@/components/show-ops/invoice-editor";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -18,13 +18,14 @@ import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { loadInvoiceDelivery } from "@/lib/show-ops/invoice-delivery";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { holdedInvoiceView } from "@/lib/show-ops/holded";
 
 export default async function InvoicePrintPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ emailed?: string; saved?: string; issued?: string; verifactu?: string; holded?: string }>;
+  searchParams: Promise<{ emailed?: string; saved?: string; issued?: string; verifactu?: string; holded?: string; holded_msg?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -94,18 +95,17 @@ export default async function InvoicePrintPage({
   });
   const displayNumber = inv.invoice_number || inv.verifactu_number || "Draft";
   const canEmail = inv.status === "issued" && !inv.voided;
-  const holdedLabel =
-    inv.holded_status === "paid"
-      ? `Paid in Holded · ${inv.holded_doc_number || "numbered"}`
-      : inv.holded_status === "approved"
-        ? `Issued by Holded as ${inv.holded_doc_number || "—"} (Verifactu)`
-        : inv.holded_status === "draft"
-          ? "Draft in Holded — waiting for the office to approve it there"
-          : inv.holded_status === "error"
-            ? `Holded error: ${inv.holded_error || "failed"}`
-            : holded.connected
-              ? "Not sent to Holded yet"
-              : "Holded not connected";
+  const holdedView = holdedInvoiceView(inv, holded.connected);
+  const holdedLabel = holdedView.label;
+  const { data: holdedEvents } = inv.holded_document_id || inv.holded_status !== "not_sent"
+    ? await ctx.supabase
+        .from("show_invoice_external_events")
+        .select("action,outcome,safe_message,created_at")
+        .eq("business_id", ctx.business.id)
+        .eq("invoice_id", inv.id)
+        .order("created_at", { ascending: false })
+        .limit(6)
+    : { data: [] as Array<{ action: string; outcome: string; safe_message: string | null; created_at: string }> };
   const verifactuLabel =
     inv.holded_doc_number
       ? `Legal number ${inv.holded_doc_number} issued by Holded (Verifactu)`
@@ -173,8 +173,17 @@ export default async function InvoicePrintPage({
         </p>
       ) : sp.holded === "refreshed" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Updated from Holded. {holdedLabel}.</p>
+      ) : sp.holded === "not_found" ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
+          Holded has no document for this pack. It is safe to send again.
+        </p>
+      ) : sp.holded === "reconcile" ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
+          Holded did not confirm the write. Nothing was duplicated. Use Reconcile to find out what happened.
+          {sp.holded_msg ? ` ${sp.holded_msg}` : ""}
+        </p>
       ) : sp.holded === "error" ? (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">{holdedLabel}</p>
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">{sp.holded_msg || holdedLabel}</p>
       ) : null}
       {sp.emailed === "1" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
@@ -221,31 +230,59 @@ export default async function InvoicePrintPage({
       ) : !inv.voided ? (
         <div className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200 print:hidden">
           <p className="text-sm text-slate-600">{verifactuLabel}</p>
-          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
-            <p className="text-sm text-slate-700">
-              <span className="font-medium">Holded:</span> {holdedLabel}
-              {inv.holded_synced_at ? (
-                <span className="text-xs text-slate-500"> · synced {new Date(inv.holded_synced_at).toLocaleString()}</span>
+          <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className={`text-sm ${holdedView.tone === "bad" ? "text-rose-800" : holdedView.tone === "warn" ? "text-amber-900" : holdedView.tone === "ok" ? "text-emerald-800" : "text-slate-700"}`}>
+                <span className="font-medium">Holded:</span> {holdedLabel}
+                {inv.holded_synced_at ? (
+                  <span className="text-xs text-slate-500"> · synced {new Date(inv.holded_synced_at).toLocaleString()}</span>
+                ) : null}
+              </p>
+              {holdedView.canSend ? (
+                <form action={pushInvoiceToHoldedAction}>
+                  <input type="hidden" name="invoice_id" value={inv.id} />
+                  <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Send to Holded</SubmitOnce>
+                </form>
               ) : null}
-            </p>
-            {holded.connected && !inv.holded_document_id ? (
-              <form action={pushInvoiceToHoldedAction}>
-                <input type="hidden" name="invoice_id" value={inv.id} />
-                <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Send to Holded</SubmitOnce>
-              </form>
+              {holdedView.canRefresh ? (
+                <form action={refreshHoldedInvoiceAction}>
+                  <input type="hidden" name="invoice_id" value={inv.id} />
+                  <SubmitOnce className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+                    Refresh from Holded
+                  </SubmitOnce>
+                </form>
+              ) : null}
+              {holdedView.canReconcile ? (
+                <form action={reconcileHoldedInvoiceAction}>
+                  <input type="hidden" name="invoice_id" value={inv.id} />
+                  <SubmitOnce className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white">
+                    Reconcile with Holded
+                  </SubmitOnce>
+                </form>
+              ) : null}
+              {!holded.connected && !inv.holded_document_id ? (
+                <Link href="/dashboard/show-ops/settings#holded" className="text-sm font-semibold text-violet-700 underline">
+                  Connect Holded in Settings
+                </Link>
+              ) : null}
+            </div>
+            {inv.holded_expected_total != null && inv.holded_actual_total != null && inv.holded_amounts_match === false ? (
+              <p className="text-xs text-rose-800">
+                Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}. Fix the draft in Holded, then Refresh.
+              </p>
             ) : null}
-            {holded.connected && inv.holded_document_id ? (
-              <form action={refreshHoldedInvoiceAction}>
-                <input type="hidden" name="invoice_id" value={inv.id} />
-                <SubmitOnce className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
-                  Refresh from Holded
-                </SubmitOnce>
-              </form>
-            ) : null}
-            {!holded.connected ? (
-              <Link href="/dashboard/show-ops/settings#holded" className="text-sm font-semibold text-violet-700 underline">
-                Connect Holded in Settings
-              </Link>
+            {holdedEvents?.length ? (
+              <details className="text-xs text-slate-600">
+                <summary className="cursor-pointer font-medium">Holded history</summary>
+                <ul className="mt-1 space-y-0.5">
+                  {holdedEvents.map((e, i) => (
+                    <li key={i}>
+                      {new Date(e.created_at).toLocaleString()} · {e.action.replace(/_/g, " ")} → {e.outcome.replace(/_/g, " ")}
+                      {e.safe_message ? ` · ${e.safe_message}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             ) : null}
           </div>
           {!inv.holded_document_id && (inv.verifactu_status === "error" || inv.verifactu_status === "manual" || inv.verifactu_status === "not_sent") ? (

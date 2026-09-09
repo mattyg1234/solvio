@@ -703,13 +703,35 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
     if (noShow === "charge" || noShow === "write_off") patch.no_show_policy = noShow;
     const active = String(formData.get("bulk_active") ?? "");
     if (active === "1" || active === "0") patch.active = active === "1";
-    if (Object.keys(patch).length <= 1) throw new Error("Fill at least one bulk field to apply.");
-    const { error } = await ctx.supabase
-      .from("show_suppliers")
-      .update(patch)
-      .eq("business_id", ctx.business.id)
-      .in("id", target);
-    if (error) throw new Error(error.message);
+    const addIsland = String(formData.get("bulk_add_island") ?? "").trim();
+    if (Object.keys(patch).length <= 1 && !addIsland) throw new Error("Fill at least one bulk field to apply.");
+    if (Object.keys(patch).length > 1) {
+      const { error } = await ctx.supabase
+        .from("show_suppliers")
+        .update(patch)
+        .eq("business_id", ctx.business.id)
+        .in("id", target);
+      if (error) throw new Error(error.message);
+    }
+    if (addIsland) {
+      // Adds the location alongside whatever the partner already sells; a partner on All is left alone.
+      const { data: rows, error: readError } = await ctx.supabase
+        .from("show_suppliers")
+        .select("id,island")
+        .eq("business_id", ctx.business.id)
+        .in("id", target);
+      if (readError) throw new Error(readError.message);
+      for (const row of rows ?? []) {
+        const current = String(row.island ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+        if (current.some((x) => x.toUpperCase() === "ALL") || current.includes(addIsland)) continue;
+        const { error } = await ctx.supabase
+          .from("show_suppliers")
+          .update({ island: normalisePartnerIslands([...current, addIsland]), updated_at: new Date().toISOString() })
+          .eq("id", row.id)
+          .eq("business_id", ctx.business.id);
+        if (error) throw new Error(error.message);
+      }
+    }
     revalidateShowOps();
     redirect(`/dashboard/show-ops/master?tab=${encodeURIComponent(tab)}&saved=bulk`);
   }

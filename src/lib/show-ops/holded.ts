@@ -64,7 +64,100 @@ export type HoldedTotalsComparison = {
 export type HoldedCreditNoteInput = HoldedInvoiceInput;
 export type HoldedDraftOperation = { reference: string; knownDocumentId?: string; ambiguous?: boolean };
 
-export type HoldedStatus = "not_sent" | "draft" | "approved" | "paid" | "error";
+export type HoldedStatus = "not_sent" | "creating" | "draft" | "approved" | "paid" | "corrected" | "error" | "failed" | "unknown";
+export type HoldedReconciliationStatus = "not_required" | "required" | "reconciling" | "resolved" | "failed";
+
+/**
+ * Holded's tax catalogue has no legal-treatment field; the treatment is in the
+ * key/name (s_igic_7, "IGIC 7%"). Normalise once so approvals can be checked.
+ */
+export function normaliseHoldedTax(raw: unknown): HoldedTax | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const t = raw as Record<string, unknown>;
+  const key = typeof t.key === "string" ? t.key.trim() : "";
+  const name = typeof t.name === "string" ? t.name.trim() : "";
+  const amount = Number(t.amount);
+  if (!key || !Number.isFinite(amount)) return null;
+  const scope = typeof t.scope === "string" && t.scope ? t.scope : "sales";
+  const legalTreatment = /igic/i.test(`${key} ${name}`) ? "igic" : /iva|vat/i.test(`${key} ${name}`) ? "iva" : "other";
+  return { id: typeof t.id === "string" ? t.id : undefined, key, name, amount, scope, legalTreatment, category: scope };
+}
+
+/** Approved IGIC sales taxes live in the integration meta, keyed by rate ("7" → approval). */
+export function parseIgicApprovals(meta: unknown): Record<string, HoldedIgicTaxApproval> {
+  const out: Record<string, HoldedIgicTaxApproval> = {};
+  const src = meta && typeof meta === "object" && !Array.isArray(meta) ? (meta as Record<string, unknown>).igic_taxes : null;
+  if (!src || typeof src !== "object" || Array.isArray(src)) return out;
+  for (const [rateKey, v] of Object.entries(src as Record<string, unknown>)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    const a = v as Record<string, unknown>;
+    const rate = Number(a.rate);
+    if (typeof a.id !== "string" || typeof a.key !== "string" || !Number.isFinite(rate)) continue;
+    if (a.legalTreatment !== "igic" || a.category !== "sales") continue;
+    out[String(rateKey)] = { id: a.id, key: a.key, rate, legalTreatment: "igic", category: "sales" };
+  }
+  return out;
+}
+
+export function rateKey(rate: number): string {
+  return String(Math.round(Number(rate) * 100) / 100);
+}
+
+export function approvalForRate(approvals: Record<string, HoldedIgicTaxApproval>, rate: number): HoldedIgicTaxApproval | null {
+  return approvals[rateKey(rate)] ?? null;
+}
+
+/** Turn an approved Holded tax into the stored approval shape; refuses anything that is not IGIC on sales. */
+export function approvalFromTax(tax: HoldedTax): HoldedIgicTaxApproval | null {
+  if (!tax.id || tax.legalTreatment !== "igic" || (tax.scope ?? "sales") !== "sales") return null;
+  return { id: tax.id, key: tax.key, rate: Math.round(Number(tax.amount) * 100) / 100, legalTreatment: "igic", category: "sales" };
+}
+
+export type HoldedInvoiceView = {
+  label: string;
+  tone: "neutral" | "ok" | "warn" | "bad";
+  canSend: boolean;
+  canRefresh: boolean;
+  canReconcile: boolean;
+};
+
+/** What the finance screen should say and offer for a pack, from its lifecycle columns. */
+export function holdedInvoiceView(inv: {
+  holded_status?: string | null;
+  holded_doc_number?: string | null;
+  holded_document_id?: string | null;
+  holded_error?: string | null;
+  holded_reconciliation_status?: string | null;
+  holded_verification_status?: string | null;
+  holded_claimed_at?: string | null;
+}, connected: boolean): HoldedInvoiceView {
+  const status = String(inv.holded_status ?? "not_sent");
+  const recon = String(inv.holded_reconciliation_status ?? "not_required");
+  const hasDoc = Boolean(inv.holded_document_id);
+  const num = inv.holded_doc_number || null;
+  if (!connected && !hasDoc) return { label: "Holded not connected", tone: "neutral", canSend: false, canRefresh: false, canReconcile: false };
+  if (recon === "required" || recon === "reconciling" || status === "unknown") {
+    return {
+      label: hasDoc && inv.holded_verification_status === "mismatch"
+        ? `Totals in Holded differ from Solvio — check ${num || "the draft"} in Holded`
+        : "Holded did not confirm the last write — reconcile before retrying",
+      tone: "bad", canSend: false, canRefresh: hasDoc, canReconcile: true,
+    };
+  }
+  switch (status) {
+    case "creating": {
+      const stale = inv.holded_claimed_at ? Date.now() - new Date(inv.holded_claimed_at).getTime() > 15 * 60 * 1000 : false;
+      return { label: stale ? "A send to Holded stalled — reconcile to recover" : "Sending to Holded…", tone: "warn", canSend: false, canRefresh: false, canReconcile: stale };
+    }
+    case "draft": return { label: "Draft in Holded — waiting for the office to approve it there", tone: "warn", canSend: false, canRefresh: true, canReconcile: false };
+    case "approved": return { label: `Issued by Holded as ${num || "—"} (Verifactu)`, tone: "ok", canSend: false, canRefresh: true, canReconcile: false };
+    case "paid": return { label: `Paid in Holded · ${num || "numbered"}`, tone: "ok", canSend: false, canRefresh: true, canReconcile: false };
+    case "corrected": return { label: `Corrected in Holded · ${num || ""}`.trim(), tone: "neutral", canSend: false, canRefresh: true, canReconcile: false };
+    case "failed":
+    case "error": return { label: `Holded error: ${inv.holded_error || "failed"}`, tone: "bad", canSend: !hasDoc, canRefresh: hasDoc, canReconcile: false };
+    default: return { label: "Not sent to Holded yet", tone: "neutral", canSend: true, canRefresh: false, canReconcile: false };
+  }
+}
 
 type PackLine = {
   description?: string | null;
@@ -301,8 +394,8 @@ function moneyCents(value: unknown, label: string): number {
   if (!/^-?\d+(?:\.\d+)?$/.test(raw)) { strictMoney(value, label); throw new Error(`Holded returned malformed ${label}.`); }
   const negative = raw.startsWith("-");
   const [whole, fraction = ""] = (negative ? raw.slice(1) : raw).split(".");
-  let cents = BigInt(whole) * 100n + BigInt((fraction + "00").slice(0, 2));
-  if (fraction.slice(2)[0] >= "5") cents += 1n;
+  let cents = BigInt(whole) * BigInt(100) + BigInt((fraction + "00").slice(0, 2));
+  if (fraction.slice(2)[0] >= "5") cents += BigInt(1);
   if (negative) cents = -cents;
   const result = Number(cents);
   if (!Number.isSafeInteger(result)) throw new Error(`Holded returned out-of-range ${label}.`);
@@ -392,7 +485,9 @@ export class HoldedClient {
   }
 
   listTaxes(): Promise<HoldedTax[]> {
-    return this.request<HoldedTax[]>("GET", "/invoicing/v1/taxes").then((t) => (Array.isArray(t) ? t : []));
+    return this.request<unknown>("GET", "/invoicing/v1/taxes").then((t) =>
+      Array.isArray(t) ? t.map(normaliseHoldedTax).filter((x): x is HoldedTax => x !== null) : [],
+    );
   }
 
   async findContactByCode(code: string): Promise<{ id: string } | null> {

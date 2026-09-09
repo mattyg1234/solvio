@@ -1,18 +1,35 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireGlobalShowOpsAdmin, requireShowOpsRole, type ShowOpsContext } from "@/lib/show-ops/access";
+import { requireGlobalShowOpsAdmin, requireShowOpsAction, type ShowOpsContext } from "@/lib/show-ops/access";
 import {
   HoldedClient,
+  HoldedReconciliationRequiredError,
+  HoldedWriteAmbiguousError,
+  approvalForRate,
+  approvalFromTax,
   holdedContactFromSupplier,
   holdedErrorMessage,
   holdedInvoiceFromPack,
-  pickHoldedTaxKey,
-  type HoldedStatus,
+  parseIgicApprovals,
+  rateKey,
+  type HoldedDocumentSummary,
+  type HoldedIgicTaxApproval,
 } from "@/lib/show-ops/holded";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+
+/*
+ * Holded is the legal issuer. Every write to an invoice's Holded lifecycle
+ * columns goes through the database claim → external call → complete/sync
+ * functions, so a crash between steps leaves a recoverable "unknown" state,
+ * never a silent duplicate. Completion, resolution and sync run as the backend
+ * (service role); claiming runs as the finance user.
+ */
 
 function revalidate(invoiceId?: string) {
   revalidatePath("/dashboard/show-ops/settings");
@@ -20,16 +37,28 @@ function revalidate(invoiceId?: string) {
   if (invoiceId) revalidatePath(`/dashboard/show-ops/invoices/${invoiceId}`);
 }
 
-async function loadHoldedClient(ctx: ShowOpsContext): Promise<HoldedClient> {
+function safeMessage(err: unknown): string {
+  return holdedErrorMessage(err).replace(/pat_[A-Za-z0-9_]+|[0-9a-f]{32}/g, "[redacted]").slice(0, 1000);
+}
+
+function operationReference(invoiceId: string): string {
+  return `solvio-inv-${invoiceId}`;
+}
+
+async function loadIntegration(ctx: ShowOpsContext) {
   const { data } = await ctx.supabase
     .from("show_ops_integrations")
-    .select("secret_ciphertext,status")
+    .select("secret_ciphertext,status,meta")
     .eq("business_id", ctx.business.id)
     .eq("provider", "holded")
     .maybeSingle();
   if (!data) throw new Error("Holded is not connected. Add the API token in Settings.");
   if (data.status === "disabled") throw new Error("Holded is paused for this workspace. Re-enable it in Settings.");
-  return new HoldedClient(decryptSecret(data.secret_ciphertext));
+  return {
+    client: new HoldedClient(decryptSecret(data.secret_ciphertext)),
+    meta: (data.meta ?? {}) as Record<string, unknown>,
+    approvals: parseIgicApprovals(data.meta),
+  };
 }
 
 async function markIntegration(ctx: ShowOpsContext, patch: Record<string, unknown>) {
@@ -38,6 +67,11 @@ async function markIntegration(ctx: ShowOpsContext, patch: Record<string, unknow
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq("business_id", ctx.business.id)
     .eq("provider", "holded");
+}
+
+function regimeFromTaxes(taxes: Array<{ legalTreatment?: string }>): "igic" | "iva" | "unknown" {
+  if (taxes.some((t) => t.legalTreatment === "igic")) return "igic";
+  return taxes.length ? "iva" : "unknown";
 }
 
 /** Owner/admin pastes the Holded token; we prove it works before storing it encrypted. */
@@ -53,20 +87,21 @@ export async function connectHoldedAction(formData: FormData): Promise<void> {
   try {
     const client = new HoldedClient(token);
     await client.ping();
-    const taxes = await client.listTaxes();
-    regime = taxes.some((t) => /igic/i.test(`${t.key} ${t.name}`)) ? "igic" : taxes.length ? "iva" : "unknown";
+    regime = regimeFromTaxes(await client.listTaxes());
   } catch (err) {
-    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(holdedErrorMessage(err)));
+    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(safeMessage(err)));
   }
 
   const now = new Date().toISOString();
+  const { data: existing } = await ctx.supabase.from("show_ops_integrations").select("meta").eq("business_id", ctx.business.id).eq("provider", "holded").maybeSingle();
+  const keptApprovals = parseIgicApprovals(existing?.meta);
   const { error } = await ctx.supabase.from("show_ops_integrations").upsert(
     {
       business_id: ctx.business.id,
       provider: "holded",
       secret_ciphertext: encryptSecret(token),
       status: "connected",
-      meta: { hint: secretHint(token), regime },
+      meta: { hint: secretHint(token), regime, igic_taxes: keptApprovals },
       last_checked_at: now,
       last_error: null,
       created_by: ctx.user.id,
@@ -82,15 +117,13 @@ export async function connectHoldedAction(formData: FormData): Promise<void> {
 export async function testHoldedAction(): Promise<void> {
   const ctx = await requireGlobalShowOpsAdmin();
   try {
-    const client = await loadHoldedClient(ctx);
-    const taxes = await client.listTaxes();
-    const regime = taxes.some((t) => /igic/i.test(`${t.key} ${t.name}`)) ? "igic" : taxes.length ? "iva" : "unknown";
-    const { data } = await ctx.supabase.from("show_ops_integrations").select("meta").eq("business_id", ctx.business.id).eq("provider", "holded").maybeSingle();
-    await markIntegration(ctx, { status: "connected", last_checked_at: new Date().toISOString(), last_error: null, meta: { ...((data?.meta as object) ?? {}), regime } });
+    const { client, meta } = await loadIntegration(ctx);
+    const regime = regimeFromTaxes(await client.listTaxes());
+    await markIntegration(ctx, { status: "connected", last_checked_at: new Date().toISOString(), last_error: null, meta: { ...meta, regime } });
   } catch (err) {
-    await markIntegration(ctx, { status: "error", last_checked_at: new Date().toISOString(), last_error: holdedErrorMessage(err) });
+    await markIntegration(ctx, { status: "error", last_checked_at: new Date().toISOString(), last_error: safeMessage(err) });
     revalidate();
-    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(holdedErrorMessage(err)));
+    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(safeMessage(err)));
   }
   revalidate();
   redirect("/dashboard/show-ops/settings?holded=ok");
@@ -101,6 +134,31 @@ export async function disconnectHoldedAction(): Promise<void> {
   await ctx.supabase.from("show_ops_integrations").delete().eq("business_id", ctx.business.id).eq("provider", "holded");
   revalidate();
   redirect("/dashboard/show-ops/settings?holded=disconnected");
+}
+
+/** Settings: which Holded IGIC sales taxes Solvio may put on invoice lines, one per rate. */
+export async function saveHoldedTaxApprovalsAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const chosen = formData.getAll("approve_tax").map(String).filter(Boolean);
+  try {
+    const { client, meta } = await loadIntegration(ctx);
+    const taxes = await client.listTaxes();
+    const approvals: Record<string, HoldedIgicTaxApproval> = {};
+    for (const id of chosen) {
+      const tax = taxes.find((t) => t.id === id);
+      const approval = tax ? approvalFromTax(tax) : null;
+      if (!approval) throw new Error("One of the chosen taxes is not an IGIC sales tax in Holded any more. Refresh and choose again.");
+      const key = rateKey(approval.rate);
+      if (approvals[key]) throw new Error(`Choose only one Holded tax for ${key}%.`);
+      approvals[key] = approval;
+    }
+    await markIntegration(ctx, { meta: { ...meta, igic_taxes: approvals } });
+  } catch (err) {
+    revalidate();
+    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(safeMessage(err)));
+  }
+  revalidate();
+  redirect("/dashboard/show-ops/settings?holded=taxes_saved");
 }
 
 async function ensureHoldedContact(
@@ -135,14 +193,59 @@ async function ensureHoldedContact(
   const existing = input.code ? await client.findContactByCode(input.code) : null;
   const contact = existing ?? (await client.createContact(input));
   if (supplier) {
-    await ctx.supabase.from("show_suppliers").update({ holded_contact_id: contact.id, updated_at: new Date().toISOString() }).eq("id", supplier.id).eq("business_id", ctx.business.id);
+    // Catalogue writes are admin-only under RLS; remembering the Holded id is a backend concern, scoped to this business.
+    const admin = createSupabaseServiceRoleClient();
+    await admin.from("show_suppliers").update({ holded_contact_id: contact.id, updated_at: new Date().toISOString() }).eq("id", supplier.id).eq("business_id", ctx.business.id);
   }
   return contact.id;
 }
 
-/** Issued pack → draft sales invoice in Holded. Idempotent: a pack already pushed is refreshed, not duplicated. */
+type ClaimRow = { claim_status: string; external_id: string | null; claim_token: string | null };
+
+async function completeClaim(
+  businessId: string,
+  invoiceId: string,
+  claimToken: string,
+  outcome: "created" | "failed" | "unknown",
+  summary: HoldedDocumentSummary | null,
+  message: string | null,
+) {
+  const admin = createSupabaseServiceRoleClient();
+  const { error } = await admin.rpc("show_ops_holded_complete_invoice", {
+    p_business_id: businessId,
+    p_invoice_id: invoiceId,
+    p_claim_token: claimToken,
+    p_outcome: outcome,
+    p_external_id: summary?.id ?? null,
+    p_external_status: summary?.status ?? null,
+    p_actual_net: summary?.net ?? null,
+    p_actual_tax: summary?.tax ?? null,
+    p_actual_total: summary?.total ?? null,
+    p_safe_message: message,
+  });
+  if (error) throw new Error(`Holded step finished but Solvio could not record it: ${error.message}`);
+}
+
+async function syncFromSummary(businessId: string, invoiceId: string, summary: HoldedDocumentSummary) {
+  const admin = createSupabaseServiceRoleClient();
+  const { error } = await admin.rpc("show_ops_holded_sync_invoice", {
+    p_business_id: businessId,
+    p_invoice_id: invoiceId,
+    p_external_id: summary.id,
+    p_doc_number: summary.docNumber,
+    p_external_status: summary.status,
+    p_actual_net: summary.net,
+    p_actual_tax: summary.tax,
+    p_actual_total: summary.total,
+    p_approved_at: summary.approvedAt,
+    p_paid: summary.status === "paid",
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Issued pack → draft sales invoice in Holded, through the claim/complete lifecycle. */
 export async function pushInvoiceToHoldedAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
   if (!inv) throw new Error("Invoice not found.");
@@ -153,113 +256,163 @@ export async function pushInvoiceToHoldedAction(formData: FormData): Promise<voi
   const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
   if (!lines?.length) throw new Error("This invoice has no lines.");
 
-  const now = new Date().toISOString();
+  // 1. Everything that can fail without touching Holded happens before the claim.
+  let prepared: { client: HoldedClient; payload: ReturnType<typeof holdedInvoiceFromPack> };
   try {
-    const client = await loadHoldedClient(ctx);
+    const { client, approvals } = await loadIntegration(ctx);
     const taxes = await client.listTaxes();
     const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
       name: inv.recipient_name,
       taxId: inv.recipient_tax_id,
       address: inv.recipient_address,
     });
-    const payload = holdedInvoiceFromPack(inv, lines, contactId, (rate) => pickHoldedTaxKey(taxes, rate));
-    const created = await client.createInvoice(payload);
-    const summary = await client.getInvoice(created.id);
-    await ctx.supabase
-      .from("show_invoices")
-      .update({
-        holded_document_id: created.id,
-        holded_doc_number: summary.docNumber,
-        holded_status: summary.status satisfies HoldedStatus,
-        holded_pushed_at: now,
-        holded_synced_at: now,
-        holded_error: null,
-        updated_at: now,
-      })
-      .eq("id", inv.id)
-      .eq("business_id", ctx.business.id);
+    const payload = holdedInvoiceFromPack(inv, lines, contactId, (rate) => approvalForRate(approvals, rate), taxes);
+    prepared = { client, payload };
   } catch (err) {
-    const message = holdedErrorMessage(err);
-    await ctx.supabase
-      .from("show_invoices")
-      .update({ holded_status: "error", holded_error: message, updated_at: now })
-      .eq("id", inv.id)
-      .eq("business_id", ctx.business.id);
     revalidate(inv.id);
-    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=error`);
+    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=error&holded_msg=${encodeURIComponent(safeMessage(err))}`);
+  }
+
+  // 2. Claim: the database marks the pack "creating" and freezes the expected totals.
+  const claimToken = randomUUID();
+  const { data: claimRows, error: claimError } = await ctx.supabase.rpc("show_ops_holded_claim_invoice", {
+    p_business_id: ctx.business.id,
+    p_invoice_id: inv.id,
+    p_claim_token: claimToken,
+  });
+  if (claimError) {
+    revalidate(inv.id);
+    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=error&holded_msg=${encodeURIComponent(claimMessage(claimError.message))}`);
+  }
+  const claim = (Array.isArray(claimRows) ? claimRows[0] : claimRows) as ClaimRow | undefined;
+  if (!claim || claim.claim_status !== "claimed") {
+    revalidate(inv.id);
+    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${claim?.claim_status === "existing" ? "refreshed" : "reconcile"}`);
+  }
+
+  // 3. External write, then record the outcome — created, failed, or unknown.
+  let outcome: "sent" | "error" | "reconcile" = "sent";
+  let message: string | null = null;
+  try {
+    const summary = await prepared.client.createInvoiceDraft(prepared.payload, { reference: operationReference(inv.id) });
+    await completeClaim(ctx.business.id, inv.id, claimToken, "created", summary, null);
+  } catch (err) {
+    if (err instanceof HoldedWriteAmbiguousError || err instanceof HoldedReconciliationRequiredError) {
+      outcome = "reconcile";
+      message = safeMessage(err);
+      await completeClaim(ctx.business.id, inv.id, claimToken, "unknown", null, message);
+    } else {
+      outcome = "error";
+      message = safeMessage(err);
+      await completeClaim(ctx.business.id, inv.id, claimToken, "failed", null, message);
+    }
   }
   revalidate(inv.id);
-  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=sent`);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${outcome}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
+}
+
+function claimMessage(raw: string): string {
+  if (raw.includes("RECONCILIATION_REQUIRED")) return "This pack needs reconciling with Holded before it can be sent again.";
+  if (raw.includes("CLAIM_ACTIVE")) return "Another send to Holded is in progress for this pack. Wait a minute and refresh.";
+  if (raw.includes("STATE_INVALID")) return "This pack is not in a state that can be sent (it must be issued and not already in Holded).";
+  if (raw.includes("NOT_ALLOWED")) return "Your login is not allowed to send invoices to Holded.";
+  return raw;
 }
 
 async function refreshInvoiceFromHolded(ctx: ShowOpsContext, invoiceId: string, holdedId: string): Promise<void> {
-  const now = new Date().toISOString();
+  let message: string | null = null;
   try {
-    const client = await loadHoldedClient(ctx);
+    const { client } = await loadIntegration(ctx);
     const summary = await client.getInvoice(holdedId);
-    const patch: Record<string, unknown> = {
-      holded_doc_number: summary.docNumber,
-      holded_status: summary.status,
-      holded_synced_at: now,
-      holded_error: null,
-      updated_at: now,
-    };
-    // Holded is the ledger: a payment recorded there settles the pack in Solvio too.
-    if (summary.status === "paid") {
-      patch.paid = true;
-      patch.paid_at = now.slice(0, 10);
-    }
-    // Once Holded has issued the legal number, that number is the invoice; the local one stays for internal reference.
-    if (summary.docNumber) {
-      patch.verifactu_number = summary.docNumber;
-      patch.verifactu_status = "recorded";
-      patch.verifactu_recorded_at = summary.approvedAt ?? now;
-    }
-    await ctx.supabase.from("show_invoices").update(patch).eq("id", invoiceId).eq("business_id", ctx.business.id);
+    await syncFromSummary(ctx.business.id, invoiceId, summary);
   } catch (err) {
-    await ctx.supabase
-      .from("show_invoices")
-      .update({ holded_status: "error", holded_error: holdedErrorMessage(err), updated_at: now })
-      .eq("id", invoiceId)
-      .eq("business_id", ctx.business.id);
-    revalidate(invoiceId);
-    redirect(`/dashboard/show-ops/invoices/${invoiceId}?holded=error`);
+    message = safeMessage(err);
   }
   revalidate(invoiceId);
-  redirect(`/dashboard/show-ops/invoices/${invoiceId}?holded=refreshed`);
+  redirect(`/dashboard/show-ops/invoices/${invoiceId}?holded=${message ? "error" : "refreshed"}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
 }
 
 export async function refreshHoldedInvoiceAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const id = String(formData.get("invoice_id") ?? "").trim();
   const { data: inv } = await ctx.supabase.from("show_invoices").select("id,holded_document_id").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
   if (!inv?.holded_document_id) throw new Error("This invoice has not been sent to Holded yet.");
   return refreshInvoiceFromHolded(ctx, inv.id, inv.holded_document_id);
 }
 
+/**
+ * Recover a pack whose last Holded write was not confirmed: look the operation
+ * up in Holded by its immutable reference, then record found / not found.
+ */
+export async function reconcileHoldedInvoiceAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const { data: inv } = await ctx.supabase
+    .from("show_invoices")
+    .select("id,holded_document_id,holded_status,holded_reconciliation_status,holded_claim_token,holded_claimed_at")
+    .eq("id", id)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!inv) throw new Error("Invoice not found.");
+
+  let message: string | null = null;
+  let result: "refreshed" | "reconcile" | "error" | "not_found" = "refreshed";
+  try {
+    const { client } = await loadIntegration(ctx);
+    if (inv.holded_document_id) {
+      // Document known: a mismatch or stale flag — re-read it and let the sync settle the state.
+      const summary = await client.getInvoice(inv.holded_document_id);
+      await syncFromSummary(ctx.business.id, inv.id, summary);
+    } else {
+      if (inv.holded_reconciliation_status !== "required") {
+        // A stalled claim (status still "creating") first has to be marked for reconciliation by the finance user.
+        const { error } = await ctx.supabase.rpc("show_ops_holded_request_reconciliation", {
+          p_business_id: ctx.business.id,
+          p_invoice_id: inv.id,
+          p_reason: "Send to Holded did not complete",
+        });
+        if (error) throw new Error(claimMessage(error.message));
+      }
+      const found = await client.reconcileInvoiceDraft({ reference: operationReference(inv.id) });
+      const admin = createSupabaseServiceRoleClient();
+      const { error } = await admin.rpc("show_ops_holded_resolve_invoice", {
+        p_business_id: ctx.business.id,
+        p_invoice_id: inv.id,
+        p_external_id: found ? found.id : null,
+        p_resolution: found ? "found" : "confirmed_not_found",
+      });
+      if (error) throw new Error(error.message);
+      if (found) await syncFromSummary(ctx.business.id, inv.id, found);
+      else result = "not_found";
+    }
+  } catch (err) {
+    result = "error";
+    message = safeMessage(err);
+  }
+  revalidate(inv.id);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${result}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
+}
+
 /** Pulls status for every pack that is in Holded but not yet paid — the "sync with accounts" button. */
 export async function syncHoldedInvoicesAction(): Promise<void> {
-  const ctx = await requireShowOpsRole("finance");
+  const ctx = await requireShowOpsAction("finance", "invoices");
   const { data: rows } = await ctx.supabase
     .from("show_invoices")
-    .select("id,holded_document_id")
+    .select("id,holded_document_id,holded_claim_token")
     .eq("business_id", ctx.business.id)
     .not("holded_document_id", "is", null)
+    .is("holded_claim_token", null)
     .neq("holded_status", "paid")
     .eq("voided", false)
     .limit(200);
   let updated = 0;
   let failed = 0;
   try {
-    const client = await loadHoldedClient(ctx);
+    const { client } = await loadIntegration(ctx);
     for (const row of rows ?? []) {
       try {
         const summary = await client.getInvoice(row.holded_document_id as string);
-        const now = new Date().toISOString();
-        const patch: Record<string, unknown> = { holded_doc_number: summary.docNumber, holded_status: summary.status, holded_synced_at: now, holded_error: null, updated_at: now };
-        if (summary.status === "paid") { patch.paid = true; patch.paid_at = now.slice(0, 10); }
-        if (summary.docNumber) { patch.verifactu_number = summary.docNumber; patch.verifactu_status = "recorded"; patch.verifactu_recorded_at = summary.approvedAt ?? now; }
-        await ctx.supabase.from("show_invoices").update(patch).eq("id", row.id).eq("business_id", ctx.business.id);
+        await syncFromSummary(ctx.business.id, row.id, summary);
         updated += 1;
       } catch {
         failed += 1;
@@ -267,7 +420,7 @@ export async function syncHoldedInvoicesAction(): Promise<void> {
     }
   } catch (err) {
     revalidate();
-    redirect(`/dashboard/show-ops/invoices?view=list&holded_error=${encodeURIComponent(holdedErrorMessage(err))}`);
+    redirect(`/dashboard/show-ops/invoices?view=list&holded_error=${encodeURIComponent(safeMessage(err))}`);
   }
   revalidate();
   redirect(`/dashboard/show-ops/invoices?view=list&holded_synced=${updated}&holded_failed=${failed}`);

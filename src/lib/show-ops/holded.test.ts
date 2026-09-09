@@ -119,3 +119,35 @@ test("Holded document summary distinguishes draft, approved and paid", () => {
   assert.throws(() => summariseHoldedDocument({ id: "bad", draft: true, docNumber: null, approvedAt: 1, subtotal: 1, tax: 1, total: 2 }), /approved timestamp for a draft/);
   assert.throws(() => summariseHoldedDocument({ id: "bad", draft: true, status: "paid", subtotal: 1, tax: 1, total: 2 }), /inconsistent document status/);
 });
+
+test("Holded taxes are normalised so IGIC treatment can be recognised", async () => {
+  const { normaliseHoldedTax, parseIgicApprovals, approvalFromTax, approvalForRate, holdedInvoiceView } = await import("./holded");
+  const igic = normaliseHoldedTax({ id: "t1", key: "s_igic_7", name: "IGIC 7%", amount: 7, scope: "sales" });
+  assert.equal(igic?.legalTreatment, "igic");
+  assert.equal(igic?.category, "sales");
+  assert.equal(normaliseHoldedTax({ id: "t2", key: "s_iva_21", name: "IVA 21%", amount: 21, scope: "sales" })?.legalTreatment, "iva");
+  assert.equal(normaliseHoldedTax({ key: "", name: "x", amount: 1 }), null);
+  assert.equal(normaliseHoldedTax({ id: "t3", key: "tax_7_sales", name: "Impuesto 7", amount: 7, scope: "sales" })?.legalTreatment, "other");
+
+  const approval = approvalFromTax(igic!);
+  assert.deepEqual(approval, { id: "t1", key: "s_igic_7", rate: 7, legalTreatment: "igic", category: "sales" });
+  assert.equal(approvalFromTax(normaliseHoldedTax({ id: "t4", key: "p_igic_7", name: "IGIC 7%", amount: 7, scope: "purchases" })!), null, "purchase taxes are never approved for sales lines");
+  assert.equal(approvalFromTax(normaliseHoldedTax({ id: "t2", key: "s_iva_21", name: "IVA 21%", amount: 21, scope: "sales" })!), null);
+
+  const parsed = parseIgicApprovals({ igic_taxes: { "7": approval, "3": { id: "x", key: "s_iva_3", rate: 3, legalTreatment: "iva", category: "sales" }, bad: "nope" } });
+  assert.deepEqual(Object.keys(parsed), ["7"], "non-IGIC or malformed approvals are dropped");
+  assert.deepEqual(approvalForRate(parsed, 7), approval);
+  assert.equal(approvalForRate(parsed, 3), null);
+  assert.equal(approvalForRate(parseIgicApprovals(null), 7), null);
+
+  assert.equal(holdedInvoiceView({ holded_status: "not_sent" }, true).canSend, true);
+  assert.equal(holdedInvoiceView({ holded_status: "not_sent" }, false).canSend, false);
+  assert.equal(holdedInvoiceView({ holded_status: "unknown", holded_reconciliation_status: "required" }, true).canReconcile, true);
+  assert.equal(holdedInvoiceView({ holded_status: "unknown", holded_reconciliation_status: "required" }, true).canSend, false);
+  assert.equal(holdedInvoiceView({ holded_status: "draft", holded_document_id: "d1" }, true).canRefresh, true);
+  assert.equal(holdedInvoiceView({ holded_status: "failed", holded_error: "boom" }, true).canSend, true);
+  assert.equal(holdedInvoiceView({ holded_status: "approved", holded_document_id: "d1", holded_doc_number: "F260001" }, true).label, "Issued by Holded as F260001 (Verifactu)");
+  const stale = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  assert.equal(holdedInvoiceView({ holded_status: "creating", holded_claimed_at: stale }, true).canReconcile, true);
+  assert.equal(holdedInvoiceView({ holded_status: "creating", holded_claimed_at: new Date().toISOString() }, true).canReconcile, false);
+});
