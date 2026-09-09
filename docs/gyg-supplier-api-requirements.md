@@ -92,3 +92,6 @@ to have a chance of being live for 1 December; the email-parser fallback stays i
 Time-period and GROUP product shapes (required of multi-supplier systems), price-over-API (optional),
 availability push from every capacity-changing path, product mapping for the self-test product `MHT-ACE-TEST`,
 then the portal self-test until all rows are green.
+
+### Production configuration (submitted 9 Sept 2026)
+User `solvio-gyg` (Vercel `GYG_INBOUND_PROD_BASIC_*`), host www.solviosystems.com, port 443, path `/api/gyg/v1`, notifications to mattygale4@gmail.com. Production self-tests (get-availabilities / reserve / cancel-reservation / book / cancel-booking) passed 11/11 for all four shapes (runs 96300–96303). Portal gotcha: the date pickers only accept widget clicks; the form's POST to `integrator-portal-api.getyourguide.com/self-testing-async` can be replayed from the page with the captured Bearer token and dates filled in.
