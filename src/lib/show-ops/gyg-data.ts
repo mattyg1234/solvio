@@ -55,7 +55,11 @@ export const gygOk = (data: unknown) => NextResponse.json({ data }, { status: 20
 export const gygFail = (error: GygError) => NextResponse.json(error, { status: 200 });
 
 export async function gygHandler(req: Request, fn: (body: Record<string, unknown>, url: URL, db: SupabaseClient) => Promise<NextResponse>): Promise<NextResponse> {
-  if (!basicAuthMatches(req.headers.get("authorization"), process.env.GYG_INBOUND_BASIC_USER, process.env.GYG_INBOUND_BASIC_PASSWORD)) {
+  // Two inbound identities: the portal's test configuration and its production configuration.
+  const auth = req.headers.get("authorization");
+  const testOk = basicAuthMatches(auth, process.env.GYG_INBOUND_BASIC_USER, process.env.GYG_INBOUND_BASIC_PASSWORD);
+  const prodOk = basicAuthMatches(auth, process.env.GYG_INBOUND_PROD_BASIC_USER, process.env.GYG_INBOUND_PROD_BASIC_PASSWORD);
+  if (!testOk && !prodOk) {
     return gygFail(gygError("AUTHORIZATION_FAILURE", "The provided authentication credentials are not valid."));
   }
   let body: Record<string, unknown> = {};

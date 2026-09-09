@@ -84,7 +84,7 @@ to have a chance of being live for 1 December; the email-parser fallback stays i
   **Not yet wired** into desk/partner-link/cancel/close paths — that is the next step.
 
 ### Vercel env to add before the self-test
-`GYG_INBOUND_BASIC_USER=solvio-gyg-test`, `GYG_INBOUND_BASIC_PASSWORD=<the password entered in the Integrator Portal test config>`,
+`GYG_INBOUND_BASIC_USER=solvio-gyg-test`, `GYG_INBOUND_BASIC_PASSWORD=<the password entered in the Integrator Portal test config>`, `GYG_INBOUND_PROD_BASIC_USER=solvio-gyg` + `GYG_INBOUND_PROD_BASIC_PASSWORD=<portal production config password>` (either pair is accepted),
 `GYG_OUTBOUND_BASIC_USER=SolvioSystemsLTD`, `GYG_OUTBOUND_BASIC_PASSWORD=<from the portal "GetYourGuide Credentials">`,
 `GYG_API_BASE` selects the push host: the sandbox `https://supplier-api.getyourguide.com/sandbox/1` while testing, production `https://supplier-api.getyourguide.com/1` after go-live (the Vercel value currently ends in a stray full stop; the code strips it).
 
