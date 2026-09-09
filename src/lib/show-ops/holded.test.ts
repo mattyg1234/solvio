@@ -151,3 +151,19 @@ test("Holded taxes are normalised so IGIC treatment can be recognised", async ()
   assert.equal(holdedInvoiceView({ holded_status: "creating", holded_claimed_at: stale }, true).canReconcile, true);
   assert.equal(holdedInvoiceView({ holded_status: "creating", holded_claimed_at: new Date().toISOString() }, true).canReconcile, false);
 });
+
+test("a real Holded draft (numeric status 0, draft true) parses; paid needs status 1", async () => {
+  const { summariseHoldedDocument } = await import("./holded");
+  // Shape captured from the Solvio test company on 9 Sept 2026.
+  const real = { id: "6aa072e687f71d7bde0b7ddb", draft: true, status: 0, docNumber: null, approvedAt: null, subtotal: 335.4, tax: 23.48, total: 358.88, paymentsPending: 358.88, paymentsTotal: 0, currency: "eur" };
+  const s = summariseHoldedDocument(real);
+  assert.equal(s.status, "draft");
+  assert.equal(s.net, 335.4);
+  assert.equal(s.total, 358.88);
+  const approved = summariseHoldedDocument({ ...real, draft: false, status: 0, docNumber: "F260001", approvedAt: 1788900000 });
+  assert.equal(approved.status, "approved");
+  const paid = summariseHoldedDocument({ ...real, draft: false, status: 1, docNumber: "F260001", approvedAt: 1788900000, paymentsPending: 0 });
+  assert.equal(paid.status, "paid");
+  assert.throws(() => summariseHoldedDocument({ ...real, draft: false, status: 1, docNumber: "F260001", approvedAt: 1788900000, paymentsPending: 100 }), /inconsistent/);
+  assert.throws(() => summariseHoldedDocument({ ...real, status: 7 }), /malformed document status/);
+});

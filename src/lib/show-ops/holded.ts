@@ -343,9 +343,18 @@ export function summariseHoldedDocument(raw: unknown): HoldedDocumentSummary {
   const total = strictMoney(d.total, "document total");
   const pending = d.paymentsPending == null ? total : strictMoney(d.paymentsPending, "document pending total");
   const status: HoldedDocumentSummary["status"] = draft ? "draft" : moneyCents(pending, "document pending total") === 0 ? "paid" : "approved";
+  // Real Holded documents carry a numeric payment status (0 unpaid, 1 paid, 2 partially paid)
+  // alongside the `draft` flag; some fixtures use the string form. Either must agree with the above.
   if (d.status != null) {
-    if (d.status !== "draft" && d.status !== "approved" && d.status !== "paid") throw new Error("Holded returned a malformed document status.");
-    if (d.status !== status) throw new Error("Holded returned an inconsistent document status.");
+    if (typeof d.status === "number") {
+      if (![0, 1, 2].includes(d.status)) throw new Error("Holded returned a malformed document status.");
+      if (d.status === 1 && status !== "paid") throw new Error("Holded returned an inconsistent document status.");
+      if (d.status !== 1 && status === "paid" && total > 0) throw new Error("Holded returned an inconsistent document status.");
+    } else if (d.status !== "draft" && d.status !== "approved" && d.status !== "paid") {
+      throw new Error("Holded returned a malformed document status.");
+    } else if (d.status !== status) {
+      throw new Error("Holded returned an inconsistent document status.");
+    }
   }
   return {
     id,
