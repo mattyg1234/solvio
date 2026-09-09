@@ -67,6 +67,7 @@ import {
 } from "@/lib/show-ops/invoice";
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
+import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
   normaliseZone,
@@ -297,7 +298,19 @@ export async function checkInShowOpsTicketAction(formData: FormData): Promise<Ti
     island: booking.island as string,
   };
 
-  if (booking.arrived_at) {
+  // A ticket for another night is not admitted by a scan. The office can still mark the
+  // party in by hand from the booking if they genuinely turned up on the wrong night.
+  if (!ticketIsForTonight(String(booking.show_date)) && String(formData.get("allow_other_night") ?? "") !== "1") {
+    return {
+      ok: false,
+      alreadyIn: false,
+      ...base,
+      message: `${booking.guest_name} · ${booking.booking_ref} is for ${booking.show_date}, not tonight. Not admitted.`,
+    };
+  }
+
+  const plan = scanArrivalPlan({ booked, arrivedAt: booking.arrived_at, arrivedPax: booking.arrived_pax });
+  if (plan.kind === "already_in") {
     return {
       ok: true,
       alreadyIn: true,
@@ -308,9 +321,10 @@ export async function checkInShowOpsTicketAction(formData: FormData): Promise<Ti
   }
 
   const now = new Date().toISOString();
-  const flags = arrivalFlagPatch(booked, booked, now, booking.arrived_at);
-  const decision = await arrivalNoShowDecisionPatch(ctx, booking, booked, booked, now);
-  const { error } = await ctx.supabase
+  const flags = arrivalFlagPatch(plan.arrivedPax, booked, now, booking.arrived_at);
+  const decision = await arrivalNoShowDecisionPatch(ctx, booking, plan.arrivedPax, booked, now);
+  // Conditional write: two phones scanning the same ticket cannot both report "first in".
+  let update = ctx.supabase
     .from("show_bookings")
     .update({
       ...flags,
@@ -321,19 +335,33 @@ export async function checkInShowOpsTicketAction(formData: FormData): Promise<Ti
     })
     .eq("id", booking.id)
     .eq("business_id", ctx.business.id);
+  update = plan.kind === "first" ? update.is("arrived_at", null) : update.eq("arrived_pax", booking.arrived_pax ?? 0);
+  const { data: updated, error } = await update.select("id");
   if (error) return { ok: false, alreadyIn: false, message: error.message };
+  if (!updated?.length) {
+    // Someone else's scan landed first: report the party as in rather than claiming a second entry.
+    const { data: fresh } = await ctx.supabase.from("show_bookings").select("arrived_at").eq("id", booking.id).maybeSingle();
+    return {
+      ok: true,
+      alreadyIn: true,
+      ...base,
+      arrivedAt: fresh?.arrived_at ?? now,
+      message: `${booking.guest_name} · ${booking.booking_ref} already in${fresh?.arrived_at ? ` · ${formatShowOpsDoorTime(fresh.arrived_at)}` : ""}.`,
+    };
+  }
 
   revalidateShowOps();
   const payNote =
     booking.billing_mode === "deposit" && outstanding > 0
       ? ` · ${outstanding.toFixed(2)} still outstanding`
       : "";
+  const who = plan.kind === "complete_party" ? `remaining ${plan.remaining} guest${plan.remaining === 1 ? "" : "s"}` : pax;
   return {
     ok: true,
     alreadyIn: false,
     ...base,
     arrivedAt: now,
-    message: `${booking.guest_name} · ${pax} in at ${formatShowOpsDoorTime(now)} · ${booking.booking_ref}${payNote}`,
+    message: `${booking.guest_name} · ${who} in at ${formatShowOpsDoorTime(now)} · ${booking.booking_ref}${payNote}`,
   };
 }
 
@@ -472,14 +500,21 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
   return;
 }
 
-async function nextRef(ctx: Awaited<ReturnType<typeof requireShowOpsContext>>) {
+async function nextRef(ctx: Awaited<ReturnType<typeof requireShowOpsContext>>): Promise<string> {
   const { data, error } = await ctx.supabase.rpc("show_ops_next_booking_ref", {
     p_business_id: ctx.business.id,
   });
+  // Never fall back to a different numbering series: a booking with a made-up reference
+  // breaks the MHT sequence Lanzasoft handed over. Fail loudly and let the desk retry.
   if (error || !data) {
-    return `SO-${Date.now().toString(36).toUpperCase()}`;
+    throw new Error(`Could not allocate a booking reference${error ? `: ${error.message}` : ""}. Try again.`);
   }
   return String(data);
+}
+
+/** A reference clash between two desks racing for the same number is retried with the next one. */
+function isBookingRefClash(error: { code?: string; message?: string; details?: string } | null | undefined): boolean {
+  return isUniqueViolation(error) && /booking_ref/i.test(`${error?.message ?? ""} ${error?.details ?? ""}`);
 }
 
 export async function upsertSupplierAction(formData: FormData): Promise<void> {
@@ -1885,18 +1920,28 @@ export async function createBookingAction(
   const built = await buildBookingFields(ctx, formData);
   if (!built.ok) return { ok: false, message: built.error };
 
-  const booking_ref = await nextRef(ctx);
-  const { data, error } = await ctx.supabase
-    .from("show_bookings")
-    .insert({
-      ...built.fields,
-      business_id: ctx.business.id,
-      booking_ref,
-      created_by: ctx.user.id,
-    })
-    .select("id,ticket_token")
-    .maybeSingle();
-  if (error) return { ok: false, message: error.message };
+  type CreatedBooking = { id: string; ticket_token: string | null };
+  let booking_ref = "";
+  let data = null as CreatedBooking | null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    booking_ref = await nextRef(ctx);
+    const res = await ctx.supabase
+      .from("show_bookings")
+      .insert({
+        ...built.fields,
+        business_id: ctx.business.id,
+        booking_ref,
+        created_by: ctx.user.id,
+      })
+      .select("id,ticket_token")
+      .maybeSingle();
+    if (!res.error) {
+      data = res.data as CreatedBooking | null;
+      break;
+    }
+    if (isBookingRefClash(res.error) && attempt < 4) continue;
+    return { ok: false, message: res.error.message };
+  }
 
   // Guest ticket by email/SMS on save (opt-out checkbox on the form). Never blocks the booking.
   await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null);
@@ -2370,19 +2415,24 @@ export async function createSellerBookingAction(
     return { ok: false, message: "This night is fully closed — ring the office if you still need to add someone." };
   }
 
-  const booking_ref = await nextRef(ctx);
   const id = crypto.randomUUID();
-  const { error } = await ctx.supabase
-    .from("show_bookings")
-    .insert({
-      ...built.fields,
-      id,
-      office_only_comments: null,
-      business_id: ctx.business.id,
-      booking_ref,
-      created_by: ctx.user.id,
-    });
-  if (error) return { ok: false, message: partnerBookingErrorMessage(error) };
+  let booking_ref = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    booking_ref = await nextRef(ctx);
+    const { error } = await ctx.supabase
+      .from("show_bookings")
+      .insert({
+        ...built.fields,
+        id,
+        office_only_comments: null,
+        business_id: ctx.business.id,
+        booking_ref,
+        created_by: ctx.user.id,
+      });
+    if (!error) break;
+    if (isBookingRefClash(error) && attempt < 4) continue;
+    return { ok: false, message: partnerBookingErrorMessage(error) };
+  }
   const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
   await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
   revalidatePath("/partner");
