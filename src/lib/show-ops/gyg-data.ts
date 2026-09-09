@@ -358,7 +358,8 @@ async function channelProductForShow(db: SupabaseClient, businessId: string, pro
  * PUSH_AVAILABILITY certification test (…/sandbox/1/…), so the base stays configurable.
  */
 function gygPushBase(): string {
-  return (process.env.GYG_API_BASE || "https://supplier-api.getyourguide.com/1").replace(/\/$/, "");
+  // Tolerate a stray full stop or slash typed at the end of the env value (it cost us every sandbox push).
+  return (process.env.GYG_API_BASE || "https://supplier-api.getyourguide.com/1").trim().replace(/[.\/\s]+$/, "");
 }
 
 export type PushVariant = "standard" | "item-product" | "zulu" | "cutoff";
