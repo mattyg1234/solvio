@@ -28,7 +28,7 @@ version segment is mandatory). Inbound Basic Auth user `solvio-gyg-test` (passwo
 Optional (skip for certification): pricing-categories, products list/details, addons, tiered pricing, notify webhook.
 
 ## Endpoint Solvio must call (GYG side, Basic Auth with the `SolvioSystemsLTD` credentials)
-- `POST https://supplier-api.getyourguide.com/1/notify-availability-update` (sandbox: `/sandbox/1/…`) —
+- `POST https://supplier-api.getyourguide.com/1/notify-availability-update` (their spec defines ONE host — there is no sandbox; unknown/unconnected product ids answer 400 INVALID_PRODUCT, which Solvio records as `not-connected`) —
   push `{ productId, availabilities: [{ dateTime, vacancies }] }` **only** when a night sells out, reopens,
   or a high-demand night drops below 7 seats within 60 days. Not for GYG's own bookings. 202 = accepted;
   1000 req / 10 min limit. Fire from every place capacity changes in Solvio (desk/partner/link create,
@@ -76,13 +76,13 @@ to have a chance of being live for 1 December; the email-parser fallback stays i
   details ⇒ new booking per the booking-change flow). One COLLECTIVE QR ticket (the guest ticket URL).
 - Cancel-booking honours BOOKING_IN_PAST / BOOKING_REDEEMED / BOOKING_ALREADY_CANCELLED.
 - Availability push (`notify-availability-update`) fires after channel bookings/cancellations when
-  `GYG_OUTBOUND_BASIC_USER/PASSWORD` are set (`GYG_API_BASE` defaults to production; set the sandbox URL for testing).
+  `GYG_OUTBOUND_BASIC_USER/PASSWORD` are set. Push policy (per their spec) lives in `shouldPushAvailability`: sold out, back on sale, or < 7 seats changing inside 60 days; the last figure per product/night is kept in `show_channel_availability_pushes`. Office paths that push: desk create/edit/cancel, partner-link and seller bookings, night close (full) and reopen, plus the GYG reserve/book/cancel handlers.
   **Not yet wired** into desk/partner-link/cancel/close paths — that is the next step.
 
 ### Vercel env to add before the self-test
 `GYG_INBOUND_BASIC_USER=solvio-gyg-test`, `GYG_INBOUND_BASIC_PASSWORD=<the password entered in the Integrator Portal test config>`,
 `GYG_OUTBOUND_BASIC_USER=SolvioSystemsLTD`, `GYG_OUTBOUND_BASIC_PASSWORD=<from the portal "GetYourGuide Credentials">`,
-`GYG_API_BASE=https://supplier-api.getyourguide.com/sandbox/1` (until production).
+`GYG_API_BASE` is no longer read (the host is fixed); the variable can be deleted from Vercel.
 
 ### Still to do for certification
 Time-period and GROUP product shapes (required of multi-supplier systems), price-over-API (optional),

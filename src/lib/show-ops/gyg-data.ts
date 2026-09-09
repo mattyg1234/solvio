@@ -16,6 +16,7 @@ import {
   reservationExpiry,
   type GygError,
   type NightSource,
+  shouldPushAvailability,
 } from "@/lib/show-ops/gyg";
 import { showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -331,27 +332,75 @@ async function channelProductForShow(db: SupabaseClient, businessId: string, pro
   return data ? findChannelProduct(db, data.external_product_id) : null;
 }
 
+const GYG_PUSH_BASE = "https://supplier-api.getyourguide.com/1"; // their spec defines one host only — no sandbox
 /**
- * Push the night's vacancies to GetYourGuide after our own change (their spec: only
- * when vacancies change materially; we send after every channel booking/cancel and
- * expect the office paths to call this too as they are wired up). Best effort.
+ * Push the night's vacancies to GetYourGuide after our own change (channel booking
+ * or cancel, desk booking/edit/cancel, partner-link booking, night close/reopen).
+ * Best effort: never throws, never blocks the caller's result on a GYG failure.
  */
 export async function notifyAvailability(db: SupabaseClient, cp: ChannelProduct, date: string): Promise<void> {
   const user = process.env.GYG_OUTBOUND_BASIC_USER;
   const pass = process.env.GYG_OUTBOUND_BASIC_PASSWORD;
-  if (!user || !pass) return;
+  if (!user || !pass || !cp.active) return;
   try {
     const [night] = await availabilityBetween(db, cp, date, date);
     if (!night) return;
-    const base = (process.env.GYG_API_BASE || "https://supplier-api.getyourguide.com/1").replace(/\/$/, "");
+    const key = { business_id: cp.business_id, channel: GYG_CHANNEL, external_product_id: cp.external_product_id, show_date: date };
+    const { data: memo } = await db.from("show_channel_availability_pushes").select("last_vacancies").match(key).maybeSingle();
+    const prev = memo ? Number(memo.last_vacancies) : undefined;
+    const now = new Date().toISOString();
+    if (!shouldPushAvailability(prev, night.vacancies, date)) {
+      await db.from("show_channel_availability_pushes").upsert({ ...key, last_vacancies: night.vacancies, updated_at: now }, { onConflict: "business_id,channel,external_product_id,show_date" });
+      return;
+    }
     const payload = { data: { productId: cp.external_product_id, availabilities: [{ dateTime: gygDateTime(date, cp.product.show_time, cp.product.island), vacancies: night.vacancies }] } };
-    const res = await fetch(`${base}/notify-availability-update`, {
+    const res = await fetch(`${GYG_PUSH_BASE}/notify-availability-update`, {
       method: "POST",
       headers: { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) console.error("[gyg] notify-availability-update", res.status, (await res.text()).slice(0, 200), "payload:", JSON.stringify(payload).slice(0, 300), "base:", base);
+    const text = res.ok ? "" : (await res.text()).slice(0, 200);
+    // INVALID_PRODUCT is expected until the operator has connected this product id in GYG's supplier portal.
+    const status = res.ok ? "accepted" : /INVALID_PRODUCT/.test(text) ? "not-connected" : `error ${res.status}`;
+    if (!res.ok && status !== "not-connected") console.error("[gyg] notify-availability-update", res.status, text, "payload:", JSON.stringify(payload).slice(0, 300));
+    await db.from("show_channel_availability_pushes").upsert({ ...key, last_vacancies: night.vacancies, pushed_at: now, last_status: status, updated_at: now }, { onConflict: "business_id,channel,external_product_id,show_date" });
   } catch (err) {
     console.error("[gyg] notify-availability-update failed:", err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * Office-side hook: after any capacity change in Solvio (booking created/edited/cancelled,
+ * night closed/reopened) push every mapped GetYourGuide product for that show — or, when
+ * a whole island's night is closed, every mapped product on the island. Fire-and-forget safe.
+ */
+export async function pushChannelAvailability(
+  businessId: string,
+  target: { productId?: string | null; island?: string | null },
+  dates: Array<string | null | undefined>,
+): Promise<void> {
+  if (!process.env.GYG_OUTBOUND_BASIC_USER || !process.env.GYG_OUTBOUND_BASIC_PASSWORD) return;
+  const days = Array.from(new Set(dates.filter((d): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d))));
+  if (!days.length || (!target.productId && !target.island)) return;
+  try {
+    const db = createSupabaseServiceRoleClient();
+    let q = db.from("show_channel_products").select("external_product_id,product:show_products(island)").eq("business_id", businessId).eq("channel", GYG_CHANNEL).eq("active", true);
+    if (target.productId) q = q.eq("product_id", target.productId);
+    const { data } = await q;
+    const rows = (data ?? []) as unknown as Array<{ external_product_id: string; product: { island: string } | { island: string }[] | null }>;
+    const ids = rows
+      .filter((r) => {
+        if (target.productId) return true;
+        const product = Array.isArray(r.product) ? r.product[0] : r.product;
+        return product?.island === target.island;
+      })
+      .map((r) => r.external_product_id);
+    for (const id of ids) {
+      const cp = await findChannelProduct(db, id);
+      if (!cp) continue;
+      for (const date of days) await notifyAvailability(db, cp, date);
+    }
+  } catch (err) {
+    console.error("[gyg] availability push skipped:", err instanceof Error ? err.message : err);
   }
 }

@@ -172,3 +172,23 @@ export function cancellationRefusal(booking: { show_date: string; arrived_at: st
   if (String(booking.show_date) < today) return gygError("BOOKING_IN_PAST", "The show night has passed.");
   return null;
 }
+
+const LOW_SEATS = 7;
+const LOW_SEATS_WINDOW_DAYS = 60;
+
+/**
+ * GetYourGuide's push policy: tell them only when a night sells out, comes back on
+ * sale, or a low-seat night (< 7 left) changes inside the next 60 days. Anything
+ * else they pull themselves via get-availabilities. `prev` is the last figure we
+ * pushed (or observed) for the night; undefined = first time we look at it.
+ */
+export function shouldPushAvailability(prev: number | undefined, next: number, date: string, today = new Date()): boolean {
+  if (prev === undefined) return next === 0;
+  if (prev === next) return false;
+  if (next === 0 || prev === 0) return true;
+  if (next < LOW_SEATS) {
+    const days = (new Date(`${date}T00:00:00Z`).getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86_400_000;
+    return days >= 0 && days <= LOW_SEATS_WINDOW_DAYS;
+  }
+  return false;
+}

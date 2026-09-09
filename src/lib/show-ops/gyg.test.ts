@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { availabilityForRange, basicAuthMatches, bookingItemsToPax, cancellationRefusal, gygDateTime, leadTraveller, parseGygDateTime, utcOffsetFor, zoneForIsland } from "./gyg";
+import { availabilityForRange, basicAuthMatches, bookingItemsToPax, cancellationRefusal, gygDateTime, leadTraveller, parseGygDateTime, shouldPushAvailability, utcOffsetFor, zoneForIsland } from "./gyg";
 
 const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString("base64")}`;
 
@@ -64,4 +64,21 @@ test("lead traveller and cancellation refusals", () => {
   assert.equal(cancellationRefusal({ show_date: "2026-12-09", arrived_at: null, cancelled_at: null }, now)?.errorCode, "BOOKING_IN_PAST");
   assert.equal(cancellationRefusal({ show_date: "2026-12-11", arrived_at: "2026-12-11T19:05:00Z", cancelled_at: null }, now)?.errorCode, "BOOKING_REDEEMED");
   assert.equal(cancellationRefusal({ show_date: "2026-12-11", arrived_at: null, cancelled_at: "2026-12-01T00:00:00Z" }, now)?.errorCode, "BOOKING_ALREADY_CANCELLED");
+});
+
+test("availability push policy follows GetYourGuide's rules", () => {
+  const today = new Date("2026-09-09T12:00:00Z");
+  // first observation: only a sold-out night is worth a push
+  assert.equal(shouldPushAvailability(undefined, 0, "2026-09-20", today), true);
+  assert.equal(shouldPushAvailability(undefined, 120, "2026-09-20", today), false);
+  // sold out / back on sale always push
+  assert.equal(shouldPushAvailability(3, 0, "2027-03-11", today), true);
+  assert.equal(shouldPushAvailability(0, 2, "2027-03-11", today), true);
+  // low seats only inside 60 days, and only when the figure changed
+  assert.equal(shouldPushAvailability(6, 5, "2026-10-01", today), true);
+  assert.equal(shouldPushAvailability(6, 5, "2027-03-11", today), false);
+  assert.equal(shouldPushAvailability(5, 5, "2026-10-01", today), false);
+  // ordinary movement is left to their scheduled pull
+  assert.equal(shouldPushAvailability(120, 116, "2026-10-01", today), false);
+  assert.equal(shouldPushAvailability(116, 120, "2026-10-01", today), false);
 });

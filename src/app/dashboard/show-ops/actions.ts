@@ -67,6 +67,7 @@ import {
 } from "@/lib/show-ops/invoice";
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
+import { pushChannelAvailability } from "@/lib/show-ops/gyg-data";
 import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
@@ -1945,6 +1946,7 @@ export async function createBookingAction(
 
   // Guest ticket by email/SMS on save (opt-out checkbox on the form). Never blocks the booking.
   await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null);
+  await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
 
   revalidateShowOps();
   return { ok: true, id: data?.id, message: booking_ref };
@@ -2056,6 +2058,9 @@ export async function updateBookingAction(
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
+  for (const productId of new Set([existing.product_id, built.fields.product_id])) {
+    await pushChannelAvailability(ctx.business.id, { productId }, [existing.show_date, built.fields.show_date]);
+  }
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }
@@ -2071,7 +2076,7 @@ export async function cancelBookingAction(
 
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
-    .select("id,booking_ref,invoice_id,cancelled_at")
+    .select("id,booking_ref,invoice_id,cancelled_at,product_id,show_date")
     .eq("id", id)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
@@ -2093,6 +2098,7 @@ export async function cancelBookingAction(
     .eq("id", id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
+  await pushChannelAvailability(ctx.business.id, { productId: existing.product_id }, [existing.show_date ? String(existing.show_date) : null]);
   revalidateShowOps();
   return { ok: true, id, message: existing.booking_ref };
 }
@@ -2321,6 +2327,7 @@ export async function createPartnerLinkBookingAction(
     if (!error) {
       const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
       await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
+      await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
       revalidatePath(`/p/${String(formData.get("partner_token"))}`);
       revalidateShowOps();
       return { ok: true, id, message: booking_ref };
@@ -2435,6 +2442,7 @@ export async function createSellerBookingAction(
   }
   const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
   await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
+  await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
   revalidatePath("/partner");
   return { ok: true, id, message: booking_ref };
 }
@@ -3689,6 +3697,7 @@ export async function closeSaleAction(formData: FormData): Promise<void> {
       .eq("show_date", show_date)
       .eq("island", island);
   }
+  if (close_kind === "full") await pushChannelAvailability(ctx.business.id, product_id ? { productId: product_id } : { island }, [show_date]);
   revalidateShowOps();
   redirect(`${next}${next.includes("?") ? "&" : "?"}closed=1&emailed=${emailed}`);
 }
@@ -3710,6 +3719,7 @@ export async function reopenSaleAction(formData: FormData): Promise<void> {
   if (error) {
     redirect(`${next}${next.includes("?") ? "&" : "?"}error=${encodeURIComponent(error.message.slice(0, 180))}`);
   }
+  await pushChannelAvailability(ctx.business.id, { island }, [show_date]);
   revalidateShowOps();
   redirect(`${next}${next.includes("?") ? "&" : "?"}reopened=1`);
 }
