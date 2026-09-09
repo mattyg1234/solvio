@@ -468,8 +468,12 @@ export class HoldedClient {
   }
 
   private headers(): Record<string, string> {
-    // v1 API keys use the `key` header; v2 personal tokens are accepted the same way.
-    return { key: this.token, authorization: `Bearer ${this.token}`, accept: "application/json", "content-type": "application/json" };
+    // v2 personal tokens (pat_…) authenticate with `Authorization: Bearer` only; sending the legacy
+    // `key` header alongside makes Holded answer "Invalid key". v1 API keys still use `key`.
+    const base = { accept: "application/json", "content-type": "application/json" };
+    return this.token.startsWith("pat_")
+      ? { ...base, authorization: `Bearer ${this.token}` }
+      : { ...base, key: this.token };
   }
 
   async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
