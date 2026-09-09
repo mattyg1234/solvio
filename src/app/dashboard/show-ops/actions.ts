@@ -3062,7 +3062,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
   }
 
   revalidateShowOps();
-  redirect(`/dashboard/show-ops/invoices?view=invoices&generated=${generated}`);
+  redirect(`/dashboard/show-ops/invoices?view=list&generated=${generated}`);
 }
 
 export async function markInvoicePaidAction(formData: FormData): Promise<void> {
