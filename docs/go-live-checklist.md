@@ -33,7 +33,7 @@ Status legend: ✅ done · 🟡 built, needs MHT input/acceptance · 🔴 not bu
 - 🟡 Drop the pre-release snapshot tables (`private.snap_20260909_*`) a week after go-live if not needed.
 
 ## D. Channels
-- 🟡 GetYourGuide: five supplier endpoints + reserve holds + product mapping LIVE; Vercel env set; MHT-ACE-TEST/MHT-ACE/MHT-TFS/MHT-LPA mapped; portal self-test 23/23 (run 96279, 9 Sept); availability push wired into desk/partner/cancel/close paths with GYG's push policy. Time-period + GROUP shapes built (MHT-ACE-TEST-PERIOD / MHT-ACE-TEST-GROUP mapped; self-tests to run). Still needed: production configuration in the portal, GYG review (2–6 weeks), connect the real MHT products in GYG's supplier portal (until then pushes log `not-connected`). Email-parser fallback if review slips.
+- 🟡 GetYourGuide: five supplier endpoints + reserve holds + product mapping LIVE; Vercel env set; MHT-ACE-TEST/MHT-ACE/MHT-TFS/MHT-LPA mapped; portal self-test 23/23 (run 96279, 9 Sept); availability push wired into desk/partner/cancel/close paths with GYG's push policy. All four self-test shapes passed 23/23 (9 Sept); sandbox push accepted. Still needed: production configuration in the portal, switch GYG_API_BASE to the production host at go-live, GYG review (2–6 weeks), connect the real MHT products in GYG's supplier portal (until then pushes log `not-connected`). Email-parser fallback if review slips.
 - 👤 Who owns MHT's GetYourGuide supplier account; product list for mapping.
 
 ## E. Platform / hygiene

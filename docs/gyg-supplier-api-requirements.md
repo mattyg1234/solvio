@@ -52,7 +52,7 @@ from the show time for `period_minutes`) and `pricing_type` (individual | group 
 of `group_size`; GROUP items book `groupSize` seats each as adults). Self-test mappings on MHT's workspace,
 all pointing at 1 MHT ACE under the ACE GetYourGuide partner: `MHT-ACE-TEST-PERIOD` (time period, per person)
 and `MHT-ACE-TEST-GROUP` (time point, groups of 10). Register each in the portal test configuration with the
-matching type and run the suite per product.
+matching type and run the suite per product. **All four combinations passed 23/23 on 9 Sept 2026** (runs 96279 time point/individual, 96296 time point/group, 96297 time period/individual, 96298 time period/group via `MHT-ACE-TEST-PERIOD-GROUP`). Push test: sandbox accepted `MHT-ACE-TEST` 2026-10-15 (202); slots more than 90 days out are rejected as 'too far in the future', so the push policy stops at 90 days.
 
 ## Estimate (build, with Claude)
 | Piece | Hours |
@@ -86,7 +86,7 @@ to have a chance of being live for 1 December; the email-parser fallback stays i
 ### Vercel env to add before the self-test
 `GYG_INBOUND_BASIC_USER=solvio-gyg-test`, `GYG_INBOUND_BASIC_PASSWORD=<the password entered in the Integrator Portal test config>`,
 `GYG_OUTBOUND_BASIC_USER=SolvioSystemsLTD`, `GYG_OUTBOUND_BASIC_PASSWORD=<from the portal "GetYourGuide Credentials">`,
-`GYG_API_BASE` is no longer read (the host is fixed); the variable can be deleted from Vercel.
+`GYG_API_BASE` selects the push host: the sandbox `https://supplier-api.getyourguide.com/sandbox/1` while testing, production `https://supplier-api.getyourguide.com/1` after go-live (the Vercel value currently ends in a stray full stop; the code strips it).
 
 ### Still to do for certification
 Time-period and GROUP product shapes (required of multi-supplier systems), price-over-API (optional),

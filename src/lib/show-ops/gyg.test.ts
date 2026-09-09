@@ -92,9 +92,11 @@ test("availability push policy follows GetYourGuide's rules", () => {
   // first observation: only a sold-out night is worth a push
   assert.equal(shouldPushAvailability(undefined, 0, "2026-09-20", today), true);
   assert.equal(shouldPushAvailability(undefined, 120, "2026-09-20", today), false);
-  // sold out / back on sale always push
-  assert.equal(shouldPushAvailability(3, 0, "2027-03-11", today), true);
-  assert.equal(shouldPushAvailability(0, 2, "2027-03-11", today), true);
+  // sold out / back on sale push, but only inside GetYourGuide's 90-day horizon
+  assert.equal(shouldPushAvailability(3, 0, "2026-11-20", today), true);
+  assert.equal(shouldPushAvailability(0, 2, "2026-11-20", today), true);
+  assert.equal(shouldPushAvailability(3, 0, "2027-03-11", today), false, "GYG rejects slots more than 90 days out");
+  assert.equal(shouldPushAvailability(undefined, 0, "2027-03-11", today), false);
   // low seats only inside 60 days, and only when the figure changed
   assert.equal(shouldPushAvailability(6, 5, "2026-10-01", today), true);
   assert.equal(shouldPushAvailability(6, 5, "2027-03-11", today), false);

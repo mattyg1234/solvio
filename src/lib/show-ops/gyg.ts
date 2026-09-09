@@ -216,6 +216,8 @@ export function cancellationRefusal(booking: { show_date: string; arrived_at: st
 
 const LOW_SEATS = 7;
 const LOW_SEATS_WINDOW_DAYS = 60;
+/** GetYourGuide rejects pushed slots more than 90 days out ("too far in the future"). */
+const PUSH_HORIZON_DAYS = 90;
 
 /**
  * GetYourGuide's push policy: tell them only when a night sells out, comes back on
@@ -224,12 +226,11 @@ const LOW_SEATS_WINDOW_DAYS = 60;
  * pushed (or observed) for the night; undefined = first time we look at it.
  */
 export function shouldPushAvailability(prev: number | undefined, next: number, date: string, today = new Date()): boolean {
+  const days = (new Date(`${date}T00:00:00Z`).getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86_400_000;
+  if (!(days >= 0 && days <= PUSH_HORIZON_DAYS)) return false;
   if (prev === undefined) return next === 0;
   if (prev === next) return false;
   if (next === 0 || prev === 0) return true;
-  if (next < LOW_SEATS) {
-    const days = (new Date(`${date}T00:00:00Z`).getTime() - Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) / 86_400_000;
-    return days >= 0 && days <= LOW_SEATS_WINDOW_DAYS;
-  }
+  if (next < LOW_SEATS) return days <= LOW_SEATS_WINDOW_DAYS;
   return false;
 }
