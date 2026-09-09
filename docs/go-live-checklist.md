@@ -17,13 +17,13 @@ Status legend: ✅ done · 🟡 built, needs MHT input/acceptance · 🔴 not bu
 ## B. Bookings, capacity, partners
 - ✅ Partner links book through a capacity-checked database transaction (no overbooking).
 - ✅ Page/action permissions enforced for staff logins.
-- 🟡 Booking reference allocation not atomic with insert on the staff path (rare duplicate → retry). Fix before staff volume.
+- ✅ Booking reference clashes between desks retry with the next number; allocation failures no longer invent a series.
 - 🟡 Rate cards (39 cards / 9,608 prices) are reference-only; pricing uses product price + partner %. Hide/label the selectors or wire the matrix (decision).
 - 🟡 Editing a booking after a price change recalculates from current prices; agree "keep booked price vs re-quote".
-- 🔴 Seller / partner-link "send guest ticket" tickbox does nothing yet (staff path works).
-- 🔴 Quick pickup change on an own-way/private booking can flip transport without repricing.
-- 🔴 Staff date picker loads booked dates without paging (>1000 rows truncates). Door hides query failures as "everyone is in".
-- 🔴 QR scan accepts other nights' tickets; partial parties count as fully in; two-phone scan race.
+- ✅ Seller / partner-link "send guest ticket" tickbox now sends (same as staff path).
+- ✅ Quick pickup change refuses own-way/private bookings (use Edit booking so the price updates).
+- ✅ Staff date picker pages booked dates; Door shows load errors instead of "everyone is in".
+- ✅ QR scan refuses other nights' tickets, completes partial parties on a second scan, and is race-safe across phones. Still open: person-level (adult/child) partial attendance.
 - 👤 Finish show start times (6/14 done). Add staff logins (Ruth finance, Lee door, office). Currently only Joel's owner login exists.
 
 ## C. Cutover from Lanzasoft
