@@ -207,17 +207,19 @@ export function ExpensesPanel({
 export function PnlPanel({ rows, currency, from, to }: { rows: PnlRow[]; currency: ShowOpsCurrency; from: string; to: string }) {
   const money = (n: number) => formatShowOpsMoney(n, currency);
   const totals = rows.reduce(
-    (t, r) => ({ revenue: t.revenue + r.revenue, nett: t.nett + r.nett_to_partners, expenses: t.expenses + r.expenses, margin: t.margin + r.margin, bookings: t.bookings + r.bookings }),
-    { revenue: 0, nett: 0, expenses: 0, margin: 0, bookings: 0 },
+    (t, r) => ({ gross: t.gross + r.gross, income: t.income + r.income, commission: t.commission + r.commission, expenses: t.expenses + r.expenses, margin: t.margin + r.margin, bookings: t.bookings + r.bookings }),
+    { gross: 0, income: 0, commission: 0, expenses: 0, margin: 0, bookings: 0 },
   );
+  const tone = (n: number) => (n < 0 ? "text-rose-700" : "text-emerald-700");
   return (
     <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-semibold">Profit &amp; loss by month and island</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Ticket revenue and partner nett from bookings by show date; costs from recorded expenses. Amounts are net of tax.
-            Costs not tied to an island sit under &ldquo;All islands&rdquo;.
+            From bookings by show date: gross ticket value, what the business actually receives after partner commission
+            (the nett), and recorded expenses. Margin is income minus expenses. Amounts are net of tax. Costs not tied to an
+            island sit under &ldquo;All islands&rdquo;.
           </p>
         </div>
         <form method="get" className="flex flex-wrap items-end gap-2 text-xs font-medium text-slate-600">
@@ -237,8 +239,9 @@ export function PnlPanel({ rows, currency, from, to }: { rows: PnlRow[]; currenc
                 <th className="py-1 pr-3">Month</th>
                 <th className="py-1 pr-3">Island</th>
                 <th className="py-1 pr-3 text-right">Bookings</th>
-                <th className="py-1 pr-3 text-right">Ticket revenue</th>
-                <th className="py-1 pr-3 text-right">Partner nett</th>
+                <th className="py-1 pr-3 text-right">Gross tickets</th>
+                <th className="py-1 pr-3 text-right">Partner commission</th>
+                <th className="py-1 pr-3 text-right">Income (nett)</th>
                 <th className="py-1 pr-3 text-right">Expenses</th>
                 <th className="py-1 text-right">Margin</th>
               </tr>
@@ -249,10 +252,11 @@ export function PnlPanel({ rows, currency, from, to }: { rows: PnlRow[]; currenc
                   <td className="py-1.5 pr-3">{r.month}</td>
                   <td className="py-1.5 pr-3">{r.island}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{r.bookings}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.revenue)}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.nett_to_partners)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.gross)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums text-slate-500">{money(r.commission)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums font-medium">{money(r.income)}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{money(r.expenses)}</td>
-                  <td className={`py-1.5 text-right font-semibold tabular-nums ${r.margin < 0 ? "text-rose-700" : "text-emerald-700"}`}>{money(r.margin)}</td>
+                  <td className={`py-1.5 text-right font-semibold tabular-nums ${tone(r.margin)}`}>{money(r.margin)}</td>
                 </tr>
               ))}
             </tbody>
@@ -260,18 +264,19 @@ export function PnlPanel({ rows, currency, from, to }: { rows: PnlRow[]; currenc
               <tr>
                 <td className="py-2 pr-3" colSpan={2}>Total</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{totals.bookings}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{money(totals.revenue)}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{money(totals.nett)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{money(totals.gross)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums text-slate-500">{money(totals.commission)}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{money(totals.income)}</td>
                 <td className="py-2 pr-3 text-right tabular-nums">{money(totals.expenses)}</td>
-                <td className={`py-2 text-right tabular-nums ${totals.margin < 0 ? "text-rose-700" : "text-emerald-700"}`}>{money(totals.margin)}</td>
+                <td className={`py-2 text-right tabular-nums ${tone(totals.margin)}`}>{money(totals.margin)}</td>
               </tr>
             </tfoot>
           </table>
         </div>
       )}
       <p className="mt-3 text-xs text-slate-500">
-        Partner nett is what Solvio owes partners on deposit-mode bookings and what it invoices on invoice-mode ones, as stored on each booking.
-        Door cash, no-show write-offs and Holded ledger entries are not yet reflected here.
+        Income uses the nett stored on each booking (what the partner remits, or the full price for direct sales).
+        Door cash, no-show write-offs, deposits retained by sellers and Holded ledger entries are not yet reflected here.
       </p>
     </section>
   );

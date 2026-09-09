@@ -56,12 +56,13 @@ test("expense → Holded purchase draft carries net, tax key, tags and the Solvi
   assert.equal(p.currency, undefined);
 });
 
-test("P&L joins ticket revenue, partner nett and expenses per month and island", () => {
+test("P&L: income is the partner nett, commission is the gap to gross, margin is income minus expenses", () => {
   const rows = buildPnl(
     [
       { show_date: "2026-09-05", island: "Tenerife", total_cost: 100, nett_total: 60 },
       { show_date: "2026-09-06", island: "Tenerife", total_cost: 50, nett_total: 30, cancelled_at: "2026-09-01" },
       { show_date: "2026-09-07", island: "Gran Canaria", total_cost: 80, nett_total: 40 },
+      { show_date: "2026-09-08", island: "Gran Canaria", total_cost: 20, nett_total: null },
       { show_date: "2026-08-30", island: "Tenerife", total_cost: 10, nett_total: 5 },
     ],
     [
@@ -69,10 +70,10 @@ test("P&L joins ticket revenue, partner nett and expenses per month and island",
       { expense_date: "2026-09-08", island: null, net_amount: 5 },
     ],
   );
-  assert.deepEqual(rows.map((r) => [r.month, r.island, r.revenue, r.nett_to_partners, r.expenses, r.margin, r.bookings]), [
-    ["2026-09", "All islands", 0, 0, 5, -5, 0],
-    ["2026-09", "Gran Canaria", 80, 40, 0, 40, 1],
-    ["2026-09", "Tenerife", 100, 60, 25, 15, 1],
-    ["2026-08", "Tenerife", 10, 5, 0, 5, 1],
+  assert.deepEqual(rows.map((r) => [r.month, r.island, r.gross, r.income, r.commission, r.expenses, r.margin, r.bookings]), [
+    ["2026-09", "All islands", 0, 0, 0, 5, -5, 0],
+    ["2026-09", "Gran Canaria", 100, 60, 40, 0, 60, 2],
+    ["2026-09", "Tenerife", 100, 60, 40, 25, 35, 1],
+    ["2026-08", "Tenerife", 10, 5, 5, 0, 5, 1],
   ]);
 });

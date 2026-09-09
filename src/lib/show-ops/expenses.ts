@@ -122,12 +122,26 @@ export function holdedPurchaseFromExpense(
   return input;
 }
 
-export type PnlRow = { month: string; island: string; revenue: number; nett_to_partners: number; expenses: number; margin: number; bookings: number };
+export type PnlRow = {
+  month: string;
+  island: string;
+  /** Gross ticket value sold (door price × pax). */
+  gross: number;
+  /** What the operator actually receives after partner commission (nett_total on the booking). */
+  income: number;
+  /** gross − income: kept by partners / sellers. */
+  commission: number;
+  expenses: number;
+  /** income − expenses. */
+  margin: number;
+  bookings: number;
+};
 
 /**
- * Per-month, per-island P&L from what Solvio already knows: ticket revenue and
- * partner nett from bookings, costs from expenses. Costs with no island are
- * shown under "All islands" rather than guessed.
+ * Per-month, per-island P&L from what Solvio already knows. Partners sell at the
+ * door price and remit the nett, so the operator's income is the nett, the gap
+ * to gross is partner commission, and margin is income minus recorded expenses.
+ * Costs with no island are shown under "All islands" rather than guessed.
  */
 export function buildPnl(
   bookings: Array<{ show_date: string; island: string | null; total_cost: number | string | null; nett_total: number | string | null; cancelled_at?: string | null }>,
@@ -138,7 +152,7 @@ export function buildPnl(
     const key = `${month}|${island}`;
     let row = rows.get(key);
     if (!row) {
-      row = { month, island, revenue: 0, nett_to_partners: 0, expenses: 0, margin: 0, bookings: 0 };
+      row = { month, island, gross: 0, income: 0, commission: 0, expenses: 0, margin: 0, bookings: 0 };
       rows.set(key, row);
     }
     return row;
@@ -148,8 +162,11 @@ export function buildPnl(
     const month = String(b.show_date).slice(0, 7);
     if (month.length !== 7) continue;
     const row = get(month, b.island?.trim() || "All islands");
-    row.revenue = round2(row.revenue + num(b.total_cost));
-    row.nett_to_partners = round2(row.nett_to_partners + num(b.nett_total));
+    const gross = num(b.total_cost);
+    // A booking with no nett recorded (direct sale, no partner) is all income.
+    const income = b.nett_total == null || b.nett_total === "" ? gross : num(b.nett_total);
+    row.gross = round2(row.gross + gross);
+    row.income = round2(row.income + income);
     row.bookings += 1;
   }
   for (const e of expenses) {
@@ -158,6 +175,9 @@ export function buildPnl(
     const row = get(month, e.island?.trim() || "All islands");
     row.expenses = round2(row.expenses + num(e.net_amount));
   }
-  for (const row of rows.values()) row.margin = round2(row.revenue - row.nett_to_partners - row.expenses);
+  for (const row of rows.values()) {
+    row.commission = round2(row.gross - row.income);
+    row.margin = round2(row.income - row.expenses);
+  }
   return [...rows.values()].sort((a, b) => (a.month === b.month ? a.island.localeCompare(b.island) : b.month.localeCompare(a.month)));
 }
