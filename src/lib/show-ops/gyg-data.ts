@@ -265,7 +265,23 @@ export async function handleBook(body: Record<string, unknown>, db: SupabaseClie
   }
 
   const now = new Date().toISOString();
-  await db.from("show_bookings").update({ channel: GYG_CHANNEL, channel_ref: gygRef, updated_at: now }).eq("id", created.id).eq("business_id", cp.business_id);
+  // Booking-change flow: the same GYG reference now belongs to the new booking. The old one keeps a
+  // traceable, superseded reference so the unique index lets the new booking take the live one; GYG
+  // cancels the old booking next, by our booking reference.
+  if (existing) {
+    const { error: relabelError } = await db
+      .from("show_bookings")
+      .update({ channel_ref: `${gygRef}#superseded-${Date.now().toString(36)}`, updated_at: now })
+      .eq("id", existing.id)
+      .eq("business_id", cp.business_id);
+    if (relabelError) console.error("[gyg] could not relabel superseded booking", existing.id, relabelError.message);
+  }
+  const { error: stampError } = await db
+    .from("show_bookings")
+    .update({ channel: GYG_CHANNEL, channel_ref: gygRef, updated_at: now })
+    .eq("id", created.id)
+    .eq("business_id", cp.business_id);
+  if (stampError) console.error("[gyg] booking created but channel stamp failed", created.id, gygRef, stampError.message);
   await db.from("show_seat_holds").update({ status: "booked", booking_id: created.id, external_booking_ref: gygRef, updated_at: now }).eq("id", hold.id);
   const { data: booking } = await db.from("show_bookings").select("id,booking_ref,ticket_token,show_date,cancelled_at,arrived_at,product_id,island").eq("id", created.id).maybeSingle();
   if (!booking) return gygFail(gygError("INTERNAL_SYSTEM_FAILURE", "Booking saved but could not be read back."));
@@ -277,23 +293,36 @@ export async function handleCancelBooking(body: Record<string, unknown>, db: Sup
   const gygRef = String(body.gygBookingReference ?? "").trim();
   const ourRef = String(body.bookingReference ?? "").trim();
   if (!gygRef && !ourRef) return gygFail(gygError("VALIDATION_FAILURE", "bookingReference or gygBookingReference is required."));
-  let q = db.from("show_bookings").select("id,business_id,booking_ref,ticket_token,show_date,cancelled_at,arrived_at,product_id,island,channel_ref").eq("channel", GYG_CHANNEL);
-  q = gygRef ? q.eq("channel_ref", gygRef) : q.eq("booking_ref", ourRef);
-  const { data: rows } = await q.order("created_at", { ascending: false }).limit(1);
-  const booking = rows?.[0];
+  // Our own reference is exact (the booking-change flow cancels the OLD booking by it while the GYG
+  // reference already points at the new one); fall back to the GYG reference, live or superseded.
+  const select = "id,business_id,booking_ref,ticket_token,show_date,cancelled_at,arrived_at,product_id,island,channel_ref";
+  let booking: Record<string, unknown> | undefined;
+  if (ourRef) {
+    const { data } = await db.from("show_bookings").select(select).eq("channel", GYG_CHANNEL).eq("booking_ref", ourRef).limit(1);
+    booking = data?.[0];
+  }
+  if (!booking && gygRef) {
+    const { data } = await db.from("show_bookings").select(select).eq("channel", GYG_CHANNEL).eq("channel_ref", gygRef).order("created_at", { ascending: false }).limit(1);
+    booking = data?.[0];
+  }
+  if (!booking && gygRef) {
+    const { data } = await db.from("show_bookings").select(select).eq("channel", GYG_CHANNEL).like("channel_ref", `${gygRef}#superseded-%`).order("created_at", { ascending: false }).limit(1);
+    booking = data?.[0];
+  }
   if (!booking) return gygFail(gygError("INVALID_BOOKING", "The booking does not exist."));
-  const refusal = cancellationRefusal(booking);
+  const b = booking as unknown as BookingRow & { business_id: string; channel_ref: string | null };
+  const refusal = cancellationRefusal(b);
   if (refusal) return gygFail(refusal);
   const now = new Date().toISOString();
   const { error } = await db
     .from("show_bookings")
-    .update({ cancelled_at: now, cancelled_by: null, cancel_reason: `Cancelled by GetYourGuide (${booking.channel_ref || ourRef})`, updated_at: now })
-    .eq("id", booking.id)
-    .eq("business_id", booking.business_id);
+    .update({ cancelled_at: now, cancelled_by: null, cancel_reason: `Cancelled by GetYourGuide (${b.channel_ref || ourRef})`, updated_at: now })
+    .eq("id", b.id)
+    .eq("business_id", b.business_id);
   if (error) throw new Error(error.message);
-  await db.from("show_seat_holds").update({ status: "released", updated_at: now }).eq("booking_id", booking.id).eq("status", "booked");
-  const cp = booking.product_id ? await channelProductForShow(db, booking.business_id, booking.product_id) : null;
-  if (cp) void notifyAvailability(db, cp, String(booking.show_date));
+  await db.from("show_seat_holds").update({ status: "released", updated_at: now }).eq("booking_id", b.id).eq("status", "booked");
+  const cp = b.product_id ? await channelProductForShow(db, b.business_id, b.product_id) : null;
+  if (cp) void notifyAvailability(db, cp, String(b.show_date));
   return gygOk({});
 }
 
@@ -315,12 +344,13 @@ export async function notifyAvailability(db: SupabaseClient, cp: ChannelProduct,
     const [night] = await availabilityBetween(db, cp, date, date);
     if (!night) return;
     const base = (process.env.GYG_API_BASE || "https://supplier-api.getyourguide.com/1").replace(/\/$/, "");
+    const payload = { data: { productId: cp.external_product_id, availabilities: [{ dateTime: gygDateTime(date, cp.product.show_time, cp.product.island), vacancies: night.vacancies }] } };
     const res = await fetch(`${base}/notify-availability-update`, {
       method: "POST",
-      headers: { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`, "content-type": "application/json" },
-      body: JSON.stringify({ data: { productId: cp.external_product_id, availabilities: [{ dateTime: gygDateTime(date, cp.product.show_time, cp.product.island), vacancies: night.vacancies }] } }),
+      headers: { authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`, "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(payload),
     });
-    if (!res.ok) console.error("[gyg] notify-availability-update", res.status, (await res.text()).slice(0, 200));
+    if (!res.ok) console.error("[gyg] notify-availability-update", res.status, (await res.text()).slice(0, 200), "payload:", JSON.stringify(payload).slice(0, 300), "base:", base);
   } catch (err) {
     console.error("[gyg] notify-availability-update failed:", err instanceof Error ? err.message : err);
   }
