@@ -8,10 +8,13 @@ import {
   type DailySalesRow,
 } from "@/lib/show-ops/daily-sales";
 import { isoDateInTimeZone } from "@/lib/show-ops/digest";
+import { loadReportRows, ReportLoadError } from "@/lib/show-ops/report-data";
 import { resolveShowOpsBusinessId } from "@/lib/show-ops/resolve-business";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /** Bookings taken on one office-local day (Atlantic/Canary), summary + rows. Linked from Reports → Daily sales. */
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -29,23 +32,27 @@ export async function GET(request: NextRequest) {
   const island = request.nextUrl.searchParams.get("island") || "";
   const window = localDayUtcRange(date, SHOW_OPS_OFFICE_TZ);
 
-  let q = supabase
-    .from("show_bookings")
-    .select(
-      "booking_ref,guest_name,show_name,island,show_date,hotel_name,supplier_name,sales_channel,adults,children,infants,total_cost,billing_mode,created_at",
-    )
-    .eq("business_id", business.id)
-    .gte("created_at", window.start)
-    .lt("created_at", window.end)
-    .is("cancelled_at", null)
-    .order("created_at")
-    .range(0, 9999);
-  if (island) q = q.eq("island", island);
-
-  const { data, error } = await q;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const result = await loadReportRows("daily sales export", (offset, limit) => {
+    let q = supabase
+      .from("show_bookings")
+      .select(
+        "booking_ref,guest_name,show_name,island,show_date,hotel_name,supplier_name,sales_channel,adults,children,infants,total_cost,billing_mode,created_at",
+      )
+      .eq("business_id", business.id)
+      .gte("created_at", window.start)
+      .lt("created_at", window.end)
+      .is("cancelled_at", null)
+      .order("created_at")
+      .order("id")
+      .range(offset, offset + limit - 1);
+    if (island) q = q.eq("island", island);
+    return q;
+  }).catch((error: unknown) => ({ data: null, error }));
+  if (!result.data) {
+    const message = result.error instanceof ReportLoadError ? result.error.message : "Could not load daily sales export. Please try again.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
+  const data = result.data;
 
   const csv = dailySalesCsv(summariseDailySales(date, (data ?? []) as DailySalesRow[], SHOW_OPS_OFFICE_TZ));
 

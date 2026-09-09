@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadReportRows, ReportLoadError } from "@/lib/show-ops/report-data";
 import { resolveShowOpsBusinessId } from "@/lib/show-ops/resolve-business";
 import { formatShowOpsPax, showOpsArrivalMark, showOpsBookingPayView } from "@/lib/show-ops/calc";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -13,6 +14,8 @@ function csvCell(v: unknown) {
 function sanitizeSearch(q: string): string {
   return q.replace(/[%_,()]/g, "").trim();
 }
+
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -36,36 +39,40 @@ export async function GET(request: NextRequest) {
   const show = sp.get("show") || "";
   const includeCancelled = sp.get("include_cancelled") === "1" || pay === "cancelled";
 
-  let query = supabase
-    .from("show_bookings")
-    .select(
-      "booking_ref,guest_name,show_name,island,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,adults,children,infants,arrived_pax,arrived_at,no_show,total_cost,balance_remaining,nett_total,payment_status,billing_mode,payment_method,cancelled_at,created_at",
-    )
-    .eq("business_id", business.id)
-    .order("created_at", { ascending: false })
-    .limit(5000);
+  const result = await loadReportRows("booking export", (offset, limit) => {
+    let query = supabase
+      .from("show_bookings")
+      .select(
+        "booking_ref,guest_name,show_name,island,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,adults,children,infants,arrived_pax,arrived_at,no_show,total_cost,balance_remaining,nett_total,payment_status,billing_mode,payment_method,cancelled_at,created_at",
+      )
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  if (!includeCancelled) query = query.is("cancelled_at", null);
-  if (pay === "cancelled") query = query.not("cancelled_at", "is", null);
-  if (pay === "invoice") query = query.eq("billing_mode", "invoice");
-  if (pay === "unpaid" || pay === "partial" || pay === "paid") {
-    query = query.eq("billing_mode", "deposit").eq("payment_status", pay);
+    if (!includeCancelled) query = query.is("cancelled_at", null);
+    if (pay === "cancelled") query = query.not("cancelled_at", "is", null);
+    if (pay === "invoice") query = query.eq("billing_mode", "invoice");
+    if (pay === "unpaid" || pay === "partial" || pay === "paid") {
+      query = query.eq("billing_mode", "deposit").eq("payment_status", pay);
+    }
+    if (island) query = query.eq("island", island);
+    if (date) query = query.eq("show_date", date);
+    if (from) query = query.gte("show_date", from);
+    if (to) query = query.lte("show_date", to);
+    if (show) query = query.eq("show_name", show);
+    if (q) {
+      query = query.or(
+        `booking_ref.ilike.%${q}%,guest_name.ilike.%${q}%,show_name.ilike.%${q}%,supplier_name.ilike.%${q}%,hotel_name.ilike.%${q}%`,
+      );
+    }
+    return query;
+  }).catch((error: unknown) => ({ data: null, error }));
+  if (!result.data) {
+    const message = result.error instanceof ReportLoadError ? result.error.message : "Could not load booking export. Please try again.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-  if (island) query = query.eq("island", island);
-  if (date) query = query.eq("show_date", date);
-  if (from) query = query.gte("show_date", from);
-  if (to) query = query.lte("show_date", to);
-  if (show) query = query.eq("show_name", show);
-  if (q) {
-    query = query.or(
-      `booking_ref.ilike.%${q}%,guest_name.ilike.%${q}%,show_name.ilike.%${q}%,supplier_name.ilike.%${q}%,hotel_name.ilike.%${q}%`,
-    );
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const data = result.data;
 
   const header = [
     "booking_ref",
