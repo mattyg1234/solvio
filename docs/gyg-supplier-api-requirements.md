@@ -63,3 +63,28 @@ product in addition to MHT ACE.
 | **Total hands-on** | **27–39 h** |
 Calendar: GetYourGuide's manual review typically 2–6 weeks after the self-test passes. Start early October
 to have a chance of being live for 1 December; the email-parser fallback stays in the drawer if review slips.
+
+## Implemented 9 Sept 2026 (first cut)
+- Routes: `/api/gyg/v1/1/get-availabilities` (GET), `/reserve`, `/cancel-reservation`, `/book`, `/cancel-booking` (POST).
+  Always HTTP 200; `{ data }` or `{ errorCode, errorMessage }`. Basic Auth against `GYG_INBOUND_BASIC_USER/PASSWORD`.
+  `skipTrailingSlashRedirect` so GYG's trailing-slash URLs are not answered with a 308.
+- Mapping: Settings → "GetYourGuide products" (`show_channel_products`): GYG product id → show + partner (the
+  GetYourGuide partner for that island: pricing, nett, invoicing) + pickup kind + cut-off.
+- Availability = product weekday pattern ∪ nights with bookings, minus full closes; vacancies = capacity − booked − live holds.
+- Reserve → `show_seat_holds` (60 min). Book → the capacity-checked partner-link transaction under the GYG partner,
+  stamped `channel=getyourguide`, `channel_ref=gygBookingReference` (unique ⇒ retries return the same booking; changed
+  details ⇒ new booking per the booking-change flow). One COLLECTIVE QR ticket (the guest ticket URL).
+- Cancel-booking honours BOOKING_IN_PAST / BOOKING_REDEEMED / BOOKING_ALREADY_CANCELLED.
+- Availability push (`notify-availability-update`) fires after channel bookings/cancellations when
+  `GYG_OUTBOUND_BASIC_USER/PASSWORD` are set (`GYG_API_BASE` defaults to production; set the sandbox URL for testing).
+  **Not yet wired** into desk/partner-link/cancel/close paths — that is the next step.
+
+### Vercel env to add before the self-test
+`GYG_INBOUND_BASIC_USER=solvio-gyg-test`, `GYG_INBOUND_BASIC_PASSWORD=<the password entered in the Integrator Portal test config>`,
+`GYG_OUTBOUND_BASIC_USER=SolvioSystemsLTD`, `GYG_OUTBOUND_BASIC_PASSWORD=<from the portal "GetYourGuide Credentials">`,
+`GYG_API_BASE=https://supplier-api.getyourguide.com/sandbox/1` (until production).
+
+### Still to do for certification
+Time-period and GROUP product shapes (required of multi-supplier systems), price-over-API (optional),
+availability push from every capacity-changing path, product mapping for the self-test product `MHT-ACE-TEST`,
+then the portal self-test until all rows are green.

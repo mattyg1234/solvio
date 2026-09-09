@@ -76,7 +76,7 @@ import {
   privatePickupLabel,
   type PrivateAccommodation,
 } from "@/lib/show-ops/private-pickup";
-import { type ShowOpsBillingTier, parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
+import { type ShowOpsBillingTier, type ShowOpsMemberRole, parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
 import type {
   ShowOpsBookingQuestion,
   ShowOpsBookingQuestionType,
@@ -2551,14 +2551,18 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!member) throw new Error("Member not found in this workspace.");
-  const allowedPages = showOpsAllowedPages(member.role, valid);
+  // Owners may move a staff member between roles (e.g. Door-only booker → Office) without recreating the login.
+  const requestedRole = String(formData.get("role") ?? "").trim();
+  const nextRole = (["booker", "office", "finance", "admin"] as const).find((r) => r === requestedRole) ?? (member.role as string);
+  if (member.role === "seller" && nextRole !== "seller") throw new Error("Seller logins stay sellers; create a staff login instead.");
+  const allowedPages = showOpsAllowedPages(nextRole as ShowOpsMemberRole, valid);
   if (!allowedPages.length) throw new Error("Pick at least one page available to this role.");
 
   /*
    * The partner this person books for. Sellers are locked to theirs by the portal,
    * so this only ever sets the desk's pre-selected partner for office staff.
    */
-  const patch: Record<string, unknown> = { allowed_pages: allowedPages };
+  const patch: Record<string, unknown> = { allowed_pages: allowedPages, role: nextRole };
   if (formData.has("default_supplier_id") && member.role !== "seller") {
     patch.supplier_id = String(formData.get("default_supplier_id") ?? "").trim() || null;
   }

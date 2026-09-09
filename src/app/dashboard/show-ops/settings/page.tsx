@@ -16,6 +16,7 @@ import {
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { deleteChannelProductAction, saveChannelProductAction } from "@/app/dashboard/show-ops/actions-channels";
 import {
   MemberIslandsForm,
   IslandScopeFields,
@@ -41,6 +42,8 @@ export default async function ShowOpsSettingsPage({
     sample_error?: string;
     holded?: string;
     holded_error?: string;
+    channel?: string;
+    channel_error?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -120,6 +123,14 @@ export default async function ShowOpsSettingsPage({
 
   const holded = await loadHoldedConnection(ctx);
   const igic = holded.connected ? await listHoldedIgicTaxes(ctx) : { taxes: [], error: null };
+  const [{ data: channelRows }, { data: channelShows }, { data: channelPartners }] = await Promise.all([
+    ctx.supabase.from("show_channel_products").select("id,external_product_id,product_id,supplier_id,ticket_type_id,pickup_kind,cutoff_minutes,active,notes").eq("business_id", ctx.business.id).order("external_product_id"),
+    ctx.supabase.from("show_products").select("id,name,island,active").eq("business_id", ctx.business.id).order("island").order("name"),
+    ctx.supabase.from("show_suppliers").select("id,name,billing_mode,booking_token").eq("business_id", ctx.business.id).eq("active", true).order("name"),
+  ]);
+  const showName = new Map((channelShows ?? []).map((p) => [p.id, `${p.name} · ${p.island}`]));
+  const partnerName = new Map((channelPartners ?? []).map((p) => [p.id, p.name]));
+  const gygPartnersFirst = [...(channelPartners ?? [])].sort((a, b) => Number(/get your guide/i.test(b.name)) - Number(/get your guide/i.test(a.name)) || a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-8">
@@ -323,6 +334,20 @@ export default async function ShowOpsSettingsPage({
                     className="mt-2 rounded-xl bg-slate-50 p-3"
                   >
                     <input type="hidden" name="member_id" value={m.id} />
+                    {m.role !== "seller" && m.role !== "owner" ? (
+                      <label className="mb-2 block text-xs text-slate-600">
+                        Role
+                        <select name="role" defaultValue={m.role} className="mt-1 block w-full max-w-xs rounded-lg border px-2 py-1.5 text-sm">
+                          <option value="booker">Booker — takes bookings</option>
+                          <option value="office">Office — bookings + operations</option>
+                          <option value="finance">Finance — adds invoicing, expenses and P&amp;L</option>
+                          <option value="admin">Admin — full access</option>
+                        </select>
+                        <span className="mt-1 block text-[11px] text-slate-500">
+                          Money pages (Invoicing with expenses and P&amp;L, Reports, Dashboard) are only visible if ticked below; Invoicing also needs the Finance or Admin role.
+                        </span>
+                      </label>
+                    ) : null}
                     <div className="grid gap-2 sm:grid-cols-3">
                       {SHOW_OPS_PAGE_KEYS.filter((k) => k !== "settings").map(
                         (key) => (
@@ -374,7 +399,7 @@ export default async function ShowOpsSettingsPage({
                       type="submit"
                       className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
                     >
-                      Save pages
+                      Save role and pages
                     </button>
                   </form>
                   <form
@@ -1114,6 +1139,83 @@ export default async function ShowOpsSettingsPage({
           >
             {holded.status === "none" ? "Connect Holded" : "Save new token"}
           </button>
+        </form>
+      </section>
+
+      <section id="channels" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h2 className="font-semibold">GetYourGuide products</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Each GetYourGuide option is connected to one Solvio show and booked under the GetYourGuide partner for that island,
+          so pricing, nett and invoicing follow that partner. The product id is the string Joel enters in the GetYourGuide
+          supplier portal when connecting the option to Solvio. Bookings arrive as own-way (no bus) unless set to private pickup.
+        </p>
+        {sp.channel === "saved" ? <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Product mapping saved.</p> : null}
+        {sp.channel === "deleted" ? <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Product mapping removed.</p> : null}
+        {sp.channel_error ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{sp.channel_error}</p> : null}
+        {(channelRows ?? []).length ? (
+          <table className="mt-3 w-full text-left text-sm">
+            <thead className="text-xs uppercase text-slate-500">
+              <tr><th className="py-1 pr-3">GYG product id</th><th className="py-1 pr-3">Show</th><th className="py-1 pr-3">Books under</th><th className="py-1 pr-3">Pickup</th><th className="py-1 pr-3">Cut-off</th><th className="py-1 pr-3">Active</th><th></th></tr>
+            </thead>
+            <tbody>
+              {(channelRows ?? []).map((r) => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="py-1.5 pr-3 font-mono text-xs">{r.external_product_id}</td>
+                  <td className="py-1.5 pr-3">{showName.get(r.product_id) ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{partnerName.get(r.supplier_id) ?? "—"}</td>
+                  <td className="py-1.5 pr-3">{r.pickup_kind === "private" ? "Private" : "Own way"}</td>
+                  <td className="py-1.5 pr-3">{r.cutoff_minutes} min</td>
+                  <td className="py-1.5 pr-3">{r.active ? "Yes" : "No"}</td>
+                  <td className="py-1.5">
+                    <form action={deleteChannelProductAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <button type="submit" className="rounded-lg bg-white px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">Remove</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-3 text-sm text-slate-600">No GetYourGuide products mapped yet. The self-test product is <span className="font-mono">MHT-ACE-TEST</span>.</p>
+        )}
+        <form action={saveChannelProductAction} className="mt-3 grid gap-3 sm:grid-cols-3">
+          <label className="text-xs font-medium text-slate-600">
+            GetYourGuide product id
+            <input name="external_product_id" required maxLength={255} placeholder="MHT-ACE-TEST" className="mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-sm" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Show
+            <select name="product_id" required defaultValue="" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="" disabled>Select…</option>
+              {(channelShows ?? []).filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} · {p.island}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Books under partner
+            <select name="supplier_id" required defaultValue="" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="" disabled>Select…</option>
+              {gygPartnersFirst.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.billing_mode}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Pickup
+            <select name="pickup_kind" defaultValue="own_way" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="own_way">Own way (no bus)</option>
+              <option value="private">Private pickup</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Cut-off before the show (minutes)
+            <input name="cutoff_minutes" type="number" min={0} step={15} defaultValue={120} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Notes
+            <input name="notes" maxLength={300} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
+          </label>
+          <div className="sm:col-span-3">
+            <button type="submit" className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white">Map product</button>
+          </div>
         </form>
       </section>
 
