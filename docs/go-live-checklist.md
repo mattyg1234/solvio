@@ -24,7 +24,7 @@ Status legend: ✅ done · 🟡 built, needs MHT input/acceptance · 🔴 not bu
 - ✅ Quick pickup change refuses own-way/private bookings (use Edit booking so the price updates).
 - ✅ Staff date picker pages booked dates; Door shows load errors instead of "everyone is in".
 - ✅ QR scan refuses other nights' tickets, completes partial parties on a second scan, and is race-safe across phones. Still open: person-level (adult/child) partial attendance.
-- 👤 Finish show start times (6/14 done). Add staff logins (Ruth finance, Lee door, office). Currently only Joel's owner login exists.
+- 👤 Finish show start times (6/14 done). Add staff logins (Ruth finance, Lee door, office). Currently only Joel's owner login exists. Owners can now change a member's role and pages from Settings; untick Dashboard/Reports/Invoicing to hide money from a login.
 
 ## C. Cutover from Lanzasoft
 - 👤 Freeze date + final export from Lanzasoft; Solvio re-import must INSERT bookings (never UPDATE balances — the ledger owns them now).
@@ -33,7 +33,7 @@ Status legend: ✅ done · 🟡 built, needs MHT input/acceptance · 🔴 not bu
 - 🟡 Drop the pre-release snapshot tables (`private.snap_20260909_*`) a week after go-live if not needed.
 
 ## D. Channels
-- 🟡 GetYourGuide: integrator account exists; endpoints not built (see docs/gyg-supplier-api-requirements.md, 27–39 h). Build October, submit for review by early November; email-parser fallback if review slips.
+- 🟡 GetYourGuide: the five supplier endpoints + reserve holds + product mapping are LIVE (first cut). Still needed: Vercel env (GYG_INBOUND_*/GYG_OUTBOUND_*/GYG_API_BASE), map MHT-ACE-TEST in Settings, time-period + GROUP shapes for certification, availability push from desk/cancel paths, portal self-test, production config, GYG review (2–6 weeks). Email-parser fallback if review slips.
 - 👤 Who owns MHT's GetYourGuide supplier account; product list for mapping.
 
 ## E. Platform / hygiene
