@@ -50,3 +50,9 @@ operational system. Nothing here talks to AEAT directly — Holded does that whe
   integration meta. No approval for a rate ⇒ the pack is not sent (fail closed). Test company has no IGIC taxes —
   add a custom tax named "IGIC 7%" there to test.
 - Direct writes to `holded_*` columns from the app are refused by the DB trigger; never bypass the wrappers.
+
+## Token type (9 Sept, found the hard way)
+Holded V2 tokens (`pat_…`, `sk_live_…`) authenticate **only** the new `/…/v2/` API with `Authorization: Bearer`.
+Solvio uses `/invoicing/v1/*`, which accepts **v1 API keys only** (`key` header, 32 hex chars, created under
+"Ir a API Keys v1"). The client refuses V2 tokens with an instruction. TODO before Holded retires v1: port the
+client to the v2 endpoints (Bearer auth, cursor pagination, new paths).

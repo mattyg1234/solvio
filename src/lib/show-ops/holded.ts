@@ -465,6 +465,11 @@ export class HoldedClient {
   constructor(token: string) {
     this.token = token.trim();
     if (!this.token) throw new Error("Holded token is empty.");
+    // Holded's V2 tokens (pat_…, sk_live_…) only authenticate the new /v2 API. Solvio still talks to the
+    // /invoicing/v1 endpoints, which accept v1 API keys only. Fail with a clear instruction rather than a 401.
+    if (/^(pat_|sk_live_)/.test(this.token)) {
+      throw new Error("That is a Holded V2 token. Solvio needs a v1 API key: in Holded go to Configuración → Desarrolladores → Credenciales → \"Ir a API Keys v1\" → Nueva Api Key, and paste that 32-character key instead.");
+    }
   }
 
   private headers(): Record<string, string> {
