@@ -17,6 +17,8 @@ import {
   holdedInvoiceFromPack,
   parseIgicApprovals,
   rateKey,
+  holdedItemsFromLines,
+  unixDay,
   type HoldedDocumentSummary,
   type HoldedIgicTaxApproval,
 } from "@/lib/show-ops/holded";
@@ -424,4 +426,164 @@ export async function syncHoldedInvoicesAction(): Promise<void> {
   }
   revalidate();
   redirect(`/dashboard/show-ops/invoices?view=list&holded_synced=${updated}&holded_failed=${failed}`);
+}
+
+function creditReference(invoiceId: string, claimToken: string): string {
+  return `solvio-cn-${invoiceId}-${claimToken.replace(/-/g, "").slice(0, 12)}`;
+}
+
+async function completeCreditClaim(
+  businessId: string,
+  invoiceId: string,
+  claimToken: string,
+  outcome: "created" | "failed" | "unknown",
+  summary: HoldedDocumentSummary | null,
+  amount: number | null,
+  message: string | null,
+) {
+  const admin = createSupabaseServiceRoleClient();
+  const { error } = await admin.rpc("show_ops_holded_complete_credit_note", {
+    p_business_id: businessId,
+    p_invoice_id: invoiceId,
+    p_claim_token: claimToken,
+    p_outcome: outcome,
+    p_external_id: summary?.id ?? null,
+    p_external_status: summary ? (summary.status === "draft" ? "draft" : "approved") : null,
+    p_actual_amount: amount,
+    p_safe_message: message,
+  });
+  if (error) throw new Error(`Holded step finished but Solvio could not record it: ${error.message}`);
+}
+
+/**
+ * Correction after approval: a draft credit note in Holded for part or all of an
+ * issued pack. Amount is the NET amount to credit; Holded adds the same IGIC as
+ * the pack lines. The accountant links and approves it in Holded.
+ */
+export async function requestHoldedCreditNoteAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const amount = Math.round(Number(formData.get("credit_amount")) * 100) / 100;
+  const reason = String(formData.get("credit_reason") ?? "").trim().slice(0, 1000);
+  const fail = (msg: string) => {
+    revalidate(id);
+    redirect(`/dashboard/show-ops/invoices/${id}?holded=error&holded_msg=${encodeURIComponent(msg)}`);
+  };
+  if (!Number.isFinite(amount) || amount <= 0) fail("Enter the net amount to credit.");
+  if (!reason) fail("Give the reason for the credit note — it goes on the document.");
+
+  const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
+  if (!inv) throw new Error("Invoice not found.");
+  if (!inv.holded_document_id || !["approved", "paid", "corrected"].includes(String(inv.holded_status))) {
+    fail("Credit notes are for packs Holded has already issued. Before approval, fix the draft in Holded instead.");
+  }
+
+  const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("vat_rate").eq("invoice_id", inv.id).eq("business_id", ctx.business.id);
+  const rates = [...new Set((lines ?? []).map((l) => Math.round(Number(l.vat_rate || 0) * 100) / 100))];
+  if (rates.length !== 1) fail("This pack mixes tax rates; raise the credit note directly in Holded.");
+  const rate = rates[0];
+
+  let prepared: { client: HoldedClient; contactId: string; items: ReturnType<typeof holdedItemsFromLines> };
+  try {
+    const { client, approvals } = await loadIntegration(ctx);
+    const taxes = await client.listTaxes();
+    const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
+      name: inv.recipient_name, taxId: inv.recipient_tax_id, address: inv.recipient_address,
+    });
+    const items = holdedItemsFromLines(
+      [{ description: `Credit against ${inv.holded_doc_number || inv.invoice_number} — ${reason}`, quantity: 1, unit_price: amount, vat_rate: rate }],
+      (r) => approvalForRate(approvals, r),
+      taxes,
+    );
+    prepared = { client, contactId, items };
+  } catch (err) {
+    fail(safeMessage(err));
+    return;
+  }
+
+  const claimToken = randomUUID();
+  const { data: claimRows, error: claimError } = await ctx.supabase.rpc("show_ops_holded_claim_credit_note", {
+    p_business_id: ctx.business.id, p_invoice_id: inv.id, p_claim_token: claimToken, p_amount: amount, p_reason: reason,
+  });
+  if (claimError) fail(claimMessage(claimError.message));
+  const claim = (Array.isArray(claimRows) ? claimRows[0] : claimRows) as ClaimRow | undefined;
+  if (!claim || claim.claim_status !== "claimed") {
+    revalidate(inv.id);
+    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${claim?.claim_status === "existing" ? "refreshed" : "reconcile"}`);
+  }
+
+  let outcome: "credit_sent" | "error" | "reconcile" = "credit_sent";
+  let message: string | null = null;
+  try {
+    const summary = await prepared.client.createCreditNoteDraft(
+      {
+        contactId: prepared.contactId,
+        desc: `Credit note · ${inv.supplier_name} · ${inv.holded_doc_number || inv.invoice_number}`,
+        date: unixDay(new Date().toISOString().slice(0, 10)),
+        items: prepared.items,
+        notes: `Credit against Holded invoice ${inv.holded_doc_number || "(draft)"} / Solvio ${inv.invoice_number}. ${reason}`,
+        tags: ["solvio"],
+        approveDoc: false,
+        ...(inv.currency && inv.currency !== "eur" ? { currency: String(inv.currency) } : {}),
+      },
+      { reference: creditReference(inv.id, claimToken) },
+    );
+    // The DB checks the credited amount against what was claimed; net is what Solvio controls.
+    if (Math.round(summary.net * 100) !== Math.round(amount * 100)) {
+      message = `Holded built the credit note with net ${summary.net.toFixed(2)} instead of ${amount.toFixed(2)}. Check it in Holded.`;
+      outcome = "reconcile";
+      await completeCreditClaim(ctx.business.id, inv.id, claimToken, "unknown", null, null, message);
+    } else {
+      await completeCreditClaim(ctx.business.id, inv.id, claimToken, "created", summary, amount, null);
+    }
+  } catch (err) {
+    if (err instanceof HoldedWriteAmbiguousError || err instanceof HoldedReconciliationRequiredError) {
+      outcome = "reconcile";
+      message = safeMessage(err);
+      await completeCreditClaim(ctx.business.id, inv.id, claimToken, "unknown", null, null, message);
+    } else {
+      outcome = "error";
+      message = safeMessage(err);
+      await completeCreditClaim(ctx.business.id, inv.id, claimToken, "failed", null, null, message);
+    }
+  }
+  revalidate(inv.id);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${outcome}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
+}
+
+/** Recover a credit note whose write was not confirmed: find it by reference in Holded, or confirm it never landed. */
+export async function reconcileHoldedCreditNoteAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const { data: inv } = await ctx.supabase
+    .from("show_invoices")
+    .select("id,holded_credit_claim_token,holded_credit_status,holded_reconciliation_status")
+    .eq("id", id)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!inv?.holded_credit_claim_token) throw new Error("No credit note is waiting to be reconciled.");
+  let message: string | null = null;
+  let result: "refreshed" | "not_found" | "error" = "refreshed";
+  try {
+    const { client } = await loadIntegration(ctx);
+    if (inv.holded_reconciliation_status !== "required") {
+      const { error } = await ctx.supabase.rpc("show_ops_holded_request_reconciliation", {
+        p_business_id: ctx.business.id, p_invoice_id: inv.id, p_reason: "Credit note request did not complete",
+      });
+      if (error) throw new Error(claimMessage(error.message));
+    }
+    const found = await client.reconcileCreditNoteDraft({ reference: creditReference(inv.id, inv.holded_credit_claim_token) });
+    const admin = createSupabaseServiceRoleClient();
+    const { error } = await admin.rpc("show_ops_holded_resolve_credit_note", {
+      p_business_id: ctx.business.id, p_invoice_id: inv.id,
+      p_external_id: found ? found.id : null, p_resolution: found ? "found" : "confirmed_not_found",
+    });
+    if (error) throw new Error(error.message);
+    if (!found) result = "not_found";
+  } catch (err) {
+    result = "error";
+    message = safeMessage(err);
+  }
+  revalidate(inv.id);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${result}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
 }

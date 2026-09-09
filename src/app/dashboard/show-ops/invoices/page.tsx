@@ -8,6 +8,8 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { buildPnl } from "@/lib/show-ops/expenses";
+import { ExpensesPanel, PnlPanel, type ExpenseRow } from "@/components/show-ops/expenses-panel";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
@@ -28,6 +30,10 @@ export default async function InvoicesPage({
     holded_synced?: string;
     holded_failed?: string;
     holded_error?: string;
+    expense?: string;
+    expense_error?: string;
+    pnl_from?: string;
+    pnl_to?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -38,6 +44,50 @@ export default async function InvoicesPage({
 
   const view = sp.view || "generate";
   const holded = await loadHoldedConnection(ctx);
+
+  let expenseRows: ExpenseRow[] = [];
+  let expenseProducts: Array<{ id: string; name: string; island: string }> = [];
+  if (view === "expenses") {
+    const [{ data: exp }, { data: prods }] = await Promise.all([
+      ctx.supabase.from("show_expenses").select("*").eq("business_id", ctx.business.id).order("expense_date", { ascending: false }).order("created_at", { ascending: false }).limit(200),
+      ctx.supabase.from("show_products").select("id,name,island").eq("business_id", ctx.business.id).eq("active", true).order("island").order("name"),
+    ]);
+    expenseProducts = (prods ?? []) as Array<{ id: string; name: string; island: string }>;
+    const withReceipts = (exp ?? []).filter((e) => e.receipt_path);
+    const signed = withReceipts.length
+      ? await ctx.supabase.storage.from("show-ops-proofs").createSignedUrls(withReceipts.map((e) => e.receipt_path as string), 60 * 60)
+      : { data: [] as Array<{ path: string | null; signedUrl: string }> };
+    const urlByPath = new Map((signed.data ?? []).map((x) => [x.path, x.signedUrl]));
+    expenseRows = (exp ?? []).map((e) => ({
+      id: e.id, expense_date: e.expense_date, supplier_name: e.supplier_name, description: e.description, category: e.category, island: e.island,
+      net_amount: e.net_amount, tax_rate: e.tax_rate, total_amount: e.total_amount, currency: e.currency,
+      receipt_url: e.receipt_path ? urlByPath.get(e.receipt_path) ?? null : null, holded_status: e.holded_status, holded_error: e.holded_error,
+    }));
+  }
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const pnlTo = /^\d{4}-\d{2}-\d{2}$/.test(sp.pnl_to ?? "") ? (sp.pnl_to as string) : todayIso;
+  const pnlFromDefault = (() => { const d = new Date(`${pnlTo}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 2, 1); return d.toISOString().slice(0, 10); })();
+  const pnlFrom = /^\d{4}-\d{2}-\d{2}$/.test(sp.pnl_from ?? "") ? (sp.pnl_from as string) : pnlFromDefault;
+  let pnlRows: ReturnType<typeof buildPnl> = [];
+  if (view === "pnl") {
+    const bookings: Array<{ show_date: string; island: string | null; total_cost: number; nett_total: number; cancelled_at: string | null }> = [];
+    for (let offset = 0; offset < 20000; offset += 1000) {
+      const { data } = await ctx.supabase
+        .from("show_bookings")
+        .select("show_date,island,total_cost,nett_total,cancelled_at")
+        .eq("business_id", ctx.business.id)
+        .gte("show_date", pnlFrom)
+        .lte("show_date", pnlTo)
+        .is("cancelled_at", null)
+        .order("id")
+        .range(offset, offset + 999);
+      bookings.push(...((data ?? []) as typeof bookings));
+      if (!data || data.length < 1000) break;
+    }
+    const { data: exp } = await ctx.supabase.from("show_expenses").select("expense_date,island,net_amount").eq("business_id", ctx.business.id).gte("expense_date", pnlFrom).lte("expense_date", pnlTo);
+    pnlRows = buildPnl(bookings, exp ?? []);
+  }
   const today = new Date().toISOString().slice(0, 10);
   const thisMonth = calendarMonthBounds(today);
   const lastMonth = calendarMonthBounds(shiftMonth(today, -1));
@@ -229,6 +279,8 @@ export default async function InvoicesPage({
           ["generate", "Generate pack"],
           ["list", "Invoice list"],
           ["overdue", "Overdue"],
+          ["expenses", "Expenses"],
+          ["pnl", "P&L"],
         ].map(([id, label]) => (
           <ShowOpsPill key={id} href={`/dashboard/show-ops/invoices?view=${id}`} on={view === id}>
             {label}
@@ -587,6 +639,20 @@ export default async function InvoicesPage({
           </ul>
         </div>
       ) : null}
+
+      {view === "expenses" ? (
+        <ExpensesPanel
+          rows={expenseRows}
+          islands={ctx.config.islands}
+          products={expenseProducts}
+          currency={ctx.config.currency}
+          defaultTaxRate={ctx.config.invoice.defaultVatRate}
+          holdedConnected={holded.connected}
+          message={sp.expense}
+          error={sp.expense_error}
+        />
+      ) : null}
+      {view === "pnl" ? <PnlPanel rows={pnlRows} currency={ctx.config.currency} from={pnlFrom} to={pnlTo} /> : null}
     </div>
   );
 }

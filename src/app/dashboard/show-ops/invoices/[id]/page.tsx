@@ -7,7 +7,7 @@ import {
   sendShowOpsInvoiceEmailAction,
   voidInvoiceAction,
 } from "@/app/dashboard/show-ops/actions";
-import { pushInvoiceToHoldedAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, reconcileHoldedCreditNoteAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction, requestHoldedCreditNoteAction } from "@/app/dashboard/show-ops/actions-holded";
 import { InvoiceEditor } from "@/components/show-ops/invoice-editor";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -173,6 +173,10 @@ export default async function InvoicePrintPage({
         </p>
       ) : sp.holded === "refreshed" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Updated from Holded. {holdedLabel}.</p>
+      ) : sp.holded === "credit_sent" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
+          Credit note drafted in Holded. The accountant links it to the invoice and approves it there.
+        </p>
       ) : sp.holded === "not_found" ? (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 print:hidden">
           Holded has no document for this pack. It is safe to send again.
@@ -270,6 +274,43 @@ export default async function InvoicePrintPage({
               <p className="text-xs text-rose-800">
                 Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}. Fix the draft in Holded, then Refresh.
               </p>
+            ) : null}
+            {["approved", "paid", "corrected"].includes(String(inv.holded_status)) && holded.connected ? (
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-sm font-medium">Correction after approval</p>
+                {inv.holded_credit_status === "creating" || inv.holded_credit_status === "unknown" ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-3">
+                    <p className="text-sm text-amber-900">
+                      {inv.holded_credit_status === "unknown" ? "Holded did not confirm the credit note. Reconcile before trying again." : "Credit note being created…"}
+                    </p>
+                    {inv.holded_credit_claim_token ? (
+                      <form action={reconcileHoldedCreditNoteAction}>
+                        <input type="hidden" name="invoice_id" value={inv.id} />
+                        <SubmitOnce className="rounded-xl bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white">Reconcile credit note</SubmitOnce>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : inv.holded_credit_status === "draft" || inv.holded_credit_status === "approved" ? (
+                  <p className="mt-1 text-sm text-slate-700">
+                    Credit note {inv.holded_credit_note_number || "(draft)"} for {money(Number(inv.holded_credit_amount || 0))} net · {inv.holded_credit_reason}
+                    {inv.holded_credit_status === "draft" ? " · waiting for approval in Holded" : ""}
+                  </p>
+                ) : (
+                  <form action={requestHoldedCreditNoteAction} className="mt-2 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="invoice_id" value={inv.id} />
+                    <label className="text-xs font-medium text-slate-600">
+                      Net amount to credit
+                      <input name="credit_amount" type="number" step="0.01" min="0.01" max={Number(inv.net_total || inv.total_amount)} required className="mt-1 block w-32 rounded-lg border px-2 py-1.5 text-sm" />
+                    </label>
+                    <label className="text-xs font-medium text-slate-600">
+                      Reason (printed on the credit note)
+                      <input name="credit_reason" required maxLength={200} placeholder="2 no-shows on 12 Sept not chargeable" className="mt-1 block min-w-[18rem] rounded-lg border px-2 py-1.5 text-sm" />
+                    </label>
+                    <SubmitOnce className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">Draft credit note in Holded</SubmitOnce>
+                    {inv.holded_credit_status === "failed" ? <p className="w-full text-xs text-rose-700">Last attempt failed. Try again or raise it in Holded.</p> : null}
+                  </form>
+                )}
+              </div>
             ) : null}
             {holdedEvents?.length ? (
               <details className="text-xs text-slate-600">

@@ -17,6 +17,8 @@ export type HoldedContactInput = {
   email?: string | null;
   address?: string | null;
   tags?: string[];
+  /** Holded contact type: partners we invoice are clients, people we pay are suppliers. */
+  type?: "client" | "supplier";
 };
 
 export type HoldedItem = {
@@ -251,7 +253,7 @@ export function holdedContactFromSupplier(s: {
 }
 
 export function holdedContactBody(c: HoldedContactInput): Record<string, unknown> {
-  const body: Record<string, unknown> = { name: c.name, type: "client", tags: c.tags ?? [] };
+  const body: Record<string, unknown> = { name: c.name, type: c.type ?? "client", tags: c.tags ?? [] };
   if (c.code) body.code = c.code;
   if (c.email) body.email = c.email;
   if (c.address) body.billAddress = { address: c.address };
@@ -506,6 +508,24 @@ export class HoldedClient {
     if (!Array.isArray(list)) return null;
     const hit = list.find((c) => String(c.code ?? "").trim().toUpperCase() === wanted || String(c.vatnumber ?? "").trim().toUpperCase() === wanted);
     return hit?.id ? { id: String(hit.id) } : null;
+  }
+
+  /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */
+  async findContactByName(name: string): Promise<{ id: string } | null> {
+    const wanted = String(name || "").trim().toLowerCase();
+    if (!wanted) return null;
+    const list = await this.request<Array<Record<string, unknown>>>("GET", "/invoicing/v1/contacts");
+    if (!Array.isArray(list)) return null;
+    const hit = list.find((c) => String(c.name ?? "").trim().toLowerCase() === wanted);
+    return hit?.id ? { id: String(hit.id) } : null;
+  }
+
+  /** Draft purchase (a cost we owe/paid). Drafts only — approval stays with the accountant in Holded. */
+  async createPurchaseDraft(input: { contactId: string; desc: string; date: number; items: HoldedItem[]; notes?: string; tags?: string[]; approveDoc: false; currency?: string }): Promise<{ id: string }> {
+    if (input.approveDoc !== false) throw new Error("Solvio may only create Holded purchase drafts.");
+    const res = await this.request<unknown>("POST", "/invoicing/v1/documents/purchase", input);
+    if (!res || typeof res !== "object" || Array.isArray(res)) throw new Error("Holded returned a malformed purchase response.");
+    return { id: requiredString((res as Record<string, unknown>).id, "purchase id") };
   }
 
   async createContact(input: HoldedContactInput): Promise<{ id: string }> {
