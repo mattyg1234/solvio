@@ -27,7 +27,7 @@ test("datetimes are local with the island's offset", () => {
 
 test("booking items map to adults/children/infants with the right error codes", () => {
   const ok = bookingItemsToPax([{ category: "ADULT", count: 2 }, { category: "CHILD", count: 1 }, { category: "INFANT", count: 1 }, { category: "SENIOR", count: 1 }]);
-  assert.deepEqual(ok, { ok: true, pax: { adults: 3, children: 1, infants: 1, total: 5 } });
+  assert.deepEqual(ok, { ok: true, pax: { adults: 3, children: 1, infants: 1, total: 5, groups: 0 } });
   const bad = bookingItemsToPax([{ category: "PET", count: 1 }]);
   assert.equal(!bad.ok && bad.error.errorCode, "INVALID_TICKET_CATEGORY");
   const group = bookingItemsToPax([{ category: "GROUP", count: 1 }]);
@@ -35,6 +35,27 @@ test("booking items map to adults/children/infants with the right error codes", 
   const infantsOnly = bookingItemsToPax([{ category: "INFANT", count: 2 }]);
   assert.equal(!infantsOnly.ok && infantsOnly.error.errorCode, "INVALID_PARTICIPANTS_CONFIGURATION");
   assert.equal(bookingItemsToPax([]).ok, false);
+});
+
+test("GROUP products: groups become seats on the booking, per-person items are refused", () => {
+  const group = { pricingType: "group" as const, groupSize: 10 };
+  const two = bookingItemsToPax([{ category: "GROUP", count: 1, groupSize: 5 }, { category: "GROUP", count: 1, groupSize: 8 }], group);
+  assert.deepEqual(two, { ok: true, pax: { adults: 13, children: 0, infants: 0, total: 13, groups: 2 } });
+  const noSize = bookingItemsToPax([{ category: "GROUP", count: 2 }], group);
+  assert.deepEqual(noSize, { ok: true, pax: { adults: 20, children: 0, infants: 0, total: 20, groups: 2 } });
+  const tooBig = bookingItemsToPax([{ category: "GROUP", count: 1, groupSize: 11 }], group);
+  assert.equal(!tooBig.ok && tooBig.error.errorCode, "INVALID_PARTICIPANTS_CONFIGURATION");
+  const perPerson = bookingItemsToPax([{ category: "ADULT", count: 2 }], group);
+  assert.equal(!perPerson.ok && perPerson.error.errorCode, "INVALID_TICKET_CATEGORY");
+});
+
+test("time-period and GROUP availability shapes", () => {
+  const base = { capacity: 100, runWeekdays: [1], showTime: "19:00:00", island: "Tenerife", cutoffMinutes: 60 };
+  const [period] = availabilityForRange({ ...base, availabilityType: "time_period", periodMinutes: 180 }, "2026-12-07", "2026-12-07", { "2026-12-07": 40 }, {}, new Set(), "P");
+  assert.deepEqual(period, { dateTime: "2026-12-07T00:00:00+00:00", productId: "P", cutoffSeconds: 3600, vacancies: 60, openingTimes: [{ fromTime: "19:00", toTime: "22:00" }] });
+  const [group] = availabilityForRange({ ...base, groupSize: 10 }, "2026-12-07", "2026-12-07", { "2026-12-07": 45 }, {}, new Set(), "G");
+  assert.equal(group.vacancies, 5, "55 seats left = 5 whole groups of 10");
+  assert.equal(group.openingTimes, undefined);
 });
 
 test("availability: weekly pattern plus one-off nights, minus closes, capacity − booked − holds", () => {

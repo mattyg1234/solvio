@@ -17,6 +17,7 @@ import {
   type GygError,
   type NightSource,
   shouldPushAvailability,
+  type ProductPricing,
 } from "@/lib/show-ops/gyg";
 import { showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -40,6 +41,10 @@ type ChannelProduct = {
   supplier_id: string;
   pickup_kind: "own_way" | "private";
   cutoff_minutes: number;
+  availability_type: "time_point" | "time_period";
+  pricing_type: "individual" | "group";
+  group_size: number | null;
+  period_minutes: number;
   active: boolean;
   product: { id: string; name: string; island: string; capacity: number | null; run_weekdays: number[] | null; show_time: string | null; active: boolean };
   supplier: { id: string; name: string; booking_token: string | null; active: boolean };
@@ -75,7 +80,7 @@ export async function findChannelProduct(db: SupabaseClient, externalProductId: 
   if (!id) return null;
   const { data } = await db
     .from("show_channel_products")
-    .select("id,business_id,external_product_id,product_id,ticket_type_id,supplier_id,pickup_kind,cutoff_minutes,active,product:show_products(id,name,island,capacity,run_weekdays,show_time,active),supplier:show_suppliers(id,name,booking_token,active)")
+    .select("id,business_id,external_product_id,product_id,ticket_type_id,supplier_id,pickup_kind,cutoff_minutes,availability_type,pricing_type,group_size,period_minutes,active,product:show_products(id,name,island,capacity,run_weekdays,show_time,active),supplier:show_suppliers(id,name,booking_token,active)")
     .eq("channel", GYG_CHANNEL)
     .eq("external_product_id", id)
     .maybeSingle();
@@ -116,7 +121,20 @@ async function closedDates(db: SupabaseClient, businessId: string, island: strin
 }
 
 function nightSource(cp: ChannelProduct): NightSource {
-  return { capacity: cp.product.capacity, runWeekdays: cp.product.run_weekdays, showTime: cp.product.show_time, island: cp.product.island, cutoffMinutes: cp.cutoff_minutes };
+  return {
+    capacity: cp.product.capacity,
+    runWeekdays: cp.product.run_weekdays,
+    showTime: cp.product.show_time,
+    island: cp.product.island,
+    cutoffMinutes: cp.cutoff_minutes,
+    availabilityType: cp.availability_type ?? "time_point",
+    periodMinutes: cp.period_minutes ?? 180,
+    groupSize: cp.pricing_type === "group" ? cp.group_size ?? null : null,
+  };
+}
+
+function pricingOf(cp: ChannelProduct): ProductPricing {
+  return { pricingType: cp.pricing_type === "group" ? "group" : "individual", groupSize: cp.group_size ?? null };
 }
 
 export async function availabilityBetween(db: SupabaseClient, cp: ChannelProduct, from: string, to: string) {
@@ -154,13 +172,15 @@ export async function handleReserve(body: Record<string, unknown>, db: SupabaseC
   if (!cp) return gygFail(gygError("INVALID_PRODUCT", `Unknown product ${String(body.productId ?? "")}.`));
   const blocked = sellable(cp);
   if (blocked) return gygFail(blocked);
-  const pax = bookingItemsToPax(body.bookingItems);
+  const pax = bookingItemsToPax(body.bookingItems, pricingOf(cp));
   if (!pax.ok) return gygFail(pax.error);
 
   const [night] = await availabilityBetween(db, cp, when.date, when.date);
   if (!night) return gygFail(gygError("NO_AVAILABILITY", `No show on ${when.date}.`));
-  if (night.vacancies < pax.pax.total) {
-    return gygFail(gygError("NO_AVAILABILITY", `This activity is sold out; requested ${pax.pax.total}; available ${night.vacancies}.`));
+  // GROUP products count vacancies in groups; everything else in seats.
+  const requested = cp.pricing_type === "group" ? pax.pax.groups : pax.pax.total;
+  if (night.vacancies < requested) {
+    return gygFail(gygError("NO_AVAILABILITY", `This activity is sold out; requested ${requested}; available ${night.vacancies}.`));
   }
 
   const reservation_ref = newReservationRef();
@@ -219,7 +239,7 @@ export async function handleBook(body: Record<string, unknown>, db: SupabaseClie
     .limit(1)
     .maybeSingle();
   const when = parseGygDateTime(body.dateTime);
-  const pax = bookingItemsToPax(body.bookingItems);
+  const pax = bookingItemsToPax(body.bookingItems, pricingOf(cp));
   if (existing && when && pax.ok) {
     const { data: full } = await db.from("show_bookings").select("adults,children,infants,show_date").eq("id", existing.id).maybeSingle();
     const same = full && String(full.show_date) === when.date && Number(full.adults) === pax.pax.adults && Number(full.children) === pax.pax.children && Number(full.infants) === pax.pax.infants;

@@ -19,6 +19,12 @@ export async function saveChannelProductAction(formData: FormData): Promise<void
   const ticketTypeId = String(formData.get("ticket_type_id") ?? "").trim() || null;
   const pickupKind = String(formData.get("pickup_kind") ?? "own_way") === "private" ? "private" : "own_way";
   const cutoff = Math.max(0, Math.trunc(Number(formData.get("cutoff_minutes") ?? 120) || 0));
+  const availabilityType = String(formData.get("availability_type") ?? "time_point") === "time_period" ? "time_period" : "time_point";
+  const pricingType = String(formData.get("pricing_type") ?? "individual") === "group" ? "group" : "individual";
+  const groupSizeRaw = Math.trunc(Number(formData.get("group_size") ?? 0) || 0);
+  const groupSize = pricingType === "group" ? groupSizeRaw : null;
+  const periodMinutes = Math.min(1440, Math.max(15, Math.trunc(Number(formData.get("period_minutes") ?? 180) || 180)));
+  if (pricingType === "group" && (!groupSize || groupSize < 1 || groupSize > 200)) back("channel_error", "Group products need a group size between 1 and 200 people.");
   if (!externalId || externalId.length > 255 || externalId.includes("%")) back("channel_error", "GetYourGuide product id is required, up to 255 characters, no % sign.");
   if (!productId || !supplierId) back("channel_error", "Pick the show and the GetYourGuide partner it books under.");
 
@@ -39,6 +45,10 @@ export async function saveChannelProductAction(formData: FormData): Promise<void
     ticket_type_id: ticketTypeId,
     pickup_kind: pickupKind,
     cutoff_minutes: cutoff,
+    availability_type: availabilityType,
+    pricing_type: pricingType,
+    group_size: groupSize,
+    period_minutes: periodMinutes,
     active: String(formData.get("active") ?? "1") !== "0",
     notes: String(formData.get("notes") ?? "").trim().slice(0, 300) || null,
     updated_at: new Date().toISOString(),

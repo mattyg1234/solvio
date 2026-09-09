@@ -124,7 +124,7 @@ export default async function ShowOpsSettingsPage({
   const holded = await loadHoldedConnection(ctx);
   const igic = holded.connected ? await listHoldedIgicTaxes(ctx) : { taxes: [], error: null };
   const [{ data: channelRows }, { data: channelShows }, { data: channelPartners }] = await Promise.all([
-    ctx.supabase.from("show_channel_products").select("id,external_product_id,product_id,supplier_id,ticket_type_id,pickup_kind,cutoff_minutes,active,notes").eq("business_id", ctx.business.id).order("external_product_id"),
+    ctx.supabase.from("show_channel_products").select("id,external_product_id,product_id,supplier_id,ticket_type_id,pickup_kind,cutoff_minutes,availability_type,pricing_type,group_size,period_minutes,active,notes").eq("business_id", ctx.business.id).order("external_product_id"),
     ctx.supabase.from("show_products").select("id,name,island,active").eq("business_id", ctx.business.id).order("island").order("name"),
     ctx.supabase.from("show_suppliers").select("id,name,billing_mode,booking_token").eq("business_id", ctx.business.id).eq("active", true).order("name"),
   ]);
@@ -1155,7 +1155,7 @@ export default async function ShowOpsSettingsPage({
         {(channelRows ?? []).length ? (
           <table className="mt-3 w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
-              <tr><th className="py-1 pr-3">GYG product id</th><th className="py-1 pr-3">Show</th><th className="py-1 pr-3">Books under</th><th className="py-1 pr-3">Pickup</th><th className="py-1 pr-3">Cut-off</th><th className="py-1 pr-3">Active</th><th></th></tr>
+              <tr><th className="py-1 pr-3">GYG product id</th><th className="py-1 pr-3">Show</th><th className="py-1 pr-3">Books under</th><th className="py-1 pr-3">Shape</th><th className="py-1 pr-3">Pickup</th><th className="py-1 pr-3">Cut-off</th><th className="py-1 pr-3">Active</th><th></th></tr>
             </thead>
             <tbody>
               {(channelRows ?? []).map((r) => (
@@ -1163,6 +1163,9 @@ export default async function ShowOpsSettingsPage({
                   <td className="py-1.5 pr-3 font-mono text-xs">{r.external_product_id}</td>
                   <td className="py-1.5 pr-3">{showName.get(r.product_id) ?? "—"}</td>
                   <td className="py-1.5 pr-3">{partnerName.get(r.supplier_id) ?? "—"}</td>
+                  <td className="py-1.5 pr-3 text-xs">
+                    {r.availability_type === "time_period" ? "Time period" : "Time point"} · {r.pricing_type === "group" ? `Group of ${r.group_size ?? "?"}` : "Per person"}
+                  </td>
                   <td className="py-1.5 pr-3">{r.pickup_kind === "private" ? "Private" : "Own way"}</td>
                   <td className="py-1.5 pr-3">{r.cutoff_minutes} min</td>
                   <td className="py-1.5 pr-3">{r.active ? "Yes" : "No"}</td>
@@ -1208,6 +1211,28 @@ export default async function ShowOpsSettingsPage({
           <label className="text-xs font-medium text-slate-600">
             Cut-off before the show (minutes)
             <input name="cutoff_minutes" type="number" min={0} step={15} defaultValue={120} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Availability shape
+            <select name="availability_type" defaultValue="time_point" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="time_point">Time point (show starts at the show time)</option>
+              <option value="time_period">Time period (bookable for the date, opening hours shown)</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Pricing
+            <select name="pricing_type" defaultValue="individual" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
+              <option value="individual">Per person (adult / child / infant)</option>
+              <option value="group">Per group (GROUP tickets)</option>
+            </select>
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Group size (people per group, group pricing only)
+            <input name="group_size" type="number" min={1} max={200} placeholder="e.g. 10" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            Opening window (minutes, time period only)
+            <input name="period_minutes" type="number" min={15} max={1440} step={15} defaultValue={180} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
           </label>
           <label className="text-xs font-medium text-slate-600">
             Notes

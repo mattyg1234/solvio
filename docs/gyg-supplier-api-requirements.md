@@ -45,10 +45,14 @@ Optional (skip for certification): pricing-categories, products list/details, ad
 
 ## Test plan (portal "Self-testing tool")
 Product ID registered: **MHT-ACE-TEST**, time point, price per individual, availability only,
-Atlantic/Canary, dates 2026-11-01 → 2027-03-31 with ≥2 time slots. The tool also lists all four
-availability types; as a reservation system we must pass time-period and group too, so the test workspace
-needs one time-period product (opening-hours style, `dateTime` at 00:00 + `openingTimes`) and one GROUP
-product in addition to MHT ACE.
+Atlantic/Canary, dates 2026-11-01 → 2027-03-31 with ≥2 time slots — **passed 23/23 (run 96279, 9 Sept 2026)**.
+The tool lists all four shapes; as a reservation system we must pass time-period and GROUP too. Each mapped
+product now carries `availability_type` (time_point | time_period → `dateTime` at 00:00 + `openingTimes`
+from the show time for `period_minutes`) and `pricing_type` (individual | group → vacancies in whole groups
+of `group_size`; GROUP items book `groupSize` seats each as adults). Self-test mappings on MHT's workspace,
+all pointing at 1 MHT ACE under the ACE GetYourGuide partner: `MHT-ACE-TEST-PERIOD` (time period, per person)
+and `MHT-ACE-TEST-GROUP` (time point, groups of 10). Register each in the portal test configuration with the
+matching type and run the suite per product.
 
 ## Estimate (build, with Claude)
 | Piece | Hours |

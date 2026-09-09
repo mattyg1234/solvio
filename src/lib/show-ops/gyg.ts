@@ -77,12 +77,21 @@ export function parseGygDateTime(value: unknown): { date: string; time: string |
   return { date: m[1], time: m[2] ?? null };
 }
 
-export type PaxSplit = { adults: number; children: number; infants: number; total: number };
+export type PaxSplit = { adults: number; children: number; infants: number; total: number; groups: number };
 
-/** ADULT/CHILD/INFANT map to Solvio's three counts; other individual categories count as adults. */
-export function bookingItemsToPax(items: unknown): { ok: true; pax: PaxSplit } | { ok: false; error: GygError } {
+export type ProductPricing = { pricingType: "individual" | "group"; groupSize: number | null };
+const INDIVIDUAL: ProductPricing = { pricingType: "individual", groupSize: null };
+
+/**
+ * ADULT/CHILD/INFANT map to Solvio's three counts; other individual categories count as
+ * adults. GROUP products take GROUP items only: each group books `groupSize` seats (the
+ * item's own groupSize when GYG sends it, else the mapping's group size) and counts as
+ * adults on the booking.
+ */
+export function bookingItemsToPax(items: unknown, pricing: ProductPricing = INDIVIDUAL): { ok: true; pax: PaxSplit } | { ok: false; error: GygError } {
   if (!Array.isArray(items) || !items.length) return { ok: false, error: gygError("VALIDATION_FAILURE", "bookingItems must be a non-empty array.") };
-  const pax = { adults: 0, children: 0, infants: 0, total: 0 };
+  const pax = { adults: 0, children: 0, infants: 0, total: 0, groups: 0 };
+  const groupProduct = pricing.pricingType === "group";
   for (const raw of items) {
     const item = (raw ?? {}) as Record<string, unknown>;
     const category = String(item.category ?? "").toUpperCase();
@@ -90,10 +99,21 @@ export function bookingItemsToPax(items: unknown): { ok: true; pax: PaxSplit } |
     if (!GYG_CATEGORIES.includes(category as GygCategory)) {
       return { ok: false, error: gygError("INVALID_TICKET_CATEGORY", `The ticket category ${category || "(missing)"} is not sellable.`, { ticketCategory: category }) };
     }
-    if (category === "GROUP" || category === "COLLECTIVE") {
-      return { ok: false, error: gygError("INVALID_TICKET_CATEGORY", "Group and collective tickets are not sold for this product; book per person.", { ticketCategory: category }) };
-    }
     if (!Number.isInteger(count) || count < 0) return { ok: false, error: gygError("VALIDATION_FAILURE", `Invalid count for ${category}.`) };
+    if (category === "GROUP") {
+      if (!groupProduct) return { ok: false, error: gygError("INVALID_TICKET_CATEGORY", "This product is sold per person, not per group.", { ticketCategory: category }) };
+      const size = Number.isInteger(Number(item.groupSize)) && Number(item.groupSize) > 0 ? Number(item.groupSize) : pricing.groupSize ?? 0;
+      if (size < 1) return { ok: false, error: gygError("VALIDATION_FAILURE", "groupSize is required for GROUP items.") };
+      if (pricing.groupSize && size > pricing.groupSize) {
+        return { ok: false, error: gygError("INVALID_PARTICIPANTS_CONFIGURATION", `Groups take up to ${pricing.groupSize} people.`, { participantsConfiguration: { min: 1, max: pricing.groupSize } }) };
+      }
+      pax.groups += count;
+      pax.adults += count * size;
+      continue;
+    }
+    if (category === "COLLECTIVE" || groupProduct) {
+      return { ok: false, error: gygError("INVALID_TICKET_CATEGORY", groupProduct ? "This product is sold per group; send GROUP items." : "Collective tickets are not sold for this product; book per person.", { ticketCategory: category }) };
+    }
     if (category === "CHILD" || category === "YOUTH") pax.children += count;
     else if (category === "INFANT") pax.infants += count;
     else pax.adults += count;
@@ -112,7 +132,21 @@ export type NightSource = {
   showTime: string | null;
   island: string;
   cutoffMinutes: number;
+  /** time_point: the show starts at showTime. time_period: bookable for the date, opening times returned. */
+  availabilityType?: "time_point" | "time_period";
+  /** Length of the opening window for time-period products, from showTime. */
+  periodMinutes?: number;
+  /** GROUP pricing: vacancies are whole groups of this many seats. */
+  groupSize?: number | null;
 };
+
+export type GygAvailability = { dateTime: string; productId: string; cutoffSeconds: number; vacancies: number; openingTimes?: Array<{ fromTime: string; toTime: string }> };
+
+function addMinutes(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = Math.min(23 * 60 + 59, h * 60 + m + minutes);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 /**
  * Which nights exist in a range: the product's weekly pattern plus any date that
@@ -127,8 +161,11 @@ export function availabilityForRange(
   heldPaxByDate: Record<string, number>,
   closedDates: Set<string>,
   productId: string,
-): Array<{ dateTime: string; productId: string; cutoffSeconds: number; vacancies: number }> {
-  const out: Array<{ dateTime: string; productId: string; cutoffSeconds: number; vacancies: number }> = [];
+): GygAvailability[] {
+  const out: GygAvailability[] = [];
+  const period = source.availabilityType === "time_period";
+  const showTime = /^\d{2}:\d{2}/.test(String(source.showTime ?? "")) ? String(source.showTime).slice(0, 5) : "19:00";
+  const groupSize = source.groupSize && source.groupSize > 0 ? source.groupSize : null;
   const start = new Date(`${fromDate}T00:00:00Z`);
   const end = new Date(`${toDate}T00:00:00Z`);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return out;
@@ -140,8 +177,12 @@ export function availabilityForRange(
     const closed = closedDates.has(iso);
     const booked = bookedPaxByDate[iso] ?? 0;
     const held = heldPaxByDate[iso] ?? 0;
-    const vacancies = closed ? 0 : source.capacity == null ? 999 : Math.max(0, source.capacity - booked - held);
-    out.push({ dateTime: gygDateTime(iso, source.showTime, source.island), productId, cutoffSeconds: Math.max(0, source.cutoffMinutes) * 60, vacancies });
+    const seats = closed ? 0 : source.capacity == null ? 999 : Math.max(0, source.capacity - booked - held);
+    // GROUP products report available groups, not seats.
+    const vacancies = groupSize ? Math.floor(seats / groupSize) : seats;
+    const row: GygAvailability = { dateTime: gygDateTime(iso, period ? "00:00" : source.showTime, source.island), productId, cutoffSeconds: Math.max(0, source.cutoffMinutes) * 60, vacancies };
+    if (period) row.openingTimes = [{ fromTime: showTime, toTime: addMinutes(showTime, source.periodMinutes ?? 180) }];
+    out.push(row);
   }
   return out;
 }
