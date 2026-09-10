@@ -456,3 +456,71 @@ test("partner rate controls every age band including zero commission and free pa
     assert.equal(money.pricing_snapshot.infant_nett_unit, 10 * percent / 100);
   }
 });
+
+test("a partner rate card sets the adult/child price and replaces the bus supplement", () => {
+  const withCard = computeBookingMoney({
+    adults: 2,
+    children: 1,
+    infants: 1,
+    product,
+    supplier: { billing_mode: "invoice", deposit_percent: 30, invoice_nett_percent: 65 },
+    transportRequired: true,
+    transportSupplement: 10,
+    rateCard: { rate_id: "r1", rate_name: "TFS Reception", tipo: 1, adult_price: 59, child_price: 49 },
+  });
+  // Card price already includes the bus: no +10 on top. Infants stay on the master price.
+  assert.equal(withCard.total_cost, 2 * 59 + 49 + 0);
+  assert.equal(withCard.pricing_snapshot.adult_price, 59);
+  assert.equal(withCard.pricing_snapshot.transport_supplement, 0);
+  assert.equal(withCard.pricing_snapshot.price_source, "rate_card");
+  assert.deepEqual(withCard.pricing_snapshot.rate_card, { id: "r1", name: "TFS Reception", tipo: 1 });
+  // Nett is the partner's percentage of the card price, rounded per head (Lanzasoft parity).
+  assert.equal(withCard.pricing_snapshot.adult_nett_unit, 38.35);
+  assert.equal(withCard.nett_total, 108.55);
+
+  const noCard = computeBookingMoney({
+    adults: 2,
+    children: 1,
+    infants: 1,
+    product,
+    supplier: { billing_mode: "invoice", deposit_percent: 30, invoice_nett_percent: 65 },
+    transportRequired: true,
+    transportSupplement: 10,
+    rateCard: null,
+  });
+  assert.equal(noCard.total_cost, 2 * 75 + 50);
+  assert.equal(noCard.pricing_snapshot.price_source, "master");
+  assert.equal(noCard.pricing_snapshot.rate_card, null);
+});
+
+test("a frozen snapshot keeps the sold prices and rates when only pax move", () => {
+  const original = computeBookingMoney({
+    adults: 2,
+    children: 0,
+    infants: 0,
+    product,
+    supplier: { billing_mode: "deposit", deposit_percent: 30, invoice_nett_percent: 65 },
+    transportRequired: true,
+    transportSupplement: 10,
+    rateCard: { rate_id: "r1", rate_name: "Old card", tipo: 1, adult_price: 59, child_price: 49 },
+  });
+  const snapshot = { ...original.pricing_snapshot, priced_at: "2026-09-01T10:00:00.000Z" };
+  // Master price went up and the supplier's terms changed since — none of it may move this booking.
+  const edited = computeBookingMoney({
+    adults: 3,
+    children: 1,
+    infants: 0,
+    product: { ...product, adult_price: 99, child_price: 80 },
+    supplier: { billing_mode: "deposit", deposit_percent: 50, invoice_nett_percent: 10 },
+    transportRequired: true,
+    transportSupplement: 25,
+    rateCard: { rate_id: "r2", rate_name: "New card", tipo: 1, adult_price: 200, child_price: 100 },
+    frozen: snapshot,
+  });
+  assert.equal(edited.total_cost, 3 * 59 + 49);
+  assert.equal(edited.deposit_amount, Math.round((3 * 59 + 49) * 0.3 * 100) / 100);
+  assert.equal(edited.nett_total, 146.9);
+  assert.equal(edited.pricing_snapshot.frozen_from, "2026-09-01T10:00:00.000Z");
+  assert.deepEqual(edited.pricing_snapshot.rate_card, { id: "r1", name: "Old card", tipo: 1 });
+  assert.equal(edited.pricing_snapshot.price_source, "rate_card");
+});

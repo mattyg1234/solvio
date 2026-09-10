@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { createSellerBookingAction } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
+import { loadRatePrices } from "@/lib/show-ops/rate-cards";
 import { requireShowOpsSellerContext } from "@/lib/show-ops/access";
 import { withBookedDates } from "@/lib/show-ops/nights";
 
@@ -16,6 +17,7 @@ export default async function PartnerNewBookingPage() {
     { data: hotels },
     { data: stops },
     bookedDatesResult,
+    ratePrices,
   ] = await Promise.all([
     ctx.supabase
       .from("show_products")
@@ -28,6 +30,8 @@ export default async function PartnerNewBookingPage() {
     loadDirectoryHotels(ctx.supabase, biz, true),
     loadDirectoryStops(ctx.supabase, biz, true),
     ctx.supabase.rpc("show_ops_partner_booked_dates", { p_business_id: biz }),
+    // The seller's own rate card — the prices this page quotes and books at.
+    loadRatePrices(ctx.supabase, biz, ctx.supplier.sale_rate_id ?? null),
   ]);
 
   if (productsError)
@@ -73,6 +77,7 @@ export default async function PartnerNewBookingPage() {
           ) as never
         }
         suppliers={[ctx.supplier]}
+        ratePrices={ratePrices}
         hotels={(hotels ?? []) as never}
         stops={(stops ?? []) as never}
         config={ctx.config}

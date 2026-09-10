@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { createPartnerLinkBookingAction, partnerLinkContext } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
+import { loadRatePrices } from "@/lib/show-ops/rate-cards";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
@@ -29,7 +30,7 @@ export default async function PartnerLinkPage({
   const { ctx, supplier, admin } = link;
   const biz = ctx.business.id;
 
-  const [{ data: products, error: productsError }, { data: hotels }, { data: stops }, bookedDatesResult, { data: recent }, created] = await Promise.all([
+  const [{ data: products, error: productsError }, { data: hotels }, { data: stops }, bookedDatesResult, { data: recent }, created, ratePrices] = await Promise.all([
     admin
       .from("show_products")
       .select(
@@ -51,6 +52,8 @@ export default async function PartnerLinkPage({
     /^[0-9a-f-]{36}$/i.test(sp.created ?? "")
       ? admin.from("show_bookings").select("booking_ref,guest_name,show_name,show_date").eq("id", sp.created!).eq("supplier_id", supplier.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // The partner's rate card — the prices this link quotes and books at.
+    loadRatePrices(admin, biz, supplier.sale_rate_id ? String(supplier.sale_rate_id) : null),
   ]);
   if (productsError) throw new Error("Could not load shows. Please refresh.");
   const bookedDates = (bookedDatesResult.error ? {} : (bookedDatesResult.data ?? {})) as Record<string, string[]>;
@@ -99,6 +102,7 @@ export default async function PartnerLinkPage({
             sellerMode
             products={withBookedDates((products ?? []) as { id: string }[], bookedDates) as never}
             suppliers={[supplier] as never}
+            ratePrices={ratePrices}
             hotels={(hotels ?? []) as never}
             stops={(stops ?? []) as never}
             config={ctx.config}

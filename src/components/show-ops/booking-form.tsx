@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   getNightLoadAction,
+  loadSupplierRatePricesAction,
   type ShowOpsNightLoad,
 } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsNightCalendar } from "@/components/show-ops/night-calendar";
@@ -31,9 +32,12 @@ import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   computeBookingMoney,
   formatShowOpsMoney,
+  hasPricingSnapshot,
   round2,
   showOpsDayName,
+  type ShowOpsPricingSnapshot,
 } from "@/lib/show-ops/calc";
+import { pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
 import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import {
@@ -89,6 +93,13 @@ export type BookingFormSupplier = {
   island?: string | null;
   /** Partners with this on may be switched between deposit and invoice per booking. */
   can_choose_billing_mode?: boolean | null;
+  /** The rate card this partner sells at; null = master price + bus supplement. */
+  sale_rate_id?: string | null;
+};
+
+export type BookingFormRateBook = {
+  card: { id: string; name: string | null } | null;
+  rows: RatePriceRow[];
 };
 
 export type BookingFormHotel = {
@@ -111,6 +122,8 @@ export type BookingFormStop = {
 
 export type BookingFormDefaults = {
   extras_snapshot?: ExtraSnapshot[];
+  /** Edit mode: the prices the booking was sold at. Kept while show / partner / bus stay the same. */
+  pricing_snapshot?: ShowOpsPricingSnapshot | null;
   id?: string;
   /** Partner booking link token — the action resolves the partner from it, no login. */
   partner_token?: string;
@@ -168,6 +181,11 @@ type Props = {
   sellerMode?: boolean;
   /** Invoiced bookings: money/pax/show/supplier stay frozen. */
   moneyLocked?: boolean;
+  /**
+   * Rate card of the one partner this form can book for (seller portal, partner
+   * link). Multi-partner desks leave it unset and the form fetches on selection.
+   */
+  ratePrices?: BookingFormRateBook | null;
 };
 
 function CustomQuestionField({
@@ -257,6 +275,7 @@ export function ShowOpsBookingForm({
   error,
   sellerMode = false,
   moneyLocked = false,
+  ratePrices,
 }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -276,6 +295,36 @@ export function ShowOpsBookingForm({
   );
   const [productId, setProductId] = useState(defaults.product_id ?? "");
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
+  /**
+   * The chosen partner's rate card. Preloaded on single-partner pages; the desk
+   * fetches it when the partner changes. A stale reply (partner switched again
+   * while a fetch was in flight) is dropped, never applied to the wrong partner.
+   */
+  const [rateBook, setRateBook] = useState<BookingFormRateBook | null>(ratePrices ?? null);
+  const [rateBookLoading, setRateBookLoading] = useState(false);
+  const rateFetchSeq = useRef(0);
+  useEffect(() => {
+    if (ratePrices !== undefined) return;
+    const seq = ++rateFetchSeq.current;
+    if (!supplierId) {
+      setRateBook(null);
+      setRateBookLoading(false);
+      return;
+    }
+    setRateBookLoading(true);
+    loadSupplierRatePricesAction(supplierId)
+      .then((book) => {
+        if (rateFetchSeq.current !== seq) return;
+        setRateBook(book);
+      })
+      .catch(() => {
+        if (rateFetchSeq.current !== seq) return;
+        setRateBook(null);
+      })
+      .finally(() => {
+        if (rateFetchSeq.current === seq) setRateBookLoading(false);
+      });
+  }, [supplierId, ratePrices]);
   const [channel, setChannel] = useState(
     defaults.sales_channel || config.sales_channels[0] || "direct",
   );
@@ -554,25 +603,37 @@ export function ShowOpsBookingForm({
 
   const moneyFmt = (n: number) =>
     formatShowOpsMoney(n, showOpsCurrencyFor(config, baseProduct?.island));
+  const supplement = Number(config.transport_supplement) || 0;
+  /** Card row for the picked show and bus choice; null = master price + supplement. */
+  const rateCard = useMemo(
+    () => pickRatePrice(rateBook?.rows, productId, transport, rateBook?.card),
+    [rateBook, productId, transport],
+  );
+  /**
+   * Editing pax on the same show / ticket / partner / bus keeps the prices the
+   * booking was sold at. Anything else reprices from the card or master price.
+   */
+  const frozen = useMemo(() => {
+    if (mode !== "edit" || !hasPricingSnapshot(defaults.pricing_snapshot)) return null;
+    const same =
+      productId === (defaults.product_id ?? "") &&
+      ticketTypeId === (defaults.ticket_type_id ?? "") &&
+      supplierId === (defaults.supplier_id ?? "") &&
+      transport === Boolean(defaults.transport_required);
+    return same ? (defaults.pricing_snapshot as ShowOpsPricingSnapshot) : null;
+  }, [mode, defaults, productId, ticketTypeId, supplierId, transport]);
   const productPriceLabel = (p: BookingFormProduct) => {
+    const card = pickRatePrice(rateBook?.rows, p.id, transport);
+    const adultGross = card ? card.adult_price : p.adult_price;
+    const childGross = card ? card.child_price : p.child_price;
     if (sellerMode && supplier?.billing_mode === "invoice") {
       const pct = Number(supplier.invoice_nett_percent);
-      const adult = p.adult_price * (pct / 100);
-      const child = p.child_price * (pct / 100);
+      const adult = adultGross * (pct / 100);
+      const child = childGross * (pct / 100);
       return `${p.name} (${moneyFmt(adult)} / ${moneyFmt(child)} nett)`;
     }
-    return `${p.name} (${moneyFmt(p.adult_price)} / ${moneyFmt(p.child_price)})`;
+    return `${p.name} (${moneyFmt(adultGross)} / ${moneyFmt(childGross)})`;
   };
-
-  // Transport is a separate per-head charge for adults and children.
-  const supplement = Number(config.transport_supplement) || 0;
-  const supplementApplies =
-    transport &&
-    supplement > 0 &&
-    product != null;
-  const supplementTotal = supplementApplies
-    ? round2(supplement * (adults + children))
-    : 0;
 
   // Only a partner explicitly given the permission can be flipped between deposit
   // and invoice on a single booking; everyone else follows their partner record.
@@ -687,6 +748,8 @@ export function ShowOpsBookingForm({
         transportRequired: transport,
         transportSupplement: supplement,
         extras: extraLines,
+        rateCard,
+        frozen,
       }),
     [
       adults,
@@ -698,8 +761,27 @@ export function ShowOpsBookingForm({
       supplement,
       effectiveBilling,
       extraLines,
+      rateCard,
+      frozen,
     ],
   );
+  // What the money above was actually priced at — card, master or the frozen original.
+  const unit = money.pricing_snapshot;
+  // The bus supplement only exists as a separate line when the price came from the master list.
+  const supplementTotal =
+    transport && product != null && unit.transport_supplement > 0
+      ? round2(unit.transport_supplement * (adults + children))
+      : 0;
+  const priceSourceNote =
+    unit.frozen_from
+      ? "Prices kept from the original booking."
+      : unit.price_source === "rate_card"
+        ? `Priced from rate card${unit.rate_card?.name ? ` “${unit.rate_card.name}”` : ""}.`
+        : rateBookLoading
+          ? "Checking the partner's rate card…"
+          : supplier?.sale_rate_id
+            ? "No rate-card price for this show — master price used."
+            : null;
   // Commission = the slice the partner keeps (100% − the nett % we invoice them at).
   const commissionPct =
     supplier && money.billing_mode === "invoice"
@@ -1274,9 +1356,9 @@ export function ShowOpsBookingForm({
                 {sellerMode ? "Your rate" : "Ticket total"}
                 {product ? (
                   <span className="text-slate-400">
-                    : {adults} × {moneyFmt(product.adult_price)}
+                    : {adults} × {moneyFmt(unit.adult_price - unit.transport_supplement)}
                     {children > 0
-                      ? ` + ${children} × ${moneyFmt(product.child_price)}`
+                      ? ` + ${children} × ${moneyFmt(unit.child_price - unit.transport_supplement)}`
                       : ""}
                     {supplementTotal > 0
                       ? ` + bus ${moneyFmt(supplementTotal)}`
@@ -1288,6 +1370,9 @@ export function ShowOpsBookingForm({
                 {moneyFmt(money.total_cost)}
               </span>
             </div>
+            {priceSourceNote ? (
+              <p className="text-xs text-slate-500">{priceSourceNote}</p>
+            ) : null}
             {commissionPct > 0 ? (
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-slate-600">
@@ -1579,9 +1664,11 @@ export function ShowOpsBookingForm({
           <p className="mt-1 text-xs text-slate-500">
             {product?.transport_available === false
               ? "No bus on this show."
-              : supplement > 0
-                ? `Bus adds ${moneyFmt(supplement)} per adult & child, infants free.`
-                : "Bus puts them on the coach list. Private and own way pay the no-bus price."}
+              : supplier?.sale_rate_id
+                ? "Bus and no-bus prices come from the partner's rate card. Infants free."
+                : supplement > 0
+                  ? `Bus adds ${moneyFmt(supplement)} per adult & child, infants free.`
+                  : "Bus puts them on the coach list. Private and own way pay the no-bus price."}
           </p>
 
           {pickupKind === "private" ? (
@@ -1792,23 +1879,21 @@ export function ShowOpsBookingForm({
             {product ? (
               <>
                 <PriceLine
-                  label={`Adults (${adults} × ${moneyFmt(product.adult_price)})`}
-                  value={moneyFmt(round2(adults * Number(product.adult_price)))}
+                  label={`Adults (${adults} × ${moneyFmt(unit.adult_price - unit.transport_supplement)})`}
+                  value={moneyFmt(round2(adults * (unit.adult_price - unit.transport_supplement)))}
                 />
                 {children > 0 ? (
                   <PriceLine
-                    label={`Children (${children} × ${moneyFmt(product.child_price)})`}
+                    label={`Children (${children} × ${moneyFmt(unit.child_price - unit.transport_supplement)})`}
                     value={moneyFmt(
-                      round2(children * Number(product.child_price)),
+                      round2(children * (unit.child_price - unit.transport_supplement)),
                     )}
                   />
                 ) : null}
-                {infants > 0 && Number(product.infant_price) > 0 ? (
+                {infants > 0 && unit.infant_price > 0 ? (
                   <PriceLine
-                    label={`Infants (${infants} × ${moneyFmt(product.infant_price)})`}
-                    value={moneyFmt(
-                      round2(infants * Number(product.infant_price)),
-                    )}
+                    label={`Infants (${infants} × ${moneyFmt(unit.infant_price)})`}
+                    value={moneyFmt(round2(infants * unit.infant_price))}
                   />
                 ) : null}
                 {supplementTotal > 0 ? (

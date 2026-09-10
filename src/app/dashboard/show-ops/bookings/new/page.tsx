@@ -24,7 +24,7 @@ export default async function NewBookingPage() {
     ctx.supabase
       .from("show_suppliers")
       .select(
-        "id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode",
+        "id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode,sale_rate_id",
       )
       .eq("business_id", biz)
       .eq("active", true)

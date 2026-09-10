@@ -28,6 +28,21 @@ export type ShowOpsPricingSnapshot = {
   deposit_percent: number;
   transport_required: boolean;
   transport_supplement: number;
+  /** Where the adult/child prices came from. Missing on rows priced before rate cards were wired (master). */
+  price_source?: "master" | "rate_card";
+  /** The partner rate card row behind the prices, when one was used. */
+  rate_card?: { id: string | null; name: string | null; tipo: number | null } | null;
+  /** Set when an edit re-used the prices of an earlier snapshot instead of repricing. */
+  frozen_from?: string | null;
+};
+
+export type ShowOpsRateCardPrice = {
+  rate_id?: string | null;
+  rate_name?: string | null;
+  tipo?: number | null;
+  /** Card prices already include the bus when the row is the with-transport one. */
+  adult_price: number;
+  child_price: number;
 };
 
 function num(n: unknown, fallback = 0): number {
@@ -57,39 +72,51 @@ export function computeBookingMoney(input: {
   transportRequired?: boolean;
   /** Per-head bus supplement from tenant config. Adults and children only. */
   transportSupplement?: number;
+  /**
+   * The partner's rate-card row for this show and bus choice. When present it IS
+   * the adult/child price (bus included on the with-transport row) and the config
+   * supplement is not added on top.
+   */
+  rateCard?: ShowOpsRateCardPrice | null;
+  /**
+   * An earlier snapshot whose unit prices and rates must be kept — an edit that
+   * only moves pax on the same show / partner / bus choice. Editing a booking must
+   * never silently reprice it at today's master price.
+   */
+  frozen?: ShowOpsPricingSnapshot | null;
 }) {
   const adults = Math.max(0, input.adults);
   const children = Math.max(0, input.children);
   const infants = Math.max(0, input.infants);
   const transport = Boolean(input.transportRequired);
   const supplement = Math.max(0, num(input.transportSupplement));
+  const frozen = hasPricingSnapshot(input.frozen) ? (input.frozen as ShowOpsPricingSnapshot) : null;
+  const card = !frozen && input.rateCard ? input.rateCard : null;
 
-  const adultPrice = pickUnit(
-    num(input.product?.adult_price),
-    transport,
-    supplement,
-  );
-  const childPrice = pickUnit(
-    num(input.product?.child_price),
-    transport,
-    supplement,
-  );
-  // Infants ride free — no seat, no supplement.
-  const infantPrice = pickUnit(
-    num(input.product?.infant_price),
-    transport,
-    0,
-  );
+  const adultPrice = frozen
+    ? round2(num(frozen.adult_price))
+    : card
+      ? round2(num(card.adult_price))
+      : pickUnit(num(input.product?.adult_price), transport, supplement);
+  const childPrice = frozen
+    ? round2(num(frozen.child_price))
+    : card
+      ? round2(num(card.child_price))
+      : pickUnit(num(input.product?.child_price), transport, supplement);
+  // Infants ride free — no seat, no supplement. Rate cards carry no infant price.
+  const infantPrice = frozen
+    ? round2(num(frozen.infant_price))
+    : pickUnit(num(input.product?.infant_price), transport, 0);
   const extras = input.extras ?? [];
   const total = round2(adults * adultPrice + children * childPrice + infants * infantPrice + extras.reduce((sum, extra) => sum + extra.gross_total, 0));
 
   const mode = input.billingMode ?? input.supplier?.billing_mode ?? "deposit";
-  const depositPct = num(input.supplier?.deposit_percent, 30);
-  const nettPct = num(input.supplier?.invoice_nett_percent, 100);
+  const depositPct = frozen ? num(frozen.deposit_percent, 30) : num(input.supplier?.deposit_percent, 30);
+  const nettPct = frozen ? num(frozen.invoice_nett_percent, 100) : num(input.supplier?.invoice_nett_percent, 100);
 
-  const adultNettUnit = unitNett(adultPrice, nettPct);
-  const childNettUnit = unitNett(childPrice, nettPct);
-  const infantNettUnit = unitNett(infantPrice, nettPct);
+  const adultNettUnit = frozen ? round2(num(frozen.adult_nett_unit)) : unitNett(adultPrice, nettPct);
+  const childNettUnit = frozen ? round2(num(frozen.child_nett_unit)) : unitNett(childPrice, nettPct);
+  const infantNettUnit = frozen && frozen.infant_nett_unit != null ? round2(num(frozen.infant_nett_unit)) : unitNett(infantPrice, nettPct);
   const infant_nett_total = round2(infants * infantNettUnit);
   const adult_nett_total = round2(adults * adultNettUnit);
   const child_nett_total = round2(children * childNettUnit);
@@ -113,7 +140,15 @@ export function computeBookingMoney(input: {
     invoice_nett_percent: nettPct,
     deposit_percent: depositPct,
     transport_required: transport,
-    transport_supplement: transport ? supplement : 0,
+    // A card price already includes the bus; nothing was added on top.
+    transport_supplement: frozen ? num(frozen.transport_supplement) : card ? 0 : transport ? supplement : 0,
+    price_source: frozen ? (frozen.price_source ?? "master") : card ? "rate_card" : "master",
+    rate_card: frozen
+      ? (frozen.rate_card ?? null)
+      : card
+        ? { id: card.rate_id ?? null, name: card.rate_name ?? null, tipo: card.tipo ?? null }
+        : null,
+    ...(frozen ? { frozen_from: frozen.priced_at ?? null } : {}),
   };
 
   if (mode === "invoice") {

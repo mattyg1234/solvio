@@ -13,6 +13,7 @@ import * as types from "./types";
 import * as partnerLink from "./partner-link";
 import * as partnerBooking from "./partner-booking";
 import * as calendar from "./calendar";
+import * as rateCards from "./rate-cards";
 
 const compiled = ts.transpileModule(readFileSync(resolve("src/app/dashboard/show-ops/actions.ts"), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
@@ -49,6 +50,7 @@ function scenario(errors: Array<{ code?: string; message: string } | null> = [])
     "@/lib/show-ops/private-pickup": pickup, "@/lib/show-ops/types": types,
     "@/lib/show-ops/partner-link": partnerLink, "@/lib/show-ops/partner-booking": partnerBooking,
     "@/lib/show-ops/calendar": calendar,
+    "@/lib/show-ops/rate-cards": rateCards,
     "@/lib/show-ops/gyg-data": { pushChannelAvailability: async () => {} },
     "@/lib/supabase/server": { createSupabaseServiceRoleClient: () => admin },
     "next/cache": { revalidatePath() {} },

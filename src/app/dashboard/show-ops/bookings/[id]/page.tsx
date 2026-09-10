@@ -69,7 +69,7 @@ export default async function EditBookingPage({
     ctx.supabase
       .from("show_suppliers")
       .select(
-        "id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode",
+        "id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode,sale_rate_id",
       )
       .eq("business_id", biz)
       .eq("active", true)
@@ -284,6 +284,7 @@ export default async function EditBookingPage({
             moneyLocked={Boolean(booking.invoice_id)}
             defaults={{
               extras_snapshot: booking.extras_snapshot ?? [],
+              pricing_snapshot: booking.pricing_snapshot ?? null,
               ticket_type_id: booking.ticket_type_id,
               ticket_type_name: booking.ticket_type_name,
               id: booking.id,

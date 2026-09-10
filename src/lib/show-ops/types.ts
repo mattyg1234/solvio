@@ -160,6 +160,9 @@ export type ShowSupplier = {
   invoice_address: string | null;
   no_show_policy: "charge" | "write_off";
   active: boolean;
+  /** Rate cards (Lanzasoft tarifas). The sale card prices bookings; the invoice card is reference only. */
+  sale_rate_id?: string | null;
+  invoice_rate_id?: string | null;
 };
 
 export type ShowProduct = {

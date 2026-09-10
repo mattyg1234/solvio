@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { computeBookingMoney, paxTotal, round2 } from "@/lib/show-ops/calc";
+import { loadSaleRateUnit } from "@/lib/show-ops/rate-cards";
 
 type BizScope = { businessId: string };
 
@@ -248,6 +249,7 @@ export async function opsCreateBooking(
     }
   }
 
+  const rateCard = await loadSaleRateUnit(supabase, scope.businessId, supplier, args.product_id, transport);
   const money = computeBookingMoney({
     adults,
     children,
@@ -256,6 +258,7 @@ export async function opsCreateBooking(
     supplier: (supplier as never) ?? null,
     transportRequired: transport,
     transportSupplement: scope.transportSupplement ?? 0,
+    rateCard,
   });
 
   const { data: refData, error: refErr } = await supabase.rpc("show_ops_next_booking_ref", {

@@ -27,6 +27,7 @@ import {
   arrivalFlagPatch,
   computeBookingMoney,
   hasPricingSnapshot,
+  type ShowOpsPricingSnapshot,
   parsePaxCount,
   paymentStatusAfter,
   paxTotal,
@@ -68,6 +69,7 @@ import {
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { pushChannelAvailability } from "@/lib/show-ops/gyg-data";
+import { loadRatePrices, loadRatePricesForProduct, loadSaleRateUnit, pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
 import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
@@ -960,11 +962,18 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
     return [b.id, calculateExtras((extrasCatalogue ?? []) as ShowExtra[], (b.extras_snapshot ?? []).map((line: ExtraSnapshot) => ({ id: line.id, quantity: line.charge_basis === "quantity" ? line.quantity : 1 })), b.adults + b.children + b.infants, Number(supplier?.invoice_nett_percent ?? 100), { allowArchived: true })];
   }));
   const now = new Date().toISOString();
+  const rateCards = await loadRatePricesForProduct(
+    ctx.supabase,
+    ctx.business.id,
+    (suppliers ?? []).map((s) => String(s.sale_rate_id ?? "")).filter(Boolean),
+    productId,
+  );
 
   for (const b of bookings ?? []) {
     const supplier = b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null;
     const pricedProduct = applyTicketType(product as import("@/lib/show-ops/types").ShowProduct, b.ticket_type_id ? byTicketType.get(b.ticket_type_id)! : null);
     const extras = repricedExtras.get(b.id) ?? [];
+    const saleCard = supplier?.sale_rate_id ? rateCards.get(String(supplier.sale_rate_id)) ?? null : null;
     const money = computeBookingMoney({
       extras,
       adults: b.adults,
@@ -974,6 +983,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
       supplier: supplier as never,
       transportRequired: Boolean(b.transport_required),
       transportSupplement: ctx.config.transport_supplement,
+      rateCard: saleCard ? pickRatePrice(saleCard.rows, productId, Boolean(b.transport_required), saleCard.card) : null,
     });
     const patch: Record<string, unknown> = {
       show_name: pricedProduct.name,
@@ -1632,7 +1642,7 @@ async function buildBookingFields(
   ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
   formData: FormData,
   existingTicketTypeId?: string | null,
-  existingTransport?: { product_id: string | null; ticket_type_id: string | null; transport_required: boolean; extras_snapshot?: unknown; adults?: number; children?: number; infants?: number; supplier_id?: string | null; billing_mode?: string },
+  existingTransport?: { product_id: string | null; ticket_type_id: string | null; transport_required: boolean; extras_snapshot?: unknown; adults?: number; children?: number; infants?: number; supplier_id?: string | null; billing_mode?: string; pricing_snapshot?: unknown },
 ) {
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const productId = String(formData.get("product_id") ?? "").trim() || null;
@@ -1731,6 +1741,30 @@ async function buildBookingFields(
       ? (requestedBilling as ShowOpsBillingMode)
       : undefined;
 
+  /*
+   * Prices. An edit that keeps the same show, ticket type, partner and bus choice
+   * re-uses the prices the booking was sold at (its snapshot) — moving pax must
+   * never quietly reprice a booking at today's master price. Otherwise the
+   * partner's rate card decides the price, and the master price + bus supplement
+   * is only the fallback for partners with no card row for this show.
+   */
+  const sameMoneyShape = Boolean(existingTransport)
+    && existingTransport!.product_id === productId
+    && existingTransport!.ticket_type_id === ticketTypeId
+    && (existingTransport!.supplier_id ?? null) === supplierId
+    && existingTransport!.transport_required === transport;
+  const frozen = sameMoneyShape && hasPricingSnapshot(existingTransport?.pricing_snapshot)
+    ? (existingTransport!.pricing_snapshot as ShowOpsPricingSnapshot)
+    : null;
+  let rateCard: Awaited<ReturnType<typeof loadSaleRateUnit>> = null;
+  if (!frozen) {
+    try {
+      rateCard = await loadSaleRateUnit(ctx.supabase, ctx.business.id, supplier, productId, transport);
+    } catch (error) {
+      return { ok: false as const, error: error instanceof Error ? error.message : "Could not load the partner's rate card." };
+    }
+  }
+
   let extras: ExtraSnapshot[];
   try {
     const selection = parseExtraSelections(formData.get("extras") ?? "[]");
@@ -1769,6 +1803,8 @@ async function buildBookingFields(
     billingMode,
     transportRequired: transport,
     transportSupplement: ctx.config.transport_supplement,
+    rateCard,
+    frozen,
   });
 
   // Per-attendee rows (name/type/note) — drives special-meal and door lists.
@@ -1952,6 +1988,22 @@ export async function createBookingAction(
   return { ok: true, id: data?.id, message: booking_ref };
 }
 
+/** The rate card the desk form prices from once a partner is picked. */
+export async function loadSupplierRatePricesAction(
+  supplierId: string,
+): Promise<{ card: { id: string; name: string | null } | null; rows: RatePriceRow[] }> {
+  const ctx = await requireShowOpsAction("booker", "bookings");
+  const id = String(supplierId ?? "").trim();
+  if (!id) return { card: null, rows: [] };
+  const { data: supplier } = await ctx.supabase
+    .from("show_suppliers")
+    .select("sale_rate_id")
+    .eq("id", id)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  return loadRatePrices(ctx.supabase, ctx.business.id, supplier?.sale_rate_id ? String(supplier.sale_rate_id) : null);
+}
+
 /**
  * One history row per save that changed something. Never blocks the save —
  * a failed audit line is logged, not surfaced to the desk.
@@ -1966,7 +2018,7 @@ export async function updateBookingAction(
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,legacy_id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
+      "id,legacy_id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,pricing_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -2785,6 +2837,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     ? await ctx.supabase.from("show_products").select("*").in("id", productIds)
     : { data: [] as never[] };
   const productById = new Map((productRows ?? []).map((p) => [p.id, p]));
+  const saleRate = await loadRatePrices(ctx.supabase, ctx.business.id, supplierRow?.sale_rate_id ? String(supplierRow.sale_rate_id) : null);
 
   /*
    * Invoice at the rate the booking was SOLD at, never today's rate.
@@ -2820,6 +2873,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       supplier: supplierRow as never,
       transportRequired: Boolean(b.transport_required),
       transportSupplement: ctx.config.transport_supplement,
+      rateCard: pickRatePrice(saleRate.rows, b.product_id ? String(b.product_id) : null, Boolean(b.transport_required), saleRate.card),
     });
     return {
       ...b,

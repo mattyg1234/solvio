@@ -154,7 +154,7 @@ export type ShowOpsSellerContext = ShowOpsContext & {
   partnerAdmin: boolean;
   supplier: Pick<
     ShowSupplier,
-    "id" | "name" | "partner_type" | "billing_mode" | "deposit_percent" | "invoice_nett_percent"
+    "id" | "name" | "partner_type" | "billing_mode" | "deposit_percent" | "invoice_nett_percent" | "sale_rate_id"
   >;
 };
 
@@ -187,7 +187,7 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
     supabase.from("businesses").select(BIZ_SELECT).eq("id", mem.business_id).maybeSingle(),
     supabase
       .from("show_suppliers")
-      .select("id,name,partner_type,billing_mode,deposit_percent,invoice_nett_percent")
+      .select("id,name,partner_type,billing_mode,deposit_percent,invoice_nett_percent,sale_rate_id")
       .eq("id", mem.supplier_id)
       .eq("business_id", mem.business_id)
       .maybeSingle(),
