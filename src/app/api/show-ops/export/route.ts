@@ -32,7 +32,7 @@ export async function GET() {
   const { data: business } = await supabase
     .from("businesses")
     .select(
-      "id,name,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_custom_domain",
+      "id,name,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_custom_domain,logo_url,show_ops_logo_url",
     )
     .eq("id", resolved.id)
     .maybeSingle();

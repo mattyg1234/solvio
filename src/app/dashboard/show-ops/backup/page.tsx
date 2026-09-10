@@ -1,8 +1,39 @@
-import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES } from "@/lib/show-ops/backup";
+import { gunzipSync } from "node:zlib";
+
+import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES, snapshotTimestamp } from "@/lib/show-ops/backup";
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+type SnapshotSummary = { tables: number; rows: number; files: number; errors: Record<string, string> };
+
+/** Opens the newest snapshot far enough to read its counts, manifest and errors. Never throws. */
+async function summariseSnapshot(
+  admin: ReturnType<typeof createSupabaseServiceRoleClient>,
+  path: string,
+): Promise<SnapshotSummary | null> {
+  try {
+    const { data, error } = await admin.storage.from(SHOW_OPS_BACKUP_BUCKET).download(path);
+    if (error || !data) return null;
+    const bytes = Buffer.from(await data.arrayBuffer());
+    const text = (path.endsWith(".gz") ? gunzipSync(bytes) : bytes).toString("utf8");
+    const parsed = JSON.parse(text) as {
+      counts?: Record<string, number>;
+      files?: unknown[];
+      errors?: Record<string, string>;
+    };
+    const counts = parsed.counts ?? {};
+    return {
+      tables: Object.keys(counts).length,
+      rows: Object.values(counts).reduce((a, b) => a + Number(b || 0), 0),
+      files: Array.isArray(parsed.files) ? parsed.files.length : 0,
+      errors: parsed.errors ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
 
 function ago(iso: string): string {
   const mins = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -27,17 +58,19 @@ export default async function ShowOpsBackupPage() {
     sortBy: { column: "name", order: "desc" },
   });
 
-  const snapshots = (objects ?? []).filter((o) => o.name.endsWith(".json") || o.name.endsWith(".json.gz"));
+  // Only timestamped snapshot files count; the `files/` folder holds mirrored receipts and photos.
+  const snapshots = (objects ?? []).filter((o) => snapshotTimestamp(o.name));
   const latest = snapshots[0] ?? null;
   const latestAt = latest?.created_at ?? latest?.updated_at ?? null;
+  const summary = latest ? await summariseSnapshot(admin, `${ctx.business.id}/${latest.name}`) : null;
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Backups &amp; Plan B</h2>
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
-          A complete copy of this workspace — every booking, partner, hotel, stop, payment and invoice — is written to
-          private storage every six hours. If the system goes down, the mirror is at most six hours behind.
+          A complete copy of this workspace — every booking, partner, hotel, stop, payment, invoice, expense and
+          integration, plus receipts, ticket photos and the logo — is written to private storage every six hours. If the system goes down, the mirror is at most six hours behind.
           Copies are kept for a day, then one a day for a month.
         </p>
       </div>
@@ -53,6 +86,21 @@ export default async function ShowOpsBackupPage() {
               </span>
             </p>
             <p className="text-xs text-slate-500">{latest.name.replace(/\.json(\.gz)?$/, "").replace(/-(\d{2})-(\d{2})-(\d{2})-\d{3}Z$/, " $1:$2:$3 UTC")}</p>
+            {summary ? (
+              <p className="mt-2 text-sm text-slate-600">
+                {summary.tables} tables · {summary.rows.toLocaleString()} rows · {summary.files} files
+                {summary.files ? " (receipts, photos and logo mirrored alongside)" : ""}
+              </p>
+            ) : null}
+            {summary && Object.keys(summary.errors).length ? (
+              <ul className="mt-2 space-y-1 text-xs text-amber-700">
+                {Object.entries(summary.errors).map(([k, v]) => (
+                  <li key={k}>
+                    Not backed up — {k}: {v}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </>
         ) : (
           <p className="mt-1 text-sm text-amber-700">

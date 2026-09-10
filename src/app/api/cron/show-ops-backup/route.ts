@@ -6,6 +6,8 @@ import {
   SHOW_OPS_BACKUP_BUCKET,
   backupObjectPath,
   buildShowOpsBackup,
+  listShowOpsMirror,
+  mirrorShowOpsFiles,
   snapshotsToPrune,
 } from "@/lib/show-ops/backup";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -64,8 +66,15 @@ async function removeSnapshots(admin: Admin, businessId: string, names: string[]
  * five-minute copies are back. If egress ever climbs again, make it incremental
  * before slowing it down.
  *
+ * After the snapshot, every storage object in its `files` manifest (receipts,
+ * ticket photos, no-show proofs, the logo) is copied into the same bucket under
+ * `<businessId>/files/<bucket>/<path>`, skipping objects already mirrored at the
+ * same size and age. Snapshot first, mirror second: a mirror failure is logged
+ * and reported but never costs the snapshot write.
+ *
  * Then prunes: everything from the last hour stays, one per hour for a day,
- * one per day for a month. Without this the bucket grew 4 GB a day.
+ * one per day for a month. Without this the bucket grew 4 GB a day. Pruning
+ * only ever selects timestamped snapshot names; the `files/` folder is exempt.
  */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) {
@@ -78,7 +87,7 @@ export async function GET(req: NextRequest) {
   const { data: businesses, error } = await admin
     .from("businesses")
     .select(
-      "id,name,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_custom_domain",
+      "id,name,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_custom_domain,logo_url,show_ops_logo_url",
     )
     .eq("show_ops_enabled", true);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -91,6 +100,15 @@ export async function GET(req: NextRequest) {
     bytes?: number;
     raw_bytes?: number;
     counts?: Record<string, number>;
+    /** Tables or listings that could not be read (missing table, storage list failure). */
+    errors?: Record<string, string>;
+    /** Storage objects in the snapshot's manifest. */
+    files?: number;
+    /** Objects copied into the backup bucket on this run; the rest were already current. */
+    mirrored?: number;
+    mirror_skipped?: number;
+    mirror_errors?: Record<string, string>;
+    mirror_error?: string;
     pruned?: number;
     prune_error?: string;
     error?: string;
@@ -107,10 +125,45 @@ export async function GET(req: NextRequest) {
         .from(SHOW_OPS_BACKUP_BUCKET)
         .upload(path, body, { contentType: "application/gzip", upsert: true });
       if (upErr) throw new Error(upErr.message);
-      Object.assign(entry, { ok: true, path, bytes: body.byteLength, raw_bytes: raw.byteLength, counts: backup.counts });
+      Object.assign(entry, {
+        ok: true,
+        path,
+        bytes: body.byteLength,
+        raw_bytes: raw.byteLength,
+        counts: backup.counts,
+        errors: backup.errors,
+        files: backup.files.length,
+      });
+      const rows = Object.values(backup.counts).reduce((a, b) => a + b, 0);
+      console.log(
+        `[show-ops-backup] ${business.name} (${business.id}): ${Object.keys(backup.counts).length} tables, ${rows} rows, ${backup.files.length} files, ${body.byteLength} bytes gz`,
+      );
+      if (Object.keys(backup.errors).length) {
+        console.warn(`[show-ops-backup] ${business.name}: errors ${JSON.stringify(backup.errors)}`);
+      }
+
+      // Mirror storage objects only once the snapshot is safely written; a copy
+      // failure is logged and reported, never allowed to undo the snapshot.
+      try {
+        const existing = await listShowOpsMirror(admin, business.id);
+        const mirror = await mirrorShowOpsFiles(admin, business.id, backup.files, existing);
+        entry.mirrored = mirror.mirrored;
+        entry.mirror_skipped = mirror.skipped;
+        if (Object.keys(mirror.errors).length) entry.mirror_errors = mirror.errors;
+        console.log(
+          `[show-ops-backup] ${business.name}: mirrored ${mirror.mirrored} of ${backup.files.length} files (${mirror.skipped} already current, ${Object.keys(mirror.errors).length} failed)`,
+        );
+        if (Object.keys(mirror.errors).length) {
+          console.warn(`[show-ops-backup] ${business.name}: mirror errors ${JSON.stringify(mirror.errors)}`);
+        }
+      } catch (e) {
+        entry.mirror_error = e instanceof Error ? e.message : String(e);
+        console.error(`[show-ops-backup] ${business.name}: mirror step failed: ${entry.mirror_error}`);
+      }
     } catch (e) {
       // One tenant failing must not stop the rest of the mirror.
       entry.error = e instanceof Error ? e.message : String(e);
+      console.error(`[show-ops-backup] ${business.name} (${business.id}) failed: ${entry.error}`);
     }
 
     // Prune only after this run's snapshot is safely written.
