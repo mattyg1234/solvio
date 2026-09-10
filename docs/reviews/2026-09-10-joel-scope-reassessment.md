@@ -22,11 +22,11 @@ The parent audit supplied fresh read-only Supabase results for the MHT workspace
 
 An authenticated live calendar reproduced the screenshot. The inspected September 2026 month is **not truncated by the ordinary 1,000-row database cap**; completeness repairs protect larger periods/nights and must not be sold as recovery of missing September 2026 bookings. A separate authenticated September 2025 check did reproduce truncation: the live calendar displayed 2,477 pax while a read-only database aggregate returned 1,310 bookings and 3,251 pax. The live Partners page showed **470 collapsed partner rows**, with lazy editor controls present. These checks update older count/deployment assumptions, but do not prove imported balances, rates or all workflows are correct.
 
-The reviewed calendar edits are **validated and awaiting release verification**: narrower island queries, parallel selected-night loading, complete paged reads, grouped monthly aggregation and a closed-status display. Independent review caught an overlapping-closure action-target regression; the revised implementation preserves the exact-show target and explicitly labels island-wide reopening. A behavioral regression verifies the closed badge and submitted closure ID. The reviewed calendar diff has no remaining identified must-fix issue.
+The reviewed calendar edits are **released and verified live**: narrower island queries, parallel selected-night loading, complete paged reads, grouped monthly aggregation and a closed-status display. Independent review caught an overlapping-closure action-target regression; the revised implementation preserves the exact-show target and explicitly labels island-wide reopening. A behavioral regression verifies the closed badge and submitted closure ID. The reviewed calendar diff has no remaining identified must-fix issue.
 
 The parent benchmark compared equal aggregation outputs on 16,000 synthetic rows over 100 iterations: **7.99 ms before, 1.26 ms after**. This is a CPU aggregation benchmark, not a browser/network speed measurement. Paging adds requests, so real route timing remains necessary. The estimates remain unchanged because a current-month truncation repair was never counted as a separate work package; unresolved pricing, finance and acceptance remain the larger effort.
 
-The audit also rendered Reports, Door, Buses, Outlook and Invoicing through read-only live visits. These are route smoke checks, not reconciliation, write-flow or staff acceptance. Final validation passed 269 tests, full TypeScript and ESLint checks, and a production build. Vercel CLI confirmed the production target after the connector lacked team access. Live verification of the released fix is the remaining release check.
+The audit also rendered Reports, Door, Buses, Outlook and Invoicing through read-only live visits. These are route smoke checks, not reconciliation, write-flow or staff acceptance. Final validation passed 269 tests, full TypeScript and ESLint checks, and a production build. Vercel CLI confirmed the production target after the connector lacked team access. The released calendar passed authenticated live verification on both September 2025 and the screenshot's September 2026 night.
 
 The original €4,000 foundation and the proposed €1,000 package must remain commercially separate. Later checklists proposing a December launch with Accounts/Holded/GYG are not evidence of Joel accepting that altered scope. Earlier promises about partner documents, monthly reports, future prices, photos and exports must be reconciled before calling unfinished promised work a new paid extra. No price changes are proposed here.
 
@@ -233,3 +233,12 @@ The reassessment inspected current implementations and relevant September 5–9 
 - Live Holded metadata records connected / IGIC, checked 9 September. This does not independently verify the legal company identity, accountant approval or current upstream credentials.
 - No production database migration, booking/payment mutation, partner email, external invoice/purchase creation or staff permission change was performed.
 - If the proposed 1 December 2026 launch remains the target, it is Tuesday and 82 calendar days from this audit. This is a planning date from the checklist, not a newly confirmed client commitment.
+
+### Verified production release
+
+- Code change: `cb718ed`; released source head: `2d9b3b8`.
+- Production deployment: `dpl_J4t8HKxqnXEvRFNte4NivfgateUc`, Ready and aliased to `www.solviosystems.com`.
+- Authenticated September 2025 calendar: **3,251 pax across 30 days**, matching the database aggregate; before the release it showed 2,477. The missing 774 were a display/query omission, not deleted bookings.
+- Authenticated September 1, 2026 expanded night: **172 pax, 15 bus pax, 54 bookings**; MHT ACE now displays **Closed** while the other open shows remain Open.
+- No closure/reopening, booking, payment or messaging action was submitted during browser verification.
+- Overall page-load improvement is not claimed. The measured improvement is the approximately 6.4x faster synthetic monthly calculation; paging trades additional round trips for correct complete totals.
