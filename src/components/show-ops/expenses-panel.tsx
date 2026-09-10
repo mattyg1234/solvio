@@ -1,9 +1,9 @@
 import Link from "next/link";
 
-import { deleteExpenseAction, pushExpenseToHoldedAction, saveExpenseAction } from "@/app/dashboard/show-ops/actions-expenses";
+import { deleteExpenseAction, pushExpenseToHoldedAction, reconcileExpenseHoldedAction, saveExpenseAction } from "@/app/dashboard/show-ops/actions-expenses";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
-import { EXPENSE_CATEGORIES, type PnlRow } from "@/lib/show-ops/expenses";
+import { EXPENSE_CATEGORIES, expenseClaimIsStale, type PnlRow } from "@/lib/show-ops/expenses";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type ExpenseRow = {
@@ -20,6 +20,8 @@ export type ExpenseRow = {
   receipt_url: string | null;
   holded_status: string;
   holded_error: string | null;
+  holded_claim_token: string | null;
+  holded_claimed_at: string | null;
 };
 
 const categoryLabel = (k: string) => EXPENSE_CATEGORIES.find(([key]) => key === k)?.[1] ?? k;
@@ -50,7 +52,9 @@ export function ExpensesPanel({
     message === "updated" ? "Expense updated." :
     message === "deleted" ? "Expense deleted." :
     message === "sent" ? "Sent to Holded as a draft purchase." :
-    message === "already" ? "That expense is already in Holded." : null;
+    message === "already" ? "That expense is already in Holded." :
+    message === "reconciled_found" ? "Found the purchase in Holded and linked it to this expense." :
+    message === "reconciled_missing" ? "No purchase in Holded for that expense; it is safe to send again." : null;
 
   return (
     <div className="space-y-4">
@@ -174,18 +178,30 @@ export function ExpensesPanel({
                     <td className="py-1.5 pr-3 text-right tabular-nums">{money(e.total_amount, e.currency)} <span className="text-xs text-slate-500">({Number(e.tax_rate)}%)</span></td>
                     <td className="py-1.5 pr-3">
                       {e.holded_status === "draft" ? <span className="text-emerald-700">Draft in Holded</span>
+                        : e.holded_status === "creating" ? (
+                          expenseClaimIsStale(e.holded_claimed_at)
+                            ? <span className="text-amber-700" title="The send started more than 10 minutes ago and never finished.">Send stalled — reconcile</span>
+                            : <span className="text-amber-700">Sending to Holded…</span>
+                        )
+                        : e.holded_status === "unknown" ? <span className="text-rose-700" title={e.holded_error ?? ""}>Not confirmed — reconcile</span>
                         : e.holded_status === "error" ? <span className="text-rose-700" title={e.holded_error ?? ""}>Error</span>
-                        : <span className="text-slate-500">Not sent</span>}
+                        : <span className="text-slate-500" title={e.holded_error ?? ""}>Not sent</span>}
                     </td>
                     <td className="py-1.5">
                       <div className="flex flex-wrap gap-1">
-                        {holdedConnected && e.holded_status !== "draft" ? (
+                        {holdedConnected && (e.holded_status === "not_sent" || e.holded_status === "error") ? (
                           <form action={pushExpenseToHoldedAction}>
                             <input type="hidden" name="id" value={e.id} />
                             <SubmitOnce className="rounded-lg bg-white px-2 py-1 text-xs font-semibold text-slate-800 ring-1 ring-slate-200">Send to Holded</SubmitOnce>
                           </form>
                         ) : null}
-                        {e.holded_status !== "draft" ? (
+                        {holdedConnected && (e.holded_status === "unknown" || (e.holded_status === "creating" && expenseClaimIsStale(e.holded_claimed_at))) ? (
+                          <form action={reconcileExpenseHoldedAction}>
+                            <input type="hidden" name="id" value={e.id} />
+                            <SubmitOnce className="rounded-lg bg-white px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-300">Reconcile</SubmitOnce>
+                          </form>
+                        ) : null}
+                        {e.holded_status === "not_sent" || e.holded_status === "error" ? (
                           <form action={deleteExpenseAction}>
                             <input type="hidden" name="id" value={e.id} />
                             <SubmitOnce className="rounded-lg bg-white px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">Delete</SubmitOnce>

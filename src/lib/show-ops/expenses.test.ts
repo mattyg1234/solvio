@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildPnl, expenseTotals, holdedPurchaseFromExpense, parseExpenseForm, pickHoldedPurchaseTaxKey } from "./expenses";
+import {
+  EXPENSE_CLAIM_STALE_MS,
+  buildPnl,
+  classifyHoldedCreateFailure,
+  expenseClaimIsStale,
+  expensePurchaseMarker,
+  expenseTotals,
+  findPurchaseForExpense,
+  holdedPurchaseFromExpense,
+  parseExpenseForm,
+  pickHoldedPurchaseTaxKey,
+} from "./expenses";
+import { HoldedApiError } from "./holded";
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();
@@ -76,4 +88,45 @@ test("P&L: income is the partner nett, commission is the gap to gross, margin is
     ["2026-09", "Tenerife", 100, 60, 40, 25, 35, 1],
     ["2026-08", "Tenerife", 10, 5, 5, 0, 5, 1],
   ]);
+});
+
+test("Holded create failure: only a 4xx answer means nothing was created", () => {
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(400, "bad request", "/invoicing/v1/documents/purchase")), "error");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(401, "invalid key", "/x")), "error");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(422, "validation", "/x")), "error");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(429, "rate limited", "/x")), "error");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(500, "boom", "/x")), "unknown");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(502, "bad gateway", "/x")), "unknown");
+  assert.equal(classifyHoldedCreateFailure(new HoldedApiError(504, "timeout", "/x")), "unknown");
+  assert.equal(classifyHoldedCreateFailure(new TypeError("fetch failed")), "unknown");
+  assert.equal(classifyHoldedCreateFailure(new Error("Holded returned a malformed purchase response.")), "unknown");
+  assert.equal(classifyHoldedCreateFailure(new Error("Missing purchase id in Holded response.")), "unknown");
+  assert.equal(classifyHoldedCreateFailure("string thrown"), "unknown");
+  assert.equal(classifyHoldedCreateFailure(undefined), "unknown");
+});
+
+test("reconcile: finds the one purchase carrying the expense marker, ignores lookalikes, refuses duplicates", () => {
+  const id = "3f2a9c1e-1111-4bbb-8ccc-0000000000ab";
+  const marker = expensePurchaseMarker(id);
+  assert.equal(marker, `Solvio expense ${id}`);
+  const list = [
+    { id: "h1", notes: "Some other purchase", date: 1 },
+    { id: "h2", notes: `Coach hire\n${marker}`, date: 2 },
+    { id: "h3", notes: `${marker}9`, date: 3 },
+    { id: "h4", notes: null, date: null },
+  ];
+  assert.deepEqual(findPurchaseForExpense(list, id), list[1]);
+  assert.equal(findPurchaseForExpense(list, "nope"), null);
+  assert.equal(findPurchaseForExpense([], id), null);
+  assert.equal(findPurchaseForExpense([{ id: "h5", notes: marker, date: null }], id)?.id, "h5");
+  assert.throws(() => findPurchaseForExpense([list[1], { id: "h6", notes: `${marker} (again)`, date: 4 }], id), /2 purchases/);
+});
+
+test("claim staleness: fresh claims block a second send, 10-minute-old or missing ones are stalled", () => {
+  const now = Date.UTC(2026, 8, 11, 12, 0, 0);
+  assert.equal(expenseClaimIsStale(new Date(now - 60_000).toISOString(), now), false);
+  assert.equal(expenseClaimIsStale(new Date(now - EXPENSE_CLAIM_STALE_MS).toISOString(), now), false);
+  assert.equal(expenseClaimIsStale(new Date(now - EXPENSE_CLAIM_STALE_MS - 1).toISOString(), now), true);
+  assert.equal(expenseClaimIsStale(null, now), true);
+  assert.equal(expenseClaimIsStale("not a date", now), true);
 });

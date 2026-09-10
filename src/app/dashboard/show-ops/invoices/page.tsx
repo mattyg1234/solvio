@@ -62,6 +62,7 @@ export default async function InvoicesPage({
       id: e.id, expense_date: e.expense_date, supplier_name: e.supplier_name, description: e.description, category: e.category, island: e.island,
       net_amount: e.net_amount, tax_rate: e.tax_rate, total_amount: e.total_amount, currency: e.currency,
       receipt_url: e.receipt_path ? urlByPath.get(e.receipt_path) ?? null : null, holded_status: e.holded_status, holded_error: e.holded_error,
+      holded_claim_token: e.holded_claim_token ?? null, holded_claimed_at: e.holded_claimed_at ?? null,
     }));
   }
 

@@ -1,5 +1,5 @@
 import { round2 } from "@/lib/show-ops/calc";
-import { holdedTag, unixDay, type HoldedItem, type HoldedTax } from "@/lib/show-ops/holded";
+import { HoldedApiError, holdedTag, unixDay, type HoldedItem, type HoldedTax } from "@/lib/show-ops/holded";
 
 export const EXPENSE_CATEGORIES = [
   ["transport", "Buses & transport"],
@@ -114,12 +114,47 @@ export function holdedPurchaseFromExpense(
     desc: `${e.supplier_name} · ${e.expense_date}`,
     date: unixDay(e.expense_date),
     items: [item],
-    notes: [e.notes?.trim(), `Solvio expense ${e.id}`].filter(Boolean).join("\n"),
+    notes: [e.notes?.trim(), expensePurchaseMarker(e.id)].filter(Boolean).join("\n"),
     tags,
     approveDoc: false,
   };
   if (e.currency !== "eur") input.currency = e.currency;
   return input;
+}
+
+/** The marker `holdedPurchaseFromExpense` writes into the purchase notes; Reconcile searches for it. */
+export function expensePurchaseMarker(expenseId: string): string {
+  return `Solvio expense ${expenseId}`;
+}
+
+/** Claims in `creating` older than this are treated as stalled: the send never completed. */
+export const EXPENSE_CLAIM_STALE_MS = 10 * 60 * 1000;
+
+export function expenseClaimIsStale(claimedAt: string | null | undefined, now = Date.now()): boolean {
+  if (!claimedAt) return true;
+  const t = new Date(claimedAt).getTime();
+  return !Number.isFinite(t) || now - t > EXPENSE_CLAIM_STALE_MS;
+}
+
+/**
+ * What a thrown error from createPurchaseDraft means for the claim.
+ * "error": Holded answered and rejected the request (4xx) — nothing was created, safe to retry.
+ * "unknown": network failure, timeout, 5xx, or a malformed/unreadable response — Holded may hold a purchase we cannot see.
+ */
+export function classifyHoldedCreateFailure(err: unknown): "error" | "unknown" {
+  if (err instanceof HoldedApiError && err.status >= 400 && err.status < 500) return "error";
+  return "unknown";
+}
+
+export type HoldedPurchaseListEntry = { id: string; notes: string | null; date: number | null };
+
+/** Reconcile: the one Holded purchase carrying this expense's marker. Two matches is a duplicate the office must sort out. */
+export function findPurchaseForExpense(list: HoldedPurchaseListEntry[], expenseId: string): HoldedPurchaseListEntry | null {
+  // Boundary after the id so "Solvio expense abc" never matches "Solvio expense abc1".
+  const marker = new RegExp(`${expensePurchaseMarker(expenseId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9-])`);
+  const hits = list.filter((p) => marker.test(String(p.notes ?? "")));
+  if (hits.length > 1) throw new Error(`Holded holds ${hits.length} purchases for this expense. Delete the duplicates in Holded, then reconcile again.`);
+  return hits[0] ?? null;
 }
 
 export type PnlRow = {

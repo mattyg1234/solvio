@@ -537,6 +537,27 @@ export class HoldedClient {
     return { id: requiredString((res as Record<string, unknown>).id, "purchase id") };
   }
 
+  /**
+   * Purchase documents dated within [startUnixDay, endUnixDay] via Holded's list-documents endpoint.
+   * Reconcile uses it to find a draft whose notes carry the Solvio expense marker; only id, notes and date are kept.
+   */
+  async listPurchases(startUnixDay: number, endUnixDay: number): Promise<Array<{ id: string; notes: string | null; date: number | null }>> {
+    const start = Math.floor(Number(startUnixDay));
+    const end = Math.floor(Number(endUnixDay));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) throw new Error("Invalid purchase list window.");
+    const raw = await this.request<unknown>("GET", `/invoicing/v1/documents/purchase?starttmp=${start}&endtmp=${end}`);
+    if (!Array.isArray(raw)) return [];
+    const out: Array<{ id: string; notes: string | null; date: number | null }> = [];
+    for (const d of raw) {
+      if (!d || typeof d !== "object" || Array.isArray(d)) continue;
+      const rec = d as Record<string, unknown>;
+      if (typeof rec.id !== "string" && typeof rec.id !== "number") continue;
+      const date = Number(rec.date);
+      out.push({ id: String(rec.id), notes: typeof rec.notes === "string" ? rec.notes : null, date: rec.date != null && Number.isFinite(date) ? date : null });
+    }
+    return out;
+  }
+
   async createContact(input: HoldedContactInput): Promise<{ id: string }> {
     const res = await this.request<unknown>("POST", "/invoicing/v1/contacts", holdedContactBody(input));
     if (!res || typeof res !== "object" || Array.isArray(res)) throw new Error("Holded returned a malformed contact response.");
