@@ -49,6 +49,7 @@ function scenario(errors: Array<{ code?: string; message: string } | null> = [])
     "@/lib/show-ops/private-pickup": pickup, "@/lib/show-ops/types": types,
     "@/lib/show-ops/partner-link": partnerLink, "@/lib/show-ops/partner-booking": partnerBooking,
     "@/lib/show-ops/calendar": calendar,
+    "@/lib/show-ops/gyg-data": { pushChannelAvailability: async () => {} },
     "@/lib/supabase/server": { createSupabaseServiceRoleClient: () => admin },
     "next/cache": { revalidatePath() {} },
   };

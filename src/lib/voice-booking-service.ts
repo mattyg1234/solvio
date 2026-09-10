@@ -443,7 +443,7 @@ export async function createVoiceBookingRequest(
   }
 
   let preferredTime = input.timeLocal?.trim() ?? "";
-  let intakeExtras: Record<string, unknown> = {};
+  const intakeExtras: Record<string, unknown> = {};
   if (preferredTable) intakeExtras.preferred_table = preferredTable;
   if (hostedEventId) intakeExtras.hosted_event_id = hostedEventId;
   if (service) {

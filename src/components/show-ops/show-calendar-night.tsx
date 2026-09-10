@@ -130,7 +130,9 @@ export function ShowCalendarNight({
 
               <ul className="mt-3 space-y-2">
                 {isl.shows.map((sh) => {
-                  const close = islandCloses.find((c) => c.product_id === sh.productId) || islandCloses.find((c) => c.product_id == null);
+                  const showClose = islandCloses.find((c) => c.product_id === sh.productId);
+                  const islandClose = islandCloses.find((c) => c.product_id == null);
+                  const close = showClose || islandClose;
                   return (
                     <li key={sh.productId} className="rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -141,7 +143,11 @@ export function ShowCalendarNight({
                             {sh.capacity != null ? ` · ${Math.max(0, sh.capacity - sh.pax)} left` : ""}
                           </p>
                         </div>
-                        <FillPill fill={sh.fill} />
+                        {sh.closeKind ? (
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${sh.closeKind === "full" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-900"}`}>
+                            {sh.closeKind === "full" ? "Closed" : "Part closed"}
+                          </span>
+                        ) : <FillPill fill={sh.fill} />}
                       </div>
                       {close ? (
                         canClose ? (
@@ -154,7 +160,7 @@ export function ShowCalendarNight({
                               {close.close_kind === "full" ? "Full close" : "Part close"}
                             </span>
                             <SubmitOnce className="rounded-lg bg-white px-2 py-1 font-medium text-slate-700 ring-1 ring-slate-200 disabled:opacity-60">
-                              Reopen
+                              {showClose && islandClose ? "Remove show closure" : islandClose ? "Reopen island" : "Reopen"}
                             </SubmitOnce>
                           </form>
                         ) : (

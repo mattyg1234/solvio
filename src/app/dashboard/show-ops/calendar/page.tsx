@@ -9,8 +9,9 @@ import {
 } from "@/components/show-ops/show-calendar-night";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
-import { buildCalendarDays, type CloseKind } from "@/lib/show-ops/calendar";
+import { buildCalendarDays, type CloseKind, type CalendarProduct, type CalendarBooking, type CalendarBusOrder } from "@/lib/show-ops/calendar";
 import { parseIsoYearMonth, shiftYearMonth, showOpsNightMonth } from "@/lib/show-ops/nights";
+import { loadReportRows } from "@/lib/show-ops/report-data";
 import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
 const WEEK_HEAD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -49,50 +50,36 @@ export default async function ShowOpsCalendarPage({
   const next = shiftYearMonth(year, month, 1);
   const canClose = roleAtLeast(ctx.role, "office");
 
-  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: closes }] = await Promise.all([
-    ctx.supabase
-      .from("show_products")
-      .select("id,name,island,capacity,run_weekdays,active")
-      .eq("business_id", ctx.business.id)
-      .eq("active", true),
-    ctx.supabase
-      .from("show_bookings")
-      .select("show_date,island,product_id,show_name,adults,children,infants,transport_required")
-      .eq("business_id", ctx.business.id)
-      .gte("show_date", monthStart)
-      .lte("show_date", monthEnd)
-      .is("cancelled_at", null),
-    ctx.supabase
-      .from("show_bus_orders")
-      .select("show_date,island,seats_ordered,bus_count,cost_total")
-      .eq("business_id", ctx.business.id)
-      .gte("show_date", monthStart)
-      .lte("show_date", monthEnd),
-    ctx.supabase
-      .from("show_night_closes")
-      .select("id,show_date,island,product_id,close_kind,note")
-      .eq("business_id", ctx.business.id)
-      .gte("show_date", monthStart)
-      .lte("show_date", monthEnd),
+  // Scope every query before paging. Keep the selected night concurrent with
+  // the month reads, so opening a day does not add a second loading waterfall.
+  const scoped = <Columns extends string>(table: string, columns: Columns) => {
+    const query = ctx.supabase.from(table).select(columns).eq("business_id", ctx.business.id);
+    return island ? query.eq("island", island) : query;
+  };
+  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: closes }, { data: nightRows }] = await Promise.all([
+    loadReportRows<CalendarProduct>("calendar shows", (offset, limit) =>
+      scoped("show_products", "id,name,island,capacity,run_weekdays,active")
+        .eq("active", true).order("id").range(offset, offset + limit - 1)),
+    loadReportRows<CalendarBooking>("calendar bookings", (offset, limit) =>
+      scoped("show_bookings", "show_date,island,product_id,show_name,adults,children,infants,transport_required")
+        .gte("show_date", monthStart).lte("show_date", monthEnd).is("cancelled_at", null)
+        .order("id").range(offset, offset + limit - 1)),
+    loadReportRows<CalendarBusOrder & { bus_count: number | null; cost_total: number | null }>("calendar bus orders", (offset, limit) =>
+      scoped("show_bus_orders", "show_date,island,seats_ordered,bus_count,cost_total")
+        .gte("show_date", monthStart).lte("show_date", monthEnd)
+        .order("id").range(offset, offset + limit - 1)),
+    loadReportRows<NightCloseRow>("calendar closures", (offset, limit) =>
+      scoped("show_night_closes", "id,show_date,island,product_id,close_kind,note")
+        .gte("show_date", monthStart).lte("show_date", monthEnd)
+        .order("id").range(offset, offset + limit - 1)),
+    date && date >= monthStart && date <= monthEnd
+      ? loadReportRows<NightBookingRow>("night bookings", (offset, limit) =>
+          scoped("show_bookings", "id,booking_ref,guest_name,show_name,supplier_name,hotel_name,pickup_stop_name,adults,children,infants,transport_required,island")
+            .eq("show_date", date).is("cancelled_at", null)
+            .order("show_name").order("guest_name").order("id").range(offset, offset + limit - 1))
+      : Promise.resolve({ data: [] }),
   ]);
-
-  let nightBookings: NightBookingRow[] = [];
-  if (date) {
-    let q = ctx.supabase
-      .from("show_bookings")
-      .select(
-        "id,booking_ref,guest_name,show_name,supplier_name,hotel_name,pickup_stop_name,adults,children,infants,transport_required,island",
-      )
-      .eq("business_id", ctx.business.id)
-      .eq("show_date", date)
-      .is("cancelled_at", null)
-      .order("show_name")
-      .order("guest_name")
-      .limit(250);
-    if (island) q = q.eq("island", island);
-    const { data } = await q;
-    nightBookings = (data ?? []) as NightBookingRow[];
-  }
+  const nightBookings = nightRows;
 
   const days = buildCalendarDays({
     year,

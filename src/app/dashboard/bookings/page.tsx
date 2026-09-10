@@ -115,9 +115,6 @@ export default async function DashboardBookingsPage({
   const primaryVenueTz = coerceValidIanaTimeZone(businessesRaw?.[0]?.time_zone ?? "");
 
   const primaryBookingFlowComplete = Boolean(businessesRaw?.[0]?.booking_flow_completed_at);
-  const primaryStripeChargesEnabled = Boolean(
-    businessesRaw?.[0]?.stripe_connect_account_id && businessesRaw?.[0]?.stripe_connect_charges_enabled,
-  );
   const flowDetailsRaw = businessesRaw?.[0]?.booking_flow_details;
   const staffMembers = parseStaffMembers(
     flowDetailsRaw && typeof flowDetailsRaw === "object" && !Array.isArray(flowDetailsRaw)

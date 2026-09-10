@@ -92,7 +92,19 @@ function closeFor(
   const hits = closes.filter((c) => c.show_date === iso && c.island === island);
   const exact = hits.find((c) => c.product_id === productId);
   const islandWide = hits.find((c) => c.product_id == null);
+  if (exact?.close_kind === "full" || islandWide?.close_kind === "full") return "full";
   return exact?.close_kind ?? islandWide?.close_kind ?? null;
+}
+
+function rowsByDate<T extends { show_date: string }>(rows: T[]): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows) {
+    const date = row.show_date;
+    const group = grouped.get(date);
+    if (group) group.push(row);
+    else grouped.set(date, [row]);
+  }
+  return grouped;
 }
 
 export function buildCalendarDays(input: {
@@ -107,17 +119,23 @@ export function buildCalendarDays(input: {
   const islandFilter = (input.island || "").trim();
   const products = input.products.filter((p) => p.active !== false && (!islandFilter || p.island === islandFilter));
   const closes = input.closes ?? [];
+  const bookingsByDate = rowsByDate(input.bookings);
+  const ordersByDate = rowsByDate(input.busOrders);
+  const closesByDate = rowsByDate(closes);
   const cells = showOpsMonthCells(input.year, input.month);
   const days: CalendarDay[] = [];
 
   for (const iso of cells) {
     if (!iso) continue;
+    const dayBookings = bookingsByDate.get(iso) ?? [];
+    const dayOrders = ordersByDate.get(iso) ?? [];
+    const dayCloses = closesByDate.get(iso) ?? [];
     const islandNames = [
       ...new Set([
         ...products.filter((p) => productRunsOnDate(p.run_weekdays, iso)).map((p) => p.island),
-        ...input.bookings.filter((b) => b.show_date === iso).map((b) => b.island),
-        ...input.busOrders.filter((o) => o.show_date === iso).map((o) => o.island),
-        ...closes.filter((c) => c.show_date === iso).map((c) => c.island),
+        ...dayBookings.map((b) => b.island),
+        ...dayOrders.map((o) => o.island),
+        ...dayCloses.map((c) => c.island),
       ]),
     ]
       .filter((name) => !islandFilter || name === islandFilter)
@@ -125,7 +143,7 @@ export function buildCalendarDays(input: {
 
     const islands: CalendarDayIsland[] = islandNames.map((island) => {
       const running = products.filter((p) => p.island === island && productRunsOnDate(p.run_weekdays, iso));
-      const nightBookings = input.bookings.filter((b) => b.show_date === iso && b.island === island);
+      const nightBookings = dayBookings.filter((b) => b.island === island);
       const showsById = new Map<string, CalendarDayShow>();
       for (const p of running) {
         showsById.set(p.id, {
@@ -135,7 +153,7 @@ export function buildCalendarDays(input: {
           pax: 0,
           capacity: p.capacity,
           fill: showOpsFill(0, p.capacity),
-          closeKind: closeFor(closes, iso, island, p.id),
+          closeKind: closeFor(dayCloses, iso, island, p.id),
         });
       }
       let busPax = 0;
@@ -152,13 +170,13 @@ export function buildCalendarDays(input: {
             pax: 0,
             capacity: null,
             fill: "open",
-            closeKind: closeFor(closes, iso, island, b.product_id),
+            closeKind: closeFor(dayCloses, iso, island, b.product_id),
           } satisfies CalendarDayShow);
         cur.pax += pax;
         cur.fill = showOpsFill(cur.pax, cur.capacity);
         showsById.set(key, cur);
       }
-      const order = input.busOrders.find((o) => o.show_date === iso && o.island === island);
+      const order = dayOrders.find((o) => o.island === island);
       const seats = order ? Number(order.seats_ordered) : null;
       return {
         island,
@@ -166,7 +184,7 @@ export function buildCalendarDays(input: {
         seatsOrdered: seats,
         busLeft: seats == null ? null : seats - busPax,
         busCost: order ? Number(order.cost_total || 0) : null,
-        closeKind: closeFor(closes, iso, island, null),
+        closeKind: closeFor(dayCloses, iso, island, null),
         shows: [...showsById.values()].sort((a, b) => a.name.localeCompare(b.name)),
       };
     });

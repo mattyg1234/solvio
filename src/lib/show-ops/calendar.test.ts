@@ -82,3 +82,24 @@ test("productRunsOnDate is false when weekdays are empty", () => {
   assert.equal(productRunsOnDate(null, "2026-08-19"), false);
   assert.equal(productRunsOnDate([3], "2026-08-19"), true);
 });
+
+test("month aggregation reads each booking date once instead of rescanning for every day", () => {
+  let dateReads = 0;
+  const bookings = Array.from({ length: 1500 }, () => ({
+    get show_date() { dateReads += 1; return "2026-09-01"; },
+    island: "Tenerife", product_id: "p", show_name: "Show", adults: 1, children: 0, infants: 0, transport_required: true,
+  }));
+  const days = buildCalendarDays({ year: 2026, month: 9, products: [], bookings, busOrders: [] });
+  assert.equal(days[0].pax, 1500);
+  assert.ok(dateReads <= 3000, `Read booking dates ${dateReads} times`);
+});
+
+test("an island full close takes precedence over a show part close", () => {
+  const days = buildCalendarDays({ year: 2026, month: 9,
+    products: [{ id: "p", name: "Show", island: "Tenerife", capacity: 100, run_weekdays: [2] }],
+    bookings: [], busOrders: [], closes: [
+      { show_date: "2026-09-01", island: "Tenerife", product_id: "p", close_kind: "part" },
+      { show_date: "2026-09-01", island: "Tenerife", product_id: null, close_kind: "full" },
+    ] });
+  assert.equal(days[0].islands[0].shows[0].closeKind, "full");
+});
