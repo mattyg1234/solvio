@@ -17,7 +17,9 @@ import {
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { SHOW_OPS_PAYMENT_METHOD_LABELS } from "@/lib/show-ops/types";
 
-const PAGE_SIZE = 250;
+// 50 rows per page: the old 250-row page shipped ~2 MB of HTML (every row is rendered twice,
+// once as a door card and once as a desk row, each with its own forms) and took 3–7 s to load.
+const PAGE_SIZE = 50;
 
 /** Whitelisted sort keys → columns. Joel: "sort by everything". */
 const SORT_COLUMNS: Record<string, string> = {
