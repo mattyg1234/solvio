@@ -380,9 +380,12 @@ async function main() {
   // ---- payments for everything fetched (new + refreshed) that exists
   const liveIds = [...fetched.entries()].filter(([, b]) => b).map(([n]) => n);
   const paidById = new Map<number, number>();
+  const payMethodById = new Map<number, string>();
   await mapLimit(liveIds, CONCURRENCY, async (n) => {
     const pays = (await lzGet<LzPayment[]>(`/payments?booking=${n}`)) ?? [];
     paidById.set(n, round2(pays.reduce((s, p) => s + num(p.Ammount), 0)));
+    const last = pays[pays.length - 1]?.Method?.toString().toLowerCase() ?? "";
+    payMethodById.set(n, last === "cash" ? "cash" : last === "card" ? "card" : last.includes("transfer") || last.includes("bank") ? "transfer" : "other");
   });
 
   // ---- partners and bus stops Lanzasoft added since the import
@@ -512,33 +515,49 @@ async function main() {
   }
   for (let i = 0; i < inserts.length; i += 200) {
     const chunk = inserts.slice(i, i + 200);
-    const { data, error } = await sb.from("show_bookings").insert(chunk.map((c) => c.row)).select("id,legacy_id");
+    // No ledger rows here: the database's opening-balance guard materialises
+    // "total − balance" as the imported paid basis the first time it is needed.
+    const { error } = await sb.from("show_bookings").insert(chunk.map((c) => c.row));
     if (error) throw new Error(`Insert failed at ${chunk[0].row.booking_ref}: ${error.message}`);
-    const ledger = (data ?? [])
-      .map((d) => ({ d, paid: chunk.find((c) => c.row.legacy_id === num(d.legacy_id))?.paidAmount ?? 0 }))
-      .filter((x) => x.paid > 0)
-      .map((x) => ({ business_id: BUSINESS, booking_id: d(x.d.id), amount: x.paid, method: "import", paid_at: new Date().toISOString(), note: "Opening balance synced from Lanzasoft (paid before Solvio)" }));
-    if (ledger.length) {
-      const { error: lerr } = await sb.from("show_booking_payments").insert(ledger);
-      if (lerr) throw new Error(`Ledger insert failed: ${lerr.message}`);
-    }
     written += chunk.length;
   }
   for (const u of updates) {
     const patch: Record<string, unknown> = { updated_at: u.next.row.updated_at };
     for (const c of u.changed) patch[c] = (u.next.row as Record<string, unknown>)[c];
-    const { error } = await sb.from("show_bookings").update(patch).eq("id", u.existing.id as string).eq("business_id", BUSINESS);
-    if (error) throw new Error(`Update failed for ${u.existing.booking_ref}: ${error.message}`);
-    if (u.next.row.billing_mode === "deposit" && u.changed.includes("balance_remaining")) {
-      // Ledger follows the paid amount: add the difference as an import row (never negative).
-      const { data: rows } = await sb.from("show_booking_payments").select("amount").eq("booking_id", u.existing.id as string);
-      const ledgerSum = round2((rows ?? []).reduce((s, r) => s + num(r.amount), 0));
-      const delta = round2(u.next.paidAmount - ledgerSum);
-      if (delta > 0) {
-        await sb.from("show_booking_payments").insert({ business_id: BUSINESS, booking_id: u.existing.id, amount: delta, method: "import", paid_at: u.next.row.updated_at, note: "Payment synced from Lanzasoft" });
-      } else if (delta < 0) {
-        console.log(`  ! ${u.existing.booking_ref}: Lanzasoft paid (${u.next.paidAmount}) is below the Solvio ledger (${ledgerSum}); left for the office.`);
+    const paidChanged = u.next.row.billing_mode === "deposit" && (u.changed.includes("balance_remaining") || u.changed.includes("payment_status"));
+    let viaLedger = false;
+    if (paidChanged) {
+      /*
+       * Paid money lives in the ledger once a booking has any row there (the
+       * import materialised opening balances). Then the booking's balance must
+       * not be written directly — a real payment row is added and the trigger
+       * recomputes balance and status. A booking with no ledger yet keeps the
+       * import convention: balance on the row, opening basis materialised later.
+       */
+      const { data: rows, error: lerr } = await sb.from("show_booking_payments").select("amount").eq("booking_id", u.existing.id as string);
+      if (lerr) throw new Error(`Could not read payments for ${u.existing.booking_ref}: ${lerr.message}`);
+      if ((rows ?? []).length) {
+        viaLedger = true;
+        delete patch.balance_remaining;
+        delete patch.payment_status;
+        const ledgerSum = round2((rows ?? []).reduce((s, r) => s + num(r.amount), 0));
+        const delta = round2(u.next.paidAmount - ledgerSum);
+        const outstanding = round2(Math.max(0, num(u.next.row.total_cost) - ledgerSum));
+        if (delta > 0 && !u.next.row.cancelled_at) {
+          const { error: perr } = await sb.from("show_booking_payments").insert({
+            business_id: BUSINESS, booking_id: u.existing.id, amount: Math.min(delta, outstanding), method: payMethodById.get(num(u.existing.legacy_id)) ?? "other",
+            paid_at: u.next.row.updated_at, note: "Payment recorded in Lanzasoft (sync)",
+          });
+          if (perr) console.log(`  ! ${u.existing.booking_ref}: could not record ${delta} paid — ${perr.message}`);
+        } else if (delta < 0) {
+          console.log(`  ! ${u.existing.booking_ref}: Lanzasoft paid (${u.next.paidAmount}) is below the Solvio ledger (${ledgerSum}); left for the office.`);
+        }
       }
+    }
+    const remaining = Object.keys(patch).filter((k) => k !== "updated_at");
+    if (remaining.length || !viaLedger) {
+      const { error } = await sb.from("show_bookings").update(patch).eq("id", u.existing.id as string).eq("business_id", BUSINESS);
+      if (error) throw new Error(`Update failed for ${u.existing.booking_ref}: ${error.message}`);
     }
     written += 1;
   }
@@ -548,9 +567,6 @@ async function main() {
     written += 1;
   }
   console.log(`\nWrote ${written} changes to Solvio. Lanzasoft untouched.`);
-  function d(v: unknown): string {
-    return String(v);
-  }
 }
 
 main().catch((err) => {
