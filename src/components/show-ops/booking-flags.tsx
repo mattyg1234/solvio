@@ -37,13 +37,22 @@ export function FlagDots({
     <>
       <span className="inline-flex items-center gap-1.5 print:hidden">
         {flags.map((f) => (
-          <span
-            key={f.key}
-            role="img"
-            aria-label={`${f.label}: ${f.text}`}
-            title={`${f.label}: ${f.text}`}
-            className={`inline-block h-3 w-3 cursor-help rounded-full ring-1 ${f.dot}`}
-          />
+          <span key={f.key} className="group relative inline-flex">
+            <span
+              role="img"
+              tabIndex={0}
+              aria-label={`${f.label}: ${f.text}`}
+              title={`${f.label}: ${f.text}`}
+              className={`inline-block h-3 w-3 cursor-help rounded-full ring-1 outline-none focus-visible:ring-2 ${f.dot}`}
+            />
+            {/* Instant tooltip: the native title takes a second and never shows on touch. */}
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 hidden max-w-[18rem] -translate-y-1/2 whitespace-pre-wrap rounded-md bg-slate-900 px-2 py-1 text-[11px] font-medium leading-snug text-white shadow-lg group-hover:block group-focus-within:block"
+            >
+              <span className="font-semibold">{f.label}:</span> {f.text}
+            </span>
+          </span>
         ))}
       </span>
       <span className="hidden print:flex print:flex-col print:gap-0.5">
@@ -54,6 +63,27 @@ export function FlagDots({
         ))}
       </span>
     </>
+  );
+}
+
+/** What the three dot colours mean. Shown once above the night-list tables. */
+export function FlagLegend({ className = "" }: { className?: string }) {
+  const items = [
+    { dot: "bg-amber-400 ring-amber-600", text: "Special meal / dietary" },
+    { dot: "bg-rose-500 ring-rose-700", text: "Money still due at the door" },
+    { dot: "bg-violet-500 ring-violet-700", text: "Comment from the office" },
+  ];
+  return (
+    <p className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 print:hidden ${className}`}>
+      <span className="font-semibold uppercase tracking-wide text-slate-400">Flags</span>
+      {items.map((i) => (
+        <span key={i.text} className="inline-flex items-center gap-1.5">
+          <span className={`inline-block h-3 w-3 rounded-full ring-1 ${i.dot}`} />
+          {i.text}
+        </span>
+      ))}
+      <span className="text-slate-400">Hover or tap a dot for the detail.</span>
+    </p>
   );
 }
 

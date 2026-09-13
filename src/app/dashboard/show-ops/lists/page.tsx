@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { BookingFlags, FlagDots } from "@/components/show-ops/booking-flags";
+import { BookingFlags, FlagDots, FlagLegend } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import {
@@ -562,6 +562,7 @@ export default async function DailyListsPage({
         sort — each extra click adds another sort.
         {sortKeys.length > 1 ? ` Sorting by ${sortKeys.join(" then ")}.` : ""}
       </p>
+      <FlagLegend className="-mt-2" />
 
       {views.includes("office") ? (
         <OfficeTable
@@ -880,18 +881,20 @@ function OfficeTable({
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
-      {/* Laptop and print: the full sheet. Fixed layout + dots so it never scrolls sideways. */}
-      <div className="hidden lg:block print:block">
-        <table className="w-full table-fixed text-left text-sm">
+      {/* Laptop and print: the full sheet. Fixed layout with a floor on the name
+          columns, so Supplier / Guest / Hotel never collapse to one letter; a
+          narrow window scrolls sideways instead of hiding the names. */}
+      <div className="hidden overflow-x-auto lg:block print:block print:overflow-visible">
+        <table className="w-full min-w-[70rem] table-fixed text-left text-sm print:min-w-0">
           <colgroup>
-            <col className="w-[7.5rem]" />
-            <col />
-            <col />
             <col className="w-[7rem]" />
             <col />
-            <col className="w-[5.5rem]" />
-            <col className="w-[7.5rem]" />
-            <col className="w-[5.5rem]" />
+            <col />
+            <col className="w-[6.5rem]" />
+            <col />
+            <col className="w-[4.5rem]" />
+            <col className="w-[7rem]" />
+            <col className="w-[4.5rem]" />
             {questions.map((q) => (
               <col key={q.id} className="w-[6rem]" />
             ))}
@@ -1166,8 +1169,8 @@ function DoorTable({
           <p className="py-6 text-center text-sm text-slate-500">No rows</p>
         )}
       </div>
-      <div className="hidden lg:block print:block">
-        <table className="w-full table-fixed text-left text-sm">
+      <div className="hidden overflow-x-auto lg:block print:block print:overflow-visible">
+        <table className="w-full min-w-[58rem] table-fixed text-left text-sm print:min-w-0">
           <colgroup>
             <col />
             <col className="w-[8rem]" />
