@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { BookingsDeskTable, type BookingsDeskRow, type BookingsDeskSort } from "@/components/show-ops/bookings-desk";
 import { ShowOpsLiveFilterForm } from "@/components/show-ops/live-filter-form";
-import { TicketScanner } from "@/components/show-ops/ticket-scanner";
 import { SHOW_OPS_GHOST_BTN, ShowOpsNewBookingButton, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
@@ -82,6 +81,7 @@ export default async function AllBookingsPage({
   const ctx = await requireShowOpsPage("bookings");
   const money = (n: number, island?: string | null) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const today = new Date().toISOString().slice(0, 10);
+  const weekEnd = addDaysIso(today, 6);
   const fourWeekEnd = addDaysIso(today, 27);
   const q = sanitizeSearch(sp.q || "");
   const island = sp.island || "";
@@ -91,7 +91,8 @@ export default async function AllBookingsPage({
   const tonightOnly = Boolean(sp.date) && !sp.from && !sp.to && !allDates;
   const date = tonightOnly ? sp.date || today : "";
   const from = allDates || tonightOnly ? sp.from || "" : sp.from || today;
-  const to = allDates || tonightOnly ? sp.to || "" : sp.to || fourWeekEnd;
+  // Default window is the next 7 nights: what the office actually works from.
+  const to = allDates || tonightOnly ? sp.to || "" : sp.to || weekEnd;
   const pay = sp.pay || "";
   const includeCancelled = sp.include_cancelled === "1" || pay === "cancelled";
   const page = Math.max(1, Number(sp.page || 1) || 1);
@@ -194,6 +195,7 @@ export default async function AllBookingsPage({
     return s ? `/dashboard/show-ops/bookings?${s}` : "/dashboard/show-ops/bookings";
   };
 
+  const thisWeek = !allDates && !tonightOnly && from === today && to === weekEnd;
   const fourWeeks = !allDates && !tonightOnly && from === today && to === fourWeekEnd;
   const windowLabel = allDates
     ? "all dates"
@@ -271,7 +273,7 @@ export default async function AllBookingsPage({
     }),
   );
 
-  const filteredAway = Boolean(q || island || showFilter || pay || door || allDates || tonightOnly || !fourWeeks);
+  const filteredAway = Boolean(q || island || showFilter || pay || door || allDates || tonightOnly || !thisWeek);
 
   return (
     <div className="space-y-6">
@@ -295,7 +297,10 @@ export default async function AllBookingsPage({
         <ShowOpsPill href={`/dashboard/show-ops/bookings?date=${today}`} on={tonightOnly}>
           Tonight
         </ShowOpsPill>
-        <ShowOpsPill href="/dashboard/show-ops/bookings" on={fourWeeks}>
+        <ShowOpsPill href="/dashboard/show-ops/bookings" on={thisWeek}>
+          7 days
+        </ShowOpsPill>
+        <ShowOpsPill href={`/dashboard/show-ops/bookings?from=${today}&to=${fourWeekEnd}`} on={fourWeeks}>
           4 weeks
         </ShowOpsPill>
         <ShowOpsPill href="/dashboard/show-ops/bookings?all=1" on={allDates}>
@@ -419,8 +424,6 @@ export default async function AllBookingsPage({
           </div>
         </div>
       </ShowOpsLiveFilterForm>
-
-      <TicketScanner />
 
       <BookingsDeskTable rows={deskRows} sort={sort} />
 

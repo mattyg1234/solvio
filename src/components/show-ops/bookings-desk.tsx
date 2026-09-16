@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { ListFlagButton } from "@/components/show-ops/list-flag-button";
 import { cn } from "@/lib/utils";
 import type { ShowOpsArrivalMark } from "@/lib/show-ops/calc";
 
@@ -142,7 +140,6 @@ export function BookingsDeskTable({
               <SortTh col={sort.outstanding} label="Outstanding" right />
               <th className="px-1.5 py-2">Status</th>
               <th className="px-1.5 py-2">Door</th>
-              <th className="px-1.5 py-2 print:hidden">Mark</th>
               <SortTh col={sort.supplier} label="Supplier" />
               <th className="px-1.5 py-2" />
             </tr>
@@ -158,7 +155,7 @@ export function BookingsDeskTable({
             ))}
             {!rows.length ? (
               <tr>
-                <td colSpan={15} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={14} className="px-3 py-8 text-center text-slate-500">
                   No bookings in this window.
                 </td>
               </tr>
@@ -183,7 +180,6 @@ function DoorCard({ row, open, onToggle }: { row: BookingsDeskRow; open: boolean
           : row.arrival.status === "absent"
             ? "bg-rose-50 ring-rose-200"
             : "bg-white ring-slate-200";
-  const settled = row.alreadyPaid || Boolean(row.doorPay);
   return (
     <div className={cn("rounded-2xl px-4 py-3 shadow-sm ring-1", tone)}>
       <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-3 text-left">
@@ -219,17 +215,7 @@ function DoorCard({ row, open, onToggle }: { row: BookingsDeskRow; open: boolean
 
       {row.cancelled ? (
         <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cancelled</p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          <ArrivalPaxForm key={`${row.id}:${row.arrival.arrived}`} bookingId={row.id} mark={row.arrival} big />
-          <div className="flex flex-wrap gap-2">
-            <ListFlagButton bookingId={row.id} flag="cash" label="Paid cash" hide={settled} big />
-            <ListFlagButton bookingId={row.id} flag="card" label="Paid card" hide={settled} tone="sky" big />
-            <ListFlagButton bookingId={row.id} flag="cash" label="Undo cash" hide={row.doorPay !== "cash"} undo big />
-            <ListFlagButton bookingId={row.id} flag="card" label="Undo card" hide={row.doorPay !== "card"} undo big />
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {open ? (
         <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3 text-sm">
@@ -388,16 +374,6 @@ function BookingRows({
           {row.diet ? <span className="mt-1 block text-[11px] text-amber-800">{row.diet}</span> : null}
         </td>
         <td className="px-1.5 py-2 whitespace-nowrap text-xs">{row.doorLabel}</td>
-        <td className="px-1.5 py-2" onClick={(e) => e.stopPropagation()}>
-          {row.cancelled ? null : (
-            <StaffMarks
-              bookingId={row.id}
-              arrival={row.arrival}
-              doorPay={row.doorPay}
-              alreadyPaid={row.alreadyPaid}
-            />
-          )}
-        </td>
         <td className="px-1.5 py-2">{row.supplier ?? "—"}</td>
         <td className="px-1.5 py-2 text-right">
           <Link
@@ -469,28 +445,3 @@ function Detail({
   );
 }
 
-function StaffMarks({
-  bookingId,
-  arrival,
-  doorPay,
-  alreadyPaid,
-}: {
-  bookingId: string;
-  arrival: ShowOpsArrivalMark;
-  doorPay: string | null;
-  alreadyPaid: boolean;
-}) {
-  const settled = alreadyPaid || Boolean(doorPay);
-  const absent = arrival.status === "absent";
-  return (
-    <div className="flex min-w-[9.5rem] flex-col gap-1.5">
-      <ArrivalPaxForm key={`${bookingId}:${arrival.arrived}`} bookingId={bookingId} mark={arrival} />
-      <div className="flex flex-wrap gap-1">
-        <ListFlagButton bookingId={bookingId} flag="cash" label="Paid cash" hide={settled || absent} />
-        <ListFlagButton bookingId={bookingId} flag="card" label="Paid on card" hide={settled || absent} tone="sky" />
-        <ListFlagButton bookingId={bookingId} flag="cash" label="Undo cash" hide={doorPay !== "cash"} undo />
-        <ListFlagButton bookingId={bookingId} flag="card" label="Undo on card" hide={doorPay !== "card"} undo />
-      </div>
-    </div>
-  );
-}

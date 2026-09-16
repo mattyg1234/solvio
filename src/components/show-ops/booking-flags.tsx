@@ -14,6 +14,12 @@
  * On paper the dots give way to the full text, because the kitchen and the
  * door read the printed sheet, not a tooltip.
  */
+/** Lanzasoft stored a bare "Yes" in the diet field with the detail in the comments; show a real label instead. */
+function dietLabel(notes: string | null | undefined): string {
+  const t = (notes ?? "").trim();
+  return !t || /^(yes|y|si|sí|true)$/i.test(t) ? "Special meal" : t;
+}
+
 export function FlagDots({
   dietaryRequired,
   dietaryNotes,
@@ -25,7 +31,7 @@ export function FlagDots({
   balanceDueLabel?: string | null;
   comments?: string | null;
 }) {
-  const diet = dietaryRequired ? (dietaryNotes?.trim() || "Special meal") : null;
+  const diet = dietaryRequired ? dietLabel(dietaryNotes) : null;
   const note = comments?.trim() || null;
   const flags: Array<{ key: string; text: string; dot: string; chip: string; label: string }> = [];
   if (diet) flags.push({ key: "diet", text: diet, dot: "bg-amber-400 ring-amber-600", chip: "bg-amber-100 text-amber-950 ring-amber-300", label: "Diet" });
@@ -101,7 +107,7 @@ export function BookingFlags({
   comments?: string | null;
   compact?: boolean;
 }) {
-  const diet = dietaryRequired ? (dietaryNotes?.trim() || "Special meal") : null;
+  const diet = dietaryRequired ? dietLabel(dietaryNotes) : null;
   const note = comments?.trim() || null;
   if (!diet && !balanceDueLabel && !note) return null;
   // Force the tint through on paper too — a printed list should read the same as the phone.

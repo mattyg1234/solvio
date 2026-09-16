@@ -198,10 +198,14 @@ export default async function ShowOpsCalendarPage({
                           </span>
                           <span
                             className={`block tabular-nums text-[11px] ${
-                              summary.busLeft != null && summary.busLeft < 0 ? "text-rose-700" : "text-slate-500"
+                              summary.busLeft == null
+                                ? "text-slate-400"
+                                : summary.busLeft < 0
+                                  ? "text-rose-700"
+                                  : "text-emerald-700"
                             }`}
                           >
-                            {summary.busLeft == null ? "bus ?" : `${summary.busLeft} bus left`}
+                            {summary.busLeft == null ? "no bus yet" : `${summary.busLeft} bus seats left`}
                           </span>
                           {summary.closed ? (
                             <span

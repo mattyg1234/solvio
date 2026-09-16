@@ -140,11 +140,11 @@ export default async function ShowOpsDoorPage({
       />
 
       <p className="text-sm font-medium text-slate-600">
-        {waiting.length} waiting · {inNow.length} in
-        {absent.length ? ` · ${absent.length} no-show` : ""}
+        {waiting.length + inNow.length + absent.length} bookings · {waitingPax + inPax} people
         <span className="text-slate-400">
           {" "}
-          · {waitingPax} still outside · {inPax} inside
+          · {inPax ? `${inPax} in, ${waitingPax} still outside` : "none in yet"}
+          {absent.length ? ` · ${absent.length} no-show` : ""}
         </span>
       </p>
 
