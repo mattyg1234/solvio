@@ -1,4 +1,5 @@
 import { formatShowOpsMoney, paxTotal, round2 } from "@/lib/show-ops/calc";
+import { productRunsOnDate } from "@/lib/show-ops/calendar";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type ShowOpsAlert = {
@@ -125,6 +126,8 @@ type ProductRow = {
   island: string;
   capacity: number | null;
   active?: boolean | null;
+  /** Weekdays the show runs (0 = Sunday). Omitted = unknown, treated as running; null/empty = never. */
+  run_weekdays?: number[] | null;
 };
 
 type StopRow = {
@@ -158,10 +161,16 @@ export function buildShowOpsDashboard(input: {
     .filter((b) => b.transport_required)
     .reduce((s, b) => s + paxTotal(b.adults, b.children, b.infants), 0);
 
+  // "Tonight's shows" = active shows that actually run on today's weekday. A product row that
+  // never carried run_weekdays (older callers, tests) is still listed.
+  const runsTonight = (p: ProductRow) =>
+    p.active !== false && (p.run_weekdays === undefined || productRunsOnDate(p.run_weekdays, input.today));
+  const tonightProducts = input.products.filter(runsTonight);
+
   const islandNames = [
     ...new Set([
       ...tonight.map((b) => b.island).filter(Boolean),
-      ...input.products.filter((p) => p.active !== false).map((p) => p.island).filter(Boolean),
+      ...tonightProducts.map((p) => p.island).filter(Boolean),
     ]),
   ].sort();
   const busByIsland = new Map(
@@ -186,7 +195,7 @@ export function buildShowOpsDashboard(input: {
   });
 
   const showKeys = new Map<string, ShowOpsTonightShow>();
-  for (const p of input.products.filter((p) => p.active !== false)) {
+  for (const p of tonightProducts) {
     const key = `${p.island}|${p.id}`;
     showKeys.set(key, {
       island: p.island,

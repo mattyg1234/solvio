@@ -54,3 +54,30 @@ test("home lists every active show even with zero bookings tonight", () => {
   assert.equal(dash.shows.find((s) => s.name === "MHT ACE")?.fill, "open");
   assert.equal(dash.month.tickets, 0);
 });
+
+test("home only lists shows that run on tonight's weekday", () => {
+  // 2026-08-14 is a Friday (weekday 5).
+  const dash = buildShowOpsDashboard({
+    today: "2026-08-14",
+    weekStart: "2026-08-08",
+    weekEnd: "2026-08-28",
+    currency: "eur",
+    bookings: [],
+    unpaidDeposits: [],
+    busOrders: [],
+    invoices: [],
+    products: [
+      { id: "ace", name: "MHT ACE", island: "Lanzarote", capacity: 200, active: true, run_weekdays: [2, 3, 5, 6] },
+      { id: "lpa", name: "MHT LPA", island: "Gran Canaria", capacity: 150, active: true, run_weekdays: [3] },
+      { id: "nye", name: "NYE", island: "Tenerife", capacity: 500, active: true, run_weekdays: null },
+      { id: "legacy", name: "No weekdays known", island: "UK Tour", capacity: 100, active: true },
+    ],
+    stripeReady: true,
+    guestStripeEnabled: false,
+  });
+  assert.deepEqual(
+    dash.shows.map((s) => s.name).sort(),
+    ["MHT ACE", "No weekdays known"],
+  );
+  assert.deepEqual(dash.islands.map((i) => i.island).sort(), ["Lanzarote", "UK Tour"]);
+});

@@ -128,7 +128,7 @@ export default async function ShowOpsHomePage({
             .eq("paid", false)
             .eq("voided", false)
         : Promise.resolve({ data: [] as { total_amount: number; due_date: string | null; paid: boolean; supplier_name?: string | null }[] }),
-      ctx.supabase.from("show_products").select("id,name,island,capacity,active").eq("business_id", ctx.business.id),
+      ctx.supabase.from("show_products").select("id,name,island,capacity,active,run_weekdays").eq("business_id", ctx.business.id),
       ctx.supabase.from("show_bus_stops").select("id,island,resort").eq("business_id", ctx.business.id),
       uninvoicedQuery,
     ]);
