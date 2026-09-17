@@ -62,8 +62,8 @@ export function showOpsNavActive(
   if (item.exact) return pathname === item.href.split("?")[0];
   if (item.tab) {
     const current = searchTab || "shows";
-    // Pick-up points sit under Hotels and Rates under Partners; the rail item stays lit.
-    const effective = current === "stops" ? "hotels" : current === "rates" ? "partners" : current;
+    // Pick-up points are a sub-tab of Hotels & pick-ups; the rail item stays lit.
+    const effective = current === "stops" ? "hotels" : current;
     return pathname.startsWith("/dashboard/show-ops/master") && effective === item.tab;
   }
   if (item.key === "bookings") {
