@@ -70,6 +70,7 @@ import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { pushChannelAvailability } from "@/lib/show-ops/gyg-data";
 import { loadRatePrices, loadRatePricesForProduct, loadSaleRateUnit, pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
+import { buildRateGrid, rateGridChanges } from "@/lib/show-ops/rate-card-grid";
 import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
@@ -1575,6 +1576,120 @@ export async function deleteProductAction(productId: string, formData: FormData)
   if (error) redirectMaster(tab, { error: error.message });
   revalidateShowOps();
   redirectMaster(tab, { saved: "1" });
+}
+
+function redirectRates(opts: { card?: string; saved?: "1" | "prices" | "none"; created?: string; error?: string }): never {
+  const q = new URLSearchParams();
+  q.set("tab", "rates");
+  if (opts.card) q.set("card", opts.card);
+  if (opts.saved) q.set("saved", opts.saved);
+  if (opts.created) q.set("created", opts.created);
+  if (opts.error) q.set("error", opts.error.slice(0, 180));
+  redirect(`/dashboard/show-ops/master?${q.toString()}`);
+}
+
+/** Add a rate card, or rename / re-rate / retire an existing one. The card type is fixed once created. */
+export async function upsertRateCardAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("admin", "partners");
+  const biz = ctx.business.id;
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim().replace(/\s+/g, " ");
+  if (!name) redirectRates({ card: id || undefined, error: "Give the rate card a name." });
+  const rawPct = String(formData.get("commission_percent") ?? "").trim().replace(",", ".");
+  const pct = rawPct === "" ? null : Number(rawPct);
+  if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 100)) {
+    redirectRates({ card: id || undefined, error: "Commission must be between 0 and 100, or left empty." });
+  }
+
+  const { data: clash } = await ctx.supabase.from("show_supplier_rates").select("id").eq("business_id", biz).ilike("name", name.replace(/[%_\\]/g, "\\$&")).limit(5);
+  if ((clash ?? []).some((r) => String(r.id) !== id)) {
+    redirectRates({ card: id || undefined, error: `There is already a rate card called "${name}".` });
+  }
+
+  if (id) {
+    const { error } = await ctx.supabase
+      .from("show_supplier_rates")
+      .update({ name, commission_percent: pct, active: formData.get("active") === "on", updated_at: new Date().toISOString() })
+      .eq("business_id", biz)
+      .eq("id", id);
+    if (error) redirectRates({ card: id, error: error.message });
+    revalidateShowOps();
+    redirectRates({ card: id, saved: "1" });
+  }
+
+  const rateType = String(formData.get("rate_type") ?? "") === "invoice" ? "invoice" : "sale";
+  const { data: made, error } = await ctx.supabase
+    .from("show_supplier_rates")
+    .insert({ business_id: biz, name, rate_type: rateType, commission_percent: pct, active: true })
+    .select("id")
+    .single();
+  if (error || !made) redirectRates({ error: error?.message ?? "Could not add the rate card." });
+  revalidateShowOps();
+  redirectRates({ card: String(made!.id), saved: "1" });
+}
+
+/**
+ * Save the price grid of one sale rate card. Only edited cells are written, and
+ * every stored row for that show + bus choice gets the same price, so the row
+ * pricing picks can never disagree with the grid. Existing bookings keep the
+ * price they were sold at.
+ */
+export async function saveRateCardPricesAction(rateId: string, formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("admin", "partners");
+  const biz = ctx.business.id;
+  const id = rateId.trim();
+  const [{ data: card }, { data: products }, { rows }] = await Promise.all([
+    ctx.supabase.from("show_supplier_rates").select("id,rate_type,legacy_rate_id").eq("business_id", biz).eq("id", id).maybeSingle(),
+    ctx.supabase.from("show_products").select("id,name,active,legacy_id").eq("business_id", biz),
+    loadRatePrices(ctx.supabase, biz, id),
+  ]);
+  if (!card) redirectRates({ error: "That rate card no longer exists." });
+  if (card!.rate_type !== "sale") redirectRates({ card: id, error: "Only sale rate cards carry prices." });
+
+  const mapped = rows.filter((r) => r.product_id);
+  const grid = buildRateGrid(
+    (products ?? []).map((p) => ({ id: String(p.id), name: String(p.name), active: Boolean(p.active) })),
+    mapped,
+  );
+  const { changes, error: bad } = rateGridChanges(grid, (field) => formData.get(field));
+  if (bad) redirectRates({ card: id, error: bad });
+  if (!changes.length) redirectRates({ card: id, saved: "none" });
+
+  const legacyShow = new Map((products ?? []).map((p) => [String(p.id), p.legacy_id as number | null]));
+  const now = new Date().toISOString();
+  for (const c of changes) {
+    const { data: touched, error } = await ctx.supabase
+      .from("show_rate_prices")
+      .update({ adult_price: c.adult_price, child_price: c.child_price, updated_at: now })
+      .eq("business_id", biz)
+      .eq("rate_id", id)
+      .eq("product_id", c.product_id)
+      .eq("no_transport", c.no_transport)
+      .select("id");
+    if (error) redirectRates({ card: id, error: error.message });
+    if ((touched ?? []).length || c.adult_price === null) continue;
+    const { error: insertError } = await ctx.supabase.from("show_rate_prices").insert({
+      business_id: biz,
+      rate_id: id,
+      product_id: c.product_id,
+      legacy_rate_id: card!.legacy_rate_id ?? null,
+      legacy_show_id: legacyShow.get(c.product_id) ?? null,
+      tipo: 1,
+      no_transport: c.no_transport,
+      adult_price: c.adult_price,
+      child_price: c.child_price,
+    });
+    if (insertError) {
+      redirectRates({
+        card: id,
+        error: /null value/i.test(insertError.message)
+          ? "New price rows need the rate-card migration (20260917120000) applied first."
+          : insertError.message,
+      });
+    }
+  }
+  revalidateShowOps();
+  redirectRates({ card: id, saved: "prices" });
 }
 
 export async function deleteSupplierAction(supplierId: string, formData: FormData): Promise<void> {

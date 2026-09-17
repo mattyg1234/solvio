@@ -24,6 +24,8 @@ import {
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { buildRateGrid, type RateGridRow } from "@/lib/show-ops/rate-card-grid";
+import { loadRatePrices } from "@/lib/show-ops/rate-cards";
 
 function Field({
   label,
@@ -78,6 +80,7 @@ export default async function MasterDataPage({
 }: {
   searchParams: Promise<{
     tab?: string;
+    card?: string;
     saved?: string;
     created?: string;
     error?: string;
@@ -85,25 +88,20 @@ export default async function MasterDataPage({
 }) {
   const sp = await searchParams;
   /*
-   * Rates was a duplicate of the deposit % / invoice nett % that already live on
-   * every partner, and nothing prices from it — so it is gone from the nav and any
-   * old link lands on Partners instead. The rate-card rows are still on the
-   * partner record for reference.
+   * Rates is a sub-tab of Partners. Since Sept 2026 every partner booking is
+   * priced from the partner's sale rate card, so the cards and their per-show
+   * prices are edited here rather than only in the database.
    */
   // Pick-up points moved onto the Bus board (Sept 2026); old links follow them there.
   if (sp.tab === "stops") redirect("/dashboard/show-ops/buses");
-  const allowed = new Set(["shows", "partners", "hotels", "stops"]);
-  const tab =
-    sp.tab === "rates"
-      ? "partners"
-      : sp.tab && allowed.has(sp.tab)
-        ? sp.tab
-        : "shows";
+  const allowed = new Set(["shows", "partners", "rates", "hotels", "stops"]);
+  const tab = sp.tab && allowed.has(sp.tab) ? sp.tab : "shows";
+  const cardId = /^[0-9a-f-]{36}$/i.test(sp.card ?? "") ? sp.card : undefined;
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "")
     ? sp.created
     : undefined;
   const ctx = await requireShowOpsPage(
-    tab === "partners"
+    tab === "partners" || tab === "rates"
       ? "partners"
       : tab === "hotels" || tab === "stops"
         ? "hotels"
@@ -135,7 +133,7 @@ export default async function MasterDataPage({
           .eq("active", true)
           .order("name")
       : Promise.resolve({ data: [] as never[] }),
-    tab === "shows"
+    tab === "shows" || tab === "rates"
       ? sb
           .from("show_products")
           .select("*")
@@ -152,7 +150,7 @@ export default async function MasterDataPage({
           .order("show_date", { ascending: false })
           .limit(20)
       : Promise.resolve({ data: [] as never[] }),
-    tab === "partners"
+    tab === "partners" || tab === "rates"
       ? sb
           .from("show_supplier_rates")
           .select("*")
@@ -160,6 +158,38 @@ export default async function MasterDataPage({
           .order("name")
       : Promise.resolve({ data: [] as never[] }),
   ]);
+
+  // Rates tab: how many active partners sit on each card, and the open card's price grid.
+  const ratePartnerCounts: Record<string, number> = {};
+  let rateGrid: RateGridRow[] = [];
+  const selectedRate =
+    tab === "rates" && cardId
+      ? (((rates ?? []) as Array<{ id: string }>).find((r) => r.id === cardId) ?? null)
+      : null;
+  if (tab === "rates") {
+    const [{ data: onCards }, prices] = await Promise.all([
+      sb
+        .from("show_suppliers")
+        .select("sale_rate_id,invoice_rate_id")
+        .eq("business_id", biz)
+        .eq("active", true)
+        .limit(5000),
+      selectedRate
+        ? loadRatePrices(sb, biz, selectedRate.id)
+        : Promise.resolve({ card: null, rows: [] }),
+    ]);
+    for (const s of onCards ?? []) {
+      for (const id of new Set([s.sale_rate_id, s.invoice_rate_id])) {
+        if (id) ratePartnerCounts[id] = (ratePartnerCounts[id] ?? 0) + 1;
+      }
+    }
+    rateGrid = buildRateGrid(
+      ((products ?? []) as Array<{ id: string; name: string; active: boolean }>).map(
+        (p) => ({ id: p.id, name: p.name, active: Boolean(p.active) }),
+      ),
+      prices.rows.filter((r) => r.product_id),
+    );
+  }
 
   const ticketTypes: import("@/components/show-ops/ticket-types-editor").MasterTicketType[] =
     [];
@@ -258,9 +288,9 @@ export default async function MasterDataPage({
             : "Shows";
   const intro =
     tab === "partners"
-      ? "Sellers — ticket shops, agencies, hotels, web. Type and location match the old Partners list. Commission cards live under Rates."
+      ? "Sellers — ticket shops, agencies, hotels, web. Type and location match the old Partners list. Rate cards and their prices live under Rates."
       : tab === "rates"
-        ? "Commission cards (sale vs invoice). Partners pick one of these — they are not sellers."
+        ? "The rate cards partners are priced from. Edit a card’s name and %, retire it, or change what its partners sell each show for."
         : tab === "hotels"
           ? "Every hotel and the pick-up point it uses. The pick-up points themselves, their times and the run order are on the Bus board."
           : tab === "stops"
@@ -285,12 +315,45 @@ export default async function MasterDataPage({
           Already on the list — opened it below so you can edit it.
         </p>
       ) : null}
-      {sp.saved === "1" ? (
+      {sp.saved === "prices" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          Prices saved. New bookings use them from now; existing bookings keep
+          the price they were sold at.
+        </p>
+      ) : null}
+      {sp.saved === "none" ? (
+        <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
+          Nothing changed — no prices were different.
+        </p>
+      ) : null}
+      {sp.saved === "1" && tab === "rates" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          Rate card saved.
+        </p>
+      ) : null}
+      {sp.saved === "1" && tab !== "rates" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Saved. The new row is at the top of the list.
         </p>
       ) : null}
-      <ScrollToCreated id={created} />
+      <ScrollToCreated id={created ?? (tab === "rates" ? cardId : undefined)} />
+
+      {tab === "partners" || tab === "rates" ? (
+        <div className="flex flex-wrap gap-2">
+          <ShowOpsPill
+            href="/dashboard/show-ops/master?tab=partners"
+            on={tab === "partners"}
+          >
+            Partners
+          </ShowOpsPill>
+          <ShowOpsPill
+            href="/dashboard/show-ops/master?tab=rates"
+            on={tab === "rates"}
+          >
+            Rates
+          </ShowOpsPill>
+        </div>
+      ) : null}
 
       {tab === "rates" ? (
         <section
@@ -299,11 +362,17 @@ export default async function MasterDataPage({
         >
           <h2 className="font-semibold text-slate-900">Rates & commissions</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Sale cards are pay-now. Invoice cards are billed later at (100% −
-            commission). Attach a card on each partner — this list is not the
-            seller list.
+            A partner’s sale card sets the price they sell each show at, with
+            and without the bus. Attach a card to a partner on the Partners tab.
           </p>
-          <MasterRatesForm rates={(rates ?? []) as never} />
+          <MasterRatesForm
+            key={`${cardId ?? ""}:${(rates ?? []).map((r) => `${r.id}:${r.name}:${r.commission_percent}:${r.active}`).join("|")}:${rateGrid.map((g) => `${g.bus.adult}/${g.bus.child}/${g.noBus.adult}/${g.noBus.child}`).join("|")}`}
+            rates={(rates ?? []) as never}
+            partnerCounts={ratePartnerCounts}
+            selected={(selectedRate ?? null) as never}
+            grid={rateGrid}
+            currency={ctx.config.currency}
+          />
         </section>
       ) : null}
 
