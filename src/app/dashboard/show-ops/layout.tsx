@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PrintStamp } from "@/components/show-ops/print-stamp";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
 import { getShowOpsRenderContext } from "@/lib/show-ops/access";
@@ -34,7 +35,8 @@ export default async function ShowOpsLayout({
         } as React.CSSProperties
       }
     >
-      <p className="text-xs text-slate-500">
+      <PrintStamp />
+      <p className="text-xs text-slate-500 print:hidden">
         Your access: {ctx.role} ·{" "}
         {ctx.allowedIslands === null
           ? "All islands"

@@ -394,7 +394,6 @@ function BookingRows({
               <Detail label="Pick-up" value={row.pickupStop ? `${row.pickupTime || "—"} · ${row.pickupStop}` : "Own way"} />
               <Detail label="Transport" value={transportLabel(row)} />
               <Detail label="Ticket #" value={row.ticket} />
-              <Detail label="Channel" value={row.channel} />
               <Detail label="Billing" value={`${row.billing} · deposit ${row.deposit}`} />
               <Detail label="Paid by" value={row.paymentMethod} />
               <Detail label="Diet" value={row.diet} className="sm:col-span-2" />

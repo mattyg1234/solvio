@@ -1318,35 +1318,8 @@ export function ShowOpsBookingForm({
                 </>
               ) : null}
 
-              <FieldLabel className="mt-4">Sales channel</FieldLabel>
-              <select
-                name="sales_channel"
-                className={INPUT}
-                value={channel}
-                onChange={(e) => {
-                  channelPinned.current = true;
-                  setChannel(e.target.value);
-                }}
-              >
-                {[
-                  ...new Set([
-                    ...config.sales_channels,
-                    ...suppliers.map((s) => s.partner_type).filter(Boolean),
-                    channel,
-                  ]),
-                ]
-                  .filter(Boolean)
-                  .map((c) => (
-                    <option key={c} value={c}>
-                      {String(c).replace(/_/g, " ")}
-                    </option>
-                  ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500">
-                {supplier
-                  ? `Set from ${supplier.name}'s partner type.`
-                  : "Set from the partner once you pick one."}
-              </p>
+              {/* No picker: the channel always follows the partner's type (see the effect above). */}
+              <input type="hidden" name="sales_channel" value={channel} />
             </>
           )}
 

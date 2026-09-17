@@ -251,8 +251,6 @@ export default async function ReportsPage({
   const totalBookings = filtered.length;
   const totalPax = filtered.reduce((s, b) => s + paxTotal(b.adults, b.children, b.infants), 0);
   const totalRevenue = round2(filtered.reduce((s, b) => s + Number(b.total_cost), 0));
-  const tourOp = filtered.filter((b) => b.sales_channel === "tour_op").length;
-  const direct = filtered.filter((b) => b.sales_channel === "direct").length;
 
   // Capacity: sum of (show capacity × nights with that show) approx via product capacity vs pax per show-night
   let capacitySlots = 0;
@@ -355,8 +353,6 @@ export default async function ReportsPage({
       return { ...o, nightPax, cph };
     });
 
-  const tourPct = totalBookings ? round2((tourOp / totalBookings) * 100) : 0;
-  const directPct = totalBookings ? round2((direct / totalBookings) * 100) : 0;
   const partnerTypes = [...new Set([...(suppliers ?? []).map((s) => s.partner_type), "direct"])].sort();
 
   const nightEntries = [...byNight.entries()].sort((a, b) => a[0].localeCompare(b[0]));
@@ -517,11 +513,10 @@ export default async function ReportsPage({
         />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         {[
           ["Bookings", String(totalBookings)],
           ["Revenue (gross)", money(grossRevenue)],
-          ["Tour op / Direct", `${tourPct}% / ${directPct}%`],
           ["Capacity used", capacityPct != null ? `${capacityPct}%` : "Set capacity on shows"],
         ].map(([k, v]) => (
           <div key={k} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">

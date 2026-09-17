@@ -108,8 +108,8 @@ export function PickupTimetable({
     <div className="mt-4">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Permanent pick-up timetable · {rows.length} stop{rows.length === 1 ? "" : "s"}
+          <p className="text-lg font-extrabold uppercase tracking-wide text-slate-900">
+            Permanent bus table · {island} · {rows.length} stop{rows.length === 1 ? "" : "s"}
           </p>
           <p className="text-[11px] text-slate-500">
             {canManage

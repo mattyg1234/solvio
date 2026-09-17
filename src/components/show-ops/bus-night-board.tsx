@@ -5,6 +5,7 @@ import {
   getBusNightOrderAction,
   saveBusNightOrderAction,
 } from "@/app/dashboard/show-ops/actions-bus";
+import { showOpsDayName } from "@/lib/show-ops/calc";
 export function BusNightBoard({
   date,
   island,
@@ -20,6 +21,7 @@ export function BusNightBoard({
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
   const [note, setNote] = useState("");
+  const [savedAt, setSavedAt] = useState("");
   useEffect(() => {
     let alive = true;
     getBusNightOrderAction(date)
@@ -57,7 +59,10 @@ export function BusNightBoard({
   const href = `/dashboard/show-ops/lists?tab=bus&date=${date}&island=${encodeURIComponent(island)}`;
   return (
     <div className="mt-4 rounded-xl bg-slate-50 p-3 print:hidden">
-      <h3 className="text-sm font-semibold">Pickup order · {date}</h3>
+      <h3 className="text-lg font-extrabold uppercase tracking-wide text-slate-900">Next bus pick-up order</h3>
+      <p className="text-base font-bold text-slate-900">
+        {[showOpsDayName(date), date].filter(Boolean).join(" ")} · {island}
+      </p>
       <p className="mt-1 text-xs text-slate-600">
         Drag or use the arrows, then save. This order is shared with the
         printed, downloaded and emailed bus list.
@@ -109,7 +114,8 @@ export function BusNightBoard({
               const result = await saveBusNightOrderAction(date, island, ids);
               if (result.ok) {
                 setDirty(false);
-                setNote("Saved. Bus lists now use this order.");
+                setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+                setNote("");
               } else setNote(result.message);
             } catch {
               setNote("Could not save. Try again.");
@@ -134,8 +140,13 @@ export function BusNightBoard({
           </span>
         )}
       </div>
+      {savedAt && !dirty ? (
+        <p role="status" className="mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-sm font-bold text-emerald-900">
+          ✓ Saved at {savedAt}. The bus list for {date} now uses this order.
+        </p>
+      ) : null}
       {note ? (
-        <p role="status" className="mt-2 text-xs">
+        <p role="status" className="mt-2 text-sm font-semibold text-rose-700">
           {note}
         </p>
       ) : null}
