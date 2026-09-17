@@ -77,3 +77,17 @@ test("shows missing from the submitted form are left alone", () => {
   const grid = buildRateGrid(products, rows);
   assert.deepEqual(rateGridChanges(grid, form({})), { changes: [], error: null });
 });
+
+test("card % change: followers move, hand-set partners stay, deposit-only keeps nett 100", async () => {
+  const { partnerCommissionPatch } = await import("./rate-cards");
+  const invoiced = { id: "a", billing_mode: "invoice", deposit_percent: "30.00", invoice_nett_percent: "70.00" };
+  const depositOnly = { id: "b", billing_mode: "deposit", deposit_percent: "30.00", invoice_nett_percent: "100.00" };
+  const handSet = { id: "c", billing_mode: "invoice", deposit_percent: "35.00", invoice_nett_percent: "65.00" };
+  assert.deepEqual(partnerCommissionPatch(invoiced, 30, 32.5), { deposit_percent: 32.5, invoice_nett_percent: 67.5 });
+  assert.deepEqual(partnerCommissionPatch(depositOnly, 30, 35), { deposit_percent: 35 });
+  assert.equal(partnerCommissionPatch(handSet, 30, 32.5), null);
+  // A card that had no % before: everyone on it takes the new one.
+  assert.deepEqual(partnerCommissionPatch(handSet, null, 30), { deposit_percent: 30, invoice_nett_percent: 70 });
+  // Already there — nothing to write.
+  assert.equal(partnerCommissionPatch(invoiced, 30, 30), null);
+});

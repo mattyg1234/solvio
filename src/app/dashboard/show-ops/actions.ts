@@ -69,7 +69,7 @@ import {
 import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { pushChannelAvailability } from "@/lib/show-ops/gyg-data";
-import { loadRatePrices, loadRatePricesForProduct, loadSaleRateUnit, pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
+import { loadRatePrices, loadRatePricesForProduct, loadSaleRateUnit, partnerCommissionPatch, pickRatePrice, type CardPartner, type RatePriceRow } from "@/lib/show-ops/rate-cards";
 import { buildRateGrid, rateGridChanges } from "@/lib/show-ops/rate-card-grid";
 import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
@@ -1578,12 +1578,18 @@ export async function deleteProductAction(productId: string, formData: FormData)
   redirectMaster(tab, { saved: "1" });
 }
 
-function redirectRates(opts: { card?: string; saved?: "1" | "prices" | "none"; created?: string; error?: string }): never {
+function redirectRates(opts: {
+  card?: string; saved?: "1" | "prices" | "none"; created?: string; error?: string;
+  moved?: number; kept?: number; pct?: number;
+}): never {
   const q = new URLSearchParams();
   q.set("tab", "rates");
   if (opts.card) q.set("card", opts.card);
   if (opts.saved) q.set("saved", opts.saved);
   if (opts.created) q.set("created", opts.created);
+  if (opts.moved !== undefined) q.set("moved", String(opts.moved));
+  if (opts.kept !== undefined) q.set("kept", String(opts.kept));
+  if (opts.pct !== undefined) q.set("pct", String(opts.pct));
   if (opts.error) q.set("error", opts.error.slice(0, 180));
   redirect(`/dashboard/show-ops/master?${q.toString()}`);
 }
@@ -1607,20 +1613,59 @@ export async function upsertRateCardAction(formData: FormData): Promise<void> {
   }
 
   if (id) {
+    const { data: before } = await ctx.supabase.from("show_supplier_rates").select("rate_type,commission_percent").eq("business_id", biz).eq("id", id).maybeSingle();
+    if (!before) redirectRates({ error: "That rate card no longer exists." });
+    // Only invoice cards carry a commission; a sale card is just a price list.
+    const isInvoice = before!.rate_type === "invoice";
+    const oldPct = before!.commission_percent == null ? null : Number(before!.commission_percent);
+    const newPct = isInvoice ? pct : oldPct;
+
+    // The card's % is the commission of the partners on it, so they move with it.
+    let moved = 0;
+    let kept = 0;
+    if (isInvoice && newPct !== null && newPct !== oldPct) {
+      const { data: partners, error: loadError } = await ctx.supabase
+        .from("show_suppliers")
+        .select("id,billing_mode,deposit_percent,invoice_nett_percent")
+        .eq("business_id", biz)
+        .eq("invoice_rate_id", id)
+        .limit(5000);
+      if (loadError) redirectRates({ card: id, error: loadError.message });
+      const groups = new Map<string, { patch: NonNullable<ReturnType<typeof partnerCommissionPatch>>; ids: string[] }>();
+      for (const partner of (partners ?? []) as CardPartner[]) {
+        const patch = partnerCommissionPatch(partner, oldPct, newPct);
+        if (!patch) {
+          if (Number(partner.deposit_percent) !== newPct) kept += 1;
+          continue;
+        }
+        const key = JSON.stringify(patch);
+        const group = groups.get(key) ?? { patch, ids: [] };
+        group.ids.push(String(partner.id));
+        groups.set(key, group);
+      }
+      for (const { patch, ids } of groups.values()) {
+        for (let i = 0; i < ids.length; i += 200) {
+          const { error } = await ctx.supabase.from("show_suppliers").update(patch).eq("business_id", biz).in("id", ids.slice(i, i + 200));
+          if (error) redirectRates({ card: id, error: `Stopped part-way — press Save card again. (${error.message})` });
+          moved += Math.min(200, ids.length - i);
+        }
+      }
+    }
+
     const { error } = await ctx.supabase
       .from("show_supplier_rates")
-      .update({ name, commission_percent: pct, active: formData.get("active") === "on", updated_at: new Date().toISOString() })
+      .update({ name, commission_percent: newPct, active: formData.get("active") === "on", updated_at: new Date().toISOString() })
       .eq("business_id", biz)
       .eq("id", id);
     if (error) redirectRates({ card: id, error: error.message });
     revalidateShowOps();
-    redirectRates({ card: id, saved: "1" });
+    redirectRates({ card: id, saved: "1", ...(moved || kept ? { moved, kept, pct: newPct ?? undefined } : {}) });
   }
 
   const rateType = String(formData.get("rate_type") ?? "") === "invoice" ? "invoice" : "sale";
   const { data: made, error } = await ctx.supabase
     .from("show_supplier_rates")
-    .insert({ business_id: biz, name, rate_type: rateType, commission_percent: pct, active: true })
+    .insert({ business_id: biz, name, rate_type: rateType, commission_percent: rateType === "invoice" ? pct : null, active: true })
     .select("id")
     .single();
   if (error || !made) redirectRates({ error: error?.message ?? "Could not add the rate card." });

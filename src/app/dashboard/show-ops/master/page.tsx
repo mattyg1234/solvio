@@ -81,6 +81,9 @@ export default async function MasterDataPage({
   searchParams: Promise<{
     tab?: string;
     card?: string;
+    moved?: string;
+    kept?: string;
+    pct?: string;
     saved?: string;
     created?: string;
     error?: string;
@@ -162,6 +165,7 @@ export default async function MasterDataPage({
   // Rates tab: how many active partners sit on each card, and the open card's price grid.
   const ratePartnerCounts: Record<string, number> = {};
   let rateGrid: RateGridRow[] = [];
+  let ownRatePartners = 0;
   const selectedRate =
     tab === "rates" && cardId
       ? (((rates ?? []) as Array<{ id: string }>).find((r) => r.id === cardId) ?? null)
@@ -170,7 +174,7 @@ export default async function MasterDataPage({
     const [{ data: onCards }, prices] = await Promise.all([
       sb
         .from("show_suppliers")
-        .select("sale_rate_id,invoice_rate_id")
+        .select("sale_rate_id,invoice_rate_id,deposit_percent")
         .eq("business_id", biz)
         .eq("active", true)
         .limit(5000),
@@ -178,7 +182,16 @@ export default async function MasterDataPage({
         ? loadRatePrices(sb, biz, selectedRate.id)
         : Promise.resolve({ card: null, rows: [] }),
     ]);
+    const openCard = selectedRate as { id: string; rate_type?: string; commission_percent?: number | null } | null;
     for (const s of onCards ?? []) {
+      if (
+        openCard?.rate_type === "invoice" &&
+        openCard.commission_percent != null &&
+        s.invoice_rate_id === openCard.id &&
+        Number(s.deposit_percent) !== Number(openCard.commission_percent)
+      ) {
+        ownRatePartners += 1;
+      }
       for (const id of new Set([s.sale_rate_id, s.invoice_rate_id])) {
         if (id) ratePartnerCounts[id] = (ratePartnerCounts[id] ?? 0) + 1;
       }
@@ -329,6 +342,12 @@ export default async function MasterDataPage({
       {sp.saved === "1" && tab === "rates" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Rate card saved.
+          {sp.moved !== undefined && Number(sp.moved) > 0
+            ? ` Commission is now ${Number(sp.pct)}% for ${Number(sp.moved)} partner${Number(sp.moved) === 1 ? "" : "s"} on this card.`
+            : ""}
+          {Number(sp.kept) > 0
+            ? ` ${Number(sp.kept)} with their own % set by hand ${Number(sp.kept) === 1 ? "was" : "were"} left alone.`
+            : ""}
         </p>
       ) : null}
       {sp.saved === "1" && tab !== "rates" ? (
@@ -362,14 +381,16 @@ export default async function MasterDataPage({
         >
           <h2 className="font-semibold text-slate-900">Rates & commissions</h2>
           <p className="mt-1 text-xs text-slate-500">
-            A partner’s sale card sets the price they sell each show at, with
-            and without the bus. Attach a card to a partner on the Partners tab.
+            Sale cards are price lists: what a partner sells each show for, with
+            and without the bus. Invoice cards are the commission % a partner
+            earns. Each partner is attached to one of each on the Partners tab.
           </p>
           <MasterRatesForm
             key={`${cardId ?? ""}:${(rates ?? []).map((r) => `${r.id}:${r.name}:${r.commission_percent}:${r.active}`).join("|")}:${rateGrid.map((g) => `${g.bus.adult}/${g.bus.child}/${g.noBus.adult}/${g.noBus.child}`).join("|")}`}
             rates={(rates ?? []) as never}
             partnerCounts={ratePartnerCounts}
             selected={(selectedRate ?? null) as never}
+            ownRatePartners={ownRatePartners}
             grid={rateGrid}
             currency={ctx.config.currency}
           />

@@ -128,3 +128,34 @@ export async function loadRatePricesForProduct(
   for (const r of (rows ?? []) as Array<RatePriceRow & { rate_id: string }>) out.get(r.rate_id)?.rows.push(r);
   return out;
 }
+
+/**
+ * Invoice cards carry the commission a partner earns ("LPA 30%"). When the card's
+ * % changes, the partners that were following it move with it: the deposit they
+ * keep upfront becomes the new %, and the nett they are invoiced becomes the rest.
+ * A partner whose % was set by hand to something other than the card's is left
+ * alone. Bookings already taken froze their % and are never touched.
+ */
+export type CardPartner = {
+  id: string;
+  billing_mode: string | null;
+  deposit_percent: number | string | null;
+  invoice_nett_percent: number | string | null;
+};
+
+export function partnerCommissionPatch(
+  partner: CardPartner,
+  oldPct: number | null,
+  newPct: number,
+): { deposit_percent: number; invoice_nett_percent?: number } | null {
+  const deposit = Number(partner.deposit_percent ?? NaN);
+  const nett = Number(partner.invoice_nett_percent ?? 100);
+  // Matching the new % counts too, so a half-finished save can simply be run again.
+  const follows = oldPct === null || round2(deposit) === round2(oldPct) || round2(deposit) === round2(newPct);
+  if (!follows) return null;
+  // Deposit-only partners are never invoiced, so their nett stays at 100.
+  const invoiced = partner.billing_mode === "invoice" || round2(nett) !== 100;
+  const patch = { deposit_percent: round2(newPct), ...(invoiced ? { invoice_nett_percent: round2(100 - newPct) } : {}) };
+  if (round2(deposit) === patch.deposit_percent && (!invoiced || round2(nett) === patch.invoice_nett_percent)) return null;
+  return patch;
+}

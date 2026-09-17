@@ -21,6 +21,7 @@ export function MasterRatesForm({
   rates,
   partnerCounts,
   selected,
+  ownRatePartners,
   grid,
   currency,
 }: {
@@ -28,6 +29,8 @@ export function MasterRatesForm({
   /** Active partners pointing at each card, by card id. */
   partnerCounts: Record<string, number>;
   selected: MasterRateRow | null;
+  /** Partners on the open card whose % was set by hand to something other than the card's. */
+  ownRatePartners: number;
   grid: RateGridRow[];
   currency: string;
 }) {
@@ -38,7 +41,13 @@ export function MasterRatesForm({
   return (
     <div className="mt-4 space-y-6">
       {selected ? (
-        <RateCardEditor card={selected} partners={partnerCounts[selected.id] ?? 0} grid={grid} currency={currency} />
+        <RateCardEditor
+          card={selected}
+          partners={partnerCounts[selected.id] ?? 0}
+          ownRatePartners={ownRatePartners}
+          grid={grid}
+          currency={currency}
+        />
       ) : null}
 
       <details className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -51,12 +60,12 @@ export function MasterRatesForm({
           <label className="text-xs font-medium text-slate-600">
             Type
             <select name="rate_type" className={INPUT}>
-              <option value="sale">Sale (sets the prices)</option>
-              <option value="invoice">Invoice</option>
+              <option value="sale">Sale (a price list)</option>
+              <option value="invoice">Invoice (a commission %)</option>
             </select>
           </label>
           <label className="text-xs font-medium text-slate-600">
-            Commission %
+            Commission % (invoice cards only)
             <input name="commission_percent" inputMode="decimal" placeholder="30" className={INPUT} />
           </label>
           <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-4`}>Add rate card</SubmitOnce>
@@ -74,11 +83,13 @@ export function MasterRatesForm({
 function RateCardEditor({
   card,
   partners,
+  ownRatePartners,
   grid,
   currency,
 }: {
   card: MasterRateRow;
   partners: number;
+  ownRatePartners: number;
   grid: RateGridRow[];
   currency: string;
 }) {
@@ -101,23 +112,36 @@ function RateCardEditor({
           Name
           <input name="name" required defaultValue={card.name} className={INPUT} />
         </label>
-        <label className="text-xs font-medium text-slate-600">
-          Commission %
-          <input
-            name="commission_percent"
-            inputMode="decimal"
-            defaultValue={card.commission_percent == null ? "" : String(Number(card.commission_percent))}
-            className={INPUT}
-          />
-        </label>
+        {card.rate_type === "invoice" ? (
+          <label className="text-xs font-medium text-slate-600">
+            Commission %
+            <input
+              name="commission_percent"
+              inputMode="decimal"
+              defaultValue={card.commission_percent == null ? "" : String(Number(card.commission_percent))}
+              className={INPUT}
+            />
+          </label>
+        ) : (
+          <div />
+        )}
         <label className="flex items-end gap-2 pb-2 text-sm font-medium text-slate-700">
           <input type="checkbox" name="active" defaultChecked={card.active} className="size-4 rounded border-slate-300" />
           In use
         </label>
         <p className="text-xs text-slate-500 sm:col-span-4">
-          This % is only here for reference. Changing it won’t change what anyone gets paid. A partner’s real
-          commission is set on the partner (deposit % or invoice nett %). Stopped using a card? Untick In use. Partners
-          already on it carry on as normal.
+          {card.rate_type === "invoice" ? (
+            <>
+              This is the commission the partners on this card earn. Change it and they all change with it, for new
+              bookings only. Bookings already taken keep the % they were sold at.
+              {ownRatePartners > 0
+                ? ` ${ownRatePartners} partner${ownRatePartners === 1 ? " has" : "s have"} their own % set by hand and won’t be touched.`
+                : ""}{" "}
+            </>
+          ) : (
+            <>This card is a price list. Commission comes from the partner’s invoice card. </>
+          )}
+          Stopped using a card? Untick In use. Partners already on it carry on as normal.
         </p>
         <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-4 sm:w-fit`}>Save card</SubmitOnce>
       </form>
