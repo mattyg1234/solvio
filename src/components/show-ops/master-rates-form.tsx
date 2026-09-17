@@ -115,8 +115,9 @@ function RateCardEditor({
           In use
         </label>
         <p className="text-xs text-slate-500 sm:col-span-4">
-          The % here is the card’s label. What a partner actually keeps is the deposit % / invoice nett % on the partner
-          itself. Untick In use to retire the card — it drops to the bottom of the partner dropdowns.
+          This % is only here for reference. Changing it won’t change what anyone gets paid. A partner’s real
+          commission is set on the partner (deposit % or invoice nett %). Stopped using a card? Untick In use. Partners
+          already on it carry on as normal.
         </p>
         <SubmitOnce className={`${SHOW_OPS_PRIMARY_BTN} sm:col-span-4 sm:w-fit`}>Save card</SubmitOnce>
       </form>
