@@ -83,6 +83,25 @@ export function isMissingTableError(error: PostgrestErrorLike): boolean {
   return /relation .* does not exist/i.test(message) || /could not find the table/i.test(message);
 }
 
+/** 42501 is Postgres' insufficient_privilege — the backup role may not read this table. */
+export function isPermissionDeniedError(error: PostgrestErrorLike): boolean {
+  if (!error) return false;
+  return error.code === "42501" || /permission denied/i.test(String(error.message ?? ""));
+}
+
+/**
+ * Tables without which a snapshot is not a backup of the business. If one of
+ * these cannot be read the run fails loudly; any other unreadable table is
+ * named in `errors` and the rest of the snapshot is still written. One sealed
+ * audit table silently cost a week of snapshots in Sept 2026.
+ */
+export const SHOW_OPS_BACKUP_CORE_TABLES: readonly string[] = [
+  "show_bookings",
+  "show_suppliers",
+  "show_products",
+  "show_invoices",
+];
+
 /** Reads a whole table for one tenant, page by page, ordered so paging is stable. */
 export async function fetchAllRows(
   supabase: SupabaseClient,
@@ -95,9 +114,14 @@ export async function fetchAllRows(
     for (const column of backupOrderColumns(table)) query = query.order(column, { ascending: true });
     const { data, error } = await query.range(from, from + PAGE - 1);
     if (error) {
-      const err = new Error(`${table}: ${error.message}`) as Error & { code?: string; missingTable?: boolean };
+      const err = new Error(`${table}: ${error.message}`) as Error & {
+        code?: string;
+        missingTable?: boolean;
+        permissionDenied?: boolean;
+      };
       err.code = error.code ?? undefined;
       err.missingTable = isMissingTableError(error);
+      err.permissionDenied = isPermissionDeniedError(error);
       throw err;
     }
     const rows = (data ?? []) as Record<string, unknown>[];
@@ -256,8 +280,14 @@ export async function buildShowOpsBackup(
       tables[table] = rows;
       counts[table] = rows.length;
     } catch (e) {
-      // A table this database has not got yet is recorded, not fatal. Anything else is.
-      if (e instanceof Error && (e as Error & { missingTable?: boolean }).missingTable) {
+      // A table this database has not got yet is recorded, not fatal. So is a side
+      // table the backup role may not read — but never a core one. Anything else is fatal.
+      const flags = e as Error & { missingTable?: boolean; permissionDenied?: boolean };
+      if (e instanceof Error && flags.missingTable) {
+        errors[table] = e.message;
+        continue;
+      }
+      if (e instanceof Error && flags.permissionDenied && !SHOW_OPS_BACKUP_CORE_TABLES.includes(table)) {
         errors[table] = e.message;
         continue;
       }

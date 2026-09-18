@@ -183,6 +183,25 @@ test("any other table error still aborts the backup", async () => {
   );
 });
 
+test("a side table the backup role may not read is recorded, and the snapshot is still written", async () => {
+  const backup = await buildShowOpsBackup(
+    fakeSupabase(
+      { show_bookings: many(4), show_invoices: many(2) },
+      {
+        errors: {
+          show_invoice_external_events: { code: "42501", message: "permission denied for table show_invoice_external_events" },
+        },
+      },
+    ),
+    { id: "biz", name: "MHT" },
+    "2026-09-18T15:00:00.000Z",
+  );
+  assert.equal(backup.counts.show_bookings, 4);
+  assert.equal(backup.counts.show_invoices, 2);
+  assert.equal("show_invoice_external_events" in backup.tables, false);
+  assert.match(backup.errors.show_invoice_external_events, /permission denied/);
+});
+
 test("isMissingTableError recognises Postgres and PostgREST codes and messages", () => {
   assert.equal(isMissingTableError({ code: "42P01", message: "x" }), true);
   assert.equal(isMissingTableError({ code: "PGRST205", message: "x" }), true);
