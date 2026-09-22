@@ -23,6 +23,8 @@ export type DirectoryPickupStop = {
   /** Map link / photo of the stop. Undefined when the page did not load them — the form then leaves them alone. */
   map_url?: string | null;
   photo_url?: string | null;
+  /** Which coach picks this stop up on islands that run two (Gran Canaria). 1 elsewhere. */
+  bus_no?: number | null;
 };
 
 const PAGE = 50;

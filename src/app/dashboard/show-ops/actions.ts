@@ -37,6 +37,7 @@ import {
   round2,
   showOpsAmountDue,
 } from "@/lib/show-ops/calc";
+import { parseSeatsByBus } from "@/lib/show-ops/bus-seats";
 import { cancellationRequestWindow, cancelledChargeNote, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { normalisePartnerIslands } from "@/lib/show-ops/partners";
 import { createShowOpsDepositCheckoutSession } from "@/lib/show-ops/deposit-checkout";
@@ -1055,7 +1056,11 @@ export async function upsertBusStopAction(formData: FormData): Promise<void> {
     runs_on?: string | null;
     map_url?: string | null;
     photo_url?: string | null;
+    bus_no?: number;
   };
+  if (formData.has("bus_no")) {
+    row.bus_no = Math.min(4, Math.max(1, Math.trunc(Number(formData.get("bus_no")) || 1)));
+  }
   if (formData.has("runs_on")) {
     row.runs_on = String(formData.get("runs_on") ?? "").trim() || null;
   }
@@ -1610,6 +1615,8 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     seats_ordered: Number(formData.get("seats_ordered") ?? 0),
     // How many coaches, not just seats — LPA runs two on a busy night.
     bus_count: Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1)),
+    // Gran Canaria: seats per coach. Null = the total shared evenly.
+    seats_by_bus: null as number[] | null,
     cost_total: Number(formData.get("cost_total") ?? 0),
     notes: String(formData.get("notes") ?? "").trim() || null,
     updated_at: new Date().toISOString(),
@@ -1619,6 +1626,11 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
   if (!row.show_date || !row.island) {
     if (next) redirect(`${next}${next.includes("?") ? "&" : "?"}error=${encodeURIComponent("Date and island required.")}`);
     redirectMaster(tab, { error: "Date and island required." });
+  }
+  const split = parseSeatsByBus((name) => formData.get(name), row.bus_count);
+  if (split) {
+    row.seats_by_bus = split;
+    row.seats_ordered = split.reduce((s, n) => s + n, 0);
   }
   const { data, error } = await ctx.supabase
     .from("show_bus_orders")

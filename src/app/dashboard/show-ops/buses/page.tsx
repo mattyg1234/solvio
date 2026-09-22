@@ -10,6 +10,7 @@ import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/componen
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { stopRunsOnDate } from "@/lib/show-ops/bus";
+import { busLoads, seatsPerBus } from "@/lib/show-ops/bus-seats";
 import { formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 
@@ -36,7 +37,7 @@ export default async function BusBoardPage({
       if (error) throw new Error("Could not load bus bookings. Refresh and try again.");
       return data ?? [];
     }).then(data => ({data})),
-    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,cost_total,notes,guide_name").eq("business_id", ctx.business.id).eq("show_date", date),
+    ctx.supabase.from("show_bus_orders").select("island,seats_ordered,bus_count,seats_by_bus,cost_total,notes,guide_name").eq("business_id", ctx.business.id).eq("show_date", date),
     loadDirectoryHotels(ctx.supabase, ctx.business.id, true),
   ]);
 
@@ -61,6 +62,8 @@ export default async function BusBoardPage({
     : [...new Set([...(stops ?? []).map((s) => s.island), ...paxByIsland.keys()])]
         .filter(Boolean)
         .filter((isl) => {
+          // Joel: only bring up buses where there are bookings on the date.
+          if (tonightOnly) return paxByIsland.has(isl);
           if (showUntimed) return true;
           const hasTimed = (stops ?? []).some((s) => s.island === isl && s.pickup_time);
           return hasTimed || paxByIsland.has(isl);
@@ -144,6 +147,11 @@ export default async function BusBoardPage({
         const seats = order ? Number(order.seats_ordered) : null;
         const buses = order ? Math.max(1, Number(order.bus_count) || 1) : null;
         const cost = order ? Number(order.cost_total) : null;
+        const twoBuses = (buses ?? 1) > 1 || allForIsland.some((s) => (s.bus_no ?? 1) > 1);
+        const loads = twoBuses
+          ? busLoads(order ?? null, allForIsland.map((s) => ({ id: s.id, bus_no: s.bus_no })), Object.fromEntries(paxByStop), 0)
+          : [];
+        const perBus = order ? seatsPerBus(order) : null;
         return (
           <section key={isl} className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -163,6 +171,20 @@ export default async function BusBoardPage({
                     ? ` · ${buses} bus${buses === 1 ? "" : "es"} · ${seats} seats ordered · ${seats - busPax} free`
                     : " · no bus ordered"}
                 </span>
+                {loads.map((l) => (
+                  <span
+                    key={l.bus}
+                    className={`rounded-full px-2.5 py-1 font-bold ${
+                      l.free != null && l.free < 0
+                        ? "bg-rose-100 text-rose-900"
+                        : l.free != null && l.free <= 5
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-sky-50 text-sky-900"
+                    }`}
+                  >
+                    Bus {l.bus} · {l.pax} on{l.seats != null ? ` · ${l.seats} seats · ${l.free} free` : " · seats not set"} · {l.stops} stop{l.stops === 1 ? "" : "s"}
+                  </span>
+                ))}
                 {order?.guide_name ? (
                   <span className="rounded-full bg-violet-50 px-2.5 py-1 font-semibold text-violet-900">
                     Guide · {order.guide_name}
@@ -189,15 +211,30 @@ export default async function BusBoardPage({
                   className="mt-1 block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
                 />
               </label>
-              <label className="font-medium text-slate-600">
-                Seats ordered
-                <NumberInput
-                  min={0}
-                  name="seats_ordered"
-                  defaultValue={seats ?? ""}
-                  className="mt-1 block w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                />
-              </label>
+              {(buses ?? 1) > 1 ? (
+                Array.from({ length: buses ?? 1 }, (_, i) => i + 1).map((n) => (
+                  <label key={n} className="font-medium text-slate-600">
+                    Seats bus {n}
+                    <NumberInput
+                      min={0}
+                      name={`seats_bus_${n}`}
+                      defaultValue={perBus?.[n - 1] ?? ""}
+                      className="mt-1 block w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                ))
+              ) : (
+                <label className="font-medium text-slate-600">
+                  Seats ordered
+                  <NumberInput
+                    min={0}
+                    name="seats_ordered"
+                    defaultValue={seats ?? ""}
+                    className="mt-1 block w-24 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                  />
+                </label>
+              )}
+              {(buses ?? 1) > 1 ? <input type="hidden" name="seats_ordered" value={seats ?? 0} /> : null}
               <label className="font-medium text-slate-600">
                 Bus cost
                 <NumberInput
@@ -236,6 +273,7 @@ export default async function BusBoardPage({
               islands={ctx.config.islands}
               canManage={canManageCatalogue}
               next={qs({})}
+              buses={buses ?? 1}
             />
 
             {(["owner", "admin", "finance", "office"].includes(ctx.role)) && (islStops.length ? (
@@ -243,7 +281,7 @@ export default async function BusBoardPage({
                 key={`${date}-${isl}`}
                 date={date}
                 island={isl}
-                stops={islStops.map((s) => ({ id: s.id, label: `${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
+                stops={islStops.map((s) => ({ id: s.id, label: `${twoBuses ? `Bus ${s.bus_no ?? 1} · ` : ""}${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
               />
             ) : (
               <p className="mt-3 text-sm text-slate-500 print:hidden">No stops on {isl} yet — use “Add pick-up point” above.</p>

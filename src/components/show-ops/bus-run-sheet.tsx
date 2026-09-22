@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BusGuestSend } from "./bus-guest-send";
 import { BusSendForm } from "./bus-send-form";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { GripVertical } from "lucide-react";
@@ -43,6 +44,8 @@ export type BusRunGroup = {
   pax: number;
   seatsLeft: number | null;
   rows: BusRunRow[];
+  /** Coach number on islands that run two (Gran Canaria). Null elsewhere. */
+  bus?: number | null;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -98,6 +101,16 @@ export function BusRunSheet({
   const [sheet, setSheet] = useState<BusNightSheet | null>(null);
   const [savedIslands, setSavedIslands] = useState<string[]>(() => (savedOrder ?? []).map((s) => s.island));
   const [dirty, setDirty] = useState(false);
+  // Guests ticked for "send pick-up details". Everyone with a booking starts ticked.
+  const [ticked, setTicked] = useState<Set<string>>(() => new Set(groups.flatMap((g) => g.rows.map((r) => r.id))));
+  const toggleTick = (id: string) =>
+    setTicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const [savedAt, setSavedAt] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [downloading, setDownloading] = useState(false);
@@ -189,7 +202,8 @@ export function BusRunSheet({
       }
       setSavedIslands(results.filter((r) => r.saved).map((r) => r.island));
       setDirty(false);
-      setNote("Tonight's order saved. Print, download and email use this saved order.");
+      setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setNote("");
     });
   }
 
@@ -325,7 +339,19 @@ export function BusRunSheet({
           Download CSV
         </button>
         <p className="w-full text-xs text-slate-500">{dirty ? "Unsaved order changes — save before printing, downloading or emailing. " : "Print, download and email use these bookings and the saved pickup order. "} Print includes pick-up photos; the PDF includes clickable map and photo links.</p>
+        {savedAt && !dirty ? (
+          <p role="status" className="w-full rounded-lg bg-emerald-100 px-3 py-2 text-sm font-bold text-emerald-900">
+            ✓ Tonight&apos;s order saved at {savedAt}. Print, download, email and guest sends use this order.
+          </p>
+        ) : null}
         {canManageOrders ? <BusSendForm date={date} bookingIds={ordered.flatMap(group => group.rows.map(row => row.id))} disabled={dirty || pending || !sheet || !ordered.length} /> : null}
+        {canManageOrders ? (
+          <BusGuestSend
+            date={date}
+            bookingIds={ordered.flatMap((group) => group.rows.map((row) => row.id)).filter((id) => ticked.has(id))}
+            disabled={dirty || pending || !sheet}
+          />
+        ) : null}
         {note ? <p role="status" className="w-full text-xs text-slate-600">{note}</p> : null}
       </div>
 
@@ -348,11 +374,16 @@ export function BusRunSheet({
               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold tabular-nums text-slate-600">
                 {i + 1}
               </span>
+              {g.bus ? (
+                <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${g.bus > 1 ? "bg-sky-100 text-sky-900" : "bg-slate-100 text-slate-700"}`}>
+                  Bus {g.bus}
+                </span>
+              ) : null}
               {g.time} · {g.label}
             </h3>
             <p className="flex items-center gap-2 text-sm text-slate-600">
               {g.pax} pax
-              {g.seatsLeft == null ? " · order a bus" : ` · ${g.seatsLeft} island seats left`}
+              {g.seatsLeft == null ? " · order a bus" : ` · ${g.seatsLeft} ${g.bus ? `bus ${g.bus}` : "island"} seats left`}
               <span className="print:hidden">
                 <button
                   type="button"
@@ -406,9 +437,20 @@ export function BusRunSheet({
             {g.rows.map((b) => (
               <div key={b.id} className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
                 <div className="flex items-start justify-between gap-2">
-                  <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="text-[15px] font-semibold leading-tight hover:underline">
-                    {b.guest_name}
-                  </Link>
+                  <span className="flex items-start gap-2">
+                    {canManageOrders ? (
+                      <input
+                        type="checkbox"
+                        aria-label={`Send pick-up details to ${b.guest_name}`}
+                        checked={ticked.has(b.id)}
+                        onChange={() => toggleTick(b.id)}
+                        className="mt-1 h-4 w-4"
+                      />
+                    ) : null}
+                    <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="text-[15px] font-semibold leading-tight hover:underline">
+                      {b.guest_name}
+                    </Link>
+                  </span>
                   <span className="whitespace-nowrap text-sm font-medium">
                     {formatShowOpsPax(b.adults, b.children, b.infants)}
                   </span>
@@ -433,6 +475,7 @@ export function BusRunSheet({
           <table className="hidden min-w-full text-left text-sm lg:table print:table">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
+                {canManageOrders ? <th className="px-3 py-2 print:hidden" title="Tick who gets the pick-up details">Send</th> : null}
                 <SortTh label="Guest" k="name" sortKeys={sortKeys} sortHref={sortHref} />
                 <SortTh label="Hotel" k="hotel" sortKeys={sortKeys} sortHref={sortHref} />
                 <th className="px-3 py-2">Pax</th>
@@ -444,6 +487,17 @@ export function BusRunSheet({
             <tbody>
               {g.rows.map((b) => (
                 <tr key={b.id} className="border-t border-slate-100">
+                  {canManageOrders ? (
+                    <td className="px-3 py-1.5 print:hidden">
+                      <input
+                        type="checkbox"
+                        aria-label={`Send pick-up details to ${b.guest_name}`}
+                        checked={ticked.has(b.id)}
+                        onChange={() => toggleTick(b.id)}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-3 py-1.5">
                     <Link href={`/dashboard/show-ops/bookings/${b.id}`} className="font-medium hover:underline">
                       {b.guest_name}

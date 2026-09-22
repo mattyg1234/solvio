@@ -31,10 +31,13 @@ export function PickupTimetable({
   islands,
   canManage,
   next,
+  buses = 1,
 }: {
   island: string;
   date: string;
   stops: DirectoryPickupStop[];
+  /** Coaches on this island tonight. Two shows the Bus column (Gran Canaria). */
+  buses?: number;
   hotelsByStop: Record<string, number>;
   paxByStop: Record<string, number>;
   runningTonight: Record<string, boolean>;
@@ -54,6 +57,7 @@ export function PickupTimetable({
   const [adding, setAdding] = useState(false);
   const byId = useMemo(() => new Map(sorted.map((s) => [s.id, s])), [sorted]);
   const rows = ids.map((id) => byId.get(id)).filter((s): s is DirectoryPickupStop => Boolean(s));
+  const showBus = buses > 1 || rows.some((s) => (s.bus_no ?? 1) > 1);
 
   function onDrop(targetId: string) {
     if (!dragId || dragId === targetId) return;
@@ -88,9 +92,9 @@ export function PickupTimetable({
       return `"${safe.replace(/"/g, '""')}"`;
     };
     const lines = [
-      ["Order", "Island", "Resort", "Stop", "Pick-up time", "Runs", "Hotels", "Guide notes", "Map link"].map(cell).join(","),
+      ["Order", "Island", "Bus", "Resort", "Stop", "Pick-up time", "Runs", "Hotels", "Guide notes", "Map link"].map(cell).join(","),
       ...rows.map((s, i) =>
-        [i + 1, s.island, s.resort, s.stop_name, hhmm(s.pickup_time), s.runs_on || "every night", hotelsByStop[s.id] ?? 0, s.guide_notes ?? "", s.map_url ?? ""]
+        [i + 1, s.island, s.bus_no ?? 1, s.resort, s.stop_name, hhmm(s.pickup_time), s.runs_on || "every night", hotelsByStop[s.id] ?? 0, s.guide_notes ?? "", s.map_url ?? ""]
           .map(cell)
           .join(","),
       ),
@@ -155,8 +159,8 @@ export function PickupTimetable({
       ) : null}
 
       <div className="mt-2 hidden print:block">
-        <h4 className="text-base font-semibold">Pick-up timetable · {island}</h4>
-        <p className="text-xs text-slate-500">Permanent order · printed {date}</p>
+        <h4 className="text-base font-semibold">Permanent bus table · {island} · {rows.length} stop{rows.length === 1 ? "" : "s"}</h4>
+        <p className="text-xs text-slate-500">Permanent order as saved · for {date}. The print time is stamped at the top of the page.</p>
       </div>
 
       <div className="mt-2 overflow-hidden rounded-xl ring-1 ring-slate-200">
@@ -164,6 +168,7 @@ export function PickupTimetable({
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2 w-10">#</th>
+              {showBus ? <th className="px-3 py-2">Bus</th> : null}
               <th className="px-3 py-2">Resort</th>
               <th className="px-3 py-2">Stop</th>
               <th className="px-3 py-2 text-right">Time</th>
@@ -196,12 +201,14 @@ export function PickupTimetable({
                   onToggle={() => setOpenId(open ? null : s.id)}
                   islands={islands}
                   next={next}
+                  showBus={showBus}
+                  buses={Math.max(buses, 2)}
                 />
               );
             })}
             {!rows.length ? (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-sm text-slate-400">
+                <td colSpan={showBus ? 10 : 9} className="px-3 py-6 text-center text-sm text-slate-400">
                   No pick-up points on {island} yet.
                 </td>
               </tr>
@@ -250,6 +257,8 @@ function RowGroup({
   onToggle,
   islands,
   next,
+  showBus,
+  buses,
 }: {
   stop: DirectoryPickupStop;
   index: number;
@@ -266,6 +275,8 @@ function RowGroup({
   onToggle: () => void;
   islands: string[];
   next: string;
+  showBus: boolean;
+  buses: number;
 }) {
   return (
     <>
@@ -280,6 +291,13 @@ function RowGroup({
           {canManage ? <span className="mr-1 select-none text-slate-300" aria-hidden>⋮⋮</span> : null}
           {index + 1}
         </td>
+        {showBus ? (
+          <td className="px-3 py-2">
+            <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${(stop.bus_no ?? 1) > 1 ? "bg-sky-100 text-sky-900" : "bg-slate-100 text-slate-700"}`}>
+              Bus {stop.bus_no ?? 1}
+            </span>
+          </td>
+        ) : null}
         <td className="px-3 py-2 font-medium text-slate-900">{stop.resort}</td>
         <td className="px-3 py-2 text-slate-800">
           {stop.stop_name}
@@ -311,8 +329,8 @@ function RowGroup({
       </tr>
       {open ? (
         <tr className="border-t border-slate-100 bg-slate-50 print:hidden">
-          <td colSpan={9} className="px-3 py-3">
-            <StopForm islands={islands} initial={stop} onDone={onToggle} next={next} />
+          <td colSpan={showBus ? 10 : 9} className="px-3 py-3">
+            <StopForm islands={islands} initial={stop} onDone={onToggle} next={next} buses={buses} />
           </td>
         </tr>
       ) : null}
@@ -326,11 +344,14 @@ function StopForm({
   islands,
   onDone,
   next,
+  buses = 2,
 }: {
   initial: DirectoryPickupStop;
   islands: string[];
   onDone: () => void;
   next: string;
+  /** How many coaches the Bus select offers. */
+  buses?: number;
 }) {
   return (
     <form action={upsertBusStopAction} className="grid gap-2 sm:grid-cols-4">
@@ -359,6 +380,16 @@ function StopForm({
       <label className="text-xs font-medium text-slate-600">
         Pickup time
         <input name="pickup_time" type="time" defaultValue={hhmm(initial.pickup_time)} className={INPUT} />
+      </label>
+      <label className="text-xs font-medium text-slate-600" title="Gran Canaria runs two coaches: say which one does this stop">
+        Bus
+        <select name="bus_no" defaultValue={String(initial.bus_no ?? 1)} className={INPUT}>
+          {Array.from({ length: Math.max(1, buses) }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              Bus {n}
+            </option>
+          ))}
+        </select>
       </label>
       <label className="text-xs font-medium text-slate-600">
         Days (blank = every night)

@@ -21,6 +21,7 @@ import {
 } from "@/lib/show-ops/directory-data";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { pickupStopOffered } from "@/lib/show-ops/bus";
+import { seatsPerBus } from "@/lib/show-ops/bus-seats";
 import {
   formatShowOpsMoney,
   formatShowOpsPax,
@@ -157,7 +158,7 @@ export default async function DailyListsPage({
     loadDirectoryStops(ctx.supabase, ctx.business.id),
     ctx.supabase
       .from("show_bus_orders")
-      .select("island,seats_ordered")
+      .select("island,seats_ordered,bus_count,seats_by_bus")
       .eq("business_id", ctx.business.id)
       .eq("show_date", date),
     ctx.supabase
@@ -185,6 +186,17 @@ export default async function DailyListsPage({
   const seatsByIsland = new Map(
     (busOrders ?? []).map((o) => [o.island, Number(o.seats_ordered) || 0]),
   );
+  // Gran Canaria runs two coaches: seats per coach, and which coach a stop belongs to.
+  const seatsByIslandBus = new Map<string, number[] | null>(
+    (busOrders ?? []).map((o) => [o.island, seatsPerBus({ seats_ordered: o.seats_ordered, bus_count: o.bus_count, seats_by_bus: o.seats_by_bus as number[] | null })]),
+  );
+  const busNoOfStop = (stopId: string | null | undefined): number => {
+    const s = stopId ? stopById.get(stopId) : null;
+    return Math.max(1, Math.trunc(Number((s as { bus_no?: number | null } | null | undefined)?.bus_no) || 1));
+  };
+  const twoBusIsland = (isl: string) =>
+    (busOrders ?? []).some((o) => o.island === isl && (Number(o.bus_count) || 1) > 1) ||
+    stops.some((s) => s.island === isl && ((s as { bus_no?: number | null }).bus_no ?? 1) > 1);
 
   const showNames = [
     ...new Set(
@@ -291,12 +303,15 @@ export default async function DailyListsPage({
     });
 
   const busPaxByIsland = new Map<string, number>();
+  const busPaxByIslandBus = new Map<string, number>();
   for (const b of busAll) {
     busPaxByIsland.set(
       b.island,
       (busPaxByIsland.get(b.island) || 0) +
         paxTotal(b.adults, b.children, b.infants),
     );
+    const k = `${b.island}#${busNoOfStop(b.pickup_stop_id)}`;
+    busPaxByIslandBus.set(k, (busPaxByIslandBus.get(k) || 0) + paxTotal(b.adults, b.children, b.infants));
   }
 
   const busGrouped = (() => {
@@ -311,14 +326,20 @@ export default async function DailyListsPage({
       pax: number;
       rows: typeof bus;
       seatsLeft: number | null;
+      bus: number | null;
     }> = [];
     const index = new Map<string, number>();
     for (const b of bus) {
       const key = b.pickup_stop_id || `none-${b.island}`;
-      const seats = seatsByIsland.has(b.island)
-        ? seatsByIsland.get(b.island)!
-        : null;
-      const used = busPaxByIsland.get(b.island) || 0;
+      const two = twoBusIsland(b.island);
+      const busNo = two ? busNoOfStop(b.pickup_stop_id) : null;
+      const perBus = seatsByIslandBus.get(b.island) ?? null;
+      const seats = two && perBus
+        ? perBus[(busNo ?? 1) - 1] ?? null
+        : seatsByIsland.has(b.island)
+          ? seatsByIsland.get(b.island)!
+          : null;
+      const used = two ? busPaxByIslandBus.get(`${b.island}#${busNo ?? 1}`) || 0 : busPaxByIsland.get(b.island) || 0;
       if (spacesOnly && (seats == null || seats - used <= 0)) continue;
       let gi = index.get(key);
       if (gi == null) {
@@ -335,6 +356,7 @@ export default async function DailyListsPage({
           pax: 0,
           rows: [],
           seatsLeft: seats != null ? seats - used : null,
+          bus: busNo,
         });
       }
       groups[gi].rows.push(b);

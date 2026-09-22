@@ -39,7 +39,7 @@ export async function loadDirectoryStops(
       let query = client
         .from("show_bus_stops")
         .select(
-          "id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active,map_url,photo_url",
+          "id,island,zone,resort,stop_name,pickup_time,sort_order,runs_on,guide_notes,active,map_url,photo_url,bus_no",
         )
         .eq("business_id", businessId);
       if (activeOnly) query = query.eq("active", true);

@@ -307,13 +307,13 @@ export function buildShowOpsDashboard(input: {
       alerts.push({
         tone: "danger",
         title: `No bus ordered for ${row.island} tonight (${row.busPax} bus pax)`,
-        href: "/dashboard/show-ops/master?tab=hotels",
+        href: `/dashboard/show-ops/buses?date=${input.today}&island=${encodeURIComponent(row.island)}`,
       });
     } else if (row.seatsLeft != null && row.seatsLeft < 0) {
       alerts.push({
         tone: "danger",
         title: `${row.island} bus over capacity by ${Math.abs(row.seatsLeft)}`,
-        href: "/dashboard/show-ops/outlook",
+        href: `/dashboard/show-ops/buses?date=${input.today}&island=${encodeURIComponent(row.island)}`,
       });
     }
   }

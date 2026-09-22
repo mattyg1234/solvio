@@ -243,8 +243,14 @@ export async function sendGuestTicket(
   return out;
 }
 
-/** Stripe webhook / background: load booking + send ticket with QR link. Never throws. */
-export async function sendGuestTicketByBookingId(bookingId: string): Promise<void> {
+/**
+ * Stripe webhook / background: load booking + send ticket with QR link. Never throws.
+ * The bus list re-sends pick-up details with `updated` and can limit the channel.
+ */
+export async function sendGuestTicketByBookingId(
+  bookingId: string,
+  options: { updated?: boolean; channels?: { email: boolean; sms: boolean } } = {},
+): Promise<{ email: NotificationSendResult | null; sms: NotificationSendResult | null } | null> {
   const { createSupabaseServiceRoleClient } = await import("@/lib/supabase/server");
   const { brandingFromBusiness, parseShowOpsConfig } = await import("@/lib/show-ops/config");
   const { showOpsTicketUrl } = await import("@/lib/show-ops/ticket-token");
@@ -258,8 +264,11 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
     )
     .eq("id", bookingId)
     .maybeSingle();
-  if (!booking || booking.cancelled_at) return;
-  if (!booking.guest_email && !booking.guest_mobile) return;
+  if (!booking || booking.cancelled_at) return null;
+  const channels = options.channels ?? { email: true, sms: true };
+  const guestEmail = channels.email ? booking.guest_email : null;
+  const guestMobile = channels.sms ? booking.guest_mobile : null;
+  if (!guestEmail && !guestMobile) return null;
 
   const { data: biz } = await admin
     .from("businesses")
@@ -269,12 +278,13 @@ export async function sendGuestTicketByBookingId(bookingId: string): Promise<voi
   const branding = brandingFromBusiness(biz ?? {});
   const currency = parseShowOpsConfig(biz?.show_ops_config).currency;
   const token = booking.ticket_token ? String(booking.ticket_token) : "";
-  await sendGuestTicket({
+  return sendGuestTicket({
+    updated: Boolean(options.updated),
     merchantName: branding.displayName,
     bookingRef: booking.booking_ref,
     guestName: booking.guest_name,
-    guestEmail: booking.guest_email,
-    guestMobile: booking.guest_mobile,
+    guestEmail,
+    guestMobile,
     showName: booking.show_name,
     extrasSummary: bookingExtrasSummary(booking.extras_snapshot),
     showDate: booking.show_date,
