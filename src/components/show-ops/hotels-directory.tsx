@@ -63,11 +63,11 @@ export function HotelsDirectory({
 
   const stopById = useMemo(() => new Map(stops.map((s) => [s.id, s])), [stops]);
 
-  // Every island that actually has hotels, not just the configured list — the
-  // legacy import left some under "Unknown" and they still need finding.
+  // Every island that actually has ACTIVE hotels, plus the configured list. Retired
+  // islands (UK venues, Unknown, Fuerteventura) only appear with "Show inactive" on.
   const islandChoices = useMemo(
-    () => [...new Set([...islands, ...hotels.map((h) => h.island)])].filter(Boolean),
-    [islands, hotels],
+    () => [...new Set([...islands, ...hotels.filter((h) => showInactive || h.active !== false).map((h) => h.island)])].filter(Boolean),
+    [islands, hotels, showInactive],
   );
 
   const resortChoices = useMemo(() => {

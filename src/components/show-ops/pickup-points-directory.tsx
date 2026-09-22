@@ -63,9 +63,10 @@ export function PickupPointsDirectory({
   const [openId, setOpenId] = useState<string | null>(highlightId ?? null);
   const [adding, setAdding] = useState(false);
 
+  // Retired islands only show with "Show inactive" on.
   const islandChoices = useMemo(
-    () => [...new Set([...islands, ...stops.map((s) => s.island)])].filter(Boolean),
-    [islands, stops],
+    () => [...new Set([...islands, ...stops.filter((s) => showInactive || s.active !== false).map((s) => s.island)])].filter(Boolean),
+    [islands, stops, showInactive],
   );
   const resortChoices = useMemo(() => {
     const pool = island ? stops.filter((s) => s.island === island) : stops;
