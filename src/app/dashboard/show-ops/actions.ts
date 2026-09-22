@@ -1496,15 +1496,47 @@ const NO_SHOW_PROOF_TYPES: Record<string, string> = {
   "image/heif": "heif",
 };
 
+/** A file off a form, or null when the field was left empty (browsers send an empty File then). */
+function pickedPhoto(formData: FormData, field: string): File | null {
+  const file = formData.get(field) as unknown;
+  // Duck-typed on purpose: the action tests evaluate this file in a sandbox without a File global.
+  if (!file || typeof file === "string") return null;
+  const f = file as { size?: unknown; arrayBuffer?: unknown; type?: unknown };
+  return typeof f.arrayBuffer === "function" && Number(f.size) > 0 ? (file as File) : null;
+}
+
+/**
+ * Joel (17 Sept): a photo on a booking — the partner's paper voucher, or
+ * whatever the office snaps — seen on the booking, the night lists and the
+ * door. One attach path for the desk, the partner link and the lists. The
+ * column keeps its old name; the invoice pack already delivers it.
+ */
+async function attachBookingPhoto(
+  client: { storage: { from: (b: string) => { upload: (p: string, body: Buffer, o: { contentType: string; upsert: boolean }) => Promise<{ error: { message: string } | null }> } }; from: (t: string) => unknown },
+  opts: { businessId: string; bookingId: string; file: File; updatedBy: string | null },
+): Promise<void> {
+  const { file } = opts;
+  if (file.size > 5 * 1024 * 1024) throw new Error("Photo must be 5 MB or smaller.");
+  const ext = NO_SHOW_PROOF_TYPES[file.type];
+  if (!ext) throw new Error("Use a JPEG, PNG, WebP or HEIC photo.");
+  const path = `${opts.businessId}/${opts.bookingId}/${crypto.randomUUID()}.${ext}`;
+  const buf = Buffer.from(await file.arrayBuffer());
+  const { error: upErr } = await client.storage.from("show-ops-proofs").upload(path, buf, { contentType: file.type, upsert: false });
+  if (upErr) throw new Error(upErr.message);
+  const table = (client as unknown as { from: (t: string) => { update: (v: Record<string, unknown>) => { eq: (c: string, v: string) => { eq: (c: string, v: string) => Promise<{ error: { message: string } | null }> } } } }).from("show_bookings");
+  const { error } = await table
+    .update({ no_show_proof_path: path, updated_at: new Date().toISOString(), ...(opts.updatedBy ? { updated_by: opts.updatedBy } : {}) })
+    .eq("id", opts.bookingId)
+    .eq("business_id", opts.businessId);
+  if (error) throw new Error(error.message);
+}
+
 export async function uploadNoShowProofAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsAction("booker", ["bookings", "door", "lists"]);
   const bookingId = String(formData.get("booking_id") ?? "").trim();
-  const file = formData.get("proof");
+  const file = pickedPhoto(formData, "proof");
   if (!bookingId) throw new Error("Booking required.");
-  if (!(file instanceof File) || file.size < 1) throw new Error("Choose a ticket photo.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Photo must be 5 MB or smaller.");
-  const ext = NO_SHOW_PROOF_TYPES[file.type];
-  if (!ext) throw new Error("Use a JPEG, PNG, or HEIC photo.");
+  if (!file) throw new Error("Choose a ticket photo.");
 
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
@@ -1515,25 +1547,7 @@ export async function uploadNoShowProofAction(formData: FormData): Promise<void>
   if (!booking) throw new Error("Booking not found.");
   if (booking.cancelled_at) throw new Error("This booking is cancelled.");
 
-  const path = `${ctx.business.id}/${bookingId}/${crypto.randomUUID()}.${ext}`;
-  const buf = Buffer.from(await file.arrayBuffer());
-  const { error: upErr } = await ctx.supabase.storage.from("show-ops-proofs").upload(path, buf, {
-    contentType: file.type,
-    upsert: false,
-  });
-  if (upErr) throw new Error(upErr.message);
-
-  const now = new Date().toISOString();
-  const { error } = await ctx.supabase
-    .from("show_bookings")
-    .update({
-      no_show_proof_path: path,
-      updated_at: now,
-      updated_by: ctx.user.id,
-    })
-    .eq("id", bookingId)
-    .eq("business_id", ctx.business.id);
-  if (error) throw new Error(error.message);
+  await attachBookingPhoto(ctx.supabase as never, { businessId: ctx.business.id, bookingId, file, updatedBy: ctx.user.id });
   revalidateShowOps();
 }
 
@@ -1997,12 +2011,23 @@ export async function createBookingAction(
     return { ok: false, message: res.error.message };
   }
 
+  // Ticket photo picked on the form (partner voucher). The booking is saved either way.
+  const photo = pickedPhoto(formData, "ticket_photo");
+  let photoNote = "";
+  if (photo && data?.id) {
+    try {
+      await attachBookingPhoto(ctx.supabase as never, { businessId: ctx.business.id, bookingId: data.id, file: photo, updatedBy: ctx.user.id });
+    } catch (err) {
+      photoNote = ` (photo not attached: ${err instanceof Error ? err.message : "upload failed"})`;
+    }
+  }
+
   // Guest ticket by email/SMS on save (opt-out checkbox on the form). Never blocks the booking.
   await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null);
   await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
 
   revalidateShowOps();
-  return { ok: true, id: data?.id, message: booking_ref };
+  return { ok: true, id: data?.id, message: `${booking_ref}${photoNote}` };
 }
 
 /** The rate card the desk form prices from once a partner is picked. */
@@ -2474,6 +2499,15 @@ export async function createPartnerLinkBookingAction(
       },
     });
     if (!error) {
+      // Joel: inbound partner bookings carry the ticket picture.
+      const photo = pickedPhoto(formData, "ticket_photo");
+      if (photo) {
+        try {
+          await attachBookingPhoto(ctx.supabase as never, { businessId: ctx.business.id, bookingId: id, file: photo, updatedBy: null });
+        } catch (err) {
+          console.error("[partner-link] ticket photo not attached:", supplier.id, booking_ref, err instanceof Error ? err.message : err);
+        }
+      }
       const { data: created } = await ctx.supabase.from("show_bookings").select("ticket_token").eq("id", id).maybeSingle();
       await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, created?.ticket_token ? String(created.ticket_token) : null);
       await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
@@ -2539,6 +2573,37 @@ export async function requestPartnerLinkCancellationAction(
   revalidatePath(`/p/${String(formData.get("partner_token"))}`);
   revalidateShowOps();
   return { ok: true, message: `Cancellation requested for ${booking.booking_ref}. The office will confirm.` };
+}
+
+/** A partner attaches (or replaces) the ticket picture on one of their own bookings, from their link page. */
+export async function attachPartnerLinkTicketPhotoFormAction(formData: FormData): Promise<void> {
+  const token = String(formData.get("partner_token") ?? "");
+  const back = (state: "sent" | "failed", msg: string) =>
+    redirect(`/p/${encodeURIComponent(token)}?request=${state}&msg=${encodeURIComponent(msg)}#your-bookings`);
+  const link = await partnerLinkContext(token);
+  if (!link) back("failed", "This booking link is no longer valid. Ask the office for a new one.");
+  const { ctx, supplier, admin } = link!;
+  const bookingId = String(formData.get("booking_id") ?? "").trim();
+  const file = pickedPhoto(formData, "ticket_photo");
+  if (!/^[0-9a-f-]{36}$/i.test(bookingId)) back("failed", "Booking not found.");
+  if (!file) back("failed", "Choose a photo of the ticket first.");
+  const { data: booking } = await admin
+    .from("show_bookings")
+    .select("id,booking_ref,cancelled_at")
+    .eq("id", bookingId)
+    .eq("business_id", ctx.business.id)
+    .eq("supplier_id", supplier.id)
+    .maybeSingle();
+  if (!booking) back("failed", "Booking not found.");
+  if (booking!.cancelled_at) back("failed", "That booking is cancelled.");
+  try {
+    await attachBookingPhoto(admin as never, { businessId: ctx.business.id, bookingId: booking!.id, file: file!, updatedBy: null });
+  } catch (err) {
+    back("failed", err instanceof Error ? err.message : "Photo upload failed. Please try again.");
+  }
+  revalidatePath(`/p/${token}`);
+  revalidateShowOps();
+  back("sent", `Ticket photo attached to ${booking!.booking_ref}.`);
 }
 
 export async function requestPartnerLinkCancellationFormAction(formData: FormData): Promise<void> {

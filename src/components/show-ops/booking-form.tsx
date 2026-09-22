@@ -1761,6 +1761,22 @@ export function ShowOpsBookingForm({
             defaultValue={defaults.supplier_ticket_number ?? ""}
             className={INPUT}
           />
+          {mode === "create" ? (
+            <>
+              <FieldLabel className="mt-3">Ticket photo</FieldLabel>
+              <input
+                name="ticket_photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                className="mt-1 block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                {sellerMode
+                  ? "A photo of the ticket or voucher you gave the guest. The office sees it on the booking, the night list and at the door."
+                  : "The partner's voucher or ticket, if there is one. Shows on the booking, the night lists and the door. Up to 5 MB."}
+              </p>
+            </>
+          ) : null}
           <FieldLabel className="mt-3">Comments (office list)</FieldLabel>
           <textarea
             name="office_comments"

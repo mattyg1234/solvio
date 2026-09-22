@@ -10,7 +10,7 @@ import {
   updateBookingAction,
 } from "@/app/dashboard/show-ops/actions";
 import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { NoShowDecisionForm } from "@/components/show-ops/no-show-decision";
+import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -347,6 +347,13 @@ export default async function EditBookingPage({
               invoiced={Boolean(booking.invoice_id)}
               proofUrl={proofUrl}
             />
+          </div>
+        )}
+        {booking.cancelled_at ? null : (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+            <span className="text-sm font-semibold text-slate-900">Ticket photo</span>
+            <TicketPhotoControl key={booking.no_show_proof_path ?? "none"} bookingId={booking.id} proofUrl={proofUrl} />
+            <span className="text-xs text-slate-500">The partner&apos;s voucher or ticket. Shows here, on the night lists and at the door.</span>
           </div>
         )}
         {!booking.cancelled_at && confirmationAvailableFor(booking.island) ? (

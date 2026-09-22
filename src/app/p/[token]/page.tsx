@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createPartnerLinkBookingAction, partnerLinkContext, requestPartnerLinkCancellationFormAction } from "@/app/dashboard/show-ops/actions";
+import { attachPartnerLinkTicketPhotoFormAction, createPartnerLinkBookingAction, partnerLinkContext, requestPartnerLinkCancellationFormAction } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { loadRatePrices } from "@/lib/show-ops/rate-cards";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
@@ -45,7 +45,7 @@ export default async function PartnerLinkPage({
     admin.rpc("show_ops_partner_booked_dates", { p_business_id: biz }),
     admin
       .from("show_bookings")
-      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at,cancelled_at,invoice_id,cancel_request_status,cancel_request_reply,cancel_charge")
+      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at,cancelled_at,invoice_id,cancel_request_status,cancel_request_reply,cancel_charge,no_show_proof_path")
       .eq("business_id", biz)
       .eq("supplier_id", supplier.id)
       .order("created_at", { ascending: false })
@@ -60,6 +60,16 @@ export default async function PartnerLinkPage({
   const bookedDates = (bookedDatesResult.error ? {} : (bookedDatesResult.data ?? {})) as Record<string, string[]>;
   const { branding } = ctx;
   const today = showOpsTodayIso();
+  // Ticket pictures on the partner's own bookings: short-lived links, one per photo.
+  const photoUrls = new Map<string, string>();
+  await Promise.all(
+    (recent ?? [])
+      .filter((b) => b.no_show_proof_path)
+      .map(async (b) => {
+        const { data } = await admin.storage.from("show-ops-proofs").createSignedUrl(String(b.no_show_proof_path), 60 * 60);
+        if (data?.signedUrl) photoUrls.set(b.id, data.signedUrl);
+      }),
+  );
 
   return (
     <div
@@ -151,6 +161,28 @@ export default async function PartnerLinkPage({
                           }`}
                         >
                           {status.label}
+                        </span>
+                      ) : null}
+                      {!b.cancelled_at ? (
+                        <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                          {photoUrls.get(b.id) ? (
+                            <a href={photoUrls.get(b.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-emerald-800">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={photoUrls.get(b.id)} alt="" className="h-8 w-auto rounded ring-1 ring-emerald-200" />
+                              Ticket photo attached
+                            </a>
+                          ) : null}
+                          <form action={attachPartnerLinkTicketPhotoFormAction} className="inline-flex items-center gap-2">
+                            <input type="hidden" name="partner_token" value={token} />
+                            <input type="hidden" name="booking_id" value={b.id} />
+                            <label className="cursor-pointer text-slate-500 underline decoration-dotted">
+                              {photoUrls.get(b.id) ? "Replace photo" : "Attach ticket photo"}
+                              <input name="ticket_photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" required className="sr-only" />
+                            </label>
+                            <button type="submit" className="rounded-md bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white">
+                              Upload
+                            </button>
+                          </form>
                         </span>
                       ) : null}
                       {!b.cancelled_at && status?.tone !== "pending" ? (
