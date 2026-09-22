@@ -111,6 +111,7 @@ export function BusRunSheet({
       return next;
     });
   const [savedAt, setSavedAt] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [downloading, setDownloading] = useState(false);
@@ -320,14 +321,26 @@ export function BusRunSheet({
             Back to pick-up times
           </button>
         ) : null}
-        <button
-          type="button"
-          disabled={!canManageOrders || pending || !sheet || !dirty}
-          onClick={saveTonight}
-          className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 ring-1 ring-violet-200 hover:bg-violet-50 disabled:opacity-50"
-        >
-          {pending ? "Saving…" : "Save tonight's order"}
-        </button>
+        {confirming ? (
+          <span className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-400">
+            <span className="text-xs font-bold text-slate-900">Save this as tonight&apos;s bus board for {day ? `${day} ` : ""}{date}?</span>
+            <button type="button" disabled={pending} onClick={() => { setConfirming(false); saveTonight(); }} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+              {pending ? "Saving…" : "Yes, save tonight's board"}
+            </button>
+            <button type="button" disabled={pending} onClick={() => setConfirming(false)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 ring-1 ring-slate-300">
+              No, keep editing
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={!canManageOrders || pending || !sheet || !dirty}
+            onClick={() => setConfirming(true)}
+            className="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 ring-1 ring-violet-200 hover:bg-violet-50 disabled:opacity-50"
+          >
+            Save tonight&apos;s order
+          </button>
+        )}
         <button type="button" disabled={dirty || pending || !sheet} onClick={() => window.print()} className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-xs font-semibold text-white">Print bus list</button>
         <button type="button" onClick={() => void downloadPdf()} disabled={downloading || dirty || pending || !sheet} className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{downloading ? "Preparing PDF…" : "Download PDF"}</button>
         <button

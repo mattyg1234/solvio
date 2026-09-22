@@ -22,6 +22,7 @@ export function BusNightBoard({
   const [ready, setReady] = useState(false);
   const [note, setNote] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [confirming, setConfirming] = useState(false);
   useEffect(() => {
     let alive = true;
     getBusNightOrderAction(date)
@@ -58,14 +59,16 @@ export function BusNightBoard({
   };
   const href = `/dashboard/show-ops/lists?tab=bus&date=${date}&island=${encodeURIComponent(island)}`;
   return (
-    <div className="mt-4 rounded-xl bg-slate-50 p-3 print:hidden">
-      <h3 className="text-lg font-extrabold uppercase tracking-wide text-slate-900">Next bus pick-up order</h3>
-      <p className="text-base font-bold text-slate-900">
+    <div className="mt-4 rounded-xl bg-amber-50 p-3 ring-2 ring-amber-400 print:hidden">
+      <h3 className="inline-block rounded-md bg-amber-500 px-3 py-1 text-xl font-black uppercase tracking-wide text-black">
+        Next bus pick-up order
+      </h3>
+      <p className="mt-2 text-xl font-black text-slate-900">
         {[showOpsDayName(date), date].filter(Boolean).join(" ")} · {island}
       </p>
-      <p className="mt-1 text-xs text-slate-600">
-        Drag or use the arrows, then save. This order is shared with the
-        printed, downloaded and emailed bus list.
+      <p className="mt-1 text-xs font-semibold text-amber-900">
+        TONIGHT ONLY. Drag or use the arrows, then save. This order is shared with the
+        printed, downloaded and emailed bus list. The permanent bus table above is not changed.
       </p>
       <ol className="my-3 space-y-1">
         {ids.map((id, index) => (
@@ -105,28 +108,53 @@ export function BusNightBoard({
         ))}
       </ol>
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={!ready || busy || !dirty}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              const result = await saveBusNightOrderAction(date, island, ids);
-              if (result.ok) {
-                setDirty(false);
-                setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-                setNote("");
-              } else setNote(result.message);
-            } catch {
-              setNote("Could not save. Try again.");
-            } finally {
-              setBusy(false);
-            }
-          }}
-          className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          {busy ? "Saving…" : "Save tonight’s order"}
-        </button>
+        {confirming ? (
+          <span className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 ring-1 ring-amber-400">
+            <span className="text-sm font-bold text-slate-900">
+              Save this as tonight&apos;s bus board for {[showOpsDayName(date), date].filter(Boolean).join(" ")} · {island}?
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const result = await saveBusNightOrderAction(date, island, ids);
+                  if (result.ok) {
+                    setDirty(false);
+                    setConfirming(false);
+                    setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+                    setNote("");
+                  } else setNote(result.message);
+                } catch {
+                  setNote("Could not save. Try again.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              {busy ? "Saving…" : "Yes, save tonight's board"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+              className="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-300"
+            >
+              No, keep editing
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={!ready || busy || !dirty}
+            onClick={() => setConfirming(true)}
+            className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            Save tonight’s order
+          </button>
+        )}
         {!dirty ? (
           <Link
             href={href}
@@ -142,7 +170,7 @@ export function BusNightBoard({
       </div>
       {savedAt && !dirty ? (
         <p role="status" className="mt-3 rounded-lg bg-emerald-100 px-3 py-2 text-sm font-bold text-emerald-900">
-          ✓ Saved at {savedAt}. The bus list for {date} now uses this order.
+          ✓ TONIGHT&apos;S BUS BOARD SAVED at {savedAt} for {[showOpsDayName(date), date].filter(Boolean).join(" ")} · {island}. The bus list now uses this order.
         </p>
       ) : null}
       {note ? (

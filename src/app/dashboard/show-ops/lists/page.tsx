@@ -4,6 +4,8 @@ import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { BookingFlags, FlagDots, FlagLegend } from "@/components/show-ops/booking-flags";
 import { BusRunSheet } from "@/components/show-ops/bus-run-sheet";
 import { ListFlagButton } from "@/components/show-ops/list-flag-button";
+import { MealsSendForm } from "@/components/show-ops/meals-send-form";
+import { NightListPdfButton } from "@/components/show-ops/night-list-pdf-button";
 import {
   NightListChips,
   nightListsHref,
@@ -589,6 +591,9 @@ export default async function DailyListsPage({
       {views.includes("office") ? (
         <OfficeTable
           date={date}
+          island={island || null}
+          showName={showFilter || null}
+          view="office"
           title="Office list"
           rows={office}
           questions={ctx.config.booking_questions.filter(
@@ -603,6 +608,9 @@ export default async function DailyListsPage({
       {views.includes("meals") ? (
         <OfficeTable
           date={date}
+          island={island || null}
+          showName={showFilter || null}
+          view="meals"
           title="Special meals"
           rows={meals}
           questions={ctx.config.booking_questions.filter(
@@ -616,6 +624,9 @@ export default async function DailyListsPage({
 
       {views.includes("door") ? (
         <DoorTable
+          date={date}
+          island={island || null}
+          showName={showFilter || null}
           rows={door}
           money={money}
           sortKeys={sortKeys}
@@ -866,6 +877,9 @@ function ListCard({
 
 function OfficeTable({
   date,
+  island,
+  showName,
+  view,
   title,
   rows,
   questions,
@@ -874,6 +888,9 @@ function OfficeTable({
   sortHref,
 }: {
   date: string;
+  island: string | null;
+  showName: string | null;
+  view: "office" | "meals";
   title: string;
   rows: BookingRow[];
   questions: Array<{ id: string; label: string }>;
@@ -881,12 +898,23 @@ function OfficeTable({
   sortKeys: string[];
   sortHref: (key: string) => string;
 }) {
+  const ids = rows.map((b) => b.id);
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200">
-      <h3 className="border-b px-4 py-3 font-semibold">
-        {title} · {date} · {rows.length}{" "}
-        {rows.length === 1 ? "booking" : "bookings"}
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+        <h3 className="font-semibold">
+          {title} · {date} · {rows.length}{" "}
+          {rows.length === 1 ? "booking" : "bookings"}
+        </h3>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <NightListPdfButton view={view} date={date} island={island} showName={showName} bookingIds={ids} label={view === "meals" ? "Print meals PDF" : "Print office list PDF"} />
+        </div>
+      </div>
+      {view === "meals" ? (
+        <div className="border-b px-4 py-3">
+          <MealsSendForm date={date} island={island} showName={showName} bookingIds={ids} />
+        </div>
+      ) : null}
       {/* Phone: readable cards with the same door actions */}
       <div className="space-y-2 p-3 lg:hidden print:hidden">
         {rows.length ? (
@@ -916,7 +944,7 @@ function OfficeTable({
             <col />
             <col className="w-[4.5rem]" />
             <col className="w-[7rem]" />
-            <col className="w-[4.5rem]" />
+            <col className="w-[13rem]" />
             {questions.map((q) => (
               <col key={q.id} className="w-[6rem]" />
             ))}
@@ -963,7 +991,7 @@ function OfficeTable({
                 sortHref={sortHref}
               />
               <SortCol
-                label="Flags"
+                label="Diet / flags"
                 k="diet"
                 sortKeys={sortKeys}
                 sortHref={sortHref}
@@ -1049,6 +1077,7 @@ function OfficeTable({
                           : null
                       }
                       comments={b.office_comments}
+                      dietInline
                     />
                   </td>
                   {questions.map((q) => {
@@ -1161,11 +1190,17 @@ function OfficeTable({
 }
 
 function DoorTable({
+  date,
+  island,
+  showName,
   rows,
   money,
   sortKeys,
   sortHref,
 }: {
+  date: string;
+  island: string | null;
+  showName: string | null;
   rows: BookingRow[];
   money: (n: number, island?: string | null) => string;
   sortKeys: string[];
@@ -1173,9 +1208,14 @@ function DoorTable({
 }) {
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200">
-      <h3 className="border-b px-4 py-3 font-semibold">
-        Door · how many showed / paid cash / paid on card
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+        <h3 className="font-semibold">
+          Door · how many showed / paid cash / paid on card
+        </h3>
+        <div className="print:hidden">
+          <NightListPdfButton view="door" date={date} island={island} showName={showName} bookingIds={rows.map((b) => b.id)} label="Print door list PDF" />
+        </div>
+      </div>
       <div className="space-y-2 p-3 lg:hidden print:hidden">
         {rows.length ? (
           rows.map((b) => (
@@ -1198,7 +1238,7 @@ function DoorTable({
             <col className="w-[8rem]" />
             <col className="w-[6rem]" />
             <col className="w-[8rem]" />
-            <col className="w-[5.5rem]" />
+            <col className="w-[13rem]" />
             <col className="w-[7rem]" />
             <col className="w-[11rem] print:hidden" />
           </colgroup>
@@ -1224,7 +1264,7 @@ function DoorTable({
                 sortHref={sortHref}
               />
               <SortCol
-                label="Flags"
+                label="Diet / flags"
                 k="diet"
                 sortKeys={sortKeys}
                 sortHref={sortHref}
@@ -1284,6 +1324,7 @@ function DoorTable({
                           : null
                       }
                       comments={b.office_comments}
+                      dietInline
                     />
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-600">

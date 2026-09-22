@@ -25,11 +25,14 @@ export function FlagDots({
   dietaryNotes,
   balanceDueLabel,
   comments,
+  dietInline = false,
 }: {
   dietaryRequired?: boolean | null;
   dietaryNotes?: string | null;
   balanceDueLabel?: string | null;
   comments?: string | null;
+  /** Joel: the kitchen needs the words, not a colour. Write the diet out on screen too. */
+  dietInline?: boolean;
 }) {
   const diet = dietaryRequired ? dietLabel(dietaryNotes) : null;
   const note = comments?.trim() || null;
@@ -41,8 +44,11 @@ export function FlagDots({
   const print = "[print-color-adjust:exact] [-webkit-print-color-adjust:exact]";
   return (
     <>
-      <span className="inline-flex items-center gap-1.5 print:hidden">
-        {flags.map((f) => (
+      <span className="inline-flex flex-wrap items-center gap-1.5 print:hidden">
+        {dietInline && diet ? (
+          <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 whitespace-pre-wrap ${flags[0].chip}`}>{diet}</span>
+        ) : null}
+        {flags.filter((f) => !(dietInline && f.key === "diet")).map((f) => (
           <span key={f.key} className="group relative inline-flex">
             <span
               role="img"

@@ -112,13 +112,13 @@ export function PickupTimetable({
     <div className="mt-4">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <div>
-          <p className="text-lg font-extrabold uppercase tracking-wide text-slate-900">
+          <p className="inline-block rounded-md bg-slate-900 px-3 py-1 text-xl font-black uppercase tracking-wide text-white">
             Permanent bus table · {island} · {rows.length} stop{rows.length === 1 ? "" : "s"}
           </p>
-          <p className="text-[11px] text-slate-500">
-            {canManage
-              ? "Drag a row (or use the arrows) to change the permanent order, then save. Edit a stop in place. Tonight-only changes go on the night's bus list."
-              : "The permanent order. Owners and admins can drag to reorder and edit stops."}
+          <p className="mt-1 text-[11px] font-semibold text-slate-600">
+            EVERY NIGHT. {canManage
+              ? "Drag a row (or use the arrows) to change the permanent order, then save (super admin). Edit a stop in place. Tonight-only changes go in the amber Next bus pick-up order below."
+              : "The permanent order. Super admins can drag to reorder and edit stops. Tonight-only changes go in the amber Next bus pick-up order below."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
