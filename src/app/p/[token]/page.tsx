@@ -22,7 +22,7 @@ export default async function PartnerLinkPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ created?: string; request?: string; msg?: string }>;
+  searchParams: Promise<{ created?: string; request?: string; msg?: string; bookings?: string; invoices?: string }>;
 }) {
   const { token } = await params;
   const sp = await searchParams;
@@ -30,8 +30,12 @@ export default async function PartnerLinkPage({
   if (!link) notFound();
   const { ctx, supplier, admin } = link;
   const biz = ctx.business.id;
+  // Joel: the last 10 of each on the page, "See more" for the lot.
+  const RECENT = 10;
+  const allBookings = sp.bookings === "all";
+  const allInvoices = sp.invoices === "all";
 
-  const [{ data: products, error: productsError }, { data: hotels }, { data: stops }, bookedDatesResult, { data: recent }, created, ratePrices] = await Promise.all([
+  const [{ data: products, error: productsError }, { data: hotels }, { data: stops }, bookedDatesResult, { data: recent, count: bookingCount }, created, ratePrices, { data: invoices, count: invoiceCount }] = await Promise.all([
     admin
       .from("show_products")
       .select(
@@ -45,16 +49,27 @@ export default async function PartnerLinkPage({
     admin.rpc("show_ops_partner_booked_dates", { p_business_id: biz }),
     admin
       .from("show_bookings")
-      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at,cancelled_at,invoice_id,cancel_request_status,cancel_request_reply,cancel_charge,no_show_proof_path")
+      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at,cancelled_at,invoice_id,cancel_request_status,cancel_request_reply,cancel_charge,no_show_proof_path", { count: "exact" })
       .eq("business_id", biz)
       .eq("supplier_id", supplier.id)
       .order("created_at", { ascending: false })
-      .limit(25),
+      .limit(allBookings ? 500 : RECENT),
     /^[0-9a-f-]{36}$/i.test(sp.created ?? "")
       ? admin.from("show_bookings").select("booking_ref,guest_name,show_name,show_date").eq("id", sp.created!).eq("supplier_id", supplier.id).maybeSingle()
       : Promise.resolve({ data: null }),
     // The partner's rate card — the prices this link quotes and books at.
     loadRatePrices(admin, biz, supplier.sale_rate_id ? String(supplier.sale_rate_id) : null),
+    // Their issued invoices, newest first. Drafts and voided packs stay in the office.
+    admin
+      .from("show_invoices")
+      .select("id,invoice_number,verifactu_number,invoice_date,period_start,period_end,due_date,total_amount,paid,paid_at,island", { count: "exact" })
+      .eq("business_id", biz)
+      .eq("supplier_id", supplier.id)
+      .eq("status", "issued")
+      .eq("voided", false)
+      .order("invoice_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(allInvoices ? 500 : RECENT),
   ]);
   if (productsError) throw new Error("Could not load shows. Please refresh.");
   const bookedDates = (bookedDatesResult.error ? {} : (bookedDatesResult.data ?? {})) as Record<string, string[]>;
@@ -90,9 +105,14 @@ export default async function PartnerLinkPage({
               <h1 className="text-xl font-semibold tracking-tight text-slate-900">{supplier.name}</h1>
             </div>
           </div>
-          <a href="#your-bookings" className="rounded-full bg-white px-3 py-1.5 text-sm font-medium ring-1 ring-slate-200">
-            Your bookings ({recent?.length ?? 0})
-          </a>
+          <span className="flex flex-wrap gap-2">
+            <a href="#your-bookings" className="rounded-full bg-white px-3 py-1.5 text-sm font-medium ring-1 ring-slate-200">
+              Your bookings ({bookingCount ?? recent?.length ?? 0})
+            </a>
+            <a href="#your-invoices" className="rounded-full bg-white px-3 py-1.5 text-sm font-medium ring-1 ring-slate-200">
+              Your invoices ({invoiceCount ?? invoices?.length ?? 0})
+            </a>
+          </span>
         </header>
 
         {created.data ? (
@@ -125,7 +145,7 @@ export default async function PartnerLinkPage({
         <section id="your-bookings" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">Your bookings</h2>
           <p className="mb-3 text-sm text-slate-600">
-            The last 25 bookings made under {supplier.name}. Need to cancel one? Ask below up to the day before the show and {branding.displayName} will confirm.
+            {allBookings ? `Every booking made under ${supplier.name}` : `The last ${RECENT} bookings made under ${supplier.name}`}. Need to cancel one? Ask below up to the day before the show and {branding.displayName} will confirm.
           </p>
           {sp.request ? (
             <p
@@ -222,6 +242,76 @@ export default async function PartnerLinkPage({
           ) : (
             <p className="text-sm text-slate-500">No bookings yet. Your first one will appear here.</p>
           )}
+          {!allBookings && (bookingCount ?? 0) > RECENT ? (
+            <p className="mt-3 text-sm">
+              <Link href={`/p/${encodeURIComponent(token)}?bookings=all#your-bookings`} className="font-semibold text-slate-900 underline">
+                See more ({(bookingCount ?? 0) - RECENT} older)
+              </Link>
+            </p>
+          ) : null}
+          {allBookings ? (
+            <p className="mt-3 text-sm">
+              <Link href={`/p/${encodeURIComponent(token)}#your-bookings`} className="text-slate-600 underline">Show the last {RECENT} only</Link>
+            </p>
+          ) : null}
+        </section>
+
+        <section id="your-invoices" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+          <h2 className="text-lg font-semibold text-slate-900">Your invoices</h2>
+          <p className="mb-3 text-sm text-slate-600">
+            {allInvoices ? "Every invoice" : `The last ${RECENT} invoices`} {branding.displayName} has issued to {supplier.name}. Open one for the PDF.
+          </p>
+          {invoices?.length ? (
+            <ul className="divide-y divide-slate-100 text-sm">
+              {invoices.map((inv) => {
+                const currency = showOpsCurrencyFor(ctx.config, inv.island);
+                const number = inv.invoice_number || inv.verifactu_number || "—";
+                const overdue = !inv.paid && inv.due_date && String(inv.due_date) < today;
+                return (
+                  <li key={inv.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2">
+                    <span className="min-w-0">
+                      <a
+                        href={`/p/${encodeURIComponent(token)}/invoice/${inv.id}`}
+                        target="_blank"
+                        rel="noopener"
+                        className="font-semibold text-slate-900 underline decoration-dotted"
+                      >
+                        {number}
+                      </a>
+                      <span className="block text-xs text-slate-500">
+                        {inv.invoice_date ? `Issued ${inv.invoice_date}` : "Issued"} · shows {inv.period_start} to {inv.period_end}
+                        {inv.due_date ? ` · due ${inv.due_date}` : ""}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block tabular-nums font-semibold text-slate-900">{formatShowOpsMoney(Number(inv.total_amount || 0), currency)}</span>
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                          inv.paid ? "bg-emerald-100 text-emerald-900" : overdue ? "bg-rose-100 text-rose-900" : "bg-amber-100 text-amber-900"
+                        }`}
+                      >
+                        {inv.paid ? `Paid${inv.paid_at ? ` ${inv.paid_at}` : ""}` : overdue ? "Overdue" : "Unpaid"}
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="text-sm text-slate-500">No invoices issued yet.</p>
+          )}
+          {!allInvoices && (invoiceCount ?? 0) > RECENT ? (
+            <p className="mt-3 text-sm">
+              <Link href={`/p/${encodeURIComponent(token)}?invoices=all#your-invoices`} className="font-semibold text-slate-900 underline">
+                See more ({(invoiceCount ?? 0) - RECENT} older)
+              </Link>
+            </p>
+          ) : null}
+          {allInvoices ? (
+            <p className="mt-3 text-sm">
+              <Link href={`/p/${encodeURIComponent(token)}#your-invoices`} className="text-slate-600 underline">Show the last {RECENT} only</Link>
+            </p>
+          ) : null}
         </section>
 
         <p className="text-center text-xs text-slate-400">
