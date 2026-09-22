@@ -72,7 +72,7 @@ import { submitVerifactuInvoice } from "@/lib/show-ops/verifactu";
 import { paidOnBooking } from "@/lib/show-ops/booking-paid";
 import { pushChannelAvailability } from "@/lib/show-ops/gyg-data";
 import { loadRatePrices, loadRatePricesForProduct, loadSaleRateUnit, pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
-import { scanArrivalPlan, ticketIsForTonight } from "@/lib/show-ops/ticket-scan";
+import { scanArrivalPlan, ticketIsForTonight, scanArrivalPlanWithCount } from "@/lib/show-ops/ticket-scan";
 import { masterBulkTargets, masterBulkTickError, masterRowSaveTargets } from "@/lib/show-ops/master-bulk";
 import {
   normaliseZone,
@@ -258,6 +258,10 @@ export async function resendGuestTicketAction(
 export type TicketScanResult = {
   ok: boolean;
   alreadyIn: boolean;
+  /** Lookup only: the door still has to choose a headcount and confirm. */
+  needsHeadcount?: boolean;
+  booked?: number;
+  arrivedPax?: number;
   bookingId?: string;
   bookingRef?: string;
   guestName?: string;
@@ -270,12 +274,10 @@ export type TicketScanResult = {
   message: string;
 };
 
-/** Door scan: mark the whole party arrived. */
-export async function checkInShowOpsTicketAction(formData: FormData): Promise<TicketScanResult> {
-  const ctx = await requireShowOpsAction("booker", ["door", "lists"]);
+/** What a scanned ticket points at, before anything is written. */
+async function loadScannedTicket(ctx: Awaited<ReturnType<typeof requireShowOpsContext>>, formData: FormData) {
   const token = parseTicketTokenFromScan(String(formData.get("scan") ?? ""));
-  if (!token) return { ok: false, alreadyIn: false, message: "Not a valid ticket QR." };
-
+  if (!token) return { ok: false as const, result: { ok: false, alreadyIn: false, message: "Not a valid ticket QR." } as TicketScanResult };
   const { data: booking } = await ctx.supabase
     .from("show_bookings")
     .select(
@@ -284,37 +286,81 @@ export async function checkInShowOpsTicketAction(formData: FormData): Promise<Ti
     .eq("ticket_token", token)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
-  if (!booking) return { ok: false, alreadyIn: false, message: "Ticket not found for this workspace." };
-  if (booking.cancelled_at) {
-    return { ok: false, alreadyIn: false, message: `${booking.booking_ref} is cancelled.` };
-  }
-
+  if (!booking) return { ok: false as const, result: { ok: false, alreadyIn: false, message: "Ticket not found for this workspace." } as TicketScanResult };
+  if (booking.cancelled_at) return { ok: false as const, result: { ok: false, alreadyIn: false, message: `${booking.booking_ref} is cancelled.` } as TicketScanResult };
   const booked = paxTotal(booking.adults, booking.children, booking.infants);
-  const pax = `${booked} guest${booked === 1 ? "" : "s"}`;
   const outstanding = Number(booking.balance_remaining || 0);
   const base = {
-    bookingId: booking.id,
+    bookingId: booking.id as string,
     bookingRef: booking.booking_ref as string,
     guestName: booking.guest_name as string,
-    pax,
+    pax: `${booked} guest${booked === 1 ? "" : "s"}`,
     showName: booking.show_name as string,
     outstanding,
     showDate: booking.show_date as string,
     island: booking.island as string,
+    booked,
+    arrivedPax: booking.arrived_at ? Math.max(0, Math.trunc(Number(booking.arrived_pax ?? booked))) : 0,
   };
-
   // A ticket for another night is not admitted by a scan. The office can still mark the
   // party in by hand from the booking if they genuinely turned up on the wrong night.
   if (!ticketIsForTonight(String(booking.show_date)) && String(formData.get("allow_other_night") ?? "") !== "1") {
     return {
-      ok: false,
-      alreadyIn: false,
-      ...base,
-      message: `${booking.guest_name} · ${booking.booking_ref} is for ${booking.show_date}, not tonight. Not admitted.`,
+      ok: false as const,
+      result: {
+        ok: false,
+        alreadyIn: false,
+        ...base,
+        message: `${booking.guest_name} · ${booking.booking_ref} is for ${booking.show_date}, not tonight. Not admitted.`,
+      } as TicketScanResult,
     };
   }
+  return { ok: true as const, booking, booked, outstanding, base };
+}
 
+/**
+ * Joel (17 Sept): scan, choose how many turned up, confirm. Step one: what the
+ * ticket is, with nothing written. The door then confirms a headcount.
+ */
+export async function lookupShowOpsTicketAction(formData: FormData): Promise<TicketScanResult> {
+  const ctx = await requireShowOpsAction("booker", ["door", "lists"]);
+  const loaded = await loadScannedTicket(ctx, formData);
+  if (!loaded.ok) return loaded.result;
+  const { booking, booked, base } = loaded;
   const plan = scanArrivalPlan({ booked, arrivedAt: booking.arrived_at, arrivedPax: booking.arrived_pax });
+  if (plan.kind === "already_in") {
+    return {
+      ok: true,
+      alreadyIn: true,
+      ...base,
+      arrivedAt: booking.arrived_at,
+      message: `${booking.guest_name} · ${booking.booking_ref} already in${booking.arrived_at ? ` · ${formatShowOpsDoorTime(booking.arrived_at)}` : ""}.`,
+    };
+  }
+  return {
+    ok: true,
+    alreadyIn: false,
+    needsHeadcount: true,
+    ...base,
+    arrivedAt: booking.arrived_at,
+    message: `${booking.guest_name} · ${booking.booking_ref} · ${base.pax} booked${base.arrivedPax ? ` · ${base.arrivedPax} already in` : ""}. How many turned up?`,
+  };
+}
+
+/** Door scan: mark the party arrived — the whole party, or the headcount the door confirmed (`arrived_pax`). */
+export async function checkInShowOpsTicketAction(formData: FormData): Promise<TicketScanResult> {
+  const ctx = await requireShowOpsAction("booker", ["door", "lists"]);
+  const loaded = await loadScannedTicket(ctx, formData);
+  if (!loaded.ok) return loaded.result;
+  const { booking, booked, outstanding, base } = loaded;
+  const pax = base.pax;
+
+  const chosenRaw = String(formData.get("arrived_pax") ?? "").trim();
+  const plan = scanArrivalPlanWithCount(
+    { booked, arrivedAt: booking.arrived_at, arrivedPax: booking.arrived_pax },
+    chosenRaw === "" ? null : Number(chosenRaw),
+  );
+  if (plan.kind === "invalid") return { ok: false, alreadyIn: false, ...base, message: plan.message };
   if (plan.kind === "already_in") {
     return {
       ok: true,
@@ -360,7 +406,12 @@ export async function checkInShowOpsTicketAction(formData: FormData): Promise<Ti
     booking.billing_mode === "deposit" && outstanding > 0
       ? ` · ${outstanding.toFixed(2)} still outstanding`
       : "";
-  const who = plan.kind === "complete_party" ? `remaining ${plan.remaining} guest${plan.remaining === 1 ? "" : "s"}` : pax;
+  const who =
+    plan.kind === "complete_party"
+      ? `${plan.remaining} more guest${plan.remaining === 1 ? "" : "s"} (${plan.arrivedPax} of ${booked})`
+      : plan.arrivedPax < booked
+        ? `${plan.arrivedPax} of ${booked}`
+        : pax;
   return {
     ok: true,
     alreadyIn: false,

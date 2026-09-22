@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { checkInShowOpsTicketAction, type TicketScanResult } from "@/app/dashboard/show-ops/actions";
+import { checkInShowOpsTicketAction, lookupShowOpsTicketAction, type TicketScanResult } from "@/app/dashboard/show-ops/actions";
 import { parseTicketTokenFromScan } from "@/lib/show-ops/ticket-token";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,8 @@ export function TicketScanner({ variant = "compact", onCheckedIn }: Props) {
   const [open, setOpen] = useState(false);
   const [manual, setManual] = useState("");
   const [result, setResult] = useState<TicketScanResult | null>(null);
+  // Joel: scan, choose how many turned up, confirm. The scanned ticket waits here until the door confirms.
+  const [stage, setStage] = useState<{ raw: string; ticket: TicketScanResult; count: number } | null>(null);
   const [camError, setCamError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const lastScan = useRef("");
@@ -33,8 +35,28 @@ export function TicketScanner({ variant = "compact", onCheckedIn }: Props) {
     const fd = new FormData();
     fd.set("scan", raw);
     start(async () => {
-      const res = await checkInShowOpsTicketAction(fd);
+      const res = await lookupShowOpsTicketAction(fd);
+      if (res.ok && res.needsHeadcount && res.booked) {
+        // Default to everyone still expected; the door adjusts and confirms.
+        setResult(null);
+        setStage({ raw, ticket: res, count: res.booked });
+        return;
+      }
+      setStage(null);
       setResult(res);
+    });
+  }
+
+  function confirmHeadcount() {
+    if (!stage) return;
+    const fd = new FormData();
+    fd.set("scan", stage.raw);
+    fd.set("arrived_pax", String(stage.count));
+    start(async () => {
+      const res = await checkInShowOpsTicketAction(fd);
+      setStage(null);
+      setResult(res);
+      lastScan.current = "";
       if (res.ok) {
         onCheckedInRef.current?.(res);
         router.refresh();
@@ -187,6 +209,64 @@ export function TicketScanner({ variant = "compact", onCheckedIn }: Props) {
               File in
             </button>
           </form>
+        </div>
+      ) : null}
+      {stage ? (
+        <div className={cn("rounded-2xl bg-amber-50 p-4 ring-2 ring-amber-400", door ? "" : "mt-3")}>
+          <p className={cn("font-semibold text-slate-900", door ? "text-lg" : "text-base")}>
+            {stage.ticket.guestName} · {stage.ticket.bookingRef}
+          </p>
+          <p className="text-sm text-slate-700">
+            {stage.ticket.showName} · {stage.ticket.pax} booked
+            {stage.ticket.arrivedPax ? ` · ${stage.ticket.arrivedPax} already in` : ""}
+            {stage.ticket.outstanding && stage.ticket.outstanding > 0 ? ` · ${stage.ticket.outstanding.toFixed(2)} still to pay` : ""}
+          </p>
+          <p className={cn("mt-3 font-bold uppercase tracking-wide text-amber-900", door ? "text-base" : "text-sm")}>How many turned up?</p>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              disabled={pending || stage.count <= 1}
+              onClick={() => setStage((s) => (s ? { ...s, count: Math.max(1, s.count - 1) } : s))}
+              className="grid h-14 w-14 place-items-center rounded-2xl bg-white text-3xl font-bold text-slate-900 ring-1 ring-slate-300 disabled:opacity-40"
+              aria-label="One fewer"
+            >
+              −
+            </button>
+            <span className="min-w-[4rem] text-center text-4xl font-black tabular-nums text-slate-900" aria-live="polite">
+              {stage.count}
+            </span>
+            <button
+              type="button"
+              disabled={pending || stage.count >= (stage.ticket.booked ?? 1)}
+              onClick={() => setStage((s) => (s ? { ...s, count: Math.min(s.ticket.booked ?? 1, s.count + 1) } : s))}
+              className="grid h-14 w-14 place-items-center rounded-2xl bg-white text-3xl font-bold text-slate-900 ring-1 ring-slate-300 disabled:opacity-40"
+              aria-label="One more"
+            >
+              +
+            </button>
+            <span className="text-sm text-slate-600">of {stage.ticket.booked}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={confirmHeadcount}
+              className="min-h-14 flex-1 rounded-2xl bg-emerald-700 px-4 text-lg font-bold text-white disabled:opacity-60"
+            >
+              {pending ? "Saving…" : `Confirm ${stage.count} in`}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setStage(null);
+                lastScan.current = "";
+              }}
+              className="min-h-14 rounded-2xl bg-white px-4 text-base font-semibold text-slate-700 ring-1 ring-slate-300"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       ) : null}
       {result ? (
