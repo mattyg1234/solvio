@@ -26,7 +26,7 @@ import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   showOpsAllowedPages,
   SHOW_OPS_PAGE_KEYS,
-  SHOW_OPS_PAGE_LABELS,
+  SHOW_OPS_PAGE_LABELS, SHOW_OPS_ROLE_HELP, SHOW_OPS_ROLE_LABELS, showOpsRoleLabel,
   SHOW_OPS_SENIOR_PAGE_KEYS,
 } from "@/lib/show-ops/nav";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -58,7 +58,7 @@ export default async function ShowOpsSettingsPage({
           subtitle="Global settings and permission management are available to the owner and administrators with all-island access."
         />
         <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-          <p className="text-sm text-slate-700">Role: {ctx.role}</p>
+          <p className="text-sm text-slate-700">Role: {showOpsRoleLabel(ctx.role)}</p>
           <p className="mt-2 text-sm text-slate-700">
             Islands:{" "}
             {ctx.allowedIslands === null
@@ -188,10 +188,11 @@ export default async function ShowOpsSettingsPage({
               defaultValue="booker"
               className="mt-1 w-full rounded-lg border px-3 py-2"
             >
-              <option value="booker">Booker — takes bookings</option>
-              <option value="office">Office — bookings + operations</option>
-              <option value="finance">Finance — adds invoicing</option>
-              <option value="admin">Admin — full access</option>
+              {(["booker", "office", "finance", "admin"] as const).map((r) => (
+                <option key={r} value={r}>
+                  {SHOW_OPS_ROLE_LABELS[r]} — {SHOW_OPS_ROLE_HELP[r]}
+                </option>
+              ))}
             </select>
           </label>
           <fieldset className="sm:col-span-3 rounded-xl border border-slate-200 p-3">
@@ -253,10 +254,11 @@ export default async function ShowOpsSettingsPage({
                 defaultValue="office"
                 className="mt-1 w-full rounded-lg border px-3 py-2"
               >
-                <option value="booker">Booker</option>
-                <option value="office">Office</option>
-                <option value="finance">Finance</option>
-                <option value="admin">Admin</option>
+                {(["booker", "office", "finance", "admin"] as const).map((r) => (
+                  <option key={r} value={r}>
+                    {SHOW_OPS_ROLE_LABELS[r]}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="sm:col-span-3">
@@ -296,7 +298,7 @@ export default async function ShowOpsSettingsPage({
                     ) : null}
                   </span>
                   <span className="flex items-center gap-3">
-                    <span className="font-medium">{m.role}</span>
+                    <span className="font-medium">{showOpsRoleLabel(m.role)}</span>
                     {(ctx.isOwner ||
                       ctx.role === "admin" ||
                       ctx.role === "owner") &&
@@ -339,13 +341,14 @@ export default async function ShowOpsSettingsPage({
                       <label className="mb-2 block text-xs text-slate-600">
                         Role
                         <select name="role" defaultValue={m.role} className="mt-1 block w-full max-w-xs rounded-lg border px-2 py-1.5 text-sm">
-                          <option value="booker">Booker — takes bookings</option>
-                          <option value="office">Office — bookings + operations</option>
-                          <option value="finance">Finance — adds invoicing, expenses and P&amp;L</option>
-                          <option value="admin">Admin — full access</option>
+                          {(["booker", "office", "finance", "admin"] as const).map((r) => (
+                            <option key={r} value={r}>
+                              {SHOW_OPS_ROLE_LABELS[r]} — {SHOW_OPS_ROLE_HELP[r]}
+                            </option>
+                          ))}
                         </select>
                         <span className="mt-1 block text-[11px] text-slate-500">
-                          Money pages (Invoicing with expenses and P&amp;L, Reports, Dashboard) are only visible if ticked below; Invoicing also needs the Finance or Admin role.
+                          Money pages (Invoicing with expenses and P&amp;L, Reports, Dashboard) are only visible if ticked below; Invoicing also needs the Admin or Superadmin role. Shows, Partners, Hotels and Settings are Superadmin and Director only.
                         </span>
                       </label>
                     ) : null}

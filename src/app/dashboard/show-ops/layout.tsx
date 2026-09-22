@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PrintStamp } from "@/components/show-ops/print-stamp";
+import { showOpsRoleLabel } from "@/lib/show-ops/nav";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
 import { getShowOpsRenderContext } from "@/lib/show-ops/access";
@@ -37,7 +38,7 @@ export default async function ShowOpsLayout({
     >
       <PrintStamp />
       <p className="text-xs text-slate-500 print:hidden">
-        Your access: {ctx.role} ·{" "}
+        Your access: {showOpsRoleLabel(ctx.role)} ·{" "}
         {ctx.allowedIslands === null
           ? "All islands"
           : ctx.allowedIslands.length

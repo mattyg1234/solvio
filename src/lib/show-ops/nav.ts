@@ -105,6 +105,33 @@ export const SHOW_OPS_PAGE_KEYS = [
 export const SHOW_OPS_LEGACY_PAGE_KEYS = { stats: "reports" } as const satisfies Record<string, ShowOpsPageKey>;
 export type ShowOpsLegacyPageKey = keyof typeof SHOW_OPS_LEGACY_PAGE_KEYS;
 
+/**
+ * Joel's names for the roles (17 Sept 2026): Directors, Superadmin, Admin,
+ * Reservation. The database keeps its own keys; only what people read changes.
+ */
+export const SHOW_OPS_ROLE_LABELS: Record<string, string> = {
+  owner: "Director",
+  admin: "Superadmin",
+  finance: "Admin",
+  office: "Reservation (ops)",
+  booker: "Reservation",
+  seller: "Partner",
+};
+
+/** What each role is for, in the words the office uses. Shown next to the label in the role pickers. */
+export const SHOW_OPS_ROLE_HELP: Record<string, string> = {
+  owner: "everything, and the account itself",
+  admin: "everything: shows, partners, hotels, settings, permanent bus table",
+  finance: "office and money: bookings, calendar, invoicing, reports, night lists, buses",
+  office: "bookings, door, night lists, buses, outlook, reports",
+  booker: "takes bookings, works the door and the night lists",
+  seller: "books through their own link only",
+};
+
+export function showOpsRoleLabel(role: string | null | undefined): string {
+  return SHOW_OPS_ROLE_LABELS[String(role ?? "")] ?? String(role ?? "");
+}
+
 /** Catalogue management and settings cannot be delegated below admin. */
 export const SHOW_OPS_SENIOR_PAGE_KEYS: readonly ShowOpsPageKey[] = ["shows", "partners", "hotels", "settings"];
 
