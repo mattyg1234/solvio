@@ -20,6 +20,7 @@ import {
   showOpsArrivalMark,
 } from "@/lib/show-ops/calc";
 import { defaultCancellationCharge, showOpsTodayIso } from "@/lib/show-ops/cancellation";
+import { confirmationAvailableFor } from "@/lib/show-ops/confirmation-pdf";
 import {
   formatBookingChanges,
   formatBookingHistoryWhen,
@@ -348,6 +349,19 @@ export default async function EditBookingPage({
             />
           </div>
         )}
+        {!booking.cancelled_at && confirmationAvailableFor(booking.island) ? (
+          <p className="mt-4">
+            <a
+              href={`/dashboard/show-ops/bookings/${booking.id}/confirmation.pdf`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-300 hover:bg-slate-50"
+            >
+              🖨 Print confirmation
+            </a>
+            <span className="ml-2 text-xs text-slate-500">Ruth&apos;s guest confirmation for {booking.island} (opens as a PDF).</span>
+          </p>
+        ) : null}
         {booking.cancelled_at ? null : (
           <ShowOpsBookingForm
             mode="edit"

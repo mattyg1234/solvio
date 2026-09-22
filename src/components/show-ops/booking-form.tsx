@@ -848,6 +848,11 @@ export function ShowOpsBookingForm({
           if (mode === "create") {
             // Read-back panel: the ref and the pick-up the guest is waiting to hear.
             setSaved({
+              id: res.id ?? null,
+              confirmationHref:
+                res.id && ["Tenerife", "Lanzarote"].includes(String(product?.island ?? ""))
+                  ? `/dashboard/show-ops/bookings/${encodeURIComponent(res.id)}/confirmation.pdf`
+                  : null,
               ref: res.message ?? "",
               show: product?.name ?? "",
               date: showDate,
@@ -2097,6 +2102,10 @@ function PriceLine({
 }
 
 type SavedBooking = {
+  /** Row id — the printed confirmation route needs it. */
+  id: string | null;
+  /** Ruth's printed confirmation exists for Tenerife and Lanzarote only. */
+  confirmationHref: string | null;
   ref: string;
   show: string;
   date: string;
@@ -2202,6 +2211,16 @@ function BookingSavedPanel({
         >
           Take another booking
         </button>
+        {saved.confirmationHref ? (
+          <a
+            href={saved.confirmationHref}
+            target="_blank"
+            rel="noopener"
+            className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            Print confirmation
+          </a>
+        ) : null}
         <button
           type="button"
           onClick={() => window.print()}
