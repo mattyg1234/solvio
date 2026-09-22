@@ -98,12 +98,21 @@ export default async function ShowOpsHomePage({
     .eq("business_id", ctx.business.id)
     .eq("billing_mode", "invoice")
     .is("invoice_id", null)
-    .is("cancelled_at", null)
+    // Approved late cancellations stay on the invoice in full.
+    .or("cancelled_at.is.null,cancel_charge.eq.charge")
     .gte("show_date", period.start)
     .lte("show_date", period.end);
   if (island) uninvoicedQuery = uninvoicedQuery.eq("island", island);
 
-  const [{ data: bookings }, { data: monthBookings }, { data: unpaidDeposits }, { data: busOrders }, { data: invoices }, { data: products }, { data: stops }, uninvoiced] =
+  let cancelRequestsQuery = ctx.supabase
+    .from("show_bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", ctx.business.id)
+    .eq("cancel_request_status", "pending")
+    .is("cancelled_at", null);
+  if (island) cancelRequestsQuery = cancelRequestsQuery.eq("island", island);
+
+  const [{ data: bookings }, { data: monthBookings }, { data: unpaidDeposits }, { data: busOrders }, { data: invoices }, { data: products }, { data: stops }, uninvoiced, cancelRequests] =
     await Promise.all([
       weekQuery,
       monthQuery,
@@ -131,6 +140,7 @@ export default async function ShowOpsHomePage({
       ctx.supabase.from("show_products").select("id,name,island,capacity,active,run_weekdays").eq("business_id", ctx.business.id),
       ctx.supabase.from("show_bus_stops").select("id,island,resort").eq("business_id", ctx.business.id),
       uninvoicedQuery,
+      cancelRequestsQuery,
     ]);
 
   const { data: myProfile } = await ctx.supabase
@@ -157,6 +167,7 @@ export default async function ShowOpsHomePage({
     guestStripeEnabled: ctx.config.guest_stripe_enabled,
     monthBookings: monthBookings ?? [],
     uninvoicedCount: uninvoiced.count ?? 0,
+    cancelRequests: cancelRequests.count ?? 0,
     invoicePeriodLabel: period.label,
   });
 

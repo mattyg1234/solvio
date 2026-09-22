@@ -68,6 +68,7 @@ export default async function AllBookingsPage({
     to?: string;
     pay?: string;
     cancelled?: string;
+    requests?: string;
     page?: string;
     include_cancelled?: string;
     show?: string;
@@ -87,6 +88,7 @@ export default async function AllBookingsPage({
   const island = sp.island || "";
   const showFilter = sp.show || "";
   const door = sp.door || "";
+  const requestsOnly = sp.requests === "1";
   const allDates = sp.all === "1" && !sp.from && !sp.to;
   const tonightOnly = Boolean(sp.date) && !sp.from && !sp.to && !allDates;
   const date = tonightOnly ? sp.date || today : "";
@@ -104,7 +106,7 @@ export default async function AllBookingsPage({
   let query = ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel,payment_method,pickup_kind",
+      "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel,payment_method,pickup_kind,cancel_request_status",
       { count: "exact" },
     )
     .eq("business_id", ctx.business.id)
@@ -125,6 +127,7 @@ export default async function AllBookingsPage({
   if (from) query = query.gte("show_date", from);
   if (to) query = query.lte("show_date", to);
   if (showFilter) query = query.eq("show_name", showFilter);
+  if (requestsOnly) query = query.eq("cancel_request_status", "pending");
   if (door === "in") query = query.not("arrived_at", "is", null);
   if (door === "absent") query = query.eq("no_show", true);
   if (door === "cash") query = query.eq("door_pay_method", "cash");
@@ -183,6 +186,7 @@ export default async function AllBookingsPage({
     if (pay) params.set("pay", pay);
     if (showFilter) params.set("show", showFilter);
     if (door) params.set("door", door);
+    if (requestsOnly) params.set("requests", "1");
     if (allDates) params.set("all", "1");
     if (sp.sort) params.set("sort", sp.sort);
     if (sp.dir) params.set("dir", sp.dir);
@@ -256,6 +260,7 @@ export default async function AllBookingsPage({
       doorPay: r.door_pay_method,
       noShow: Boolean(r.no_show),
       alreadyPaid: r.billing_mode === "deposit" && r.payment_status === "paid",
+      cancelRequested: r.cancel_request_status === "pending" && !r.cancelled_at,
     };
   });
   const sort: Record<string, BookingsDeskSort> = Object.fromEntries(
@@ -273,7 +278,7 @@ export default async function AllBookingsPage({
     }),
   );
 
-  const filteredAway = Boolean(q || island || showFilter || pay || door || allDates || tonightOnly || !thisWeek);
+  const filteredAway = Boolean(q || island || showFilter || pay || door || requestsOnly || allDates || tonightOnly || !thisWeek);
 
   return (
     <div className="space-y-6">
@@ -305,6 +310,9 @@ export default async function AllBookingsPage({
         </ShowOpsPill>
         <ShowOpsPill href="/dashboard/show-ops/bookings?all=1" on={allDates}>
           All dates
+        </ShowOpsPill>
+        <ShowOpsPill href="/dashboard/show-ops/bookings?all=1&requests=1" on={requestsOnly}>
+          Cancel requests
         </ShowOpsPill>
       </div>
       {sp.created ? (

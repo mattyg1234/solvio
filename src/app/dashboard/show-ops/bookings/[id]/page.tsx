@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import {
   cancelBookingFormAction,
+  decideCancellationRequestFormAction,
   resendGuestTicketFormAction,
   updateBookingAction,
 } from "@/app/dashboard/show-ops/actions";
@@ -18,6 +19,7 @@ import {
   formatShowOpsPax,
   showOpsArrivalMark,
 } from "@/lib/show-ops/calc";
+import { defaultCancellationCharge, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import {
   formatBookingChanges,
   formatBookingHistoryWhen,
@@ -42,7 +44,7 @@ export default async function EditBookingPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string; ticket?: string; msg?: string }>;
+  searchParams: Promise<{ saved?: string; ticket?: string; msg?: string; request?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -159,6 +161,18 @@ export default async function EditBookingPage({
     childNettTotal: Number(booking.child_nett_total),
     charge: booking.no_show_charge,
   });
+  const requestPending = booking.cancel_request_status === "pending" && !booking.cancelled_at;
+  let partnerPolicy: string | null = null;
+  if (requestPending && booking.supplier_id) {
+    const { data: partner } = await ctx.supabase
+      .from("show_suppliers")
+      .select("no_show_policy")
+      .eq("id", booking.supplier_id)
+      .eq("business_id", biz)
+      .maybeSingle();
+    partnerPolicy = (partner as { no_show_policy?: string | null } | null)?.no_show_policy ?? null;
+  }
+  const suggestedCharge = defaultCancellationCharge(partnerPolicy, String(booking.show_date), showOpsTodayIso());
   let proofUrl: string | null = null;
   if (booking.no_show_proof_path) {
     const { data: signed } = await ctx.supabase.storage
@@ -190,7 +204,75 @@ export default async function EditBookingPage({
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">
             Cancelled {new Date(booking.cancelled_at).toLocaleString()}
             {booking.cancel_reason ? ` — ${booking.cancel_reason}` : ""}
+            {booking.cancel_charge === "charge" ? " · still charged in full on the partner's invoice" : ""}
           </p>
+        ) : null}
+        {sp.request ? (
+          <p
+            className={`mt-3 rounded-lg px-3 py-2 text-sm ${sp.request === "done" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}
+          >
+            {sp.msg || (sp.request === "done" ? "Done." : "That did not go through.")}
+          </p>
+        ) : null}
+        {requestPending ? (
+          <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <p className="text-sm font-semibold text-amber-950">
+              {booking.supplier_name || "The partner"} asked to cancel this booking
+              {booking.cancel_requested_at ? ` · ${formatBookingHistoryWhen(booking.cancel_requested_at)}` : ""}
+            </p>
+            <p className="mt-1 text-sm text-amber-900">
+              Reason: {booking.cancel_request_reason || "none given"}
+            </p>
+            {booking.invoice_id ? (
+              <p className="mt-2 text-sm text-amber-900">
+                This booking is already on an invoice pack — void it before approving, or decline.
+              </p>
+            ) : null}
+            <form action={decideCancellationRequestFormAction} className="mt-3 space-y-3">
+              <input type="hidden" name="id" value={booking.id} />
+              <fieldset className="space-y-1 text-sm text-slate-800">
+                <legend className="font-medium">If approved, the partner&apos;s invoice</legend>
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="charge" value="write_off" defaultChecked={suggestedCharge === "write_off"} />
+                  Nothing charged — written off
+                  {suggestedCharge === "write_off" ? <span className="text-xs text-slate-500">(within the cut-off)</span> : null}
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="charge" value="charge" defaultChecked={suggestedCharge === "charge"} />
+                  Charged in full — stays on the invoice
+                  {suggestedCharge === "charge" ? <span className="text-xs text-slate-500">(late, partner policy)</span> : null}
+                </label>
+              </fieldset>
+              <label className="block text-sm text-slate-800">
+                Note back to the partner (optional)
+                <input
+                  name="reply"
+                  maxLength={500}
+                  placeholder="e.g. Bus already ordered, cannot release the seats"
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  name="decision"
+                  value="approve"
+                  disabled={Boolean(booking.invoice_id)}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  Approve — cancel booking
+                </button>
+                <button
+                  type="submit"
+                  name="decision"
+                  value="deny"
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-300"
+                >
+                  Decline — keep booking
+                </button>
+              </div>
+            </form>
+          </div>
         ) : null}
         {booking.invoice_id && !booking.cancelled_at ? (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">

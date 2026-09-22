@@ -2,10 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createPartnerLinkBookingAction, partnerLinkContext } from "@/app/dashboard/show-ops/actions";
+import { createPartnerLinkBookingAction, partnerLinkContext, requestPartnerLinkCancellationFormAction } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { loadRatePrices } from "@/lib/show-ops/rate-cards";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
+import { cancellationRequestWindow, partnerCancellationStatus, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import { withBookedDates } from "@/lib/show-ops/nights";
@@ -21,7 +22,7 @@ export default async function PartnerLinkPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; request?: string; msg?: string }>;
 }) {
   const { token } = await params;
   const sp = await searchParams;
@@ -44,7 +45,7 @@ export default async function PartnerLinkPage({
     admin.rpc("show_ops_partner_booked_dates", { p_business_id: biz }),
     admin
       .from("show_bookings")
-      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at")
+      .select("id,booking_ref,guest_name,show_name,show_date,island,hotel_name,adults,children,infants,total_cost,nett_total,deposit_amount,billing_mode,created_at,cancelled_at,invoice_id,cancel_request_status,cancel_request_reply,cancel_charge")
       .eq("business_id", biz)
       .eq("supplier_id", supplier.id)
       .order("created_at", { ascending: false })
@@ -58,6 +59,7 @@ export default async function PartnerLinkPage({
   if (productsError) throw new Error("Could not load shows. Please refresh.");
   const bookedDates = (bookedDatesResult.error ? {} : (bookedDatesResult.data ?? {})) as Record<string, string[]>;
   const { branding } = ctx;
+  const today = showOpsTodayIso();
 
   return (
     <div
@@ -112,20 +114,68 @@ export default async function PartnerLinkPage({
 
         <section id="your-bookings" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">Your bookings</h2>
-          <p className="mb-3 text-sm text-slate-600">The last 25 bookings made under {supplier.name}.</p>
+          <p className="mb-3 text-sm text-slate-600">
+            The last 25 bookings made under {supplier.name}. Need to cancel one? Ask below up to the day before the show and {branding.displayName} will confirm.
+          </p>
+          {sp.request ? (
+            <p
+              className={`mb-3 rounded-xl px-4 py-3 text-sm ring-1 ${sp.request === "sent" ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-rose-50 text-rose-900 ring-rose-200"}`}
+              role="status"
+            >
+              {sp.msg || (sp.request === "sent" ? "Cancellation requested." : "Request not sent.")}
+            </p>
+          ) : null}
           {recent?.length ? (
             <ul className="divide-y divide-slate-100 text-sm">
               {recent.map((b) => {
                 const currency = showOpsCurrencyFor(ctx.config, b.island);
                 const pax = Number(b.adults || 0) + Number(b.children || 0) + Number(b.infants || 0);
+                const status = partnerCancellationStatus(b);
+                const window = cancellationRequestWindow(b, today);
                 return (
                   <li key={b.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
                     <span className="min-w-0">
                       <span className="font-mono text-xs text-slate-500">{b.booking_ref}</span>{" "}
-                      <span className="font-medium text-slate-900">{b.guest_name}</span>
+                      <span className={`font-medium text-slate-900${b.cancelled_at ? " line-through" : ""}`}>{b.guest_name}</span>
                       <span className="block text-xs text-slate-500">
                         {b.show_name} · {b.show_date} · {pax} pax{b.hotel_name ? ` · ${b.hotel_name}` : ""}
                       </span>
+                      {status ? (
+                        <span
+                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            status.tone === "pending"
+                              ? "bg-amber-100 text-amber-900"
+                              : status.tone === "denied"
+                                ? "bg-rose-100 text-rose-900"
+                                : "bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {status.label}
+                        </span>
+                      ) : null}
+                      {!b.cancelled_at && status?.tone !== "pending" ? (
+                        window.allowed ? (
+                          <details className="mt-1 text-xs">
+                            <summary className="cursor-pointer text-slate-500 underline decoration-dotted">Request cancellation</summary>
+                            <form action={requestPartnerLinkCancellationFormAction} className="mt-2 flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="partner_token" value={token} />
+                              <input type="hidden" name="booking_id" value={b.id} />
+                              <input
+                                name="reason"
+                                required
+                                maxLength={500}
+                                placeholder="Why? (guest changed plans, duplicate…)"
+                                className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                              />
+                              <button type="submit" className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">
+                                Send request
+                              </button>
+                            </form>
+                          </details>
+                        ) : (
+                          <span className="mt-1 block text-[11px] text-slate-400">{window.reason}</span>
+                        )
+                      ) : null}
                     </span>
                     <span className="text-right tabular-nums text-slate-700">
                       {formatShowOpsMoney(Number(b.total_cost || 0), currency)}

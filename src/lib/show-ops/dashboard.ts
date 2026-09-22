@@ -152,6 +152,8 @@ export function buildShowOpsDashboard(input: {
   monthBookings?: BookingRow[];
   uninvoicedCount?: number;
   invoicePeriodLabel?: string;
+  /** Partner cancellation requests the office has not answered. */
+  cancelRequests?: number;
 }): ShowOpsDashboardModel {
   const tonight = input.bookings.filter((b) => b.show_date === input.today);
   const week = input.bookings.filter((b) => b.show_date >= input.weekStart && b.show_date <= input.weekEnd);
@@ -382,6 +384,14 @@ export function buildShowOpsDashboard(input: {
   };
 
   const attention: ShowOpsAttentionItem[] = [];
+  if ((input.cancelRequests ?? 0) > 0) {
+    const n = input.cancelRequests ?? 0;
+    attention.push({
+      title: `${n} cancellation request${n === 1 ? "" : "s"}`,
+      detail: "Partner asked to cancel — approve or decline",
+      href: "/dashboard/show-ops/bookings?all=1&requests=1",
+    });
+  }
   const noShowGroups = new Map<string, { date: string; name: string; count: number }>();
   for (const b of monthRows.filter((row) => row.no_show)) {
     const key = `${b.show_date}|${b.show_name}`;

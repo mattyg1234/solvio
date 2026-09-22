@@ -81,3 +81,24 @@ test("home only lists shows that run on tonight's weekday", () => {
   );
   assert.deepEqual(dash.islands.map((i) => i.island).sort(), ["Lanzarote", "UK Tour"]);
 });
+
+test("pending partner cancellation requests show first in Needs attention", () => {
+  const base = {
+    today: "2026-08-14",
+    weekStart: "2026-08-08",
+    weekEnd: "2026-08-28",
+    currency: "eur" as const,
+    bookings: [],
+    unpaidDeposits: [],
+    busOrders: [],
+    invoices: [],
+    products: [],
+    stripeReady: true,
+    guestStripeEnabled: false,
+  };
+  assert.equal(buildShowOpsDashboard(base).attention.some((a) => /cancellation request/.test(a.title)), false);
+  const dash = buildShowOpsDashboard({ ...base, cancelRequests: 2 });
+  assert.equal(dash.attention[0].title, "2 cancellation requests");
+  assert.equal(dash.attention[0].href, "/dashboard/show-ops/bookings?all=1&requests=1");
+  assert.equal(buildShowOpsDashboard({ ...base, cancelRequests: 1 }).attention[0].title, "1 cancellation request");
+});

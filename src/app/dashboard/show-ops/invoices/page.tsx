@@ -157,7 +157,8 @@ export default async function InvoicesPage({
       .eq("business_id", ctx.business.id)
       .eq("billing_mode", "invoice")
       .is("invoice_id", null)
-      .is("cancelled_at", null)
+      // Approved late cancellations stay on the invoice in full.
+      .or("cancelled_at.is.null,cancel_charge.eq.charge")
       .gte("show_date", periodStart)
       .lte("show_date", periodEnd)
       .order("supplier_name")

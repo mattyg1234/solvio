@@ -37,6 +37,7 @@ import {
   round2,
   showOpsAmountDue,
 } from "@/lib/show-ops/calc";
+import { cancellationRequestWindow, cancelledChargeNote, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { normalisePartnerIslands } from "@/lib/show-ops/partners";
 import { createShowOpsDepositCheckoutSession } from "@/lib/show-ops/deposit-checkout";
 import {
@@ -2170,6 +2171,86 @@ export async function cancelBookingFormAction(formData: FormData): Promise<void>
   redirect("/dashboard/show-ops/bookings?cancelled=1");
 }
 
+/**
+ * Office answers a partner's cancellation request. Approve cancels the booking
+ * (off lists, seat freed); "charge" keeps it on the partner's invoice in full,
+ * "write_off" drops it. Deny leaves the booking live and tells the partner why.
+ */
+export async function decideCancellationRequestAction(
+  formData: FormData,
+): Promise<{ ok: true; id: string; message: string } | { ok: false; message: string }> {
+  const ctx = await requireShowOpsAction("office", "bookings");
+  const id = String(formData.get("id") ?? "").trim();
+  const decision = String(formData.get("decision") ?? "").trim();
+  const charge = String(formData.get("charge") ?? "").trim();
+  const reply = String(formData.get("reply") ?? "").trim().slice(0, 500);
+  if (!id) return { ok: false, message: "Missing booking id." };
+  if (decision !== "approve" && decision !== "deny") return { ok: false, message: "Choose approve or decline." };
+
+  const { data: existing } = await ctx.supabase
+    .from("show_bookings")
+    .select("id,booking_ref,invoice_id,cancelled_at,product_id,show_date,cancel_request_status,cancel_request_reason")
+    .eq("id", id)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  if (!existing) return { ok: false, message: "Booking not found." };
+  if (existing.cancel_request_status !== "pending") return { ok: false, message: "No cancellation request is waiting on this booking." };
+  if (existing.cancelled_at) return { ok: false, message: "Already cancelled." };
+
+  const now = new Date().toISOString();
+  if (decision === "deny") {
+    const { error } = await ctx.supabase
+      .from("show_bookings")
+      .update({
+        cancel_request_status: "denied",
+        cancel_request_decided_at: now,
+        cancel_request_decided_by: ctx.user.id,
+        cancel_request_reply: reply || null,
+        updated_by: ctx.user.id,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .eq("business_id", ctx.business.id);
+    if (error) return { ok: false, message: error.message };
+    revalidateShowOps();
+    return { ok: true, id, message: `${existing.booking_ref} stays booked — partner told.` };
+  }
+
+  if (existing.invoice_id) return { ok: false, message: "Void the invoice pack first, then approve." };
+  if (charge !== "charge" && charge !== "write_off") return { ok: false, message: "Choose charge or write off." };
+  const reason = `Partner request: ${existing.cancel_request_reason || "no reason given"}`;
+  const { error } = await ctx.supabase
+    .from("show_bookings")
+    .update({
+      cancelled_at: now,
+      cancelled_by: ctx.user.id,
+      cancel_reason: reason,
+      cancel_charge: charge,
+      cancel_request_status: "approved",
+      cancel_request_decided_at: now,
+      cancel_request_decided_by: ctx.user.id,
+      cancel_request_reply: reply || null,
+      updated_by: ctx.user.id,
+      updated_at: now,
+    })
+    .eq("id", id)
+    .eq("business_id", ctx.business.id);
+  if (error) return { ok: false, message: error.message };
+  await pushChannelAvailability(ctx.business.id, { productId: existing.product_id }, [existing.show_date ? String(existing.show_date) : null]);
+  revalidateShowOps();
+  return {
+    ok: true,
+    id,
+    message: charge === "charge" ? `${existing.booking_ref} cancelled — still charged in full.` : `${existing.booking_ref} cancelled — written off.`,
+  };
+}
+
+export async function decideCancellationRequestFormAction(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "").trim();
+  const res = await decideCancellationRequestAction(formData);
+  redirect(`/dashboard/show-ops/bookings/${id}?request=${res.ok ? "done" : "failed"}&msg=${encodeURIComponent(res.message)}`);
+}
+
 async function provisionAndEmailSeller(opts: {
   businessId: string; supplierId: string; supplierName: string;
   email: string; merchantName: string; invitedBy?: string;
@@ -2391,6 +2472,63 @@ export async function createPartnerLinkBookingAction(
   }
   console.error("[partner-link] booking ref contention after 5 attempts:", supplier.id);
   return { ok: false, message: "The desk is busy right now — please try again in a moment." };
+}
+
+/**
+ * A partner asks to cancel one of their own bookings from their link page.
+ * Allowed up to the day before the show; the office decides from Needs attention.
+ */
+export async function requestPartnerLinkCancellationAction(
+  formData: FormData,
+): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  const link = await partnerLinkContext(formData.get("partner_token"));
+  if (!link) return { ok: false, message: "This booking link is no longer valid. Ask the office for a new one." };
+  const { ctx, supplier, admin } = link;
+  const bookingId = String(formData.get("booking_id") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 500);
+  if (!/^[0-9a-f-]{36}$/i.test(bookingId)) return { ok: false, message: "Booking not found." };
+  if (!reason) return { ok: false, message: "Tell the office why (a few words is fine)." };
+
+  const { data: booking } = await admin
+    .from("show_bookings")
+    .select("id,booking_ref,show_date,cancelled_at,invoice_id,cancel_request_status")
+    .eq("id", bookingId)
+    .eq("business_id", ctx.business.id)
+    .eq("supplier_id", supplier.id)
+    .maybeSingle();
+  if (!booking) return { ok: false, message: "Booking not found." };
+  const window = cancellationRequestWindow(booking, showOpsTodayIso());
+  if (!window.allowed) return { ok: false, message: window.reason };
+
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from("show_bookings")
+    .update({
+      cancel_requested_at: now,
+      cancel_request_reason: reason,
+      cancel_request_status: "pending",
+      cancel_request_decided_at: null,
+      cancel_request_decided_by: null,
+      cancel_request_reply: null,
+      updated_at: now,
+    })
+    .eq("id", booking.id)
+    .eq("business_id", ctx.business.id)
+    .eq("supplier_id", supplier.id)
+    .is("cancelled_at", null);
+  if (error) {
+    console.error("[partner-link] cancellation request failed:", supplier.id, booking.id, error.code, error.message);
+    return { ok: false, message: "Could not send the request — please try again." };
+  }
+  revalidatePath(`/p/${String(formData.get("partner_token"))}`);
+  revalidateShowOps();
+  return { ok: true, message: `Cancellation requested for ${booking.booking_ref}. The office will confirm.` };
+}
+
+export async function requestPartnerLinkCancellationFormAction(formData: FormData): Promise<void> {
+  const token = String(formData.get("partner_token") ?? "");
+  const res = await requestPartnerLinkCancellationAction(formData);
+  redirect(`/p/${encodeURIComponent(token)}?request=${res.ok ? "sent" : "failed"}&msg=${encodeURIComponent(res.message)}#your-bookings`);
 }
 
 export async function inviteSellerColleagueAction(
@@ -2817,7 +2955,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     .eq("billing_mode", "invoice")
     .is("invoice_id", null)
     .or("legacy_status.is.null,legacy_status.neq.Invoiced") // already invoiced in Lanzasoft
-    .is("cancelled_at", null)
+    .or("cancelled_at.is.null,cancel_charge.eq.charge") // approved late cancellations are still billed
     .gte("show_date", period_start)
     .lte("show_date", period_end);
   if (island) q = q.eq("island", island);
@@ -2927,7 +3065,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     .in("id", ids)
     .eq("business_id", ctx.business.id)
     .is("invoice_id", null)
-    .is("cancelled_at", null)
+    .or("cancelled_at.is.null,cancel_charge.eq.charge")
     .select("id");
   if (claimErr) {
     await ctx.supabase.from("show_invoices").delete().eq("id", inv.id);
@@ -2983,7 +3121,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       adult_nett_total: money.adultNettTotal,
       child_nett_total: money.childNettTotal,
       line_total: money.lineTotal,
-      notes: billed.invoiceNote,
+      notes: cancelledChargeNote(b as { show_date: string; cancelled_at?: string | null; cancel_charge?: string | null }) ?? billed.invoiceNote,
       description: `${b.guest_name}${b.booking_ref ? ` · ${b.booking_ref}` : ""}`,
       quantity: money.quantity,
       unit_price: money.unitPrice,
@@ -3092,7 +3230,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
     .eq("billing_mode", "invoice")
     .is("invoice_id", null)
     .or("legacy_status.is.null,legacy_status.neq.Invoiced") // already invoiced in Lanzasoft
-    .is("cancelled_at", null)
+    .or("cancelled_at.is.null,cancel_charge.eq.charge") // approved late cancellations are still billed
     .gte("show_date", period_start)
     .lte("show_date", period_end);
   if (island) q = q.eq("island", island);

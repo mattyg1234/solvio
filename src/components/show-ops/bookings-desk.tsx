@@ -44,7 +44,17 @@ export type BookingsDeskRow = {
   paymentMethod?: string | null;
   /** bus / private / own_way, when the page passes it. */
   pickupKind?: string | null;
+  /** The partner asked to cancel and the office has not answered yet. */
+  cancelRequested?: boolean;
 };
+
+function CancelRequestedBadge() {
+  return (
+    <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+      Cancel requested
+    </span>
+  );
+}
 
 function transportLabel(row: BookingsDeskRow): string {
   if (row.transport) return "Bus";
@@ -196,6 +206,11 @@ function DoorCard({ row, open, onToggle }: { row: BookingsDeskRow; open: boolean
               {row.diet}
             </span>
           ) : null}
+          {row.cancelRequested ? (
+            <span className="mt-1 block">
+              <CancelRequestedBadge />
+            </span>
+          ) : null}
         </span>
         <span className="shrink-0 text-right">
           <span className="block text-lg font-semibold tabular-nums text-slate-900">{row.pax}</span>
@@ -322,6 +337,11 @@ function BookingRows({
         <td className="px-1.5 py-2 font-medium text-slate-900">
           {row.guestName}
           {row.hotelName ? <span className="block text-xs font-normal text-slate-500">{row.hotelName}</span> : null}
+          {row.cancelRequested ? (
+            <span className="mt-0.5 block">
+              <CancelRequestedBadge />
+            </span>
+          ) : null}
         </td>
         <td className="px-1.5 py-2">
           {row.showName}
