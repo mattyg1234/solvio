@@ -32,6 +32,7 @@ export type MasterSupplierRow = {
   deposit_percent: number;
   invoice_nett_percent: number;
   no_show_policy?: string | null;
+  round_up?: boolean | null;
   sale_rate_id?: string | null;
   invoice_rate_id?: string | null;
   tax_id?: string | null;
@@ -56,6 +57,7 @@ const MASTER_SUPPLIER_BULK_FIELDS = [
   "bulk_invoice_nett_percent",
   "bulk_add_island",
   "bulk_no_show_policy",
+  "bulk_round_up",
   "bulk_active",
 ] as const;
 
@@ -282,6 +284,11 @@ export function MasterSuppliersForm({
           </label>
           <label className="text-xs font-medium text-slate-600">
             No-show default
+            <select name="bulk_round_up" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" aria-label="Round up commission">
+              <option value="">Round up: leave as is</option>
+              <option value="1">Round up commission: on</option>
+              <option value="0">Round up commission: off</option>
+            </select>
             <select name="bulk_no_show_policy" className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
               <option value="">Keep</option>
               <option value="charge">Charge anyway</option>
@@ -354,6 +361,7 @@ export function MasterSuppliersForm({
                   {s.billing_mode === "deposit"
                     ? `deposit ${s.deposit_percent}%`
                     : `invoice nett ${s.invoice_nett_percent}%`}
+                  {s.round_up ? " · rounds up" : ""}
                   {s.email ? ` · ${s.email}` : ""}
                 </span>
               </span>
@@ -469,6 +477,13 @@ export function MasterSuppliersForm({
               </label>
                 }
               />
+              <label className="flex items-start gap-2 self-end pb-2 text-xs text-slate-700" title="Commission per ticket rounds up to the next whole pound or euro (10.99 becomes 11); the nett we invoice drops by the same pennies">
+                <input type="checkbox" name={`${prefix}round_up`} value="1" defaultChecked={Boolean(s.round_up)} className="mt-0.5" />
+                <span>
+                  <span className="font-medium">Round up commission</span>
+                  <span className="block text-[11px] text-slate-500">To the nearest whole £ / € on every ticket</span>
+                </span>
+              </label>
               <label className="text-xs font-medium text-slate-600">
                 No-show default
                 <select

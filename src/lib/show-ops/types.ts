@@ -159,6 +159,8 @@ export type ShowSupplier = {
   legal_name: string | null;
   invoice_address: string | null;
   no_show_policy: "charge" | "write_off";
+  /** Joel's round-up tick: per-ticket commission rounds up to the whole pound or euro. */
+  round_up?: boolean | null;
   active: boolean;
   /** Rate cards (Lanzasoft tarifas). The sale card prices bookings; the invoice card is reference only. */
   sale_rate_id?: string | null;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, Download, Sparkles, TrendingUp, Trophy, Users } from "lucide-react";
 
+import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
@@ -52,6 +53,8 @@ export default async function ReportsPage({
     stats_island?: string;
     /** Daily sales block: YYYY-MM-DD, office-local. Defaults to today. */
     sales_date?: string;
+    /** Partner sales table: name (default, A to Z), type, hotel, bookings, pax, revenue. Print keeps it. */
+    partners_sort?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -74,6 +77,9 @@ export default async function ReportsPage({
   const separateCurrencies = availableCurrencies.length > 1;
   const island = availableIslands.includes(sp.island || "") ? sp.island! : separateCurrencies ? availableIslands[0] : "";
   const partnerType = sp.partner_type || "";
+  const PARTNER_SORTS = ["name", "type", "hotel", "bookings", "pax", "revenue"] as const;
+  type PartnerSort = (typeof PARTNER_SORTS)[number];
+  const partnersSort: PartnerSort = (PARTNER_SORTS as readonly string[]).includes(sp.partners_sort || "") ? (sp.partners_sort as PartnerSort) : "name";
 
   // Office-local today — the same clock the door and the 07:00 digest run on.
   const todayLocal = isoDateInTimeZone(new Date(), SHOW_OPS_OFFICE_TZ);
@@ -95,6 +101,7 @@ export default async function ReportsPage({
       stats_month: sp.stats_month,
       stats_island: sp.stats_island,
       sales_date: sp.sales_date,
+      partners_sort: sp.partners_sort,
       ...over,
     };
     return Object.entries(all).filter((e): e is [string, string] => Boolean(e[1]));
@@ -274,6 +281,8 @@ export default async function ReportsPage({
   const capacityPct = capacitySlots ? round2((capacityPax / capacitySlots) * 100) : null;
 
   const byPartner = new Map<string, { pax: number; revenue: number; count: number; type: string }>();
+  // Joel: partner sales by hotel — one row per partner and hotel, A to Z by hotel.
+  const byPartnerHotel = new Map<string, { partner: string; type: string; hotel: string; pax: number; revenue: number; count: number }>();
   const byHotel = new Map<string, { pax: number; count: number }>();
   const byShow = new Map<string, { pax: number; count: number }>();
   const byPartnerType = new Map<string, { pax: number; revenue: number; count: number }>();
@@ -295,6 +304,12 @@ export default async function ReportsPage({
     byPartnerType.set(type, pt);
 
     const hotel = b.hotel_name || "—";
+    const phKey = `${partner}\u0000${hotel}`;
+    const ph = byPartnerHotel.get(phKey) || { partner, type, hotel, pax: 0, revenue: 0, count: 0 };
+    ph.pax += paxTotal(b.adults, b.children, b.infants);
+    ph.revenue += Number(b.total_cost);
+    ph.count += 1;
+    byPartnerHotel.set(phKey, ph);
     const h = byHotel.get(hotel) || { pax: 0, count: 0 };
     h.pax += paxTotal(b.adults, b.children, b.infants);
     h.count += 1;
@@ -309,6 +324,20 @@ export default async function ReportsPage({
     byNight.set(b.show_date, (byNight.get(b.show_date) || 0) + paxTotal(b.adults, b.children, b.infants));
   }
 
+  const partnerRows = [...byPartner.entries()].sort(([an, a], [bn, b]) => {
+    switch (partnersSort) {
+      case "type": return a.type.localeCompare(b.type) || an.localeCompare(bn);
+      case "bookings": return b.count - a.count || an.localeCompare(bn);
+      case "pax": return b.pax - a.pax || an.localeCompare(bn);
+      case "revenue": return b.revenue - a.revenue || an.localeCompare(bn);
+      default: return an.localeCompare(bn, "en", { sensitivity: "base" });
+    }
+  });
+  const partnerHotelRows = [...byPartnerHotel.values()].sort(
+    (a, b) => a.hotel.localeCompare(b.hotel, "en", { sensitivity: "base" }) || a.partner.localeCompare(b.partner, "en", { sensitivity: "base" }),
+  );
+  const partnerSortHref = (key: PartnerSort) => hrefWith({ partners_sort: key === "name" ? undefined : key }, "#partners-table");
+  const partnerSortLabel: Record<PartnerSort, string> = { name: "partner A to Z", type: "partner type", hotel: "hotel A to Z", bookings: "bookings", pax: "pax", revenue: "revenue" };
   const topPartners = [...byPartner.entries()].sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
   const topHotels = [...byHotel.entries()].sort((a, b) => b[1].pax - a[1].pax).slice(0, 5);
   const lowPartners = [...byPartner.entries()].sort((a, b) => a[1].count - b[1].count).slice(0, 5);
@@ -391,10 +420,13 @@ export default async function ReportsPage({
             title="Reports"
             subtitle={`${range.label}${island ? ` · ${island}` : ""}${partnerType ? ` · ${partnerType}` : ""}`}
             actions={
-              <a href={exportHref} className={SHOW_OPS_GHOST_BTN}>
-                <Download className="mr-2 h-4 w-4" aria-hidden />
-                Export
-              </a>
+              <span className="flex flex-wrap gap-2 print:hidden">
+                <PrintButton label="Print report" />
+                <a href={exportHref} className={SHOW_OPS_GHOST_BTN}>
+                  <Download className="mr-2 h-4 w-4" aria-hidden />
+                  Export
+                </a>
+              </span>
             }
           />
         <div className="flex flex-wrap gap-2">
@@ -626,7 +658,7 @@ export default async function ReportsPage({
             View all partners →
           </Link>
         </div>
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 overflow-x-auto print:overflow-visible">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs font-semibold uppercase tracking-wide text-slate-400">
               <tr>
@@ -686,7 +718,7 @@ export default async function ReportsPage({
       <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h3 className="font-semibold">Hotels (everyone)</h3>
         <p className="mt-1 text-sm text-slate-600">Sorted by people booked in this period.</p>
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 overflow-x-auto print:overflow-visible">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>
@@ -715,8 +747,8 @@ export default async function ReportsPage({
         </div>
       </div>
 
-      <div id="partners-table" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-        <h3 className="font-semibold">Sales by show / partner</h3>
+      <div id="partners-table" className="scroll-mt-24 rounded-2xl bg-white p-5 ring-1 ring-slate-200 print:break-before-page">
+        <h3 className="font-semibold">Sales by show</h3>
         <ul className="mt-2 divide-y text-sm">
           {[...byShow.entries()]
             .sort((a, b) => b[1].pax - a[1].pax)
@@ -729,21 +761,61 @@ export default async function ReportsPage({
               </li>
             ))}
         </ul>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="py-1">Partner</th>
-                <th>Type</th>
-                <th>Bookings</th>
-                <th>Pax</th>
-                <th>Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...byPartner.entries()]
-                .sort((a, b) => b[1].revenue - a[1].revenue)
-                .map(([name, v]) => (
+        <div className="mt-5 flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-semibold">Partner sales</h3>
+          <p className="text-xs text-slate-500">
+            Sorted by {partnerSortLabel[partnersSort]} · {range.label}{island ? ` · ${island}` : ""} · printing keeps this order
+          </p>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2 print:hidden">
+          {PARTNER_SORTS.map((key) => (
+            <ShowOpsPill key={key} href={partnerSortHref(key)} on={partnersSort === key}>
+              {key === "name" ? "A to Z" : key === "type" ? "Partner type" : key === "hotel" ? "By hotel" : key.charAt(0).toUpperCase() + key.slice(1)}
+            </ShowOpsPill>
+          ))}
+        </div>
+        <div className="mt-3 overflow-x-auto print:overflow-visible">
+          {partnersSort === "hotel" ? (
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-1">Hotel</th>
+                  <th>Partner</th>
+                  <th>Type</th>
+                  <th>Bookings</th>
+                  <th>Pax</th>
+                  <th>Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partnerHotelRows.map((r) => (
+                  <tr key={`${r.hotel}|${r.partner}`} className="border-t">
+                    <td className="py-1.5">{r.hotel}</td>
+                    <td>{r.partner}</td>
+                    <td>{r.type}</td>
+                    <td>{r.count}</td>
+                    <td>{r.pax.toLocaleString("en-GB")}</td>
+                    <td>{money(round2(r.revenue))}</td>
+                  </tr>
+                ))}
+                {!partnerHotelRows.length ? (
+                  <tr><td colSpan={6} className="py-4 text-slate-500">No bookings in this period.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          ) : (
+            <table className="min-w-full text-left text-sm">
+              <thead className="text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="py-1"><Link href={partnerSortHref("name")} className={partnersSort === "name" ? "underline" : "hover:underline"}>Partner</Link></th>
+                  <th><Link href={partnerSortHref("type")} className={partnersSort === "type" ? "underline" : "hover:underline"}>Type</Link></th>
+                  <th><Link href={partnerSortHref("bookings")} className={partnersSort === "bookings" ? "underline" : "hover:underline"}>Bookings</Link></th>
+                  <th><Link href={partnerSortHref("pax")} className={partnersSort === "pax" ? "underline" : "hover:underline"}>Pax</Link></th>
+                  <th><Link href={partnerSortHref("revenue")} className={partnersSort === "revenue" ? "underline" : "hover:underline"}>Revenue</Link></th>
+                </tr>
+              </thead>
+              <tbody>
+                {partnerRows.map(([name, v]) => (
                   <tr key={name} className="border-t">
                     <td className="py-1.5">{name}</td>
                     <td>{v.type}</td>
@@ -752,8 +824,12 @@ export default async function ReportsPage({
                     <td>{money(round2(v.revenue))}</td>
                   </tr>
                 ))}
-            </tbody>
-          </table>
+                {!partnerRows.length ? (
+                  <tr><td colSpan={5} className="py-4 text-slate-500">No bookings in this period.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

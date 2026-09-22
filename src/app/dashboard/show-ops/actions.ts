@@ -542,6 +542,7 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
     legal_name: String(formData.get("legal_name") ?? "").trim() || null,
     invoice_address: String(formData.get("invoice_address") ?? "").trim() || null,
     no_show_policy: resolveNoShowCharge(String(formData.get("no_show_policy") ?? ""), null),
+    round_up: String(formData.get("round_up") ?? "") === "1",
     active: String(formData.get("active") ?? "1") === "1",
     updated_at: new Date().toISOString(),
   };
@@ -741,6 +742,8 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
     if (nett) patch.invoice_nett_percent = Number(nett);
     const noShow = String(formData.get("bulk_no_show_policy") ?? "").trim();
     if (noShow === "charge" || noShow === "write_off") patch.no_show_policy = noShow;
+    const roundUp = String(formData.get("bulk_round_up") ?? "");
+    if (roundUp === "1" || roundUp === "0") patch.round_up = roundUp === "1";
     const active = String(formData.get("bulk_active") ?? "");
     if (active === "1" || active === "0") patch.active = active === "1";
     const addIsland = String(formData.get("bulk_add_island") ?? "").trim();
@@ -791,6 +794,7 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
       deposit_percent: Number(formData.get(p + "deposit_percent") ?? 30),
       invoice_nett_percent: Number(formData.get(p + "invoice_nett_percent") ?? 100),
       no_show_policy: resolveNoShowCharge(String(formData.get(p + "no_show_policy") ?? ""), null),
+      round_up: String(formData.get(p + "round_up") ?? "") === "1",
       sale_rate_id: String(formData.get(p + "sale_rate_id") ?? "").trim() || null,
       invoice_rate_id: String(formData.get(p + "invoice_rate_id") ?? "").trim() || null,
       email: (() => {

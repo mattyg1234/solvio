@@ -25,6 +25,8 @@ export type ShowOpsPricingSnapshot = {
   child_nett_unit: number;
   infant_nett_unit?: number;
   invoice_nett_percent: number;
+  /** Partner's commission rounded up to the whole unit (Joel's "round up" tick) when the units were priced. */
+  round_up?: boolean;
   deposit_percent: number;
   transport_required: boolean;
   transport_supplement: number;
@@ -61,13 +63,26 @@ export function unitNett(gross: number, invoiceNettPercent: number): number {
   return round2(gross * (pct / 100));
 }
 
+/**
+ * Joel's "round up" tick: the partner's per-ticket commission rounds UP to the
+ * next whole pound or euro (10.99 → 11), so the nett we invoice drops by the
+ * same pennies. Off, it is plain unitNett.
+ */
+export function unitNettRoundedUp(gross: number, invoiceNettPercent: number, roundUp: boolean | null | undefined): number {
+  const nett = unitNett(gross, invoiceNettPercent);
+  if (!roundUp) return nett;
+  const commission = round2(num(gross) - nett);
+  const commissionUp = Math.ceil(commission - 1e-9);
+  return round2(Math.max(0, num(gross) - commissionUp));
+}
+
 export function computeBookingMoney(input: {
   adults: number;
   children: number;
   infants: number;
   extras?: ExtraSnapshot[];
   product: ShowOpsPriceProduct | null;
-  supplier: Pick<ShowSupplier, "billing_mode" | "deposit_percent" | "invoice_nett_percent"> | null;
+  supplier: (Pick<ShowSupplier, "billing_mode" | "deposit_percent" | "invoice_nett_percent"> & { round_up?: boolean | null }) | null;
   billingMode?: ShowOpsBillingMode;
   transportRequired?: boolean;
   /** Per-head bus supplement from tenant config. Adults and children only. */
@@ -113,10 +128,11 @@ export function computeBookingMoney(input: {
   const mode = input.billingMode ?? input.supplier?.billing_mode ?? "deposit";
   const depositPct = frozen ? num(frozen.deposit_percent, 30) : num(input.supplier?.deposit_percent, 30);
   const nettPct = frozen ? num(frozen.invoice_nett_percent, 100) : num(input.supplier?.invoice_nett_percent, 100);
+  const roundUp = frozen ? Boolean(frozen.round_up) : Boolean(input.supplier?.round_up);
 
-  const adultNettUnit = frozen ? round2(num(frozen.adult_nett_unit)) : unitNett(adultPrice, nettPct);
-  const childNettUnit = frozen ? round2(num(frozen.child_nett_unit)) : unitNett(childPrice, nettPct);
-  const infantNettUnit = frozen && frozen.infant_nett_unit != null ? round2(num(frozen.infant_nett_unit)) : unitNett(infantPrice, nettPct);
+  const adultNettUnit = frozen ? round2(num(frozen.adult_nett_unit)) : unitNettRoundedUp(adultPrice, nettPct, roundUp);
+  const childNettUnit = frozen ? round2(num(frozen.child_nett_unit)) : unitNettRoundedUp(childPrice, nettPct, roundUp);
+  const infantNettUnit = frozen && frozen.infant_nett_unit != null ? round2(num(frozen.infant_nett_unit)) : unitNettRoundedUp(infantPrice, nettPct, roundUp);
   const infant_nett_total = round2(infants * infantNettUnit);
   const adult_nett_total = round2(adults * adultNettUnit);
   const child_nett_total = round2(children * childNettUnit);
@@ -138,6 +154,7 @@ export function computeBookingMoney(input: {
     child_nett_unit: childNettUnit,
     infant_nett_unit: infantNettUnit,
     invoice_nett_percent: nettPct,
+    ...(roundUp ? { round_up: true } : {}),
     deposit_percent: depositPct,
     transport_required: transport,
     // A card price already includes the bus; nothing was added on top.
