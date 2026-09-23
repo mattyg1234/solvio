@@ -6,6 +6,7 @@ import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notifications/booking-whatsapp";
 import { formatShowOpsMoney, formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
+import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult, showOpsOutboundLive } from "@/lib/show-ops/outbound";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -44,6 +45,8 @@ export type GuestTicketInput = {
   privateZone?: string | null;
   /** Booking island — Tenerife / Lanzarote emails carry Ruth's confirmation PDF. */
   island?: string | null;
+  /** Operator logo for the top of the confirmation email. */
+  logoUrl?: string | null;
 };
 
 /** Total / Paid / To pay — the same three lines as the printed confirmation. */
@@ -203,6 +206,34 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
   const subject = input.updated
     ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
     : `Booking confirmation · ${input.showName} · ${input.bookingRef}`;
+  // Tenerife / Lanzarote: the email IS Ruth's confirmation, section for section.
+  if (confirmationAvailableFor(input.island)) {
+    const html = renderMhtConfirmationEmail(
+      {
+        bookingRef: input.bookingRef,
+        guestName: input.guestName,
+        showName: input.showName,
+        showDate: input.showDate,
+        adults: input.adults,
+        children: input.children,
+        infants: input.infants,
+        hotelName: input.hotelName,
+        transportRequired: input.transportRequired,
+        pickupKind: input.pickupKind,
+        pickupStopName: input.pickupStopName,
+        pickupTime: input.pickupTime,
+        privateZone: input.privateZone,
+        dietaryNotes: input.dietaryNotes,
+        billingMode: input.billingMode,
+        totalCost: input.totalCost,
+        balanceRemaining: input.balanceRemaining,
+        currency: input.currency,
+        ticketUrl: input.ticketUrl,
+      },
+      { logoUrl: input.logoUrl, merchantName: input.merchantName, updated: input.updated, extrasSummary: input.extrasSummary, showTime: showTimeLine(input), attachmentNote: attachment },
+    );
+    return { subject, html, rows };
+  }
   const html = `
       <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
         <p style="font-size:16px">Hi ${escapeHtml(input.guestName.split(" ")[0] || input.guestName)},</p>
@@ -366,5 +397,6 @@ export async function sendGuestTicketByBookingId(
     pickupKind: booking.pickup_kind,
     privateZone: booking.private_zone,
     island: booking.island,
+    logoUrl: branding.logoUrl,
   });
 }

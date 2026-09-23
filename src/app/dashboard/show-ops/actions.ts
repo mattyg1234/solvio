@@ -2065,7 +2065,7 @@ async function buildBookingFields(
  */
 async function sendGuestTicketIfRequested(
   formData: FormData,
-  ctx: { branding: { displayName: string }; config: ShowOpsConfig },
+  ctx: { branding: { displayName: string; logoUrl?: string | null }; config: ShowOpsConfig },
   f: Record<string, unknown>,
   booking_ref: string,
   token: string | null,
@@ -2099,6 +2099,7 @@ async function sendGuestTicketIfRequested(
       pickupKind: (f.pickup_kind as string | null) ?? null,
       privateZone: (f.private_zone as string | null) ?? null,
       island: (f as { island?: string | null }).island ?? null,
+      logoUrl: ctx.branding.logoUrl ?? null,
     });
   } catch (err) {
     console.error("[guest-ticket] send failed for", booking_ref, err instanceof Error ? err.message : err);
