@@ -4,6 +4,11 @@
  * chain sells Tenerife and Gran Canaria, and marking it as one island hides it
  * from the other island's booking desk.
  */
+/** MHT's own desks ("MHT Reception", "Hotel Reception"): the guest pays whatever they pay, not a % deposit. */
+export function isReceptionPartner(partnerType: string | null | undefined): boolean {
+  return /reception/i.test(String(partnerType ?? ""));
+}
+
 export function partnerIslands(partnerIsland: string | null | undefined): string[] {
   return (partnerIsland || "")
     .split(",")

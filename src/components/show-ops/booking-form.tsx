@@ -39,10 +39,11 @@ import {
 } from "@/lib/show-ops/calc";
 import { pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
 import { parseStopRunsOn, pickupStopOffered, stopRunsOnDate } from "@/lib/show-ops/bus";
-import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
+import { isReceptionPartner, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import {
   PRIVATE_ACCOMMODATIONS,
   PRIVATE_ACCOMMODATION_LABELS,
+  PRIVATE_HOTEL_OPTION,
   parsePickupKind,
   parsePrivateAccommodation,
   privatePickupLabel,
@@ -348,6 +349,8 @@ export function ShowOpsBookingForm({
     defaults.private_accommodation ?? "",
   );
   const [privateZone, setPrivateZone] = useState(defaults.private_zone ?? "");
+  const [noEmail, setNoEmail] = useState(false);
+  const [amountPaid, setAmountPaid] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(
     defaults.payment_method ?? "",
   );
@@ -562,8 +565,14 @@ export function ShowOpsBookingForm({
    * phone call usually goes.
    */
   const hotelOptions = useMemo<SearchableOption[]>(
-    () =>
-      hotelsForIsland.map((h) => {
+    () => [
+      {
+        value: PRIVATE_HOTEL_OPTION,
+        label: "Private — not a listed hotel",
+        hint: "Airbnb, villa, friends & family, unknown",
+        keywords: "private airbnb villa friends family unknown apartment",
+      },
+      ...hotelsForIsland.map((h) => {
         const stopFor = h.bus_stop_id
           ? stops.find((s) => s.id === h.bus_stop_id)
           : null;
@@ -580,6 +589,7 @@ export function ShowOpsBookingForm({
             .join(" "),
         };
       }),
+    ],
     [hotelsForIsland, stops],
   );
 
@@ -785,6 +795,10 @@ export function ShowOpsBookingForm({
       frozen,
     ],
   );
+  /** MHT's own reception desks take whatever the guest pays; the balance is total − paid. */
+  const reception = isReceptionPartner(supplier?.partner_type);
+  const receptionPaid = Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
+  const receptionBalance = Math.max(0, money.total_cost - receptionPaid);
   // What the money above was actually priced at — card, master or the frozen original.
   const unit = money.pricing_snapshot;
   // The bus supplement only exists as a separate line when the price came from the master list.
@@ -841,6 +855,14 @@ export function ShowOpsBookingForm({
         e.preventDefault();
         if (extrasPreview.error) {
           setMsg(extrasPreview.error);
+          return;
+        }
+        if (adults + children + infants < 1) {
+          setMsg("Add at least one guest — a booking can't be for 0 people.");
+          return;
+        }
+        if (!hotelId) {
+          setMsg("Choose the guest's hotel, or Private if they're not at a listed hotel.");
           return;
         }
         if (noShowOnDate) {
@@ -1102,6 +1124,7 @@ export function ShowOpsBookingForm({
               if (
                 p &&
                 hotelId &&
+                hotelId !== PRIVATE_HOTEL_OPTION &&
                 !hotels.some((h) => h.id === hotelId && h.island === p.island)
               ) {
                 setHotelId("");
@@ -1339,6 +1362,7 @@ export function ShowOpsBookingForm({
                 onChange={setSupplierId}
                 options={supplierOptions}
                 disabled={moneyLocked}
+                required
                 ariaLabel="Partner / supplier"
                 placeholder="Type a partner name…"
               />
@@ -1413,7 +1437,9 @@ export function ShowOpsBookingForm({
               <span className="font-semibold text-slate-900">
                 {money.billing_mode === "invoice"
                   ? "Nett to invoice"
-                  : "Deposit to collect"}
+                  : reception
+                    ? "Balance due"
+                    : "Deposit to collect"}
               </span>
               <span
                 className="text-lg font-semibold tabular-nums"
@@ -1422,10 +1448,31 @@ export function ShowOpsBookingForm({
                 {moneyFmt(
                   money.billing_mode === "invoice"
                     ? money.nett_total
-                    : money.deposit_amount,
+                    : reception
+                      ? receptionBalance
+                      : money.deposit_amount,
                 )}
               </span>
             </div>
+            {reception && money.billing_mode !== "invoice" && mode === "create" ? (
+              <div className="mt-2">
+                <FieldLabel>Amount paid by guest (€)</FieldLabel>
+                <input
+                  type="number"
+                  name="amount_paid"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={amountPaid}
+                  onChange={(e) => setAmountPaid(e.target.value)}
+                  placeholder="0.00"
+                  className={INPUT}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Reception booking: type what the guest actually paid, not a % deposit. The balance goes on the night list.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {sellerMode ? null : (
@@ -1504,9 +1551,20 @@ export function ShowOpsBookingForm({
               <input
                 type="email"
                 name="guest_email"
+                required={!noEmail}
                 defaultValue={defaults.guest_email ?? ""}
                 className={INPUT}
               />
+              <label className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                <input
+                  type="checkbox"
+                  name="no_email"
+                  value="1"
+                  checked={noEmail}
+                  onChange={(e) => setNoEmail(e.target.checked)}
+                />
+                Guest has no email
+              </label>
             </div>
           </div>
           {mode === "create" ? (
@@ -1652,8 +1710,9 @@ export function ShowOpsBookingForm({
             value={hotelId}
             onChange={setHotelId}
             options={hotelOptions}
+            required
             ariaLabel="Hotel"
-            placeholder="Type a hotel or pickup name…"
+            placeholder="Type a hotel, or Private…"
           />
           {activeIsland && hotelsForIsland.length === 0 ? (
             <p className="mt-1 text-xs text-amber-700">
@@ -1696,7 +1755,7 @@ export function ShowOpsBookingForm({
                   : "Bus puts them on the coach list. Private and own way pay the no-bus price."}
           </p>
 
-          {pickupKind === "private" ? (
+          {hotelId === PRIVATE_HOTEL_OPTION || pickupKind === "private" ? (
             <>
               <FieldLabel className="mt-3">Staying at</FieldLabel>
               <select
@@ -2007,7 +2066,9 @@ export function ShowOpsBookingForm({
             <span className="font-semibold" style={{ color: ACCENT }}>
               {money.billing_mode === "invoice"
                 ? "Nett to invoice"
-                : "Deposit to collect"}
+                : reception
+                  ? "Balance due"
+                  : "Deposit to collect"}
             </span>
             <span
               className="text-lg font-semibold tabular-nums"
@@ -2016,7 +2077,9 @@ export function ShowOpsBookingForm({
               {moneyFmt(
                 money.billing_mode === "invoice"
                   ? money.nett_total
-                  : money.deposit_amount,
+                  : reception
+                    ? receptionBalance
+                    : money.deposit_amount,
               )}
             </span>
           </div>

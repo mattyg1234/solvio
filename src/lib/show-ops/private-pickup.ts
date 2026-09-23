@@ -7,7 +7,7 @@
 
 export type PickupKind = "bus" | "private" | "own_way";
 
-export type PrivateAccommodation = "hotel" | "villa" | "airbnb" | "friends_family";
+export type PrivateAccommodation = "hotel" | "villa" | "airbnb" | "friends_family" | "unknown";
 
 export const PICKUP_KINDS: PickupKind[] = ["bus", "private", "own_way"];
 
@@ -17,13 +17,17 @@ export const PICKUP_KIND_LABELS: Record<PickupKind, string> = {
   own_way: "Own way",
 };
 
-export const PRIVATE_ACCOMMODATIONS: PrivateAccommodation[] = ["hotel", "villa", "airbnb", "friends_family"];
+export const PRIVATE_ACCOMMODATIONS: PrivateAccommodation[] = ["airbnb", "hotel", "villa", "friends_family", "unknown"];
+
+/** The Hotel picker's "not a listed hotel" choice — submits as hotel_id and is turned into null + accommodation on save. */
+export const PRIVATE_HOTEL_OPTION = "__private__";
 
 export const PRIVATE_ACCOMMODATION_LABELS: Record<PrivateAccommodation, string> = {
   hotel: "Hotel",
   villa: "Villa",
   airbnb: "AirBnB",
   friends_family: "Friends & Family",
+  unknown: "Unknown",
 };
 
 /**

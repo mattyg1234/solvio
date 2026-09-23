@@ -55,6 +55,7 @@ import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
 import { parseStopRunsOn, stopRunsOnDate } from "@/lib/show-ops/bus";
 import { showRunsOnDate } from "@/lib/show-ops/nights";
 import { showOpsDayName } from "@/lib/show-ops/calc";
+import { isReceptionPartner } from "@/lib/show-ops/partners";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
@@ -82,6 +83,8 @@ import {
   parsePickupKind,
   parsePrivateAccommodation,
   privatePickupLabel,
+  PRIVATE_ACCOMMODATION_LABELS,
+  PRIVATE_HOTEL_OPTION,
   type PrivateAccommodation,
 } from "@/lib/show-ops/private-pickup";
 import { type ShowOpsBillingTier, type ShowOpsMemberRole, parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
@@ -1744,7 +1747,9 @@ async function buildBookingFields(
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const productId = String(formData.get("product_id") ?? "").trim() || null;
   const ticketTypeId = String(formData.get("ticket_type_id") ?? "").trim() || null;
-  const hotelId = String(formData.get("hotel_id") ?? "").trim() || null;
+  const rawHotelId = String(formData.get("hotel_id") ?? "").trim();
+  const privateStay = rawHotelId === PRIVATE_HOTEL_OPTION;
+  const hotelId = privateStay ? null : rawHotelId || null;
   const adultsParsed = parsePaxCount(formData.get("adults") ?? 0, "Adults");
   const childrenParsed = parsePaxCount(formData.get("children") ?? 0, "Children");
   const infantsParsed = parsePaxCount(formData.get("infants") ?? 0, "Infants");
@@ -1789,6 +1794,12 @@ async function buildBookingFields(
   const guest_name = String(formData.get("guest_name") ?? "").trim();
   if (!show_date || !guest_name) return { ok: false as const, error: "Guest name and show date required." };
   if (!product) return { ok: false as const, error: "Select a show / ticket product." };
+  const guest_email = String(formData.get("guest_email") ?? "").trim() || null;
+  if (!guest_email && String(formData.get("no_email") ?? "") !== "1") {
+    return { ok: false as const, error: "Guest email required — or tick “Guest has no email”." };
+  }
+  if (!supplierId || !supplier) return { ok: false as const, error: "Choose the partner / supplier this booking is for." };
+  if (hotelId && !hotel) return { ok: false as const, error: "That hotel is missing — pick another, or Private." };
 
   if (transport && !ticketTransportAvailable(product.transport_available, productId, ticketTypeId, existingTransport)) {
     return { ok: false as const, error: "This show does not include transport." };
@@ -1841,11 +1852,18 @@ async function buildBookingFields(
   // pickup_stop_name, so the "Private PDC · Villa" wording lives in that column.
   let private_accommodation: PrivateAccommodation | null = null;
   let private_zone: string | null = null;
-  if (pickupKind === "private") {
+  if (privateStay || pickupKind === "private") {
     private_accommodation = parsePrivateAccommodation(formData.get("private_accommodation"));
     private_zone = normaliseZone(formData.get("private_zone"));
-    pickup_stop_name = privatePickupLabel(private_zone, private_accommodation);
+    if (pickupKind === "private") pickup_stop_name = privatePickupLabel(private_zone, private_accommodation);
   }
+  if (!hotelId && !private_accommodation) {
+    return { ok: false as const, error: "Where is the guest staying? Pick a hotel, or Private and say Airbnb / villa / friends & family / unknown." };
+  }
+  // No listed hotel: the lists still need a "hotel" column — show what they told us.
+  const privateHotelName = !hotelId && private_accommodation
+    ? `Private${private_zone ? ` ${private_zone}` : ""} · ${PRIVATE_ACCOMMODATION_LABELS[private_accommodation]}`
+    : null;
 
   /*
    * Deposit or invoice. The partner record decides unless the operator has ticked
@@ -1910,7 +1928,7 @@ async function buildBookingFields(
     return { ok: false as const, error: error instanceof Error ? error.message : "Invalid extras." };
   }
 
-  const money = computeBookingMoney({
+  const priced = computeBookingMoney({
     adults,
     children,
     infants,
@@ -1923,6 +1941,23 @@ async function buildBookingFields(
     rateCard,
     frozen,
   });
+  // Widened so a reception "amount paid" can overwrite the deposit/balance/status below.
+  const money = priced as Omit<typeof priced, "payment_status"> & {
+    payment_status: typeof priced.payment_status | ReturnType<typeof paymentStatusAfter>["payment_status"];
+  };
+  // Reception desks record what the guest actually paid (€), not a % deposit.
+  // Only on create: later payments go through the ledger like any other booking.
+  let receptionPaid: number | null = null;
+  if (!existingTransport && isReceptionPartner(supplier?.partner_type) && money.billing_mode === "deposit" && formData.has("amount_paid")) {
+    const raw = Number(String(formData.get("amount_paid") ?? "").trim() || 0);
+    if (!Number.isFinite(raw) || raw < 0) return { ok: false as const, error: "Amount paid must be 0 or more." };
+    if (raw - money.total_cost > 0.009) return { ok: false as const, error: `Amount paid (${raw.toFixed(2)}) is more than the booking total (${money.total_cost.toFixed(2)}).` };
+    receptionPaid = round2(raw);
+    const after = paymentStatusAfter(money.total_cost, receptionPaid);
+    money.deposit_amount = receptionPaid;
+    money.balance_remaining = after.balance;
+    money.payment_status = after.payment_status;
+  }
 
   // Per-attendee rows (name/type/note) — drives special-meal and door lists.
   const attendees: Array<{ name: string; type: string; note: string }> = [];
@@ -1974,9 +2009,9 @@ async function buildBookingFields(
       show_date,
       guest_name,
       guest_mobile: String(formData.get("guest_mobile") ?? "").trim() || null,
-      guest_email: String(formData.get("guest_email") ?? "").trim() || null,
+      guest_email,
       hotel_id: hotelId,
-      hotel_name: (hotel?.name ?? String(formData.get("hotel_name") ?? "").trim()) || null,
+      hotel_name: (hotel?.name ?? privateHotelName ?? String(formData.get("hotel_name") ?? "").trim()) || null,
       transport_required: transport,
       pickup_kind: pickupKind,
       private_accommodation,
@@ -2019,6 +2054,8 @@ async function buildBookingFields(
       updated_by: ctx.user.id,
       updated_at: new Date().toISOString(),
     },
+    /** Reception: opening receipt to write to the payments ledger once the booking exists. */
+    receptionPaid,
   };
 }
 
@@ -2095,6 +2132,21 @@ export async function createBookingAction(
     }
     if (isBookingRefClash(res.error) && attempt < 4) continue;
     return { ok: false, message: res.error.message };
+  }
+
+  // Reception desk: the amount the guest paid becomes the opening ledger receipt, so
+  // later edits and top-ups (which read the ledger) keep the right balance.
+  if (built.receptionPaid != null && built.receptionPaid > 0 && data?.id) {
+    const pm = built.fields.payment_method;
+    const method = pm === "cash" || pm === "card" || pm === "transfer" ? pm : "other";
+    const { error: payErr } = await ctx.supabase.from("show_booking_payments").insert({
+      business_id: ctx.business.id,
+      booking_id: data.id,
+      amount: built.receptionPaid,
+      method,
+      created_by: ctx.user.id,
+    });
+    if (payErr) console.error("[reception] opening payment not recorded for", booking_ref, payErr.message);
   }
 
   // Ticket photo picked on the form (partner voucher). The booking is saved either way.
