@@ -33,12 +33,37 @@ export function showOpsNightMonth(iso: string): string {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The schedule fields a show carries: weekly days, one-off extra nights, dark nights. */
+export type ShowSchedule = {
+  run_weekdays?: number[] | null;
+  run_dates?: string[] | null;
+  dark_dates?: string[] | null;
+};
+
+function isoDates(list: string[] | null | undefined): string[] {
+  return [...new Set((list ?? []).map((d) => String(d).slice(0, 10)).filter((d) => ISO_DATE.test(d)))];
+}
+
 /**
- * Nights a show actually runs: scheduled weekdays (next `months`) plus dates
- * already on the books. Never invents a free calendar.
+ * Does this show run on that date? Weekly days plus one-off extra nights, minus dark
+ * nights. A show with no schedule at all runs on no date.
+ */
+export function showRunsOnDate(schedule: ShowSchedule | null | undefined, iso: string): boolean {
+  if (!schedule || !ISO_DATE.test(iso)) return false;
+  if (isoDates(schedule.dark_dates).includes(iso)) return false;
+  if (isoDates(schedule.run_dates).includes(iso)) return true;
+  const days = [...new Set((schedule.run_weekdays ?? []).filter((n) => n >= 0 && n <= 6))];
+  return days.length > 0 && days.includes(isoWeekday(iso));
+}
+
+/**
+ * Nights a show actually runs: scheduled weekdays (next `months`) plus one-off extra
+ * nights, minus dark nights, plus dates already on the books. Never invents a free calendar.
  */
 export function showOpsRunNights(input: {
   weekdays?: number[] | null;
+  extraDates?: string[] | null;
+  darkDates?: string[] | null;
   bookedDates?: string[];
   selected?: string;
   from?: string;
@@ -48,6 +73,7 @@ export function showOpsRunNights(input: {
   const months = input.months ?? 12;
   const weekdays = [...new Set((input.weekdays ?? []).filter((n) => n >= 0 && n <= 6))];
   const booked = [...new Set((input.bookedDates ?? []).filter((d) => ISO_DATE.test(d)))];
+  const dark = isoDates(input.darkDates);
 
   const out = new Set<string>();
   if (weekdays.length) {
@@ -58,6 +84,10 @@ export function showOpsRunNights(input: {
       if (weekdays.includes(d.getUTCDay())) out.add(d.toISOString().slice(0, 10));
     }
   }
+  for (const d of isoDates(input.extraDates)) {
+    if (d >= from) out.add(d);
+  }
+  for (const d of dark) out.delete(d);
   for (const d of booked) {
     if (d >= from) out.add(d);
   }

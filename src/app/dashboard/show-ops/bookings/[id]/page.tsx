@@ -80,7 +80,7 @@ export default async function EditBookingPage({
     ctx.supabase
       .from("show_products")
       .select(
-        "id,name,island,adult_price,child_price,infant_price,adult_price_no_transport,child_price_no_transport,infant_price_no_transport,adult_nett,child_nett,transport_available,run_weekdays,show_time,show_ticket_types(*),show_extras(*)",
+        "id,name,island,adult_price,child_price,infant_price,adult_price_no_transport,child_price_no_transport,infant_price_no_transport,adult_nett,child_nett,transport_available,run_weekdays,run_dates,dark_dates,show_time,show_ticket_types(*),show_extras(*)",
       )
       .eq("business_id", biz)
       .eq("active", true)

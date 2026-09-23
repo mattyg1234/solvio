@@ -52,6 +52,9 @@ import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS } from "@/lib/show-ops/nav";
 import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { saleBlockedForPartner, type CloseKind } from "@/lib/show-ops/calendar";
+import { parseStopRunsOn, stopRunsOnDate } from "@/lib/show-ops/bus";
+import { showRunsOnDate } from "@/lib/show-ops/nights";
+import { showOpsDayName } from "@/lib/show-ops/calc";
 import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
@@ -653,6 +656,16 @@ export async function upsertProductAction(formData: FormData): Promise<void> {
   redirectMaster(tab, { saved: "1", created: data?.id });
 }
 
+/** "2026-12-24, 2026-12-31" / one per line → sorted unique ISO dates. Anything else is dropped. */
+function parseDateList(raw: FormDataEntryValue | null): string[] {
+  const out = new Set<string>();
+  for (const part of String(raw ?? "").split(/[\s,;]+/)) {
+    const d = part.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(new Date(`${d}T12:00:00Z`).getTime())) out.add(d);
+  }
+  return [...out].sort();
+}
+
 function productRowFromForm(formData: FormData, businessId: string, prefix: string) {
   const g = (k: string) => formData.get(prefix + k);
   const numOrNull = (k: string) => {
@@ -679,6 +692,8 @@ function productRowFromForm(formData: FormData, businessId: string, prefix: stri
         .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6);
       return days.length ? [...new Set(days)].sort((a, b) => a - b) : null;
     })(),
+    run_dates: parseDateList(g("run_dates")),
+    dark_dates: parseDateList(g("dark_dates")),
     capacity: numOrNull("capacity"),
     active: String(g("active") ?? (prefix ? "" : "1")) === "1",
     updated_at: new Date().toISOString(),
@@ -1779,6 +1794,21 @@ async function buildBookingFields(
     return { ok: false as const, error: "This show does not include transport." };
   }
 
+  // The show must actually run that night: weekly days + one-off nights − dark nights.
+  // A night that already has a live booking for this show still counts (moved/legacy nights).
+  if (!showRunsOnDate(baseProduct as { run_weekdays?: number[] | null; run_dates?: string[] | null; dark_dates?: string[] | null }, show_date)) {
+    const { count } = await ctx.supabase
+      .from("show_bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", ctx.business.id)
+      .eq("product_id", productId ?? "")
+      .eq("show_date", show_date)
+      .is("cancelled_at", null);
+    if (!count) {
+      return { ok: false as const, error: `No show on ${showOpsDayName(show_date) ?? ""} ${show_date}${product.island ? ` on ${product.island}` : ""}. Pick a night the show runs.` };
+    }
+  }
+
   let pickup_stop_id: string | null = null;
   let pickup_stop_name: string | null = null;
   let pickup_time: string | null = null;
@@ -1796,6 +1826,11 @@ async function buildBookingFields(
       .maybeSingle();
     if (!stop) {
       return { ok: false as const, error: "That pickup stop is missing — pick another. The stop list itself is not deleted." };
+    }
+    if (!stopRunsOnDate(stop.runs_on, show_date)) {
+      const area = stop.resort || stop.stop_name;
+      const days = parseStopRunsOn(stop.runs_on).sort((a, b) => a - b).map((n) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][n]).join(", ");
+      return { ok: false as const, error: `No pick-up from ${area} on ${showOpsDayName(show_date) ?? "that day"}s (${area} pick-ups: ${days}). Change the date, or set the guest to own way / private transfer.` };
     }
     pickup_stop_id = stop.id;
     pickup_stop_name = `${stop.resort} · ${stop.stop_name}`;

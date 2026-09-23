@@ -128,6 +128,8 @@ type ProductRow = {
   active?: boolean | null;
   /** Weekdays the show runs (0 = Sunday). Omitted = unknown, treated as running; null/empty = never. */
   run_weekdays?: number[] | null;
+  run_dates?: string[] | null;
+  dark_dates?: string[] | null;
 };
 
 type StopRow = {
@@ -166,7 +168,7 @@ export function buildShowOpsDashboard(input: {
   // "Tonight's shows" = active shows that actually run on today's weekday. A product row that
   // never carried run_weekdays (older callers, tests) is still listed.
   const runsTonight = (p: ProductRow) =>
-    p.active !== false && (p.run_weekdays === undefined || productRunsOnDate(p.run_weekdays, input.today));
+    p.active !== false && (p.run_weekdays === undefined || productRunsOnDate(p, input.today));
   const tonightProducts = input.products.filter(runsTonight);
 
   const islandNames = [

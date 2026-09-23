@@ -1,6 +1,6 @@
 import { paxTotal } from "@/lib/show-ops/calc";
 import { showOpsFill, type ShowOpsShowFill } from "@/lib/show-ops/dashboard";
-import { isoWeekday, showOpsMonthCells } from "@/lib/show-ops/nights";
+import { showOpsMonthCells, showRunsOnDate, type ShowSchedule } from "@/lib/show-ops/nights";
 
 export type CloseKind = "part" | "full";
 
@@ -10,6 +10,8 @@ export type CalendarProduct = {
   island: string;
   capacity: number | null;
   run_weekdays?: number[] | null;
+  run_dates?: string[] | null;
+  dark_dates?: string[] | null;
   active?: boolean | null;
 };
 
@@ -66,10 +68,13 @@ export type CalendarDay = {
   hasShow: boolean;
 };
 
-export function productRunsOnDate(weekdays: number[] | null | undefined, iso: string): boolean {
-  const days = [...new Set((weekdays ?? []).filter((n) => n >= 0 && n <= 6))];
-  if (!days.length) return false;
-  return days.includes(isoWeekday(iso));
+/**
+ * Does a show run on that date? Accepts the legacy weekday list or the full schedule
+ * (weekdays + one-off run_dates − dark_dates).
+ */
+export function productRunsOnDate(scheduleOrWeekdays: ShowSchedule | number[] | null | undefined, iso: string): boolean {
+  const schedule = Array.isArray(scheduleOrWeekdays) ? { run_weekdays: scheduleOrWeekdays } : scheduleOrWeekdays;
+  return showRunsOnDate(schedule, iso);
 }
 
 export function saleBlockedForPartner(
@@ -132,7 +137,7 @@ export function buildCalendarDays(input: {
     const dayCloses = closesByDate.get(iso) ?? [];
     const islandNames = [
       ...new Set([
-        ...products.filter((p) => productRunsOnDate(p.run_weekdays, iso)).map((p) => p.island),
+        ...products.filter((p) => productRunsOnDate(p, iso)).map((p) => p.island),
         ...dayBookings.map((b) => b.island),
         ...dayOrders.map((o) => o.island),
         ...dayCloses.map((c) => c.island),
@@ -142,7 +147,7 @@ export function buildCalendarDays(input: {
       .sort();
 
     const islands: CalendarDayIsland[] = islandNames.map((island) => {
-      const running = products.filter((p) => p.island === island && productRunsOnDate(p.run_weekdays, iso));
+      const running = products.filter((p) => p.island === island && productRunsOnDate(p, iso));
       const nightBookings = dayBookings.filter((b) => b.island === island);
       const showsById = new Map<string, CalendarDayShow>();
       for (const p of running) {
@@ -221,7 +226,7 @@ export function nightsAheadKeys(input: {
     for (const p of input.products) {
       if (p.active === false) continue;
       if (islandFilter && p.island !== islandFilter) continue;
-      if (productRunsOnDate(p.run_weekdays, iso)) keys.add(`${iso}|${p.island}`);
+      if (productRunsOnDate(p, iso)) keys.add(`${iso}|${p.island}`);
     }
   }
   for (const b of input.bookings) {

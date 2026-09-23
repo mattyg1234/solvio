@@ -130,7 +130,7 @@ export default async function WeeklyOutlookPage({
   const [{ data: products }, { data: bookings }, { data: busOrders }, { data: stops }] = await Promise.all([
     ctx.supabase
       .from("show_products")
-      .select("id,name,island,capacity,run_weekdays,active,adult_price,child_price")
+      .select("id,name,island,capacity,run_weekdays,run_dates,dark_dates,active,adult_price,child_price")
       .eq("business_id", ctx.business.id)
       .eq("active", true),
     ctx.supabase
@@ -215,7 +215,7 @@ export default async function WeeklyOutlookPage({
     );
     for (const date of dates) {
       for (const p of sectionProducts) {
-        if (productRunsOnDate(p.run_weekdays as number[] | null, date)) {
+        if (productRunsOnDate(p as { run_weekdays?: number[] | null; run_dates?: string[] | null; dark_dates?: string[] | null }, date)) {
           const night = nightFor(section, date);
           night.shows.add(p.name);
           night.rates.set(p.name, {

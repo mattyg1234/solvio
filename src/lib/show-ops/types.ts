@@ -184,6 +184,13 @@ export type ShowProduct = {
   transport_available: boolean;
   capacity: number | null;
   active: boolean;
+  show_time?: string | null;
+  /** 0=Sun..6=Sat — weekly run nights. */
+  run_weekdays?: number[] | null;
+  /** Extra one-off nights (YYYY-MM-DD). */
+  run_dates?: string[] | null;
+  /** Nights the show does NOT run despite run_weekdays (YYYY-MM-DD). */
+  dark_dates?: string[] | null;
 };
 
 export type ShowBusStop = {

@@ -38,7 +38,7 @@ import {
   type ShowOpsPricingSnapshot,
 } from "@/lib/show-ops/calc";
 import { pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
-import { pickupStopOffered } from "@/lib/show-ops/bus";
+import { parseStopRunsOn, pickupStopOffered, stopRunsOnDate } from "@/lib/show-ops/bus";
 import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import {
   PRIVATE_ACCOMMODATIONS,
@@ -79,6 +79,10 @@ export type BookingFormProduct = {
   show_time?: string | null;
   /** 0=Sun..6=Sat — nights this show runs; empty/null = only dates already on the books. */
   run_weekdays?: number[] | null;
+  /** Extra one-off nights this show runs. */
+  run_dates?: string[] | null;
+  /** Nights the show does not run despite its weekdays. */
+  dark_dates?: string[] | null;
   /** Future (and current) nights that already have bookings for this show. */
   booked_dates?: string[];
 };
@@ -434,7 +438,12 @@ export function ShowOpsBookingForm({
   );
 
   const runNightsFor = (p: BookingFormProduct) =>
-    showOpsRunNights({ weekdays: p.run_weekdays, bookedDates: p.booked_dates });
+    showOpsRunNights({
+      weekdays: p.run_weekdays,
+      extraDates: p.run_dates,
+      darkDates: p.dark_dates,
+      bookedDates: p.booked_dates,
+    });
 
   /** Every night any show on this island runs — the date list before a show is picked. */
   const nights = useMemo(() => {
@@ -446,17 +455,15 @@ export function ShowOpsBookingForm({
   const nightGroups = useMemo(() => groupNightsByMonth(nights), [nights]);
 
   /**
-   * Ticket types on that island running that night. If nothing matches — a show
-   * with no run nights set yet — the whole island's list is offered rather than
-   * an empty dropdown the operator cannot get past.
+   * Shows on that island running that night. Nothing running = an empty list and a
+   * "no show on this date" block; the form never offers a show on a night it doesn't run.
    */
   const showsForNight = useMemo(() => {
     if (!showDate) return islandProducts;
-    const running = islandProducts.filter((p) =>
-      runNightsFor(p).includes(showDate),
-    );
-    return running.length ? running : islandProducts;
+    return islandProducts.filter((p) => runNightsFor(p).includes(showDate));
   }, [islandProducts, showDate]);
+  /** A date was chosen but no show on this island runs that night. */
+  const noShowOnDate = Boolean(showDate) && islandProducts.length > 0 && showsForNight.length === 0;
   /** The location everything downstream filters by: the show's if picked, else the operator's choice. */
   const activeIsland = product?.island || island || "";
   const supplier = suppliers.find((s) => s.id === supplierId) ?? null;
@@ -485,6 +492,19 @@ export function ShowOpsBookingForm({
       selectedId: pickupStopId,
     }),
   );
+  /** Bus pick-up chosen from an area that has no pick-up on that weekday (e.g. Costa Teguise on a Tuesday). */
+  const stopBlocked = Boolean(
+    transport && stop && showDate && !stopRunsOnDate(stop.runs_on, showDate),
+  );
+  const stopBlockedMessage = useMemo(() => {
+    if (!stopBlocked || !stop || !showDate) return null;
+    const area = stop.resort || stop.stop_name;
+    const days = parseStopRunsOn(stop.runs_on)
+      .sort((a, b) => a - b)
+      .map((n) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][n]);
+    const dayList = days.length > 1 ? `${days.slice(0, -1).join(", ")} & ${days[days.length - 1]}` : days[0] ?? "";
+    return `No pick-up from ${area} on ${showOpsDayName(showDate) ?? "that day"}s. ${area} pick-ups are ${dayList}.`;
+  }, [stopBlocked, stop, showDate]);
 
   useEffect(() => {
     if (skipHotelFollow.current) {
@@ -823,6 +843,18 @@ export function ShowOpsBookingForm({
           setMsg(extrasPreview.error);
           return;
         }
+        if (noShowOnDate) {
+          const m = `No show on ${showOpsNightLabel(showDate)}${activeIsland ? ` on ${activeIsland}` : ""}. Pick a night the show runs.`;
+          setMsg(m);
+          if (typeof window !== "undefined") window.alert(m);
+          return;
+        }
+        if (stopBlocked && stopBlockedMessage) {
+          const m = `${stopBlockedMessage} Change the date, or set the guest to own way / private transfer.`;
+          setMsg(m);
+          if (typeof window !== "undefined") window.alert(m);
+          return;
+        }
         const fd = new FormData(e.currentTarget);
         start(async () => {
           setMsg(null);
@@ -1040,6 +1072,21 @@ export function ShowOpsBookingForm({
               </p>
             </>
           )}
+
+          {noShowOnDate ? (
+            <div
+              role="alert"
+              className="mt-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            >
+              <p className="font-semibold">
+                No show on {showOpsNightLabel(showDate)}
+                {activeIsland ? ` on ${activeIsland}` : ""}.
+              </p>
+              <p className="mt-1 text-xs">
+                Nothing runs that night, so this booking can&apos;t be saved. Pick one of the purple nights, or add the night to the show in Master → Shows.
+              </p>
+            </div>
+          ) : null}
 
           <FieldLabel className="mt-4">Show</FieldLabel>
           <select
@@ -1723,6 +1770,33 @@ export function ShowOpsBookingForm({
                     ? "Custom stop (not the hotel default)."
                     : "Changing this only moves this booking."}
               </p>
+              {stopBlocked && stopBlockedMessage ? (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                >
+                  <p className="font-semibold">{stopBlockedMessage}</p>
+                  <p className="mt-1 text-xs">
+                    Change the date, pick a stop that runs that night, or switch the guest to:
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPickupKind("own_way")}
+                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
+                    >
+                      Guest makes own way
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPickupKind("private")}
+                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
+                    >
+                      Private transfer
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-3 space-y-2 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
                 <div>

@@ -46,6 +46,8 @@ export type MasterShowRow = {
   transport_available: boolean;
   active: boolean | null;
   run_weekdays?: number[] | null;
+  run_dates?: string[] | null;
+  dark_dates?: string[] | null;
 };
 
 function setField(form: HTMLFormElement, name: string, value: string) {
@@ -521,6 +523,32 @@ export function ShowProductFields({
               booked remain visible.
             </p>
           </div>
+          <label className="text-xs font-medium text-slate-600 sm:col-span-3 md:col-span-1">
+            Extra one-off nights
+            <textarea
+              name={name("run_dates")}
+              rows={2}
+              defaultValue={(product?.run_dates ?? []).map((d) => String(d).slice(0, 10)).join(", ")}
+              placeholder="2026-12-24, 2026-12-31"
+              className="mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-sm"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">
+              Dates the show runs on top of the regular days (YYYY-MM-DD, comma separated).
+            </span>
+          </label>
+          <label className="text-xs font-medium text-slate-600 sm:col-span-3 md:col-span-1">
+            No show on
+            <textarea
+              name={name("dark_dates")}
+              rows={2}
+              defaultValue={(product?.dark_dates ?? []).map((d) => String(d).slice(0, 10)).join(", ")}
+              placeholder="2026-12-25"
+              className="mt-1 w-full rounded-lg border px-2 py-1.5 font-mono text-sm"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">
+              Regular nights the show is dark. Bookings can&apos;t be made on these dates.
+            </span>
+          </label>
         </div>
       </fieldset>
       <fieldset className="rounded-xl border border-slate-200 bg-white p-4">

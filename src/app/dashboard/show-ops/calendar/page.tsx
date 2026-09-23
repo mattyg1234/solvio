@@ -58,7 +58,7 @@ export default async function ShowOpsCalendarPage({
   };
   const [{ data: products }, { data: bookings }, { data: busOrders }, { data: closes }, { data: nightRows }] = await Promise.all([
     loadReportRows<CalendarProduct>("calendar shows", (offset, limit) =>
-      scoped("show_products", "id,name,island,capacity,run_weekdays,active")
+      scoped("show_products", "id,name,island,capacity,run_weekdays,run_dates,dark_dates,active")
         .eq("active", true).order("id").range(offset, offset + limit - 1)),
     loadReportRows<CalendarBooking>("calendar bookings", (offset, limit) =>
       scoped("show_bookings", "show_date,island,product_id,show_name,adults,children,infants,transport_required")
