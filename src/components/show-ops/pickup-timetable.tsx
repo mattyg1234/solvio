@@ -10,6 +10,12 @@ import type { DirectoryPickupStop } from "@/components/show-ops/pickup-points-di
 
 const INPUT = "mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm";
 
+/** Shown before anything is written to the permanent table — it changes every night for everyone. */
+export const PERMANENT_TABLE_CONFIRM =
+  "Are you sure you want to save this as the PERMANENT bus table?\n\nThis changes it for everyone, every night. (Tonight-only changes go in the amber board below.)";
+
+type TableSort = "order" | "resort" | "name" | "time";
+
 function hhmm(t: string | null | undefined): string {
   return t ? String(t).slice(0, 5) : "";
 }
@@ -51,12 +57,24 @@ export function PickupTimetable({
     [stops],
   );
   const [ids, setIds] = useState(() => sorted.map((s) => s.id));
+  const [sort, setSort] = useState<TableSort>("order");
   const [dragId, setDragId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const byId = useMemo(() => new Map(sorted.map((s) => [s.id, s])), [sorted]);
-  const rows = ids.map((id) => byId.get(id)).filter((s): s is DirectoryPickupStop => Boolean(s));
+  const runOrder = ids.map((id) => byId.get(id)).filter((s): s is DirectoryPickupStop => Boolean(s));
+  // Viewing sorts only; the permanent run order is only editable in "Run order" view.
+  const rows = useMemo(() => {
+    const byName = (a: DirectoryPickupStop, b: DirectoryPickupStop) => a.stop_name.localeCompare(b.stop_name, "en", { sensitivity: "base" });
+    const byResort = (a: DirectoryPickupStop, b: DirectoryPickupStop) => a.resort.localeCompare(b.resort, "en", { sensitivity: "base" }) || byName(a, b);
+    const byTime = (a: DirectoryPickupStop, b: DirectoryPickupStop) => (hhmm(a.pickup_time) || "99:99").localeCompare(hhmm(b.pickup_time) || "99:99") || byName(a, b);
+    if (sort === "resort") return [...runOrder].sort(byResort);
+    if (sort === "name") return [...runOrder].sort(byName);
+    if (sort === "time") return [...runOrder].sort(byTime);
+    return runOrder;
+  }, [runOrder, sort]);
+  const canReorder = canManage && sort === "order";
   const showBus = buses > 1 || rows.some((s) => (s.bus_no ?? 1) > 1);
 
   function onDrop(targetId: string) {
@@ -122,6 +140,20 @@ export function PickupTimetable({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs font-medium text-slate-600">
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as TableSort)}
+              className="ml-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              aria-label="Sort the permanent bus table"
+            >
+              <option value="order">Run order</option>
+              <option value="resort">Resort</option>
+              <option value="name">A–Z</option>
+              <option value="time">Time</option>
+            </select>
+          </label>
           <button type="button" onClick={downloadCsv} className={SHOW_OPS_GHOST_BTN}>
             Download (CSV)
           </button>
@@ -194,6 +226,7 @@ export function PickupTimetable({
                   hotels={hotelsByStop[s.id] ?? 0}
                   open={open}
                   canManage={canManage}
+                  canReorder={canReorder}
                   dragging={dragId === s.id}
                   onDragStart={() => setDragId(s.id)}
                   onDrop={() => onDrop(s.id)}
@@ -217,8 +250,17 @@ export function PickupTimetable({
         </table>
       </div>
 
+      {canManage && sort !== "order" ? (
+        <p className="mt-2 text-xs text-slate-500 print:hidden">Sorted for viewing only — switch Sort back to “Run order” to drag stops and change the permanent order.</p>
+      ) : null}
       {canManage && dirty ? (
-        <form action={reorderBusStopsAction} className="mt-2 flex items-center gap-3 print:hidden">
+        <form
+          action={reorderBusStopsAction}
+          onSubmit={(e) => {
+            if (!window.confirm(PERMANENT_TABLE_CONFIRM)) e.preventDefault();
+          }}
+          className="mt-2 flex items-center gap-3 print:hidden"
+        >
           <input type="hidden" name="island" value={island} />
           <input type="hidden" name="ordered_ids" value={ids.join(",")} />
           <SubmitOnce className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
@@ -250,6 +292,7 @@ function RowGroup({
   hotels,
   open,
   canManage,
+  canReorder,
   dragging,
   onDragStart,
   onDrop,
@@ -268,6 +311,7 @@ function RowGroup({
   hotels: number;
   open: boolean;
   canManage: boolean;
+  canReorder: boolean;
   dragging: boolean;
   onDragStart: () => void;
   onDrop: () => void;
@@ -281,14 +325,14 @@ function RowGroup({
   return (
     <>
       <tr
-        draggable={canManage}
+        draggable={canReorder}
         onDragStart={onDragStart}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        className={`border-t border-slate-100 ${dragging ? "opacity-40" : ""} ${running ? "" : "bg-slate-50/70 text-slate-500"} ${canManage ? "cursor-grab" : ""}`}
+        className={`border-t border-slate-100 ${dragging ? "opacity-40" : ""} ${running ? "" : "bg-slate-50/70 text-slate-500"} ${canReorder ? "cursor-grab" : ""}`}
       >
         <td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">
-          {canManage ? <span className="mr-1 select-none text-slate-300" aria-hidden>⋮⋮</span> : null}
+          {canReorder ? <span className="mr-1 select-none text-slate-300" aria-hidden>⋮⋮</span> : null}
           {index + 1}
         </td>
         {showBus ? (
@@ -318,8 +362,8 @@ function RowGroup({
         <td className="px-3 py-2 text-right whitespace-nowrap print:hidden">
           {canManage ? (
             <>
-              <button type="button" onClick={() => onMove(-1)} disabled={index === 0} className="px-1 text-xs text-slate-500 disabled:opacity-30" aria-label="Move up">▲</button>
-              <button type="button" onClick={() => onMove(1)} disabled={last} className="px-1 text-xs text-slate-500 disabled:opacity-30" aria-label="Move down">▼</button>
+              <button type="button" onClick={() => onMove(-1)} disabled={!canReorder || index === 0} className="px-1 text-xs text-slate-500 disabled:opacity-30" aria-label="Move up">▲</button>
+              <button type="button" onClick={() => onMove(1)} disabled={!canReorder || last} className="px-1 text-xs text-slate-500 disabled:opacity-30" aria-label="Move down">▼</button>
               <button type="button" onClick={onToggle} className="ml-2 text-xs font-semibold text-[var(--show-ops-primary,#7c3aed)]">
                 {open ? "Close" : "Edit"}
               </button>
@@ -354,7 +398,13 @@ function StopForm({
   buses?: number;
 }) {
   return (
-    <form action={upsertBusStopAction} className="grid gap-2 sm:grid-cols-4">
+    <form
+      action={upsertBusStopAction}
+      onSubmit={(e) => {
+        if (!window.confirm(PERMANENT_TABLE_CONFIRM)) e.preventDefault();
+      }}
+      className="grid gap-2 sm:grid-cols-4"
+    >
       {initial.id ? <input type="hidden" name="id" value={initial.id} /> : null}
       <input type="hidden" name="tab" value="stops" />
       <input type="hidden" name="next" value={next} />
