@@ -176,13 +176,9 @@ export function buildGuestTicketText(input: GuestTicketInput): string {
   return lines.join("\n");
 }
 
-export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<NotificationSendResult> {
-  const client = resendClient();
-  const to = filterShowOpsOutboundTo(input.guestEmail?.trim() ?? "")[0] ?? "";
-  if (!to) return showOpsOutboundHeldResult();
-  if (!client) return { ok: false, reason: "not_configured", message: "Email is not configured." };
-  if (!to.includes("@")) return { ok: false, reason: "invalid_recipient", message: "Guest email is missing." };
-
+/** Subject + HTML of the confirmation email, shared by the sender and previews/tests. */
+export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: boolean): { subject: string; html: string; rows: Array<[string, string]> } {
+  const attachment = hasAttachment;
   const rows: Array<[string, string]> = [
     ["Show", input.showName],
     ["Date", dateLine(input)],
@@ -203,16 +199,11 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
   rows.push(...moneyRows(input));
   if (input.dietaryNotes) rows.push(["Dietary", input.dietaryNotes]);
   const qrSrc = input.ticketUrl ? `${input.ticketUrl.replace(/\/$/, "")}/qr` : "";
-  const attachment = await confirmationAttachment(input);
 
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
-    to,
-    subject: input.updated
-      ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
-      : `Booking confirmation · ${input.showName} · ${input.bookingRef}`,
-    attachments: attachment ? [attachment] : undefined,
-    html: `
+  const subject = input.updated
+    ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
+    : `Booking confirmation · ${input.showName} · ${input.bookingRef}`;
+  const html = `
       <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
         <p style="font-size:16px">Hi ${escapeHtml(input.guestName.split(" ")[0] || input.guestName)},</p>
         <p style="font-size:15px;line-height:1.5">${
@@ -245,7 +236,26 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
         </table>
         <p style="color:#64748b;font-size:13px;margin-top:24px">Show the QR at the door${input.transportRequired ? " and on the bus" : ""}.${attachment ? " Your attached confirmation has the timings, menu and venue address." : ""} See you there!</p>
       </div>
-    `,
+    `;
+  return { subject, html, rows };
+}
+
+export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<NotificationSendResult> {
+  const client = resendClient();
+  const to = filterShowOpsOutboundTo(input.guestEmail?.trim() ?? "")[0] ?? "";
+  if (!to) return showOpsOutboundHeldResult();
+  if (!client) return { ok: false, reason: "not_configured", message: "Email is not configured." };
+  if (!to.includes("@")) return { ok: false, reason: "invalid_recipient", message: "Guest email is missing." };
+
+  const attachment = await confirmationAttachment(input);
+  const mail = buildGuestTicketEmail(input, Boolean(attachment));
+
+  const { data, error } = await client.emails.send({
+    from: fromAddr(),
+    to,
+    subject: mail.subject,
+    attachments: attachment ? [attachment] : undefined,
+    html: mail.html,
     text: buildGuestTicketText(input),
   });
   if (error) {
