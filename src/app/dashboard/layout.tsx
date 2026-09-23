@@ -74,6 +74,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .maybeSingle();
     primaryBiz = adminBiz.data;
   }
+  if (!primaryBiz) {
+    // Staff logins own no business: dress the shell in the workspace they work in,
+    // not the empty new-signup Solvio chrome.
+    const { data: staffMem } = await supabase
+      .from("show_ops_members")
+      .select("business_id")
+      .eq("user_id", user.id)
+      .neq("role", "seller")
+      .limit(1)
+      .maybeSingle();
+    if (staffMem?.business_id) {
+      const admin = createSupabaseServiceRoleClient();
+      const memberBiz = await admin.from("businesses").select(bizCols).eq("id", staffMem.business_id).maybeSingle();
+      primaryBiz = memberBiz.data;
+    }
+  }
 
   const { data: stripeBusinesses } = await supabase
     .from("businesses")
@@ -177,7 +193,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             campaignsEnabled={campaignsEnabled}
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
-            showOpsEnabled={showOpsEnabled}
+            showOpsEnabled={showOpsEnabled || showOpsMemberEnabled}
           />
         </div>
       </div>

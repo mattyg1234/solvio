@@ -46,6 +46,17 @@ export default async function DashboardOverviewPage() {
       .order("created_at", { ascending: true });
     businesses = adminBiz.data;
   }
+  if (!businesses?.length) {
+    // Show Ops staff own no business; their home is the hub, not the SaaS overview.
+    const { data: staffMem } = await supabase
+      .from("show_ops_members")
+      .select("id")
+      .eq("user_id", user.id)
+      .neq("role", "seller")
+      .limit(1)
+      .maybeSingle();
+    if (staffMem) redirect("/dashboard/show-ops");
+  }
 
   const primaryBiz = businesses?.[0];
   const capsRaw = primaryBiz?.platform_capabilities;
