@@ -46,6 +46,8 @@ export type GuestConfirmationInput = {
   privateZone?: string | null;
   dietaryNotes?: string | null;
   billingMode: string;
+  /** Booking total; with it the confirmation prints Total / Paid / To pay on the night. */
+  totalCost?: number | null;
   balanceRemaining?: number | null;
   currency: ShowOpsCurrency;
   /** Public ticket page — printed as a QR for the door scan. */
@@ -105,9 +107,20 @@ export function confirmationRows(input: GuestConfirmationInput): Array<[string, 
   if (input.hotelName) rows.push(["Hotel", input.hotelName]);
   rows.push(["Getting there", confirmationTransportLine(input)]);
   if (input.dietaryNotes?.trim()) rows.push(["Dietary", input.dietaryNotes.trim()]);
-  const balance = Number(input.balanceRemaining ?? 0);
-  if (input.billingMode === "deposit" && balance > 0) {
-    rows.push(["To pay on the night", formatShowOpsMoney(balance, input.currency)]);
+  // Ruth (23 Sept): the confirmation shows what the guest paid and what is still pending.
+  // Partner-billed (invoice) bookings never show money to the guest.
+  if (input.billingMode === "deposit") {
+    const balance = Math.max(0, Number(input.balanceRemaining ?? 0));
+    const total = input.totalCost == null ? null : Number(input.totalCost);
+    const money = (n: number) => formatShowOpsMoney(n, input.currency);
+    if (total != null && Number.isFinite(total)) {
+      const paid = Math.max(0, total - balance);
+      rows.push(["Total", money(total)]);
+      rows.push(["Paid", money(paid)]);
+      rows.push(["To pay on the night", balance > 0 ? money(balance) : "Nothing — paid in full"]);
+    } else if (balance > 0) {
+      rows.push(["To pay on the night", money(balance)]);
+    }
   }
   return rows;
 }

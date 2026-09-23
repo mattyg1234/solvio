@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { data: b } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,booking_ref,guest_name,show_name,show_date,island,adults,children,infants,hotel_name,transport_required,pickup_kind,pickup_stop_name,pickup_time,private_zone,dietary_required,dietary_notes,billing_mode,balance_remaining,cancelled_at,ticket_token",
+      "id,booking_ref,guest_name,show_name,show_date,island,adults,children,infants,hotel_name,transport_required,pickup_kind,pickup_stop_name,pickup_time,private_zone,dietary_required,dietary_notes,billing_mode,total_cost,balance_remaining,cancelled_at,ticket_token",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -45,6 +45,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       privateZone: b.private_zone,
       dietaryNotes: b.dietary_required ? b.dietary_notes : null,
       billingMode: String(b.billing_mode ?? "deposit"),
+      totalCost: b.total_cost == null ? null : Number(b.total_cost),
       balanceRemaining: b.balance_remaining == null ? null : Number(b.balance_remaining),
       currency: showOpsCurrencyFor(ctx.config, b.island),
       ticketUrl: b.ticket_token ? showOpsTicketUrl(getDeploymentSiteUrl(), String(b.ticket_token)) : null,

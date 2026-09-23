@@ -5,6 +5,7 @@ import type { NotificationSendResult } from "@/lib/notifications/booking-emails"
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notifications/booking-whatsapp";
 import { formatShowOpsMoney, formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
+import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult, showOpsOutboundLive } from "@/lib/show-ops/outbound";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -41,7 +42,55 @@ export type GuestTicketInput = {
   pickupKind?: string | null;
   /** Resort zone code (PDC, CT…) for a private transfer. */
   privateZone?: string | null;
+  /** Booking island — Tenerife / Lanzarote emails carry Ruth's confirmation PDF. */
+  island?: string | null;
 };
+
+/** Total / Paid / To pay — the same three lines as the printed confirmation. */
+function moneyRows(input: GuestTicketInput): Array<[string, string]> {
+  if (input.billingMode !== "deposit" || input.totalCost == null) return [];
+  const money = (n: number) => formatShowOpsMoney(n, input.currency);
+  const total = Number(input.totalCost);
+  const balance = Math.max(0, Number(input.balanceRemaining ?? 0));
+  const paid = Math.max(0, total - balance);
+  return [
+    ["Total", money(total)],
+    ["Paid", money(paid)],
+    ["To pay on the night", balance > 0 ? money(balance) : "Nothing — paid in full"],
+  ];
+}
+
+/** Ruth's PDF confirmation, for the islands her template covers. Null elsewhere or on failure. */
+async function confirmationAttachment(input: GuestTicketInput): Promise<{ filename: string; content: Buffer } | null> {
+  if (!confirmationAvailableFor(input.island)) return null;
+  try {
+    const bytes = await buildGuestConfirmationPdf(await loadConfirmationTemplate(), {
+      bookingRef: input.bookingRef,
+      guestName: input.guestName,
+      showName: input.showName,
+      showDate: input.showDate,
+      adults: input.adults,
+      children: input.children,
+      infants: input.infants,
+      hotelName: input.hotelName,
+      transportRequired: input.transportRequired,
+      pickupKind: input.pickupKind,
+      pickupStopName: input.pickupStopName,
+      pickupTime: input.pickupTime,
+      privateZone: input.privateZone,
+      dietaryNotes: input.dietaryNotes,
+      billingMode: input.billingMode,
+      totalCost: input.totalCost,
+      balanceRemaining: input.balanceRemaining,
+      currency: input.currency,
+      ticketUrl: input.ticketUrl,
+    });
+    return { filename: `booking-confirmation-${input.bookingRef}.pdf`, content: Buffer.from(bytes) };
+  } catch (e) {
+    console.error("[guest-ticket-email] confirmation PDF not attached:", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
 
 /** Private transfer? From the kind when stored, else from the "Private PDC · Villa" label. */
 function isPrivateTransfer(input: GuestTicketInput): boolean {
@@ -151,24 +200,25 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
         ? privateLine(input)
         : "Own way",
   ]);
-  const money = moneyLine(input);
-  if (money) rows.push(["Payment", money]);
+  rows.push(...moneyRows(input));
   if (input.dietaryNotes) rows.push(["Dietary", input.dietaryNotes]);
   const qrSrc = input.ticketUrl ? `${input.ticketUrl.replace(/\/$/, "")}/qr` : "";
+  const attachment = await confirmationAttachment(input);
 
   const { data, error } = await client.emails.send({
     from: fromAddr(),
     to,
     subject: input.updated
       ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
-      : `Your ticket · ${input.showName} · ${input.bookingRef}`,
+      : `Booking confirmation · ${input.showName} · ${input.bookingRef}`,
+    attachments: attachment ? [attachment] : undefined,
     html: `
       <div style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:560px;margin:0 auto;color:#0f172a">
         <p style="font-size:16px">Hi ${escapeHtml(input.guestName.split(" ")[0] || input.guestName)},</p>
         <p style="font-size:15px;line-height:1.5">${
           input.updated
             ? `Your pick-up details for <strong>${escapeHtml(input.merchantName)}</strong> have changed — here is your updated ticket:`
-            : `You're booked with <strong>${escapeHtml(input.merchantName)}</strong>. Here's your ticket:`
+            : `You're booked with <strong>${escapeHtml(input.merchantName)}</strong>. Here's your booking confirmation${attachment ? " — the full confirmation is attached as a PDF" : ""}:`
         }</p>
         <p style="font-size:20px;font-weight:700;margin:14px 0 4px">${escapeHtml(input.showName)}</p>
         <p style="font-size:15px;margin:0 0 14px;color:#334155">${escapeHtml(dateLine(input))} · ref <strong>${escapeHtml(input.bookingRef)}</strong></p>
@@ -193,7 +243,7 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
             )
             .join("")}
         </table>
-        <p style="color:#64748b;font-size:13px;margin-top:24px">Show the QR at the door${input.transportRequired ? " and on the bus" : ""}. See you there!</p>
+        <p style="color:#64748b;font-size:13px;margin-top:24px">Show the QR at the door${input.transportRequired ? " and on the bus" : ""}.${attachment ? " Your attached confirmation has the timings, menu and venue address." : ""} See you there!</p>
       </div>
     `,
     text: buildGuestTicketText(input),
@@ -260,7 +310,7 @@ export async function sendGuestTicketByBookingId(
   const { data: booking } = await admin
     .from("show_bookings")
     .select(
-      "business_id,booking_ref,guest_name,guest_email,guest_mobile,extras_snapshot,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
+      "business_id,booking_ref,guest_name,guest_email,guest_mobile,extras_snapshot,show_name,show_date,island,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -305,5 +355,6 @@ export async function sendGuestTicketByBookingId(
     showTime: booking.ampm,
     pickupKind: booking.pickup_kind,
     privateZone: booking.private_zone,
+    island: booking.island,
   });
 }

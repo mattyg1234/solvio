@@ -2098,6 +2098,7 @@ async function sendGuestTicketIfRequested(
       showTime: (f.ampm as string | null) ?? null,
       pickupKind: (f.pickup_kind as string | null) ?? null,
       privateZone: (f.private_zone as string | null) ?? null,
+      island: (f as { island?: string | null }).island ?? null,
     });
   } catch (err) {
     console.error("[guest-ticket] send failed for", booking_ref, err instanceof Error ? err.message : err);
