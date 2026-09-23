@@ -57,6 +57,7 @@ export function HotelsDirectory({
   const [q, setQ] = useState("");
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [sort, setSort] = useState<"name" | "time">("name");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(highlightId ?? null);
   const [adding, setAdding] = useState(false);
@@ -76,16 +77,22 @@ export function HotelsDirectory({
   }, [stops, island]);
 
   const filtered = useMemo(() => {
-    return hotels.filter((h) => {
-      if (!showInactive && h.active === false) return false;
-      if (island && h.island !== island) return false;
-      const stop = h.bus_stop_id ? stopById.get(h.bus_stop_id) : undefined;
-      if (unassignedOnly && stop) return false;
-      if (resort && stop?.resort !== resort) return false;
-      if (!matchesDirectorySearch(q, h.name, h.island, stop?.resort, stop?.stop_name)) return false;
-      return true;
-    });
-  }, [hotels, stopById, island, resort, q, unassignedOnly, showInactive]);
+    const byName = (a: DirectoryHotel, b: DirectoryHotel) =>
+      a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
+    // Pick-up time order: earliest first, hotels with no time at the bottom, A–Z within a time.
+    const timeOf = (h: DirectoryHotel) => hhmm(h.bus_stop_id ? stopById.get(h.bus_stop_id)?.pickup_time : null) || "99:99";
+    return hotels
+      .filter((h) => {
+        if (!showInactive && h.active === false) return false;
+        if (island && h.island !== island) return false;
+        const stop = h.bus_stop_id ? stopById.get(h.bus_stop_id) : undefined;
+        if (unassignedOnly && stop) return false;
+        if (resort && stop?.resort !== resort) return false;
+        if (!matchesDirectorySearch(q, h.name, h.island, stop?.resort, stop?.stop_name)) return false;
+        return true;
+      })
+      .sort(sort === "time" ? (a, b) => timeOf(a).localeCompare(timeOf(b)) || byName(a, b) : byName);
+  }, [hotels, stopById, island, resort, q, unassignedOnly, showInactive, sort]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const current = Math.min(page, pages);
@@ -153,6 +160,20 @@ export function HotelsDirectory({
                 {r}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="text-xs font-medium text-slate-600">
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => {
+              setSort(e.target.value === "time" ? "time" : "name");
+              resetPage();
+            }}
+            className={INPUT}
+          >
+            <option value="name">A–Z</option>
+            <option value="time">Pick-up time</option>
           </select>
         </label>
         <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600">
