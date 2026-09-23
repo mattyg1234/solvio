@@ -71,10 +71,13 @@ export function HotelsDirectory({
     [islands, hotels, showInactive],
   );
 
+  // Only resorts that a hotel in the current island view actually uses — retired
+  // short-code stops (PB, CT…), UK towns and stops with no hotels stay out of the list.
   const resortChoices = useMemo(() => {
-    const pool = island ? stops.filter((s) => s.island === island) : stops;
-    return [...new Set(pool.map((s) => s.resort).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  }, [stops, island]);
+    const pool = hotels.filter((h) => (showInactive || h.active !== false) && (!island || h.island === island));
+    const resorts = pool.map((h) => (h.bus_stop_id ? stopById.get(h.bus_stop_id)?.resort : undefined)).filter((r): r is string => Boolean(r));
+    return [...new Set(resorts)].sort((a, b) => a.localeCompare(b));
+  }, [hotels, stopById, island, showInactive]);
 
   const filtered = useMemo(() => {
     const byName = (a: DirectoryHotel, b: DirectoryHotel) =>
