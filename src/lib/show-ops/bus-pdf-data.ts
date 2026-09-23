@@ -95,16 +95,24 @@ export async function loadBusListPdf(
   }
   const { data: savedOrders, error: savedError } = await client
     .from("show_bus_night_orders")
-    .select("island,stop_ids")
+    .select("island,stop_ids,stop_times")
     .eq("business_id", businessId)
     .eq("show_date", date)
     .in("island", islands);
   if (savedError)
     throw new Error("Could not load the saved pickup order. Nothing was sent.");
   const savedRank = new Map<string, number>();
-  for (const order of savedOrders ?? [])
+  for (const order of savedOrders ?? []) {
     for (const [index, id] of (order.stop_ids ?? []).entries())
       savedRank.set(`${order.island}:${id}`, index);
+    // Tonight-only pick-up times from the bus board replace the printed ones.
+    const times = (order.stop_times ?? {}) as Record<string, unknown>;
+    for (const [id, t] of Object.entries(times)) {
+      const g = grouped.get(id);
+      const time = String(t ?? "").slice(0, 5);
+      if (g && g.island === order.island && /^\d{2}:\d{2}$/.test(time)) g.time = time;
+    }
+  }
   const sortedGroups = [...grouped.entries()].sort(
     ([aKey, a], [bKey, b]) =>
       a.island.localeCompare(b.island) ||

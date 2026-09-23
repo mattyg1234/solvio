@@ -144,6 +144,7 @@ export default async function DailyListsPage({
     { data: busOrders },
     { data: savedShows },
     { data: directoryHotels },
+    { data: nightOrders },
   ] = await Promise.all([
     (async () => ({
       data: await collectPartnerPages<BookingRow>(async (offset, limit) => {
@@ -170,7 +171,20 @@ export default async function DailyListsPage({
       .eq("active", true)
       .order("name"),
     loadDirectoryHotels(ctx.supabase, ctx.business.id),
+    // Tonight-only pick-up times set on the bus board (stop id → HH:MM).
+    ctx.supabase
+      .from("show_bus_night_orders")
+      .select("island,stop_times")
+      .eq("business_id", ctx.business.id)
+      .eq("show_date", date),
   ]);
+  const nightTimeByStop = new Map<string, string>();
+  for (const o of nightOrders ?? []) {
+    for (const [id, t] of Object.entries((o.stop_times ?? {}) as Record<string, unknown>)) {
+      const time = String(t ?? "").slice(0, 5);
+      if (/^\d{2}:\d{2}$/.test(time)) nightTimeByStop.set(id, time);
+    }
+  }
 
   const bookings = (bookingRows ?? []) as BookingRow[];
   await Promise.all(
@@ -284,7 +298,7 @@ export default async function DailyListsPage({
         guide_notes: stop?.guide_notes || "",
         mapUrl: stop?.map_url ?? null,
         photoUrl: stop?.photo_url ?? null,
-        time_key: timeKey(stop?.pickup_time || b.pickup_time),
+        time_key: timeKey((b.pickup_stop_id && nightTimeByStop.get(b.pickup_stop_id)) || stop?.pickup_time || b.pickup_time),
         stop_label: stop
           ? `${stop.resort} · ${stop.stop_name}`
           : b.pickup_stop_name || "—",

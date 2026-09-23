@@ -24,6 +24,11 @@ export default async function BusBoardPage({
   const canManageCatalogue = ctx.role === "owner" || ctx.role === "admin";
   const today = new Date().toISOString().slice(0, 10);
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? (sp.date as string) : today;
+  const shiftDate = (iso: string, days: number) => {
+    const d = new Date(`${iso}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
   const island = sp.island || "";
   const tonightOnly = sp.view === "tonight";
   const showUntimed = sp.stops === "all";
@@ -281,7 +286,18 @@ export default async function BusBoardPage({
                 key={`${date}-${isl}`}
                 date={date}
                 island={isl}
-                stops={islStops.map((s) => ({ id: s.id, label: `${twoBuses ? `Bus ${s.bus_no ?? 1} · ` : ""}${s.resort} · ${s.stop_name}${s.pickup_time ? ` · ${String(s.pickup_time).slice(0, 5)}` : ""}` }))}
+                buses={twoBuses ? Math.max(buses ?? 1, ...allForIsland.map((s) => s.bus_no ?? 1)) : 1}
+                stops={islStops.map((s) => ({
+                  id: s.id,
+                  label: `${s.resort} · ${s.stop_name}`,
+                  time: s.pickup_time ? String(s.pickup_time).slice(0, 5) : "",
+                  bus: s.bus_no ?? 1,
+                }))}
+                prevHref={qs({ date: shiftDate(date, -1) === today ? "" : shiftDate(date, -1) })}
+                nextHref={qs({ date: shiftDate(date, 1) === today ? "" : shiftDate(date, 1) })}
+                todayHref={qs({ date: "" })}
+                isToday={date === today}
+                places={ctx.config.islands.map((i) => ({ island: i, href: qs({ island: i }) }))}
               />
             ) : (
               <p className="mt-3 text-sm text-slate-500 print:hidden">No stops on {isl} yet — use “Add pick-up point” above.</p>

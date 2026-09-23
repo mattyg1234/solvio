@@ -19,7 +19,24 @@ import { requireShowOpsContext, requireShowOpsRole } from "@/lib/show-ops/access
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type BusNightOrder = { island: string; stop_ids: string[] };
+export type BusNightOrder = {
+  island: string;
+  stop_ids: string[];
+  /** Tonight-only pick-up times, stop id → "HH:MM". Missing = the stop's permanent time. */
+  stop_times: Record<string, string>;
+};
+
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function cleanStopTimes(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, t] of Object.entries(raw as Record<string, unknown>)) {
+    const time = String(t ?? "").slice(0, 5);
+    if (UUID_RE.test(id) && HHMM_RE.test(time)) out[id] = time;
+  }
+  return out;
+}
 
 export type BusNightSheet = {
   /** Saved running order per island for this night. Empty = printed pick-up times. */
@@ -49,7 +66,7 @@ export async function getBusNightOrderAction(
   const [{ data: orders, error }, { data: stops, error: stopsError }, { data: busOrders, error: guidesError }] = await Promise.all([
     ctx.supabase
       .from("show_bus_night_orders")
-      .select("island,stop_ids")
+      .select("island,stop_ids,stop_times")
       .eq("business_id", ctx.business.id)
       .eq("show_date", date),
     ctx.supabase
@@ -67,7 +84,11 @@ export async function getBusNightOrderAction(
 
   const sheet: BusNightSheet = { orders: [], stops: {}, guides: {} };
   for (const o of orders ?? []) {
-    sheet.orders.push({ island: String(o.island), stop_ids: Array.isArray(o.stop_ids) ? o.stop_ids.map(String) : [] });
+    sheet.orders.push({
+      island: String(o.island),
+      stop_ids: Array.isArray(o.stop_ids) ? o.stop_ids.map(String) : [],
+      stop_times: cleanStopTimes(o.stop_times),
+    });
   }
   for (const s of stops ?? []) {
     sheet.stops[String(s.id)] = {
@@ -82,11 +103,16 @@ export async function getBusNightOrderAction(
   return { ok: true, sheet };
 }
 
-/** Save tonight's order for one island. Replaces whatever was saved before. */
+/**
+ * Save tonight's order for one island, and optionally tonight-only pick-up times
+ * (stop id → "HH:MM"; an empty string clears that stop's override). Replaces the
+ * saved order; times for stops not mentioned are kept.
+ */
 export async function saveBusNightOrderAction(
   showDate: string,
   island: string,
   stopIds: string[],
+  stopTimes?: Record<string, string>,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const ctx = await requireShowOpsRole("office");
   const date = String(showDate ?? "").trim();
@@ -98,11 +124,22 @@ export async function saveBusNightOrderAction(
   if (!Array.isArray(ids) || !ids.length || ids.length > 1000 || new Set(ids).size !== ids.length || ids.some((id) => typeof id !== "string" || !UUID_RE.test(id))) return { ok: false, message: "Choose a valid pickup order." };
   const [{ data: stops, error: stopError }, { data: previous, error: previousError }] = await Promise.all([
     ctx.supabase.from("show_bus_stops").select("id").eq("business_id", ctx.business.id).eq("island", isl).order("sort_order").order("id"),
-    ctx.supabase.from("show_bus_night_orders").select("stop_ids").eq("business_id", ctx.business.id).eq("island", isl).eq("show_date", date).maybeSingle(),
+    ctx.supabase.from("show_bus_night_orders").select("stop_ids,stop_times").eq("business_id", ctx.business.id).eq("island", isl).eq("show_date", date).maybeSingle(),
   ]);
   if (stopError || previousError || ids.some((id) => !(stops ?? []).some((stop) => stop.id === id))) return { ok: false, message: "One of these pickup points is outside your island access. Refresh the list." };
   const base = [...(Array.isArray(previous?.stop_ids) ? previous.stop_ids.filter(id => (stops ?? []).some(stop => stop.id === id)) : []), ...(stops ?? []).map((stop) => stop.id)];
   const merged = mergeBusNightOrder([...new Set(base)], ids);
+
+  const times = cleanStopTimes(previous?.stop_times);
+  if (stopTimes && typeof stopTimes === "object") {
+    for (const [id, t] of Object.entries(stopTimes)) {
+      if (!UUID_RE.test(id) || !(stops ?? []).some((stop) => stop.id === id)) continue;
+      const time = String(t ?? "").trim().slice(0, 5);
+      if (!time) delete times[id];
+      else if (HHMM_RE.test(time)) times[id] = time;
+      else return { ok: false, message: `"${t}" is not a valid time — use HH:MM.` };
+    }
+  }
 
   const { error } = await ctx.supabase.from("show_bus_night_orders").upsert(
     {
@@ -110,6 +147,7 @@ export async function saveBusNightOrderAction(
       show_date: date,
       island: isl,
       stop_ids: merged,
+      stop_times: times,
       updated_by: ctx.user.id,
       updated_at: new Date().toISOString(),
     },
