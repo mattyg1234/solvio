@@ -10,13 +10,17 @@ import {
   FileText,
   Handshake,
   Home,
+  Inbox,
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Mail,
+  MessageCircle,
   Percent,
   PieChart,
   ScanLine,
   Settings2,
+  Sheet,
   Ticket,
 } from "lucide-react";
 import Image from "next/image";
@@ -52,6 +56,10 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   stats: PieChart,
   lists: ListChecks,
   settings: Settings2,
+  "email-bookings": Mail,
+  chat: MessageCircle,
+  sheets: Sheet,
+  "my-inbox": Inbox,
 };
 
 function initials(userName: string, org: string): string {
