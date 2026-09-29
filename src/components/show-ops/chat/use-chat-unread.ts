@@ -10,7 +10,7 @@ import { useSyncExternalStore } from "react";
  */
 
 export const CHAT_UNREAD_EVENT = "show-ops-chat-unread";
-const NAV_POLL_MS = 20_000;
+const NAV_POLL_MS = 60_000;
 
 let total = 0;
 let listeners = new Set<() => void>();
