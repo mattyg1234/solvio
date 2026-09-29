@@ -40,13 +40,10 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
   },
   {
     // Solvio Connect modules: open to every staff member, never to partner logins.
+    // Sheets and My inbox join here once they're built for the Hub.
     id: "team",
     label: "Team",
-    items: [
-      { href: "/dashboard/show-ops/chat", label: "Chat", key: "chat" },
-      { href: "/dashboard/show-ops/sheets", label: "Sheets", key: "sheets" },
-      { href: "/dashboard/show-ops/my-inbox", label: "My inbox", key: "my-inbox" },
-    ],
+    items: [{ href: "/dashboard/show-ops/chat", label: "Chat", key: "chat" }],
   },
   {
     id: "analytics",

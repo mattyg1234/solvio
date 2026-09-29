@@ -91,8 +91,8 @@ test("an unknown role falls back to the least-privileged default", () => {
 test("nav is stripped to what the member can reach, and empty groups vanish", () => {
   const sections = visibleShowOpsNav("booker", ["lists"]);
   const keys = sections.flatMap((s) => s.items.map((i) => i.key));
-  // Team tools (chat, sheets, own inbox) come with every staff login, whatever the page grants.
-  assert.deepEqual(keys, ["lists", "chat", "sheets", "my-inbox"]);
+  // Team tools (chat) come with every staff login, whatever the page grants.
+  assert.deepEqual(keys, ["lists", "chat"]);
   assert.deepEqual(
     sections.map((s) => s.id),
     ["operations", "team"],
