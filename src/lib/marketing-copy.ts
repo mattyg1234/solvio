@@ -185,11 +185,11 @@ export type MarketingCopy = {
 
 const EN: MarketingCopy = {
   meta: {
-    title: "Solvio · Booking + back office for your business",
+    title: "Solvio Systems · Software for Canary Islands businesses, built on Holded",
     description:
-      "Guest booking on the front — invoices, payments, lists, reports and email on the back. One system for venues, tours and operators who are done re-keying spreadsheets.",
+      "Bookings, gigs, staff and partners in one place, with every legal invoice issued through Holded under Verifactu. For musicians, tour and show companies, bars and freelancers.",
     ogDescription:
-      "Bookings, invoices, payment chasing, live ops data and guest email — Solvio runs the back office so your team stops copy-pasting between tools.",
+      "Solvio Connect runs bookings, gigs and staff, and turns the day's work into Verifactu invoices issued through Holded.",
   },
   header: {
     nav: { growth: "Ops", pricing: "Pricing", commerce: "Bookings", faq: "FAQ", liveDemo: "Live demo" },
@@ -516,7 +516,7 @@ const EN: MarketingCopy = {
 
 const ES: MarketingCopy = {
   meta: {
-    title: "Solvio · Reservas + back office para tu negocio",
+    title: "Solvio Systems · Software para negocios en Canarias, sobre Holded",
     description:
       "Reservas para el cliente — facturas, cobros, listas, informes y email en el back office. Un sistema para locales, tours y operadores cansados de Excel.",
     ogDescription:
