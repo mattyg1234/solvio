@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { attachPartnerLinkTicketPhotoFormAction, createPartnerLinkBookingAction, partnerLinkContext, requestPartnerLinkCancellationFormAction } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
@@ -27,7 +27,8 @@ export default async function PartnerLinkPage({
   const { token } = await params;
   const sp = await searchParams;
   const link = await partnerLinkContext(token);
-  if (!link) notFound();
+  // Not one of ours: Solvio Connect partner links went out on this address too.
+  if (!link) redirect(`https://connect.solviosystems.com/p/${encodeURIComponent(token)}`);
   const { ctx, supplier, admin } = link;
   const biz = ctx.business.id;
   // Joel: the last 10 of each on the page, "See more" for the lot.

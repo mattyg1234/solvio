@@ -185,11 +185,11 @@ export type MarketingCopy = {
 
 const EN: MarketingCopy = {
   meta: {
-    title: "Solvio Systems · Software for Canary Islands businesses, built on Holded",
+    title: "Solvio Systems · We build custom systems for your business",
     description:
-      "Bookings, gigs, staff and partners in one place, with every legal invoice issued through Holded under Verifactu. For musicians, tour and show companies, bars and freelancers.",
+      "Custom operations hubs, invoicing and customer pages for businesses in the Canary Islands, with every legal invoice issued through Holded under Verifactu. Built, hosted and supported by Solvio Systems.",
     ogDescription:
-      "Solvio Connect runs bookings, gigs and staff, and turns the day's work into Verifactu invoices issued through Holded.",
+      "We build custom systems for your business: bookings, operations, invoicing and partners, with Holded and Verifactu built in.",
   },
   header: {
     nav: { growth: "Ops", pricing: "Pricing", commerce: "Bookings", faq: "FAQ", liveDemo: "Live demo" },
@@ -516,11 +516,11 @@ const EN: MarketingCopy = {
 
 const ES: MarketingCopy = {
   meta: {
-    title: "Solvio Systems · Software para negocios en Canarias, sobre Holded",
+    title: "Solvio Systems · Creamos sistemas a medida para tu negocio",
     description:
-      "Reservas para el cliente — facturas, cobros, listas, informes y email en el back office. Un sistema para locales, tours y operadores cansados de Excel.",
+      "Centros de operaciones, facturación y páginas para clientes a medida para negocios en Canarias, con cada factura legal emitida a través de Holded con Verifactu. Construido, alojado y mantenido por Solvio Systems.",
     ogDescription:
-      "Reservas, facturas, cobro de depósitos, datos en vivo y email — Solvio gestiona el back office para que no copies datos entre herramientas.",
+      "Creamos sistemas a medida para tu negocio: reservas, operaciones, facturación y partners, con Holded y Verifactu integrados.",
   },
   header: {
     nav: { growth: "Ops", pricing: "Precios", commerce: "Reservas", faq: "FAQ", liveDemo: "Demo en vivo" },

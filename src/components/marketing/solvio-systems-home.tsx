@@ -1,12 +1,13 @@
-import { ArrowRight, ArrowUpRight, Bus, Check, FileCheck2, Mail, Martini, MicVocal, Receipt, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Bus, Check, FileCheck2, KeyRound, Mail, Martini, Plug, Receipt, Sparkles, Wrench } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
 import type { MarketingLocale } from "@/lib/marketing-locale";
 
 /**
- * The solviosystems.com front page: the company and its products. Solvio Connect
- * lives on its own subdomain; Show Ops (operators' hub) signs in here at /login.
+ * The solviosystems.com front page: Solvio Systems builds custom systems for businesses.
+ * Clients sign in to their own hub through the portal (/portal); the Show Ops hub signs in
+ * here at /login. Solvio Connect (self-serve) lives on its own subdomain.
  */
 
 const CONNECT_URL = "https://connect.solviosystems.com";
@@ -15,108 +16,146 @@ const CONTACT = "matty@solviosystems.com";
 
 const COPY = {
   en: {
-    nav: { connect: "Solvio Connect", signIn: "Show Ops sign in", language: "Language" },
-    badge: "Works with Holded · Verifactu-ready · Made in Tenerife",
-    title: "Software that runs small businesses in the Canary Islands.",
-    lead: "Bookings, gigs, staff and partners in one place, with every legal invoice issued through Holded under Verifactu. For musicians, tour and show companies, bars and freelancers.",
-    openConnect: "Open Solvio Connect",
-    signInOps: "Sign in to Show Ops",
-    productsTitle: "Our products",
+    nav: { portal: "Client portal", contact: "Talk to us", language: "Language" },
+    badge: "Custom systems · Holded and Verifactu ready · Built in the Canary Islands",
+    title: "We build custom systems for your business.",
+    lead: "Bookings, operations, invoicing, staff and partners, built around the way you already work. Every legal invoice goes out through Holded under Verifactu. We build it, host it and look after it.",
+    talk: "Talk to us",
+    portal: "Client portal",
+    fits: ["Tour and show operators", "Bars and venues", "Musicians and artists", "Services and freelancers"],
+    buildTitle: "What we build",
+    buildLead: "One system that fits your business, instead of five tools and a spreadsheet.",
+    build: [
+      {
+        name: "Operations hubs",
+        text: "Bookings, calendars, night lists, buses, door check-in and partner links, all in one place your team signs into.",
+      },
+      {
+        name: "Invoicing and money",
+        text: "Partner rate cards, commissions and deposits, with every invoice issued by Holded and reported under Verifactu. Card payments through Stripe.",
+      },
+      {
+        name: "Customer-facing pages",
+        text: "Booking pages, partner booking links, printed confirmations and QR ordering at the table through Tipsi.",
+      },
+      {
+        name: "Integrations and automation",
+        text: "Your website, GetYourGuide, MailerLite, WhatsApp and email, read and written for you. AI where it saves real time.",
+      },
+    ],
+    howTitle: "How it works",
+    how: [
+      { step: "1", name: "We sit with your team", text: "A few hours with the people who do the work, looking at what they use today." },
+      { step: "2", name: "We build it on your real data", text: "Weeks, not months. You see it working with your bookings and partners as it grows." },
+      { step: "3", name: "We go live alongside the old way", text: "Training, cutover and a side-by-side run before anything is switched off." },
+      { step: "4", name: "We look after it", text: "Hosting, backups, support and improvements for a flat monthly fee." },
+    ],
+    caseTag: "Built for a show operator",
+    caseTitle: "Four show nights a week across three islands, run from one hub.",
+    caseText:
+      "Sixteen thousand historical bookings migrated, partner rate cards and commissions, bus boards per coach, printable night lists, door check-in by QR and partner invoices issued through Holded. Replacing a legacy system without stopping the shows.",
+    productsTitle: "Off-the-shelf, when that fits",
     products: [
       {
         name: "Solvio Connect",
-        tag: "For freelancers and small businesses",
+        tag: "Self-serve for small businesses",
         text: "Set up in a few questions. Bookings and gigs turn into Verifactu invoices through Holded, with IGIC, IRPF and tax figures handled.",
-        points: ["Gig calendar and artist booking pages", "Booking emails, partners and staff sheets", "Tax figures and exports for your gestor"],
         cta: "Open Solvio Connect",
         href: CONNECT_URL,
-        external: true,
-      },
-      {
-        name: "Solvio Show Ops",
-        tag: "For tour and show operators",
-        text: "A custom operations hub for operators running shows and trips every night: bookings, partners, buses, night lists and partner invoicing.",
-        points: ["Partner rate cards and commissions", "Night lists, buses and door check-in", "Partner invoices issued through Holded"],
-        cta: "Sign in",
-        href: "/login",
-        external: false,
       },
       {
         name: "Tipsi",
-        tag: "For bars and venues",
-        text: "QR ordering, table bookings and send-a-drink for bars, with orders printed at the bar and paid by card.",
-        points: ["QR menus and table ordering", "Table bookings", "Send a drink to another table"],
+        tag: "QR ordering for bars",
+        text: "QR menus, table ordering, table bookings and send-a-drink, printed at the bar and paid by card.",
         cta: "Visit Tipsi",
         href: TIPSI_URL,
-        external: true,
       },
     ],
-    trades: ["Musicians and artists", "Tour and show companies", "Bars and venues", "Freelancers and services"],
-    holdedTitle: "Holded keeps the accounts. Your gestor does the tax. Solvio runs the business.",
-    holdedText:
-      "Every legal invoice is issued by Holded. Solvio fills it in from the work you've already done, so nothing is typed twice, and the Canary taxes (IGIC and its small-business exemption, IRPF) are applied for you.",
-    contactTitle: "Talk to us",
-    contactText: "Operators, gestorías and partners: tell us what you run and we'll show you around.",
-    footer: { privacy: "Privacy", terms: "Terms", signIn: "Sign in" },
+    portalTitle: "Already a client?",
+    portalText: "Your hub has its own sign in. Find it in the client portal.",
+    portalCta: "Open the client portal",
+    contactTitle: "Tell us what you run",
+    contactText: "Operators, venues, gestorías and partners: a short call is enough to know whether we can help.",
+    footer: { privacy: "Privacy", terms: "Terms", portal: "Client portal" },
   },
   es: {
-    nav: { connect: "Solvio Connect", signIn: "Acceso Show Ops", language: "Idioma" },
-    badge: "Funciona con Holded · Preparado para Verifactu · Hecho en Tenerife",
-    title: "Software que gestiona pequeños negocios en Canarias.",
-    lead: "Reservas, actuaciones, personal y partners en un solo lugar, con cada factura legal emitida a través de Holded con Verifactu. Para músicos, empresas de tours y espectáculos, bares y autónomos.",
-    openConnect: "Abrir Solvio Connect",
-    signInOps: "Entrar en Show Ops",
-    productsTitle: "Nuestros productos",
+    nav: { portal: "Portal de clientes", contact: "Habla con nosotros", language: "Idioma" },
+    badge: "Sistemas a medida · Preparado para Holded y Verifactu · Hecho en Canarias",
+    title: "Creamos sistemas a medida para tu negocio.",
+    lead: "Reservas, operaciones, facturación, personal y partners, construidos alrededor de cómo ya trabajas. Cada factura legal sale a través de Holded con Verifactu. Lo construimos, lo alojamos y lo cuidamos.",
+    talk: "Habla con nosotros",
+    portal: "Portal de clientes",
+    fits: ["Operadores de tours y espectáculos", "Bares y locales", "Músicos y artistas", "Servicios y autónomos"],
+    buildTitle: "Qué construimos",
+    buildLead: "Un sistema que encaja con tu negocio, en lugar de cinco herramientas y una hoja de cálculo.",
+    build: [
+      {
+        name: "Centros de operaciones",
+        text: "Reservas, calendarios, listas de noche, autobuses, control de acceso y enlaces para partners, todo en un lugar al que entra tu equipo.",
+      },
+      {
+        name: "Facturación y dinero",
+        text: "Tarifas de partners, comisiones y depósitos, con cada factura emitida por Holded y comunicada con Verifactu. Pagos con tarjeta a través de Stripe.",
+      },
+      {
+        name: "Páginas para tus clientes",
+        text: "Páginas de reserva, enlaces de reserva para partners, confirmaciones impresas y pedidos por QR en la mesa con Tipsi.",
+      },
+      {
+        name: "Integraciones y automatización",
+        text: "Tu web, GetYourGuide, MailerLite, WhatsApp y email, leídos y escritos por ti. IA donde ahorra tiempo de verdad.",
+      },
+    ],
+    howTitle: "Cómo funciona",
+    how: [
+      { step: "1", name: "Nos sentamos con tu equipo", text: "Unas horas con quienes hacen el trabajo, viendo qué usan hoy." },
+      { step: "2", name: "Lo construimos con tus datos reales", text: "Semanas, no meses. Lo ves funcionar con tus reservas y partners mientras crece." },
+      { step: "3", name: "Arrancamos junto al sistema antiguo", text: "Formación, migración y uso en paralelo antes de apagar nada." },
+      { step: "4", name: "Lo cuidamos", text: "Alojamiento, copias de seguridad, soporte y mejoras por una cuota mensual fija." },
+    ],
+    caseTag: "Construido para un operador de espectáculos",
+    caseTitle: "Cuatro noches de show a la semana en tres islas, desde un solo hub.",
+    caseText:
+      "Dieciséis mil reservas históricas migradas, tarifas y comisiones de partners, cuadros de autobús por coche, listas de noche imprimibles, control de acceso por QR y facturas a partners emitidas con Holded. Sustituyendo un sistema antiguo sin parar los shows.",
+    productsTitle: "Listo para usar, cuando encaja",
     products: [
       {
         name: "Solvio Connect",
-        tag: "Para autónomos y pequeños negocios",
+        tag: "Autoservicio para pequeños negocios",
         text: "Se configura en unas pocas preguntas. Las reservas y actuaciones se convierten en facturas Verifactu a través de Holded, con IGIC, IRPF e impuestos resueltos.",
-        points: ["Calendario de actuaciones y páginas de reserva para artistas", "Emails de reservas, partners y hojas de personal", "Cifras de impuestos y exportaciones para tu gestor"],
         cta: "Abrir Solvio Connect",
         href: CONNECT_URL,
-        external: true,
-      },
-      {
-        name: "Solvio Show Ops",
-        tag: "Para operadores de tours y espectáculos",
-        text: "Un centro de operaciones a medida para operadores con espectáculos y excursiones cada noche: reservas, partners, autobuses, listas y facturación a partners.",
-        points: ["Tarifas y comisiones de partners", "Listas, autobuses y control de acceso", "Facturas a partners emitidas con Holded"],
-        cta: "Entrar",
-        href: "/login",
-        external: false,
       },
       {
         name: "Tipsi",
-        tag: "Para bares y locales",
-        text: "Pedidos por QR, reservas de mesa y envío de copas entre mesas, con los pedidos impresos en la barra y pagados con tarjeta.",
-        points: ["Menús QR y pedidos en mesa", "Reservas de mesa", "Invita a una copa a otra mesa"],
+        tag: "Pedidos por QR para bares",
+        text: "Menús QR, pedidos en mesa, reservas de mesa e invitar a una copa, impresos en la barra y pagados con tarjeta.",
         cta: "Ver Tipsi",
         href: TIPSI_URL,
-        external: true,
       },
     ],
-    trades: ["Músicos y artistas", "Tours y espectáculos", "Bares y locales", "Autónomos y servicios"],
-    holdedTitle: "Holded lleva la contabilidad. Tu gestor, los impuestos. Solvio, el negocio.",
-    holdedText:
-      "Cada factura legal la emite Holded. Solvio la rellena con el trabajo que ya has hecho, sin teclear nada dos veces, y aplica los impuestos canarios (IGIC y su exención para pequeños empresarios, IRPF) por ti.",
-    contactTitle: "Habla con nosotros",
-    contactText: "Operadores, gestorías y partners: cuéntanos qué gestionas y te lo enseñamos.",
-    footer: { privacy: "Privacidad", terms: "Condiciones", signIn: "Entrar" },
+    portalTitle: "¿Ya eres cliente?",
+    portalText: "Tu hub tiene su propio acceso. Encuéntralo en el portal de clientes.",
+    portalCta: "Abrir el portal de clientes",
+    contactTitle: "Cuéntanos qué gestionas",
+    contactText: "Operadores, locales, gestorías y partners: con una llamada corta basta para saber si podemos ayudar.",
+    footer: { privacy: "Privacidad", terms: "Condiciones", portal: "Portal de clientes" },
   },
 } as const;
 
-const PRODUCT_ICONS = [Sparkles, Bus, Martini] as const;
+const BUILD_ICONS = [Bus, Receipt, Martini, Plug] as const;
+const PRODUCT_ICONS = [Sparkles, Martini] as const;
+const FIT_ICONS = [Bus, Martini, Sparkles, Wrench] as const;
 
 /** The page in each language: English at /, Spanish at /es. */
 const LANGUAGES = [
   { locale: "en", short: "EN", name: "English", href: "/" },
   { locale: "es", short: "ES", name: "Español", href: "/es" },
 ] as const;
-const TRADE_ICONS = [MicVocal, Bus, Martini, Receipt] as const;
 
 export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
   const c = locale === "es" ? COPY.es : COPY.en;
+  const portalHref = locale === "es" ? "/es/portal" : "/portal";
   return (
     <div lang={locale} className="min-h-dvh overflow-x-clip bg-white text-[#0f172a]">
       <header className="sticky top-0 z-30 border-b border-[#f1eefb]/80 bg-white/80 backdrop-blur-xl">
@@ -145,15 +184,14 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
                 </Link>
               ))}
             </div>
-            <Link href="/login" className="hidden rounded-lg px-3 py-2.5 text-sm font-semibold text-[#5b21b6] hover:bg-[#f5f3ff] sm:block">
-              {c.nav.signIn}
+            <Link href={portalHref} className="hidden rounded-lg px-3 py-2.5 text-sm font-semibold text-[#5b21b6] hover:bg-[#f5f3ff] sm:block">
+              {c.nav.portal}
             </Link>
             <a
-              href={CONNECT_URL}
-              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#7c3aed] px-3 py-2.5 sm:px-3.5 text-sm font-semibold text-white shadow-sm shadow-[#7c3aed]/30 transition-colors hover:bg-[#6d28d9]"
+              href="#contact"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-[#7c3aed] px-3 py-2.5 text-sm font-semibold text-white shadow-sm shadow-[#7c3aed]/30 transition-colors hover:bg-[#6d28d9] sm:px-3.5"
             >
-              <span className="sm:hidden">Connect</span>
-              <span className="hidden sm:inline">{c.nav.connect}</span> <ArrowUpRight className="size-4" aria-hidden />
+              {c.nav.contact} <ArrowRight className="size-4" aria-hidden />
             </a>
           </nav>
         </div>
@@ -170,21 +208,21 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
             <p className="max-w-2xl text-lg leading-relaxed text-[#475569]">{c.lead}</p>
             <div className="flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row">
               <a
-                href={CONNECT_URL}
+                href="#contact"
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#7c3aed] px-6 text-base font-semibold text-white shadow-lg shadow-[#7c3aed]/30 transition-colors hover:bg-[#6d28d9]"
               >
-                {c.openConnect} <ArrowRight className="size-4" aria-hidden />
+                {c.talk} <ArrowRight className="size-4" aria-hidden />
               </a>
               <Link
-                href="/login"
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-[#e2dcf7] bg-white px-6 text-base font-semibold text-[#0f172a] transition-colors hover:border-[#c4b5fd] hover:bg-[#faf9ff]"
+                href={portalHref}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#e2dcf7] bg-white px-6 text-base font-semibold text-[#0f172a] transition-colors hover:border-[#c4b5fd] hover:bg-[#faf9ff]"
               >
-                {c.signInOps}
+                <KeyRound className="size-4 text-[#7c3aed]" aria-hidden /> {c.portal}
               </Link>
             </div>
             <ul className="mt-2 flex flex-wrap justify-center gap-2">
-              {c.trades.map((t, i) => {
-                const Icon = TRADE_ICONS[i] ?? Receipt;
+              {c.fits.map((t, i) => {
+                const Icon = FIT_ICONS[i] ?? Receipt;
                 return (
                   <li key={t} className="inline-flex items-center gap-1.5 rounded-full border border-[#ebe7f7] bg-white px-3 py-1.5 text-sm text-[#475569]">
                     <Icon className="size-4 text-[#7c3aed]" aria-hidden /> {t}
@@ -197,48 +235,18 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
 
         <section className="border-t border-[#f1eefb]">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{c.productsTitle}</h2>
-            <div className="mt-10 grid gap-5 lg:grid-cols-3">
-              {c.products.map((p, i) => {
-                const Icon = PRODUCT_ICONS[i] ?? Sparkles;
-                const first = i === 0;
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{c.buildTitle}</h2>
+            <p className="mt-2 max-w-2xl text-lg text-[#475569]">{c.buildLead}</p>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {c.build.map((b, i) => {
+                const Icon = BUILD_ICONS[i] ?? Sparkles;
                 return (
-                  <article
-                    key={p.name}
-                    className={`flex flex-col rounded-3xl border p-7 transition-shadow duration-200 hover:shadow-xl hover:shadow-[#7c3aed]/10 ${
-                      first ? "border-[#c4b5fd] bg-gradient-to-b from-[#f5f3ff] to-white" : "border-[#ebe7f7] bg-white"
-                    }`}
-                  >
-                    <span className={`inline-flex w-fit rounded-2xl p-3 ${first ? "bg-[#7c3aed] text-white" : "bg-[#f5f3ff] text-[#7c3aed]"}`}>
+                  <article key={b.name} className="flex flex-col rounded-3xl border border-[#ebe7f7] bg-white p-7 transition-shadow duration-200 hover:shadow-xl hover:shadow-[#7c3aed]/10">
+                    <span className="inline-flex w-fit rounded-2xl bg-[#f5f3ff] p-3 text-[#7c3aed]">
                       <Icon className="size-6" aria-hidden />
                     </span>
-                    <p className="mt-5 text-xs font-semibold tracking-wide text-[#7c3aed] uppercase">{p.tag}</p>
-                    <h3 className="mt-1 text-2xl font-semibold tracking-tight">{p.name}</h3>
-                    <p className="mt-2 leading-relaxed text-[#475569]">{p.text}</p>
-                    <ul className="mt-5 flex flex-1 flex-col gap-2.5">
-                      {p.points.map((pt) => (
-                        <li key={pt} className="flex items-start gap-2 text-sm text-[#334155]">
-                          <Check className="mt-0.5 size-4 shrink-0 text-[#7c3aed]" aria-hidden /> {pt}
-                        </li>
-                      ))}
-                    </ul>
-                    {p.external ? (
-                      <a
-                        href={p.href}
-                        className={`mt-7 inline-flex h-11 w-fit items-center gap-2 rounded-xl px-5 text-sm font-semibold transition-colors ${
-                          first ? "bg-[#7c3aed] text-white hover:bg-[#6d28d9]" : "border border-[#e2dcf7] text-[#0f172a] hover:bg-[#faf9ff]"
-                        }`}
-                      >
-                        {p.cta} <ArrowUpRight className="size-4" aria-hidden />
-                      </a>
-                    ) : (
-                      <Link
-                        href={p.href}
-                        className="mt-7 inline-flex h-11 w-fit items-center gap-2 rounded-xl border border-[#e2dcf7] px-5 text-sm font-semibold text-[#0f172a] transition-colors hover:bg-[#faf9ff]"
-                      >
-                        {p.cta} <ArrowRight className="size-4" aria-hidden />
-                      </Link>
-                    )}
+                    <h3 className="mt-5 text-xl font-semibold tracking-tight">{b.name}</h3>
+                    <p className="mt-2 leading-relaxed text-[#475569]">{b.text}</p>
                   </article>
                 );
               })}
@@ -246,21 +254,80 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
           </div>
         </section>
 
-        <section className="relative overflow-hidden bg-[#1e1336] text-white">
-          <div aria-hidden className="absolute inset-0 bg-[radial-gradient(50rem_24rem_at_80%_0%,rgba(124,58,237,0.35),transparent)]" />
-          <div className="relative mx-auto max-w-4xl px-4 py-20 text-center sm:px-6">
-            <h2 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{c.holdedTitle}</h2>
-            <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-violet-100/85">{c.holdedText}</p>
-            <a
-              href={CONNECT_URL}
-              className="mt-8 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white px-6 font-semibold text-[#5b21b6] transition-colors hover:bg-violet-50"
-            >
-              {c.openConnect} <ArrowRight className="size-4" aria-hidden />
-            </a>
+        <section className="border-t border-[#f1eefb] bg-[#faf9ff]">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{c.howTitle}</h2>
+            <ol className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {c.how.map((h) => (
+                <li key={h.step} className="rounded-3xl border border-[#ebe7f7] bg-white p-7">
+                  <span className="grid size-9 place-items-center rounded-full bg-[#7c3aed] text-sm font-semibold text-white">{h.step}</span>
+                  <h3 className="mt-4 text-lg font-semibold tracking-tight">{h.name}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-[#475569]">{h.text}</p>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
-        <section>
+        <section className="relative overflow-hidden bg-[#1e1336] text-white">
+          <div aria-hidden className="absolute inset-0 bg-[radial-gradient(50rem_24rem_at_80%_0%,rgba(124,58,237,0.35),transparent)]" />
+          <div className="relative mx-auto max-w-4xl px-4 py-20 text-center sm:px-6">
+            <p className="text-xs font-semibold tracking-wide text-violet-200 uppercase">{c.caseTag}</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{c.caseTitle}</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-violet-100/85">{c.caseText}</p>
+            <ul className="mx-auto mt-8 flex max-w-2xl flex-wrap justify-center gap-2">
+              {["Holded", "Verifactu", "Stripe", "GetYourGuide", "WhatsApp", "MailerLite"].map((t) => (
+                <li key={t} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-violet-100">
+                  <Check className="size-3.5 text-violet-300" aria-hidden /> {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="border-t border-[#f1eefb]">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+            <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">{c.productsTitle}</h2>
+            <div className="mt-10 grid gap-5 lg:grid-cols-2">
+              {c.products.map((p, i) => {
+                const Icon = PRODUCT_ICONS[i] ?? Sparkles;
+                return (
+                  <article key={p.name} className="flex flex-col rounded-3xl border border-[#ebe7f7] bg-white p-7 transition-shadow duration-200 hover:shadow-xl hover:shadow-[#7c3aed]/10">
+                    <span className="inline-flex w-fit rounded-2xl bg-[#f5f3ff] p-3 text-[#7c3aed]">
+                      <Icon className="size-6" aria-hidden />
+                    </span>
+                    <p className="mt-5 text-xs font-semibold tracking-wide text-[#7c3aed] uppercase">{p.tag}</p>
+                    <h3 className="mt-1 text-2xl font-semibold tracking-tight">{p.name}</h3>
+                    <p className="mt-2 flex-1 leading-relaxed text-[#475569]">{p.text}</p>
+                    <a
+                      href={p.href}
+                      className="mt-7 inline-flex h-11 w-fit items-center gap-2 rounded-xl border border-[#e2dcf7] px-5 text-sm font-semibold text-[#0f172a] transition-colors hover:bg-[#faf9ff]"
+                    >
+                      {p.cta} <ArrowUpRight className="size-4" aria-hidden />
+                    </a>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-[#f1eefb] bg-[#faf9ff]">
+          <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 px-4 py-16 sm:px-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">{c.portalTitle}</h2>
+              <p className="mt-1 text-[#475569]">{c.portalText}</p>
+            </div>
+            <Link
+              href={portalHref}
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#7c3aed] px-5 font-semibold text-white shadow-sm shadow-[#7c3aed]/30 transition-colors hover:bg-[#6d28d9]"
+            >
+              <KeyRound className="size-4" aria-hidden /> {c.portalCta}
+            </Link>
+          </div>
+        </section>
+
+        <section id="contact" className="scroll-mt-20 border-t border-[#f1eefb]">
           <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 px-4 py-16 sm:px-6 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight">{c.contactTitle}</h2>
@@ -283,14 +350,17 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
             <a href={CONNECT_URL} className="hover:text-[#0f172a]">
               Solvio Connect
             </a>
+            <a href={TIPSI_URL} className="hover:text-[#0f172a]">
+              Tipsi
+            </a>
             <Link href="/privacy" className="hover:text-[#0f172a]">
               {c.footer.privacy}
             </Link>
             <Link href="/terms" className="hover:text-[#0f172a]">
               {c.footer.terms}
             </Link>
-            <Link href="/login" className="hover:text-[#0f172a]">
-              {c.footer.signIn}
+            <Link href={portalHref} className="hover:text-[#0f172a]">
+              {c.footer.portal}
             </Link>
           </span>
         </div>
