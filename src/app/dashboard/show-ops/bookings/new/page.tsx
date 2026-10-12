@@ -3,16 +3,26 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { createBookingAction } from "@/app/dashboard/show-ops/actions";
+import { createBookingFromEmailAction } from "@/app/dashboard/show-ops/email-bookings/actions";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
+import { EmailDraftBanner } from "@/components/show-ops/email-bookings/email-draft-banner";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { loadEmailFormDraft } from "@/lib/show-ops/email-bookings/draft";
 import {
   loadBookedDatesByProduct,
   withBookedDates,
 } from "@/lib/show-ops/nights";
 
-export default async function NewBookingPage() {
+export default async function NewBookingPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireShowOpsPage("bookings");
   const biz = ctx.business.id;
+  // Opened from Email bookings (?email=<id>): the form comes prefilled from the email.
+  const emailParam = (await searchParams).email;
+  const emailId = typeof emailParam === "string" ? emailParam : "";
 
   const [
     { data: suppliers },
@@ -47,6 +57,14 @@ export default async function NewBookingPage() {
       "Could not load shows, ticket types and extras. Please try again.",
     );
 
+  const fromEmail = emailId
+    ? await loadEmailFormDraft(ctx, emailId, {
+        products: products ?? [],
+        suppliers: suppliers ?? [],
+        hotels: hotels ?? [],
+      })
+    : null;
+
   return (
     <div className="space-y-4">
       <Link
@@ -65,10 +83,19 @@ export default async function NewBookingPage() {
           Follow the steps to create a new booking.
         </p>
       </div>
+      {fromEmail ? <EmailDraftBanner source={fromEmail} /> : null}
       <ShowOpsBookingForm
         mode="create"
-        action={createBookingAction}
-        successPath="/dashboard/show-ops/bookings?created={ref}"
+        action={
+          fromEmail
+            ? createBookingFromEmailAction.bind(null, fromEmail.email.id)
+            : createBookingAction
+        }
+        successPath={
+          fromEmail
+            ? "/dashboard/show-ops/email-bookings?created={ref}"
+            : "/dashboard/show-ops/bookings?created={ref}"
+        }
         products={
           withBookedDates(
             (products ?? []) as { id: string }[],
@@ -81,9 +108,12 @@ export default async function NewBookingPage() {
         config={ctx.config}
         // Whoever is signed in books for their own outlet by default.
         defaults={
-          ctx.defaultSupplierId
-            ? { supplier_id: ctx.defaultSupplierId }
-            : undefined
+          // From an email the partner is the email's seller, never the desk's own outlet.
+          fromEmail
+            ? fromEmail.draft.defaults
+            : ctx.defaultSupplierId
+              ? { supplier_id: ctx.defaultSupplierId }
+              : undefined
         }
       />
     </div>

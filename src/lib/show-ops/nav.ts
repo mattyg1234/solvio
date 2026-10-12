@@ -29,6 +29,7 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
     items: [
       { href: "/dashboard/show-ops/master?tab=shows", label: "Shows", key: "shows", tab: "shows" },
       { href: "/dashboard/show-ops/bookings", label: "Bookings", key: "bookings" },
+      { href: "/dashboard/show-ops/email-bookings", label: "Email bookings", key: "email-bookings" },
       { href: "/dashboard/show-ops/door", label: "Door", key: "door" },
       { href: "/dashboard/show-ops/lists", label: "Night lists", key: "lists" },
       { href: "/dashboard/show-ops/invoices", label: "Invoicing", key: "invoices" },
@@ -36,6 +37,13 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
       { href: "/dashboard/show-ops/master?tab=hotels", label: "Hotels", key: "hotels", tab: "hotels" },
       { href: "/dashboard/show-ops/buses", label: "Bus board", key: "buses" },
     ],
+  },
+  {
+    // Solvio Connect modules: open to every staff member, never to partner logins.
+    // Sheets and My inbox join here once they're built for the Hub.
+    id: "team",
+    label: "Team",
+    items: [{ href: "/dashboard/show-ops/chat", label: "Chat", key: "chat" }],
   },
   {
     id: "analytics",
@@ -209,14 +217,33 @@ export function canSeeShowOpsPage(
   return resolved != null && showOpsAllowedPages(role, allowedPages).includes(resolved);
 }
 
+/**
+ * Team tools every staff member gets without a page grant (chat, sheets, their own inbox).
+ * They sit outside SHOW_OPS_PAGE_KEYS on purpose, so the database permission check
+ * (private.show_ops_has_action) and saved allow-lists are untouched.
+ */
+export const SHOW_OPS_TEAM_KEYS = ["chat", "sheets", "my-inbox"] as const;
+
+/** Nav items that follow another page's permission: Email bookings goes with Bookings. */
+const SHOW_OPS_NAV_FOLLOWS: Record<string, ShowOpsPageKey> = { "email-bookings": "bookings" };
+
+export function canSeeShowOpsTeamTools(role: string): boolean {
+  return role !== "seller";
+}
+
 /** Nav sections with anything this member cannot reach stripped out. */
 export function visibleShowOpsNav(
   role: string,
   allowedPages: string[] | null | undefined,
 ): ShowOpsNavSection[] {
   const allowed = new Set<string>(showOpsAllowedPages(role, allowedPages));
+  const team = canSeeShowOpsTeamTools(role);
+  const visible = (key: string) =>
+    allowed.has(key) ||
+    (team && (SHOW_OPS_TEAM_KEYS as readonly string[]).includes(key)) ||
+    (SHOW_OPS_NAV_FOLLOWS[key] !== undefined && allowed.has(SHOW_OPS_NAV_FOLLOWS[key]));
   return SHOW_OPS_NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => allowed.has(item.key)),
+    items: section.items.filter((item) => visible(item.key)),
   })).filter((section) => section.items.length > 0);
 }
