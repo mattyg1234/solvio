@@ -10,13 +10,17 @@ import {
   FileText,
   Handshake,
   Home,
+  Inbox,
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Mail,
+  MessageCircle,
   Percent,
   PieChart,
   ScanLine,
   Settings2,
+  Sheet,
   Ticket,
 } from "lucide-react";
 import Image from "next/image";
@@ -25,6 +29,8 @@ import { useRouter } from "next/navigation";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { useChatUnread } from "@/components/show-ops/chat/use-chat-unread";
+import { formatUnreadBadge } from "@/lib/show-ops/chat/logic";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   SHOW_OPS_MOBILE_PRIMARY_KEYS,
@@ -52,6 +58,10 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   stats: PieChart,
   lists: ListChecks,
   settings: Settings2,
+  "email-bookings": Mail,
+  chat: MessageCircle,
+  sheets: Sheet,
+  "my-inbox": Inbox,
 };
 
 function initials(userName: string, org: string): string {
@@ -65,12 +75,24 @@ function orgLabel(displayName?: string): string {
   return raw || displayName || "Show Ops";
 }
 
-function NavLink({ item, on, onClick }: { item: ShowOpsNavItem; on: boolean; onClick?: () => void }) {
+function NavLink({
+  item,
+  on,
+  onClick,
+  badge = 0,
+}: {
+  item: ShowOpsNavItem;
+  on: boolean;
+  onClick?: () => void;
+  /** Unread count shown on the right (Chat). */
+  badge?: number;
+}) {
   const Icon = NAV_ICONS[item.key] ?? LayoutDashboard;
   return (
     <Link
       href={item.href}
       onClick={onClick}
+      aria-label={badge > 0 ? `${item.label}, ${badge} unread` : undefined}
       className={cn(
         "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
         on
@@ -80,6 +102,14 @@ function NavLink({ item, on, onClick }: { item: ShowOpsNavItem; on: boolean; onC
     >
       <Icon className={cn("h-4.5 w-4.5 h-[18px] w-[18px] shrink-0", on ? "text-[#7c3aed]" : "text-[#94a3b8]")} aria-hidden />
       <span className="truncate">{item.label}</span>
+      {badge > 0 ? (
+        <span
+          aria-hidden
+          className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold tabular-nums text-white"
+        >
+          {formatUnreadBadge(badge)}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -124,6 +154,7 @@ function ShowOpsSidebarInner({
   const tab = search.get("tab");
   const org = orgLabel(displayName);
   const admin = userName?.trim() || "Admin";
+  const chatUnread = useChatUnread(navSections.some((section) => section.items.some((item) => item.key === "chat")));
 
   return (
     <div className="flex h-full flex-col border-r border-[#ebe7f7]/90 bg-white">
@@ -152,7 +183,12 @@ function ShowOpsSidebarInner({
             </p>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => (
-                <NavLink key={item.key} item={item} on={showOpsNavActive(pathname, tab, item)} />
+                <NavLink
+                  key={item.key}
+                  item={item}
+                  on={showOpsNavActive(pathname, tab, item)}
+                  badge={item.key === "chat" ? chatUnread : 0}
+                />
               ))}
             </div>
           </div>
@@ -203,6 +239,7 @@ function ShowOpsMobileInner() {
   ).filter((item): item is (typeof SHOW_OPS_SIDEBAR_LINKS)[number] => Boolean(item));
   const more = SHOW_OPS_SIDEBAR_LINKS.filter((l) => !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key));
   const moreActive = more.some((item) => showOpsNavActive(pathname, tab, item));
+  const chatUnread = useChatUnread(more.some((item) => item.key === "chat"));
 
   return (
     <>
@@ -217,7 +254,12 @@ function ShowOpsMobileInner() {
               const on = showOpsNavActive(pathname, tab, item);
               return (
                 <li key={item.key}>
-                  <NavLink item={item} on={on} onClick={() => setMoreOpen(false)} />
+                  <NavLink
+                    item={item}
+                    on={on}
+                    onClick={() => setMoreOpen(false)}
+                    badge={item.key === "chat" ? chatUnread : 0}
+                  />
                 </li>
               );
             })}
@@ -252,9 +294,20 @@ function ShowOpsMobileInner() {
             moreOpen || moreActive ? "text-[#7c3aed]" : "text-slate-400",
           )}
           aria-expanded={moreOpen}
+          aria-label={chatUnread > 0 ? `More, ${chatUnread} unread chat messages` : undefined}
           onClick={() => setMoreOpen((o) => !o)}
         >
-          <ListChecks className="h-5 w-5" aria-hidden />
+          <span className="relative">
+            <ListChecks className="h-5 w-5" aria-hidden />
+            {chatUnread > 0 ? (
+              <span
+                aria-hidden
+                className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold tabular-nums text-white"
+              >
+                {formatUnreadBadge(chatUnread)}
+              </span>
+            ) : null}
+          </span>
           More
         </button>
       </nav>

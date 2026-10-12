@@ -13,6 +13,8 @@ import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
 import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
+import { SendBookingToChat } from "@/components/show-ops/chat/send-booking-to-chat";
+import { canUseShowOpsChat } from "@/lib/show-ops/chat/logic";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import {
   applyNoShowBilling,
@@ -187,6 +189,11 @@ export default async function EditBookingPage({
       <ShowOpsPageHeader
         eyebrow="Operations"
         title={`Edit booking · ${booking.booking_ref}`}
+        actions={
+          canUseShowOpsChat(ctx.role) ? (
+            <SendBookingToChat bookingId={booking.id} bookingRef={String(booking.booking_ref)} />
+          ) : undefined
+        }
         subtitle={
           <>
             Created {formatBookingHistoryWhen(booking.created_at)} by{" "}

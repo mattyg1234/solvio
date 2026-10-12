@@ -91,9 +91,21 @@ test("an unknown role falls back to the least-privileged default", () => {
 test("nav is stripped to what the member can reach, and empty groups vanish", () => {
   const sections = visibleShowOpsNav("booker", ["lists"]);
   const keys = sections.flatMap((s) => s.items.map((i) => i.key));
-  assert.deepEqual(keys, ["lists"]);
-  assert.equal(sections.length, 1, "only the group holding the check-in list should survive");
+  // Team tools (chat) come with every staff login, whatever the page grants.
+  assert.deepEqual(keys, ["lists", "chat"]);
+  assert.deepEqual(
+    sections.map((s) => s.id),
+    ["operations", "team"],
+    "only the check-in list's group and the team tools should survive",
+  );
   assert.ok(!sections.some((s) => s.id === "settings"), "settings group must not render");
+  assert.ok(!keys.includes("email-bookings"), "email bookings follows the bookings grant");
+});
+
+test("email bookings follows the bookings page; partner logins get no team tools", () => {
+  const withBookings = visibleShowOpsNav("booker", ["bookings"]).flatMap((s) => s.items.map((i) => i.key));
+  assert.ok(withBookings.includes("email-bookings"));
+  assert.deepEqual(visibleShowOpsNav("seller", null), []);
 });
 
 test("owner nav still shows every page", () => {
