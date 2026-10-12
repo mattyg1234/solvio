@@ -162,7 +162,7 @@ export function readWooOrder(subject: string, text: string): EmailRead | null {
 
 /* ---------- GetYourGuide supplier emails ---------- */
 
-/** "Booking - S100001 - GYGN6BWF9L36" and its cancellation and change versions. */
+/** "Booking - S100001 - GYGTEST12345" and its cancellation and change versions. */
 export function readGetYourGuide(subject: string, text: string): EmailRead | null {
   const ref = `${subject}\n${text}`.match(/\b(GYG[A-Z0-9]{6,})\b/);
   if (!ref) return null;

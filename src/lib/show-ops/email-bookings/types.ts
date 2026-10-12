@@ -27,7 +27,7 @@ export type ExtractedBooking = {
   net?: number;
   /** What was booked, without date or ticket type. */
   service?: string;
-  /** The partner's booking reference or the shop's order number (TFS/20957, GYGN6BWF9L36). */
+  /** The partner's booking reference or the shop's order number (TFS/20957, GYGTEST12345). */
   reference?: string;
   email?: string;
   phone?: string;
