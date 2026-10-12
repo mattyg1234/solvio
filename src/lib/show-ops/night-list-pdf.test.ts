@@ -32,7 +32,8 @@ test("office details lead with the diet in full; the meals sheet gives diet its 
   assert.match(office.details, /^DIET: 1 veggie, 1 gluten free — no nuts · conf$/);
   const meals = nightListCells("meals", r);
   assert.equal(meals.dietary, "1 veggie, 1 gluten free — no nuts");
-  assert.equal(meals.details, "conf");
+  assert.equal(meals.people, String(r.adults + r.children + r.infants));
+  assert.deepEqual(nightListColumns("meals").map((c) => c.key), ["name", "people", "dietary"]);
   assert.equal(nightListCells("office", row(1)).details, "conf");
 });
 

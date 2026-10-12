@@ -58,18 +58,12 @@ type Col = { key: string; label: string; w: number; align?: "right" | "center"; 
 
 /** Column widths per sheet; they sum to the usable width (786pt). */
 export function nightListColumns(view: NightListPdfView): Col[] {
+  // The chefs' sheet is only who, how many and what they eat (Joel, 12 Oct): no ref, show, tour op, hotel or details.
   if (view === "meals") {
     return [
-      { key: "ref", label: "Ref", w: 62 },
-      { key: "name", label: "Name", w: 118, bold: true },
-      { key: "ad", label: "Ad", w: 22, align: "center" },
-      { key: "ch", label: "Ch", w: 22, align: "center" },
-      { key: "in", label: "In", w: 22, align: "center" },
-      { key: "show", label: "Show", w: 80 },
-      { key: "supplier", label: "Tour Op", w: 96 },
-      { key: "hotel", label: "Hotel", w: 116 },
-      { key: "dietary", label: "Dietary requirement", w: 156, bold: true },
-      { key: "details", label: "Details", w: 92 },
+      { key: "name", label: "Name", w: 280, bold: true },
+      { key: "people", label: "People", w: 70, align: "center" },
+      { key: "dietary", label: "Meals / dietary requirement", w: 436, bold: true },
     ];
   }
   if (view === "door") {
@@ -114,6 +108,7 @@ export function nightListCells(view: NightListPdfView, row: NightListPdfRow): Re
     ad: String(row.adults),
     ch: String(row.children),
     in: String(row.infants),
+    people: String(row.adults + row.children + row.infants),
     show: row.show_name,
     supplier: row.supplier_name ?? "",
     hotel: row.hotel_name ?? "",
