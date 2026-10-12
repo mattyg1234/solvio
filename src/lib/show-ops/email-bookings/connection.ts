@@ -18,9 +18,14 @@ export const OAUTH_STATE_COOKIE_PATH = "/api/show-ops/mail/oauth";
 export const OAUTH_STATE_MAX_AGE_S = 600;
 export const EMAIL_BOOKINGS_PATH = "/dashboard/show-ops/email-bookings";
 
-/** The site Google sends people back to: NEXT_PUBLIC_SITE_URL, else the request's own origin. */
+/**
+ * The site Google sends people back to: the request's own origin. Sign-ins are per host
+ * (mht.solviosystems.com, later themhthub.com), so staying on the host keeps the office signed in.
+ * Not NEXT_PUBLIC_SITE_URL, which stays www for Twilio. Each host's callback URL
+ * (<host>/api/show-ops/mail/oauth/callback) must be listed in the Google OAuth client.
+ */
 export function mailSiteOrigin(requestOrigin: string): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL?.trim() || requestOrigin).replace(/\/+$/, "");
+  return requestOrigin.replace(/\/+$/, "");
 }
 
 export function mailRedirectUri(requestOrigin: string): string {
