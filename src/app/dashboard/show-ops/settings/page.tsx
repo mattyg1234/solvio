@@ -1166,13 +1166,19 @@ export default async function ShowOpsSettingsPage({
             <input
               name="holded_token"
               type="password"
-              autoComplete="off"
+              // new-password: browsers must not offer the signed-in user's saved login here.
+              autoComplete="new-password"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+              spellCheck={false}
               required
               placeholder="pat_… or 32-character API key"
               className="mt-1 block min-w-[22rem] rounded-lg border px-3 py-2 font-mono text-sm"
             />
             <span className="mt-1 block text-xs text-slate-500">
-              In Holded: Configuración → Más → Desarrolladores → API Token V2. Paste it here, nowhere else.
+              In Holded: Configuración → Desarrolladores → Credenciales → Agregar API Token (the new pat_… tokens work; so do the older v1 keys). Paste it here, nowhere else.
             </span>
           </label>
           <button
