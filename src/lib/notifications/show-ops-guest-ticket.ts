@@ -47,6 +47,12 @@ export type GuestTicketInput = {
   island?: string | null;
   /** Operator logo for the top of the confirmation email. */
   logoUrl?: string | null;
+  /**
+   * The workspace and booking. With them, texts go through the workspace's own
+   * Twilio (Settings → WhatsApp & SMS) and are logged in its customer inbox.
+   */
+  businessId?: string | null;
+  bookingId?: string | null;
 };
 
 /** Total / Paid / To pay — the same three lines as the printed confirmation. */
@@ -306,6 +312,19 @@ export async function sendGuestTicketSms(input: GuestTicketInput): Promise<Notif
   if (!phone) return { ok: false, reason: "invalid_recipient", message: "Guest mobile is missing." };
   const body = buildGuestTicketText(input);
 
+  // The operator's own WhatsApp/SMS, logged in its inbox so the guest's reply lands next to it.
+  if (input.businessId) {
+    const { sendBusinessTextToGuest } = await import("@/lib/show-ops/inbox/server");
+    const own = await sendBusinessTextToGuest(input.businessId, {
+      phone,
+      body,
+      bookingId: input.bookingId ?? null,
+      guestName: input.guestName,
+    });
+    if (own.ok) return { ok: true };
+    if (own.reason !== "not_configured") return own;
+  }
+
   if (isTwilioWhatsAppConfigured()) {
     const wa = await sendBookingWhatsApp({ phoneE164: phone, body });
     if (wa.ok) return wa;
@@ -398,5 +417,7 @@ export async function sendGuestTicketByBookingId(
     privateZone: booking.private_zone,
     island: booking.island,
     logoUrl: branding.logoUrl,
+    businessId: String(booking.business_id),
+    bookingId,
   });
 }

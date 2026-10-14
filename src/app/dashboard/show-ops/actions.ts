@@ -224,11 +224,13 @@ function guestTicketFromBooking(
     pickupKind: (f.pickup_kind as string | null) ?? null,
     privateZone: (f.private_zone as string | null) ?? null,
     updated: opts?.updated ?? false,
+    businessId: ctx.business.id,
+    bookingId: typeof f.id === "string" ? f.id : null,
   };
 }
 
 const TICKET_FIELDS =
-  "booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token";
+  "id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token";
 
 /** Send (or re-send) one guest their ticket from the booking record. */
 export async function resendGuestTicketAction(
@@ -2065,10 +2067,11 @@ async function buildBookingFields(
  */
 async function sendGuestTicketIfRequested(
   formData: FormData,
-  ctx: { branding: { displayName: string; logoUrl?: string | null }; config: ShowOpsConfig },
+  ctx: { branding: { displayName: string; logoUrl?: string | null }; config: ShowOpsConfig; business?: { id: string } },
   f: Record<string, unknown>,
   booking_ref: string,
   token: string | null,
+  bookingId?: string | null,
 ): Promise<void> {
   if (String(formData.get("send_ticket") ?? "") !== "1") return;
   try {
@@ -2100,6 +2103,8 @@ async function sendGuestTicketIfRequested(
       privateZone: (f.private_zone as string | null) ?? null,
       island: (f as { island?: string | null }).island ?? null,
       logoUrl: ctx.branding.logoUrl ?? null,
+      businessId: ctx.business?.id ?? null,
+      bookingId: bookingId ?? null,
     });
   } catch (err) {
     console.error("[guest-ticket] send failed for", booking_ref, err instanceof Error ? err.message : err);
@@ -2163,7 +2168,7 @@ export async function createBookingAction(
   }
 
   // Guest ticket by email/SMS on save (opt-out checkbox on the form). Never blocks the booking.
-  await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null);
+  await sendGuestTicketIfRequested(formData, ctx, built.fields as Record<string, unknown>, booking_ref, data?.ticket_token ? String(data.ticket_token) : null, data?.id ? String(data.id) : null);
   await pushChannelAvailability(ctx.business.id, { productId: built.fields.product_id }, [built.fields.show_date]);
 
   revalidateShowOps();
@@ -2982,6 +2987,10 @@ export async function updateShowOpsMemberPagesAction(formData: FormData): Promis
    * so this only ever sets the desk's pre-selected partner for office staff.
    */
   const patch: Record<string, unknown> = { allowed_pages: allowedPages, role: nextRole };
+  // Customer inbox: whole inbox or only their own chats. Owners and Superadmins always see it all.
+  if (formData.has("inbox_all_field") && member.role !== "seller") {
+    patch.inbox_all = nextRole !== "admin" && formData.get("inbox_all") === "on";
+  }
   if (formData.has("default_supplier_id") && member.role !== "seller") {
     patch.supplier_id = String(formData.get("default_supplier_id") ?? "").trim() || null;
   }

@@ -32,6 +32,16 @@ export type ChatBookingAttachment = {
   ref: string;
 };
 
+/** A customer WhatsApp/SMS chat sent to a teammate from the inbox. */
+export type ChatInboxAttachment = {
+  kind: "inbox";
+  conversation_id: string;
+  label: string;
+};
+
+/** What a chat message shows for an inbox card: open it in the customer inbox. */
+export type ChatInboxCard = { conversationId: string; label: string };
+
 /**
  * A booking as it appears on a chat card. Built from live data on every read,
  * and deliberately without prices, paid amounts or balances.
@@ -64,6 +74,7 @@ export type ChatMessage = {
   mentions: string[];
   createdAt: string;
   booking: ChatBookingCard | null;
+  inbox: ChatInboxCard | null;
 };
 
 export type ChatSyncResponse = {

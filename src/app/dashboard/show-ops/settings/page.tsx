@@ -16,6 +16,8 @@ import {
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { MessagingSettings, type MessagingSettingsState } from "@/components/show-ops/inbox/messaging-settings";
+import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { deleteChannelProductAction, saveChannelProductAction, testChannelPushAction } from "@/app/dashboard/show-ops/actions-channels";
 import {
   MemberIslandsForm,
@@ -42,6 +44,8 @@ export default async function ShowOpsSettingsPage({
     sample_error?: string;
     holded?: string;
     holded_error?: string;
+    twilio?: string;
+    twilio_error?: string;
     channel?: string;
     channel_error?: string;
     channel_push?: string;
@@ -123,6 +127,28 @@ export default async function ShowOpsSettingsPage({
   const supplierName = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
 
   const holded = await loadHoldedConnection(ctx);
+
+  // Customer inbox: the Twilio row (admins only under RLS) and who sees the whole inbox.
+  // Both read separately so the page still works before the inbox migration is applied.
+  const [{ data: twilioRow }, { data: inboxRows, error: inboxFlagError }] = await Promise.all([
+    ctx.supabase
+      .from("show_ops_integrations")
+      .select("status,meta,last_error,last_checked_at")
+      .eq("business_id", ctx.business.id)
+      .eq("provider", "twilio")
+      .maybeSingle(),
+    ctx.supabase.from("show_ops_members").select("id,inbox_all").eq("business_id", ctx.business.id),
+  ]);
+  const messaging: MessagingSettingsState = twilioRow
+    ? {
+        meta: { ...parseTwilioMeta(twilioRow.meta), account_name: String((twilioRow.meta as { account_name?: string } | null)?.account_name ?? "") },
+        status: twilioRow.status as string,
+        lastError: (twilioRow.last_error as string | null) ?? null,
+        lastCheckedAt: (twilioRow.last_checked_at as string | null) ?? null,
+      }
+    : { meta: null, status: null, lastError: null, lastCheckedAt: null };
+  const inboxFlagReady = !inboxFlagError;
+  const inboxAllById = new Map(((inboxRows ?? []) as { id: string; inbox_all: boolean }[]).map((r) => [r.id, Boolean(r.inbox_all)]));
   const igic = holded.connected ? await listHoldedIgicTaxes(ctx) : { taxes: [], error: null };
   const [{ data: channelRows }, { data: channelShows }, { data: channelPartners }] = await Promise.all([
     ctx.supabase.from("show_channel_products").select("id,external_product_id,product_id,supplier_id,ticket_type_id,pickup_kind,cutoff_minutes,availability_type,pricing_type,group_size,period_minutes,active,notes").eq("business_id", ctx.business.id).order("external_product_id"),
@@ -380,6 +406,18 @@ export default async function ShowOpsSettingsPage({
                         ),
                       )}
                     </div>
+                    {inboxFlagReady && (m.role === "booker" || m.role === "office" || m.role === "finance") ? (
+                      <label className="mt-3 flex items-center gap-2 text-xs text-slate-700">
+                        <input type="hidden" name="inbox_all_field" value="1" />
+                        <input
+                          type="checkbox"
+                          name="inbox_all"
+                          defaultChecked={inboxAllById.get(m.id) ?? false}
+                          className="h-4 w-4"
+                        />
+                        Sees the whole customer inbox (every WhatsApp and text with guests). Untick: only chats given to them.
+                      </label>
+                    ) : null}
                     {m.role !== "seller" ? (
                       <label className="mt-3 block text-xs text-slate-600">
                         Books for (pre-selected on their new-booking form)
@@ -1145,6 +1183,8 @@ export default async function ShowOpsSettingsPage({
           </button>
         </form>
       </section>
+
+      <MessagingSettings state={messaging} flash={sp.twilio} flashError={sp.twilio_error} />
 
       <section id="channels" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">GetYourGuide products</h2>

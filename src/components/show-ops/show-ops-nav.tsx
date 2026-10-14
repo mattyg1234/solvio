@@ -16,6 +16,7 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  MessagesSquare,
   Percent,
   PieChart,
   ScanLine,
@@ -30,6 +31,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
 import { useChatUnread } from "@/components/show-ops/chat/use-chat-unread";
+import { useInboxUnread } from "@/components/show-ops/inbox/use-inbox-unread";
 import { formatUnreadBadge } from "@/lib/show-ops/chat/logic";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -60,6 +62,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   settings: Settings2,
   "email-bookings": Mail,
   chat: MessageCircle,
+  inbox: MessagesSquare,
   sheets: Sheet,
   "my-inbox": Inbox,
 };
@@ -84,7 +87,7 @@ function NavLink({
   item: ShowOpsNavItem;
   on: boolean;
   onClick?: () => void;
-  /** Unread count shown on the right (Chat). */
+  /** Unread count shown on the right (Chat, Customer inbox). */
   badge?: number;
 }) {
   const Icon = NAV_ICONS[item.key] ?? LayoutDashboard;
@@ -155,6 +158,7 @@ function ShowOpsSidebarInner({
   const org = orgLabel(displayName);
   const admin = userName?.trim() || "Admin";
   const chatUnread = useChatUnread(navSections.some((section) => section.items.some((item) => item.key === "chat")));
+  const inboxUnread = useInboxUnread(navSections.some((section) => section.items.some((item) => item.key === "inbox")));
 
   return (
     <div className="flex h-full flex-col border-r border-[#ebe7f7]/90 bg-white">
@@ -187,7 +191,7 @@ function ShowOpsSidebarInner({
                   key={item.key}
                   item={item}
                   on={showOpsNavActive(pathname, tab, item)}
-                  badge={item.key === "chat" ? chatUnread : 0}
+                  badge={item.key === "chat" ? chatUnread : item.key === "inbox" ? inboxUnread : 0}
                 />
               ))}
             </div>
@@ -240,6 +244,8 @@ function ShowOpsMobileInner() {
   const more = SHOW_OPS_SIDEBAR_LINKS.filter((l) => !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key));
   const moreActive = more.some((item) => showOpsNavActive(pathname, tab, item));
   const chatUnread = useChatUnread(more.some((item) => item.key === "chat"));
+  const inboxUnread = useInboxUnread(more.some((item) => item.key === "inbox"));
+  const moreUnread = chatUnread + inboxUnread;
 
   return (
     <>
@@ -258,7 +264,7 @@ function ShowOpsMobileInner() {
                     item={item}
                     on={on}
                     onClick={() => setMoreOpen(false)}
-                    badge={item.key === "chat" ? chatUnread : 0}
+                    badge={item.key === "chat" ? chatUnread : item.key === "inbox" ? inboxUnread : 0}
                   />
                 </li>
               );
@@ -294,17 +300,17 @@ function ShowOpsMobileInner() {
             moreOpen || moreActive ? "text-[#7c3aed]" : "text-slate-400",
           )}
           aria-expanded={moreOpen}
-          aria-label={chatUnread > 0 ? `More, ${chatUnread} unread chat messages` : undefined}
+          aria-label={moreUnread > 0 ? `More, ${moreUnread} unread messages` : undefined}
           onClick={() => setMoreOpen((o) => !o)}
         >
           <span className="relative">
             <ListChecks className="h-5 w-5" aria-hidden />
-            {chatUnread > 0 ? (
+            {moreUnread > 0 ? (
               <span
                 aria-hidden
                 className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold tabular-nums text-white"
               >
-                {formatUnreadBadge(chatUnread)}
+                {formatUnreadBadge(moreUnread)}
               </span>
             ) : null}
           </span>

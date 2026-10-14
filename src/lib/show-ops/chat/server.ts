@@ -17,6 +17,7 @@ import {
   directChatKey,
   isUuid,
   parseBookingAttachment,
+  parseInboxAttachment,
   parseMentions,
   sanitizeChatSearch,
   totalUnread,
@@ -25,6 +26,7 @@ import {
 import type {
   ChatBookingAttachment,
   ChatBookingSearchHit,
+  ChatInboxAttachment,
   ChatChannel,
   ChatChannelKind,
   ChatMessage,
@@ -225,6 +227,7 @@ async function hydrateMessages(viewer: ChatViewer, rows: MessageRow[]): Promise<
   }
   return rows.map((r) => {
     const a = attachments.get(r.id);
+    const inbox = parseInboxAttachment(r.attachment);
     return {
       id: r.id,
       channelId: r.channel_id,
@@ -233,6 +236,8 @@ async function hydrateMessages(viewer: ChatViewer, rows: MessageRow[]): Promise<
       mentions: r.mentions ?? [],
       createdAt: r.created_at,
       booking: a ? bookingCardFor(a, viewer, live.get(a.booking_id)) : null,
+      // Only the label travels; opening it runs the inbox's own access check.
+      inbox: inbox ? { conversationId: inbox.conversation_id, label: inbox.label } : null,
     };
   });
 }
@@ -307,11 +312,23 @@ async function attachableBooking(viewer: ChatViewer, bookingId: string): Promise
 
 export async function postChatMessage(
   viewer: ChatViewer,
-  input: { channelId: string; text?: unknown; bookingId?: string | null },
+  input: {
+    channelId: string;
+    text?: unknown;
+    bookingId?: string | null;
+    /** Server-only: the customer inbox posts its "sent you a chat" card. Not reachable from the composer. */
+    inbox?: { conversationId: string; label: string } | null;
+  },
 ): Promise<ChatMessage> {
   const channel = await assertChannelAccess(viewer, input.channelId);
   const text = cleanMessageText(input.text);
-  const attachment = input.bookingId ? await attachableBooking(viewer, input.bookingId) : null;
+  let attachment: ChatBookingAttachment | ChatInboxAttachment | null = input.bookingId
+    ? await attachableBooking(viewer, input.bookingId)
+    : null;
+  if (!attachment && input.inbox) {
+    attachment = parseInboxAttachment({ kind: "inbox", conversation_id: input.inbox.conversationId, label: input.inbox.label });
+    if (!attachment) throw new ChatAccessError("That chat cannot be sent.");
+  }
   if (!text && !attachment) throw new ChatAccessError("Write a message or attach a booking first.");
 
   const people = await loadChatPeople(viewer);

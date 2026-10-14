@@ -11,6 +11,7 @@ import {
 } from "@/app/dashboard/show-ops/chat/actions";
 import { ChatBookingCardView } from "@/components/show-ops/chat/booking-card";
 import { ChatBookingPicker } from "@/components/show-ops/chat/booking-picker";
+import { ChatInboxCardView } from "@/components/show-ops/chat/inbox-card";
 import {
   ChatAvatar,
   dayDivider,
@@ -592,6 +593,7 @@ function Conversation({
                         </p>
                       ) : null}
                       {m.booking ? <ChatBookingCardView card={m.booking} className={m.text ? "mt-2" : ""} /> : null}
+                      {m.inbox ? <ChatInboxCardView card={m.inbox} className={m.text || m.booking ? "mt-2" : ""} /> : null}
                     </div>
                     {mine ? <p className="mt-1 text-xs text-slate-400">{msgTime(m.createdAt, now)}</p> : null}
                   </div>

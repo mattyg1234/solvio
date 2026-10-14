@@ -7,6 +7,7 @@ import { showOpsArrivalMark } from "@/lib/show-ops/calc";
 import { pickupKindFromBooking } from "@/lib/show-ops/private-pickup";
 import type {
   ChatBookingAttachment,
+  ChatInboxAttachment,
   ChatBookingCard,
   ChatBookingCardDetails,
   ChatChannel,
@@ -140,6 +141,16 @@ export function parseBookingAttachment(raw: unknown): ChatBookingAttachment | nu
   const ref = typeof o.ref === "string" ? o.ref.trim().slice(0, 60) : "";
   if (!ref) return null;
   return { kind: "booking", booking_id: o.booking_id, ref };
+}
+
+/** An inbox card attachment, validated. */
+export function parseInboxAttachment(raw: unknown): ChatInboxAttachment | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.kind !== "inbox" || !isUuid(o.conversation_id)) return null;
+  const label = typeof o.label === "string" ? o.label.trim().slice(0, 120) : "";
+  if (!label) return null;
+  return { kind: "inbox", conversation_id: o.conversation_id, label };
 }
 
 /** Booking columns the card reads. No money columns on purpose. */

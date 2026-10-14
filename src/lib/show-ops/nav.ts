@@ -43,7 +43,10 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
     // Sheets and My inbox join here once they're built for the Hub.
     id: "team",
     label: "Team",
-    items: [{ href: "/dashboard/show-ops/chat", label: "Chat", key: "chat" }],
+    items: [
+      { href: "/dashboard/show-ops/chat", label: "Chat", key: "chat" },
+      { href: "/dashboard/show-ops/inbox", label: "Customer inbox", key: "inbox" },
+    ],
   },
   {
     id: "analytics",
@@ -218,11 +221,13 @@ export function canSeeShowOpsPage(
 }
 
 /**
- * Team tools every staff member gets without a page grant (chat, sheets, their own inbox).
+ * Team tools every staff member gets without a page grant (chat, the customer inbox
+ * — which shows each person only their own chats unless they see the whole inbox —
+ * sheets, their own inbox).
  * They sit outside SHOW_OPS_PAGE_KEYS on purpose, so the database permission check
  * (private.show_ops_has_action) and saved allow-lists are untouched.
  */
-export const SHOW_OPS_TEAM_KEYS = ["chat", "sheets", "my-inbox"] as const;
+export const SHOW_OPS_TEAM_KEYS = ["chat", "inbox", "sheets", "my-inbox"] as const;
 
 /** Nav items that follow another page's permission: Email bookings goes with Bookings. */
 const SHOW_OPS_NAV_FOLLOWS: Record<string, ShowOpsPageKey> = { "email-bookings": "bookings" };
