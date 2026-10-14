@@ -17,6 +17,9 @@ export type MessagingSettingsState = {
 
 const input = "mt-1 block w-full rounded-lg border px-2 py-1.5 text-sm";
 
+/** Keep password managers (1Password, LastPass, Bitwarden) from filling the Hub login into Twilio fields. */
+const NO_AUTOFILL = { "data-1p-ignore": "true", "data-lpignore": "true", "data-bwignore": "true", "data-form-type": "other" } as const;
+
 /**
  * Settings → WhatsApp & SMS. The company's own Twilio account, with its
  * WhatsApp Business sender and/or an SMS number. Server component: the token
@@ -112,14 +115,31 @@ export function MessagingSettings({
         <summary className="cursor-pointer text-sm font-semibold text-slate-700">
           {meta ? `Replace the Auth Token (now ending ${meta.hint || "…"})` : "Connect Twilio"}
         </summary>
-        <form action={connectTwilioAction} className="mt-3 grid gap-3 sm:grid-cols-2">
+        <form action={connectTwilioAction} autoComplete="off" className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-slate-600">
             Account SID (starts with AC)
-            <input name="account_sid" required defaultValue={meta?.account_sid ?? ""} autoComplete="off" spellCheck={false} className={`${input} font-mono`} />
+            <input
+              name="account_sid"
+              required
+              defaultValue={meta?.account_sid ?? ""}
+              autoComplete="off"
+              spellCheck={false}
+              {...NO_AUTOFILL}
+              className={`${input} font-mono`}
+            />
           </label>
           <label className="text-xs text-slate-600">
             Auth Token
-            <input name="auth_token" type="password" required autoComplete="off" spellCheck={false} className={`${input} font-mono`} />
+            {/* new-password: browsers must not offer the signed-in user's saved login here. */}
+            <input
+              name="auth_token"
+              type="password"
+              required
+              autoComplete="new-password"
+              spellCheck={false}
+              {...NO_AUTOFILL}
+              className={`${input} font-mono`}
+            />
           </label>
           <NumberFields meta={meta} />
           <p className="text-xs text-slate-500 sm:col-span-2">
