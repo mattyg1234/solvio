@@ -23,6 +23,7 @@ import {
   type HoldedIgicTaxApproval,
 } from "@/lib/show-ops/holded";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
+import { checkTaxId, holdedReadiness, normaliseCountry, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /*
@@ -163,6 +164,11 @@ export async function saveHoldedTaxApprovalsAction(formData: FormData): Promise<
   redirect("/dashboard/show-ops/settings?holded=taxes_saved");
 }
 
+/**
+ * The partner's Holded contact, created or brought up to date from the Hub's
+ * partner details. Refuses (with what to fill in) when the details are not
+ * enough for a full invoice, so Holded never gets an incomplete one.
+ */
 async function ensureHoldedContact(
   ctx: ShowOpsContext,
   client: HoldedClient,
@@ -170,35 +176,58 @@ async function ensureHoldedContact(
   fallbackName: string,
   recipient: { name?: string | null; taxId?: string | null; address?: string | null },
 ): Promise<string> {
-  let supplier: {
-    id: string; name: string; legal_name: string | null; tax_id: string | null; email: string | null; invoice_address: string | null; island: string | null; holded_contact_id: string | null;
-  } | null = null;
+  type SupplierRow = PartnerBilling & { id: string; email: string | null; island: string | null; holded_contact_id: string | null };
+  let supplier: SupplierRow | null = null;
   if (supplierId) {
     const { data } = await ctx.supabase
       .from("show_suppliers")
-      .select("id,name,legal_name,tax_id,email,invoice_address,island,holded_contact_id")
+      .select("id,name,legal_name,tax_id,email,invoice_address,invoice_postal_code,invoice_city,invoice_province,invoice_country_code,is_person,island,holded_contact_id")
       .eq("id", supplierId)
       .eq("business_id", ctx.business.id)
       .maybeSingle();
-    supplier = data ?? null;
+    supplier = (data as SupplierRow | null) ?? null;
   }
-  if (supplier?.holded_contact_id) return supplier.holded_contact_id;
 
+  // The partner's current details win (Holded issues the legal invoice, not the Hub); the invoice's frozen recipient fills gaps.
+  const billing: PartnerBilling = supplier
+    ? { ...supplier, tax_id: supplier.tax_id || recipient.taxId }
+    : { name: recipient.name || fallbackName, legal_name: recipient.name, tax_id: recipient.taxId, invoice_address: recipient.address };
+  const missing = supplier
+    ? holdedReadiness(billing)
+    : holdedReadiness({ ...billing, invoice_postal_code: "00000", invoice_city: "—" });
+  if (missing.length) {
+    const who = supplier?.name || recipient.name || fallbackName;
+    throw new Error(`Before this goes to Holded, add ${who}'s ${missing.join(", ")}${supplier ? " (Partners → edit the partner)" : ""}.`);
+  }
+  const tax = checkTaxId(billing.tax_id, normaliseCountry(billing.invoice_country_code));
   const input = holdedContactFromSupplier({
-    name: recipient.name || supplier?.name || fallbackName,
-    legal_name: recipient.name || supplier?.legal_name,
-    tax_id: recipient.taxId || supplier?.tax_id,
-    email: supplier?.email,
-    invoice_address: recipient.address || supplier?.invoice_address,
-    island: supplier?.island,
+    ...billing,
+    name: supplier?.name || billing.name,
+    tax_id: tax.ok ? tax.value : billing.tax_id,
+    email: supplier?.email ?? null,
+    island: supplier?.island ?? null,
   });
-  const existing = input.code ? await client.findContactByCode(input.code) : null;
-  const contact = existing ?? (await client.createContact(input));
-  if (supplier) {
+
+  const remember = async (id: string | null) => {
+    if (!supplier) return;
     // Catalogue writes are admin-only under RLS; remembering the Holded id is a backend concern, scoped to this business.
     const admin = createSupabaseServiceRoleClient();
-    await admin.from("show_suppliers").update({ holded_contact_id: contact.id, updated_at: new Date().toISOString() }).eq("id", supplier.id).eq("business_id", ctx.business.id);
+    await admin.from("show_suppliers").update({ holded_contact_id: id, updated_at: new Date().toISOString() }).eq("id", supplier.id).eq("business_id", ctx.business.id);
+  };
+
+  if (supplier?.holded_contact_id) {
+    if (await client.syncContact(supplier.holded_contact_id, input)) return supplier.holded_contact_id;
+    // Gone from Holded (deleted, or it belonged to another Holded company): find or create it again.
+    await remember(null);
   }
+  const existing = (input.code ? await client.findContactByCode(input.code) : null) ?? (await client.findContactByName(input.name));
+  if (existing) {
+    await client.syncContact(existing.id, input).catch(() => false);
+    await remember(existing.id);
+    return existing.id;
+  }
+  const contact = await client.createContact(input);
+  await remember(contact.id);
   return contact.id;
 }
 

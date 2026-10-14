@@ -1,6 +1,8 @@
 "use client";
 
 import { Check, Link2, Loader2, Mail, Pencil } from "lucide-react";
+
+import { PartnerBillingAddressFields } from "@/components/show-ops/partner-billing-address";
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
 
 import {
@@ -38,6 +40,12 @@ export type MasterSupplierRow = {
   tax_id?: string | null;
   legal_name?: string | null;
   invoice_address?: string | null;
+  invoice_postal_code?: string | null;
+  invoice_city?: string | null;
+  invoice_province?: string | null;
+  invoice_country_code?: string | null;
+  payment_terms_days?: number | null;
+  is_person?: boolean | null;
   can_choose_billing_mode?: boolean | null;
   active: boolean | null;
 };
@@ -423,18 +431,7 @@ export function MasterSuppliersForm({
                 Invoice email
                 <input name={`${prefix}email`} type="email" defaultValue={s.email ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
               </label>
-              <label className="text-xs font-medium text-slate-600">
-                Legal name
-                <input name={`${prefix}legal_name`} defaultValue={s.legal_name ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
-              </label>
-              <label className="text-xs font-medium text-slate-600">
-                NIF / tax ID
-                <input name={`${prefix}tax_id`} defaultValue={s.tax_id ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
-              </label>
-              <label className="text-xs font-medium text-slate-600 sm:col-span-3">
-                Invoice address
-                <input name={`${prefix}invoice_address`} defaultValue={s.invoice_address ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
-              </label>
+              <PartnerBillingAddressFields prefix={prefix} values={s} />
               <label className="text-xs font-medium text-slate-600">
                 Partner type
                 <select name={`${prefix}partner_type`} defaultValue={s.partner_type} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">

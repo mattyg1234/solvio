@@ -1,3 +1,4 @@
+import { PartnerBillingAddressFields } from "@/components/show-ops/partner-billing-address";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import { hotelNamesForStops } from "@/lib/show-ops/directory-search";
@@ -352,9 +353,7 @@ export default async function MasterDataPage({
               </select>
             </label>
             <Field label="Invoice email" name="email" type="email" />
-            <Field label="Legal name" name="legal_name" />
-            <Field label="NIF / tax ID" name="tax_id" />
-            <Field label="Invoice address" name="invoice_address" />
+            <PartnerBillingAddressFields />
             <PartnerBillingFields invoiceNettPercent={70} />
             <label className="text-xs font-medium text-slate-600">
               No-show default

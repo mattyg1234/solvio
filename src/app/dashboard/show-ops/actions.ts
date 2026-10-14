@@ -1,5 +1,6 @@
 "use server";
 
+import { billingPatchFromForm, composeBillingAddress, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 import { uploadBusinessLogo, validateLogoFile } from "@/lib/business-logo";
 import { bookingRefSeries, isPartnerLinkToken, isUniqueViolation, nextBookingRefWithoutSession, partnerLinkUrl } from "@/lib/show-ops/partner-link";
 import { sendShowOpsPartnerLinkEmail } from "@/lib/notifications/show-ops-emails";
@@ -587,6 +588,9 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "").trim();
   const emailRaw = String(formData.get("email") ?? "").trim().toLowerCase();
   if (emailRaw && !emailRaw.includes("@")) redirectMaster(tab, { error: "Supplier email looks invalid." });
+  // Invoicing details: a NIF that is entered must be a real one (Holded and Verifactu reject the rest).
+  const billing = billingPatchFromForm((k) => formData.get(k));
+  if (!billing.ok) redirectMaster(tab, { error: billing.error });
   const row = {
     business_id: ctx.business.id,
     name: String(formData.get("name") ?? "").trim(),
@@ -597,9 +601,7 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
     deposit_percent: Number(formData.get("deposit_percent") ?? 30),
     invoice_nett_percent: Number(formData.get("invoice_nett_percent") ?? 100),
     email: emailRaw || null,
-    tax_id: String(formData.get("tax_id") ?? "").trim() || null,
-    legal_name: String(formData.get("legal_name") ?? "").trim() || null,
-    invoice_address: String(formData.get("invoice_address") ?? "").trim() || null,
+    ...(billing.ok ? billing.patch : {}),
     no_show_policy: resolveNoShowCharge(String(formData.get("no_show_policy") ?? ""), null),
     round_up: String(formData.get("round_up") ?? "") === "1",
     active: String(formData.get("active") ?? "1") === "1",
@@ -874,9 +876,11 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
         if (raw && !raw.includes("@")) throw new Error("Supplier email looks invalid.");
         return raw || null;
       })(),
-      tax_id: String(formData.get(p + "tax_id") ?? "").trim() || null,
-      legal_name: String(formData.get(p + "legal_name") ?? "").trim() || null,
-      invoice_address: String(formData.get(p + "invoice_address") ?? "").trim() || null,
+      ...(() => {
+        const billing = billingPatchFromForm((k) => formData.get(k), p);
+        if (!billing.ok) throw new Error(billing.error);
+        return billing.patch;
+      })(),
       active: String(formData.get(p + "active") ?? "") === "1",
       updated_at: new Date().toISOString(),
     };
@@ -3254,7 +3258,10 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
   const supplier_name = priced[0].supplier_name || "Supplier";
   const packIslands = new Set(priced.map((b) => (b.island ? String(b.island) : "")).filter(Boolean));
   const packIsland = packIslands.size === 1 ? [...packIslands][0] : island || null;
-  const due_date = addDaysIso(invoice_date, terms);
+  // The partner's agreed payment days win over the run's default (Joel's per-partner invoice days).
+  const partnerTerms = Number((supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days);
+  const termsDays = Number.isInteger(partnerTerms) && partnerTerms >= 0 ? partnerTerms : terms;
+  const due_date = addDaysIso(invoice_date, termsDays);
   const invoiceCfg = ctx.config.invoice;
   const vatRate = invoiceCfg.defaultVatRate;
   const recipientName = String(supplierRow?.legal_name || supplier_name).trim();
@@ -3269,7 +3276,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       period_start,
       period_end,
       invoice_date,
-      payment_terms_days: terms,
+      payment_terms_days: termsDays,
       due_date,
       total_amount: 0,
       created_by: ctx.user.id,
@@ -3281,7 +3288,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       issuer_address: invoiceCfg.issuerAddress || null,
       recipient_name: recipientName,
       recipient_tax_id: String(supplierRow?.tax_id ?? "").trim() || null,
-      recipient_address: String(supplierRow?.invoice_address ?? "").trim() || null,
+      recipient_address: supplierRow ? composeBillingAddress(supplierRow as unknown as PartnerBilling) : null,
       verifactu_status: "not_sent",
     })
     .select("id")

@@ -19,7 +19,16 @@ export type HoldedContactInput = {
   name: string;
   code?: string | null;
   email?: string | null;
+  /** Street line. */
   address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  province?: string | null;
+  /** ISO 3166-1 alpha-2. */
+  countryCode?: string | null;
+  isPerson?: boolean | null;
+  /** Commercial name when it differs from the legal one. */
+  tradeName?: string | null;
   tags?: string[];
   /** Holded contact type: partners we invoice are clients, people we pay are suppliers. */
   type?: "client" | "supplier";
@@ -243,15 +252,30 @@ export function holdedContactFromSupplier(s: {
   tax_id?: string | null;
   email?: string | null;
   invoice_address?: string | null;
+  invoice_postal_code?: string | null;
+  invoice_city?: string | null;
+  invoice_province?: string | null;
+  invoice_country_code?: string | null;
+  is_person?: boolean | null;
   island?: string | null;
 }): HoldedContactInput {
   const tags = ["solvio"];
   if (s.island) tags.push(holdedTag(`island ${s.island}`));
+  const legal = String(s.legal_name || s.name).trim();
+  const trade = String(s.name || "").trim();
+  const clean = (v: unknown) => String(v ?? "").trim() || null;
   return {
-    name: String(s.legal_name || s.name).trim(),
-    code: String(s.tax_id || "").trim() || null,
-    email: String(s.email || "").trim() || null,
-    address: String(s.invoice_address || "").trim() || null,
+    name: legal,
+    tradeName: trade && trade.toLowerCase() !== legal.toLowerCase() ? trade : null,
+    code: clean(s.tax_id),
+    email: clean(s.email),
+    address: clean(s.invoice_address),
+    postalCode: clean(s.invoice_postal_code),
+    city: clean(s.invoice_city),
+    province: clean(s.invoice_province),
+    countryCode: clean(s.invoice_country_code)?.toUpperCase() ?? null,
+    isPerson: s.is_person ?? null,
+    type: "client",
     tags,
   };
 }
@@ -260,7 +284,15 @@ export function holdedContactBody(c: HoldedContactInput): Record<string, unknown
   const body: Record<string, unknown> = { name: c.name, type: c.type ?? "client", tags: c.tags ?? [] };
   if (c.code) body.code = c.code;
   if (c.email) body.email = c.email;
-  if (c.address) body.billAddress = { address: c.address };
+  if (c.tradeName) body.tradeName = c.tradeName;
+  if (c.isPerson != null) body.isperson = c.isPerson;
+  const bill: Record<string, unknown> = {};
+  if (c.address) bill.address = c.address;
+  if (c.postalCode) bill.postalCode = c.postalCode;
+  if (c.city) bill.city = c.city;
+  if (c.province) bill.province = c.province;
+  if (c.countryCode) bill.countryCode = c.countryCode;
+  if (Object.keys(bill).length) body.billAddress = bill;
   return body;
 }
 
@@ -505,8 +537,58 @@ export function holdedV2ContactBody(c: HoldedContactInput): Record<string, unkno
     body.code = c.code;
   }
   if (c.email) body.email = c.email;
-  if (c.address) body.bill_address = { address: c.address };
+  if (c.tradeName) body.trade_name = c.tradeName;
+  if (c.isPerson != null) body.is_person = c.isPerson;
+  const bill = holdedV2BillAddress(c);
+  if (bill) body.bill_address = bill;
   return body;
+}
+
+function holdedV2BillAddress(c: HoldedContactInput): Record<string, unknown> | null {
+  const bill: Record<string, unknown> = {};
+  if (c.address) bill.address = c.address;
+  if (c.postalCode) bill.postal_code = c.postalCode;
+  if (c.city) bill.city = c.city;
+  if (c.province) bill.province = c.province;
+  if (c.countryCode) bill.country_code = c.countryCode;
+  return Object.keys(bill).length ? bill : null;
+}
+
+/**
+ * v2 PUT replaces the whole contact, so start from what Holded has and only
+ * overwrite the fields the Hub owns (name, NIF, email, billing address, type).
+ * Whatever the office added in Holded (IBAN, phones, notes, accounts) stays.
+ */
+export function mergeHoldedV2Contact(current: Record<string, unknown>, c: HoldedContactInput): Record<string, unknown> {
+  const editable = [
+    "name", "code", "vat_number", "trade_name", "is_person", "email", "phone", "mobile", "website", "type",
+    "client_record", "supplier_record", "iban", "swift", "sepa_ref", "sepa_date", "bill_address", "tags", "custom_fields", "defaults",
+  ];
+  const out: Record<string, unknown> = {};
+  for (const k of editable) if (current[k] !== undefined && current[k] !== null) out[k] = current[k];
+  // Accounting records come back as objects; the update takes the account number only.
+  for (const k of ["client_record", "supplier_record"]) {
+    const v = out[k];
+    if (v && typeof v === "object") {
+      const num = Number((v as Record<string, unknown>).num ?? (v as Record<string, unknown>).number);
+      if (Number.isInteger(num)) out[k] = num;
+      else delete out[k];
+    }
+  }
+  out.name = c.name;
+  if (c.code) {
+    out.vat_number = c.code;
+    out.code = c.code;
+  }
+  if (c.email) out.email = c.email;
+  if (c.tradeName) out.trade_name = c.tradeName;
+  if (c.isPerson != null) out.is_person = c.isPerson;
+  if (!out.type) out.type = c.type ?? "client";
+  const bill = holdedV2BillAddress(c);
+  if (bill) out.bill_address = { ...((out.bill_address as Record<string, unknown>) ?? {}), ...bill };
+  const tags = new Set([...(Array.isArray(out.tags) ? (out.tags as string[]) : []), ...(c.tags ?? [])]);
+  out.tags = [...tags];
+  return out;
 }
 
 /**
@@ -729,6 +811,26 @@ export class HoldedClient {
       out.push({ id: String(rec.id), notes: typeof rec.notes === "string" ? rec.notes : null, date: rec.date != null && Number.isFinite(date) ? date : null });
     }
     return out;
+  }
+
+  /**
+   * Bring an existing Holded contact in line with the Hub's partner details.
+   * Returns false when the contact no longer exists (deleted, or another Holded company).
+   */
+  async syncContact(id: string, input: HoldedContactInput): Promise<boolean> {
+    if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return false;
+    try {
+      if (this.v2) {
+        const current = await this.request<Record<string, unknown>>("GET", `/v2/contacts/${encodeURIComponent(id)}`);
+        await this.request("PUT", `/v2/contacts/${encodeURIComponent(id)}`, mergeHoldedV2Contact(current ?? {}, input));
+      } else {
+        await this.request("PUT", `/invoicing/v1/contacts/${encodeURIComponent(id)}`, holdedContactBody(input));
+      }
+      return true;
+    } catch (e) {
+      if (e instanceof HoldedApiError && (e.status === 404 || e.status === 400)) return false;
+      throw e;
+    }
   }
 
   async createContact(input: HoldedContactInput): Promise<{ id: string }> {

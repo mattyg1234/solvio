@@ -19,6 +19,7 @@ import { loadInvoiceDelivery } from "@/lib/show-ops/invoice-delivery";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { holdedInvoiceView } from "@/lib/show-ops/holded";
+import { holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 
 export default async function InvoicePrintPage({
   params,
@@ -55,7 +56,7 @@ export default async function InvoicePrintPage({
   const { data: supplier } = inv.supplier_id
     ? await ctx.supabase
         .from("show_suppliers")
-        .select("email,tax_id,legal_name,invoice_address")
+        .select("name,email,tax_id,legal_name,invoice_address,invoice_postal_code,invoice_city,invoice_province,invoice_country_code,is_person")
         .eq("id", inv.supplier_id)
         .eq("business_id", ctx.business.id)
         .maybeSingle()
@@ -97,6 +98,15 @@ export default async function InvoicePrintPage({
   const canEmail = inv.status === "issued" && !inv.voided;
   const holdedView = holdedInvoiceView(inv, holded.connected);
   const holdedLabel = holdedView.label;
+  // What Holded still needs before this can go as a full invoice (same check the send runs).
+  const holdedMissing =
+    holded.connected && holdedView.canSend && inv.supplier_id
+      ? holdedReadiness(
+          supplier
+            ? { ...(supplier as PartnerBilling), name: String(supplier.name ?? inv.supplier_name), tax_id: supplier.tax_id || inv.recipient_tax_id }
+            : null,
+        )
+      : [];
   const { data: holdedEvents } = inv.holded_document_id || inv.holded_status !== "not_sent"
     ? await ctx.supabase
         .from("show_invoice_external_events")
@@ -242,7 +252,7 @@ export default async function InvoicePrintPage({
                   <span className="text-xs text-slate-500"> · synced {new Date(inv.holded_synced_at).toLocaleString()}</span>
                 ) : null}
               </p>
-              {holdedView.canSend ? (
+              {holdedView.canSend && !holdedMissing.length ? (
                 <form action={pushInvoiceToHoldedAction}>
                   <input type="hidden" name="invoice_id" value={inv.id} />
                   <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Send to Holded</SubmitOnce>
@@ -263,6 +273,20 @@ export default async function InvoicePrintPage({
                     Reconcile with Holded
                   </SubmitOnce>
                 </form>
+              ) : null}
+              {holdedMissing.length ? (
+                <div className="w-full rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+                  <p className="font-semibold">Before this can go to Holded as a full invoice, {inv.supplier_name} needs:</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {holdedMissing.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                  <Link href="/dashboard/show-ops/master?tab=partners" className="mt-1 inline-block font-semibold underline">
+                    Add them in Partners
+                  </Link>
+                  <span className="text-xs"> (open the partner, Invoicing details). The invoice picks them up when you send it.</span>
+                </div>
               ) : null}
               {!holded.connected && !inv.holded_document_id ? (
                 <Link href="/dashboard/show-ops/settings#holded" className="text-sm font-semibold text-violet-700 underline">
