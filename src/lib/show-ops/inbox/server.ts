@@ -471,7 +471,7 @@ export async function sendReopenTemplate(viewer: InboxViewer, input: { conversat
   if (!viewer.seesAll && conv.assigned_to !== viewer.meId) throw new InboxAccessError("Accept this chat first, or ask whoever has it.");
   const conn = await requireConnection(viewer);
   const template = templateFor(conn, conv.customer_name);
-  if (!template) throw new InboxAccessError("No WhatsApp re-open template is set up. Add its Content SID (HX…) in Settings → WhatsApp & SMS.");
+  if (!template) throw new InboxAccessError("No WhatsApp template set up yet (Settings).");
   await claimIfUnassigned(viewer, conv);
   const saved = await deliver(conn, conv, {
     body: "WhatsApp template sent to re-open the chat. You can write freely once the guest replies.",
@@ -571,10 +571,10 @@ export async function startInboxConversation(
   if (channel === "sms") {
     const text = cleanText(input.text);
     if (!text) throw new InboxAccessError("Write the first message.");
-    if (!conn.meta.sms_from) throw new InboxAccessError("No SMS number is set up. Add it in Settings → WhatsApp & SMS.");
+    if (!conn.meta.sms_from) throw new InboxAccessError("No SMS number set up yet (Settings).");
     await deliver(conn, conv, { body: text, authorId: viewer.meId, source: "inbox" });
   } else {
-    if (!conn.meta.whatsapp_from) throw new InboxAccessError("No WhatsApp sender is set up. Add it in Settings → WhatsApp & SMS.");
+    if (!conn.meta.whatsapp_from) throw new InboxAccessError("No WhatsApp number set up yet (Settings).");
     const text = cleanText(input.text);
     if (text && conv.last_inbound_at && Date.now() - Date.parse(conv.last_inbound_at) < 24 * 3600_000) {
       await deliver(conn, conv, { body: text, authorId: viewer.meId, source: "inbox" });

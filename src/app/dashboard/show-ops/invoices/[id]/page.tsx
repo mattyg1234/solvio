@@ -276,16 +276,15 @@ export default async function InvoicePrintPage({
               ) : null}
               {holdedMissing.length ? (
                 <div className="w-full rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-                  <p className="font-semibold">Before this can go to Holded as a full invoice, {inv.supplier_name} needs:</p>
+                  <p className="font-semibold">To send to Holded, {inv.supplier_name} needs:</p>
                   <ul className="mt-1 list-disc pl-5">
                     {holdedMissing.map((m) => (
                       <li key={m}>{m}</li>
                     ))}
                   </ul>
                   <Link href="/dashboard/show-ops/master?tab=partners" className="mt-1 inline-block font-semibold underline">
-                    Add them in Partners
+                    Edit partner
                   </Link>
-                  <span className="text-xs"> (open the partner, Invoicing details). The invoice picks them up when you send it.</span>
                 </div>
               ) : null}
               {!holded.connected && !inv.holded_document_id ? (

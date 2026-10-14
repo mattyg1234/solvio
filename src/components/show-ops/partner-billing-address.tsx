@@ -24,10 +24,10 @@ export function PartnerBillingAddressFields({ prefix = "", values = {} }: { pref
   const country = values.invoice_country_code || "ES";
   return (
     <fieldset className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:col-span-3 sm:grid-cols-3">
-      <legend className="px-1 text-xs font-semibold text-slate-700">Invoicing details (needed to send invoices to Holded)</legend>
+      <legend className="px-1 text-xs font-semibold text-slate-700">Invoicing details</legend>
       <label className={`${label} sm:col-span-2`}>
         Legal name
-        <input name={`${prefix}legal_name`} defaultValue={values.legal_name ?? ""} placeholder="As on their tax registration, e.g. TUI España Turismo SL" className={field} />
+        <input name={`${prefix}legal_name`} defaultValue={values.legal_name ?? ""} placeholder="TUI España Turismo SL" className={field} />
       </label>
       <label className={label}>
         NIF / CIF / tax ID
@@ -75,7 +75,7 @@ export function PartnerBillingAddressFields({ prefix = "", values = {} }: { pref
           max={365}
           step={1}
           defaultValue={values.payment_terms_days ?? ""}
-          placeholder="Workspace default"
+          placeholder="Default"
           className={field}
         />
       </label>

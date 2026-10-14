@@ -142,9 +142,6 @@ export function MessagingSettings({
             />
           </label>
           <NumberFields meta={meta} />
-          <p className="text-xs text-slate-500 sm:col-span-2">
-            The token is checked with Twilio, then stored encrypted; nobody can read it back, including Solvio staff in the app.
-          </p>
           <div className="sm:col-span-2">
             <button type="submit" className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white">
               {meta ? "Save new token" : "Connect Twilio"}
@@ -162,24 +159,19 @@ function NumberFields({ meta }: { meta: TwilioIntegrationMeta | null }) {
       <label className="text-xs text-slate-600">
         WhatsApp Business sender
         <input name="whatsapp_from" type="tel" defaultValue={meta?.whatsapp_from ?? ""} placeholder="+34 928 000 000" className={input} />
-        <span className="mt-1 block text-[11px] text-slate-500">The number approved for WhatsApp in Twilio. Leave empty for SMS only.</span>
       </label>
       <label className="text-xs text-slate-600">
         SMS number
         <input name="sms_from" type="tel" defaultValue={meta?.sms_from ?? ""} placeholder="+34 928 000 000" className={input} />
-        <span className="mt-1 block text-[11px] text-slate-500">A Twilio number that can send and receive texts. Leave empty for WhatsApp only.</span>
       </label>
       <label className="text-xs text-slate-600 sm:col-span-2">
-        WhatsApp template to start or re-open a chat (Content SID, starts with HX)
+        WhatsApp template SID
         <input name="reopen_content_sid" defaultValue={meta?.reopen_content_sid ?? ""} spellCheck={false} className={`${input} font-mono`} />
-        <span className="mt-1 block text-[11px] text-slate-500">
-          WhatsApp only allows free text within 24 hours of the guest&apos;s last message. Outside that, the inbox sends this
-          approved template (made in Twilio → Content Template Builder, approved by WhatsApp).
-        </span>
+        <span className="mt-1 block text-[11px] text-slate-500">Used to message a guest after 24 hours.</span>
       </label>
       <label className="flex items-center gap-2 text-xs text-slate-600 sm:col-span-2">
         <input type="checkbox" name="reopen_uses_name" defaultChecked={meta?.reopen_uses_name ?? false} className="h-4 w-4" />
-        The template has {"{{1}}"} for the guest&apos;s first name
+        Template uses {"{{1}}"} for first name
       </label>
     </>
   );

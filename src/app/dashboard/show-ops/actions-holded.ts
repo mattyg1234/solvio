@@ -197,7 +197,7 @@ async function ensureHoldedContact(
     : holdedReadiness({ ...billing, invoice_postal_code: "00000", invoice_city: "—" });
   if (missing.length) {
     const who = supplier?.name || recipient.name || fallbackName;
-    throw new Error(`Before this goes to Holded, add ${who}'s ${missing.join(", ")}${supplier ? " (Partners → edit the partner)" : ""}.`);
+    throw new Error(`${who} is missing: ${missing.join(", ")}.`);
   }
   const tax = checkTaxId(billing.tax_id, normaliseCountry(billing.invoice_country_code));
   const input = holdedContactFromSupplier({

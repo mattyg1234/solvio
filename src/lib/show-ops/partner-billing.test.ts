@@ -39,7 +39,7 @@ test("billing address line", () => {
 
 test("ready for Holded: lists exactly what is missing", () => {
   assert.deepEqual(holdedReadiness({ name: "TUI" }), [
-    "legal name (as on their tax registration)",
+    "legal name",
     "NIF / tax ID",
     "street address",
     "postcode",

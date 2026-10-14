@@ -100,7 +100,7 @@ export function replyBlock(input: {
   now?: number;
 }): ReplyBlock {
   if (!input.seesAll && input.assignedTo !== input.meId) {
-    return { ok: false, reason: "not_yours", message: "Accept this chat first, or ask whoever has it." };
+    return { ok: false, reason: "not_yours", message: "Accept this chat first." };
   }
   if (!input.senderConfigured) {
     return {
@@ -108,8 +108,8 @@ export function replyBlock(input: {
       reason: "no_sender",
       message:
         input.channel === "whatsapp"
-          ? "No WhatsApp sender is set up. Add it in Settings → WhatsApp & SMS."
-          : "No SMS number is set up. Add it in Settings → WhatsApp & SMS.",
+          ? "No WhatsApp number set up yet (Settings)."
+          : "No SMS number set up yet (Settings).",
     };
   }
   if (input.channel === "whatsapp" && !whatsappWindowOpen(input.lastInboundAt, input.now)) {
@@ -117,7 +117,7 @@ export function replyBlock(input: {
       ok: false,
       reason: "window",
       message:
-        "WhatsApp only allows a free reply within 24 hours of the guest's last message. Send the re-open template, or text them by SMS.",
+        "Over 24 hours since their last message. Send the template or text them instead.",
     };
   }
   return { ok: true };

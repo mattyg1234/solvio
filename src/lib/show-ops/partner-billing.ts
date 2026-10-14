@@ -129,7 +129,7 @@ export function holdedReadiness(p: PartnerBilling | null | undefined): string[] 
   const missing: string[] = [];
   const country = normaliseCountry(p.invoice_country_code);
   const legal = String(p.legal_name || "").trim();
-  if (legal.length < 2) missing.push("legal name (as on their tax registration)");
+  if (legal.length < 2) missing.push("legal name");
   const tax = checkTaxId(p.tax_id, country);
   if (!tax.ok) missing.push(String(p.tax_id ?? "").trim() ? tax.message : "NIF / tax ID");
   if (String(p.invoice_address || "").trim().length < 3) missing.push("street address");

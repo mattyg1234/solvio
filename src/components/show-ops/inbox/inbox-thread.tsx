@@ -248,9 +248,6 @@ export function InboxThread({
               );
             }}
           >
-            <p className="text-xs text-slate-600">
-              They get it in their chat, can read it straight away, and it becomes theirs when they accept.
-            </p>
             <label className="block text-xs font-semibold text-slate-700">
               Send to
               <select

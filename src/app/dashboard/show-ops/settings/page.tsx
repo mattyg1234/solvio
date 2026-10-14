@@ -1177,9 +1177,6 @@ export default async function ShowOpsSettingsPage({
               placeholder="pat_… or 32-character API key"
               className="mt-1 block min-w-[22rem] rounded-lg border px-3 py-2 font-mono text-sm"
             />
-            <span className="mt-1 block text-xs text-slate-500">
-              In Holded: Configuración → Desarrolladores → Credenciales → Agregar API Token (the new pat_… tokens work; so do the older v1 keys). Paste it here, nowhere else.
-            </span>
           </label>
           <button
             type="submit"
