@@ -295,6 +295,17 @@ export function SolvioSystemsHome({ locale }: { locale: MarketingLocale }) {
           </div>
         </section>
 
+        {/* Solvio Systems and Solvio Connect playing by themselves, side by side (Matty, 20 Oct 2026).
+            The animations and their buttons live on Connect (connect.solviosystems.com/systems), shown here as they are. */}
+        <section className="border-t border-[#f1eefb]" aria-label={locale === "es" ? "Solvio Systems y Solvio Connect en marcha" : "Solvio Systems and Solvio Connect in action"}>
+          <iframe
+            src={`https://connect.solviosystems.com${locale === "es" ? "/es" : ""}/systems?embed=1`}
+            title={locale === "es" ? "Solvio Systems y Solvio Connect" : "Solvio Systems and Solvio Connect"}
+            loading="lazy"
+            className="block h-[2240px] w-full border-0 sm:h-[2160px] lg:h-[1020px]"
+          />
+        </section>
+
         {/* The problem */}
         <section className="border-t border-[#f1eefb] bg-[#faf9ff]">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
