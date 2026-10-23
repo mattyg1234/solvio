@@ -85,8 +85,10 @@ export async function sendTwilioMessage(
   const body = (await res.json().catch(() => ({}))) as { sid?: string; status?: string; code?: number; message?: string };
   if (!res.ok || !body.sid) {
     const code = body.code != null ? String(body.code) : null;
-    console.error("[show-ops inbox] Twilio send", res.status, code);
-    return { ok: false, code, message: twilioErrorText(code, `Twilio answered ${res.status}. Nothing was sent.`) };
+    // Twilio's own wording and whether we were redirected (a redirect drops the login).
+    console.error("[show-ops inbox] Twilio send", res.status, code, body.message ?? "", res.redirected ? `redirected to ${new URL(res.url).host}` : "");
+    const why = body.message ? ` (${String(body.message).slice(0, 200)})` : "";
+    return { ok: false, code, message: twilioErrorText(code, `Twilio answered ${res.status}${why}. Nothing was sent.`) };
   }
   return { ok: true, sid: body.sid, status: String(body.status ?? "queued") };
 }
