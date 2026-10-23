@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
+import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import { checkTwilioAccount, isAccountSid, isContentSid } from "@/lib/show-ops/inbox/twilio";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
 
@@ -32,12 +33,16 @@ function numbersFrom(formData: FormData) {
   if (whatsappFrom === null) fail("The WhatsApp sender must be a full number with country code, e.g. +34 928 000 000.");
   if (smsFrom === null) fail("The SMS number must be a full number with country code, e.g. +34 928 000 000.");
   if (!whatsappFrom && !smsFrom) fail("Add the WhatsApp sender, the SMS number, or both.");
-  const reopen = raw("reopen_content_sid");
-  if (reopen && !isContentSid(reopen)) fail("The template Content SID starts with HX and has 34 characters.");
+  const templates = { reopen_content_sid: "", ticket_content_sid: "", pickup_content_sid: "" };
+  for (const spec of TEMPLATE_SPECS) {
+    const sid = raw(spec.metaKey);
+    if (sid && !isContentSid(sid)) fail(`The "${spec.title}" template SID starts with HX and has 34 characters.`);
+    templates[spec.metaKey] = sid;
+  }
   return {
     whatsapp_from: whatsappFrom ?? "",
     sms_from: smsFrom ?? "",
-    reopen_content_sid: reopen,
+    ...templates,
     reopen_uses_name: formData.get("reopen_uses_name") === "on",
   };
 }

@@ -7,6 +7,8 @@ import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notificat
 import { formatShowOpsMoney, formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
 import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
+import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
+import { templateVariables } from "@/lib/show-ops/inbox/templates";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult, showOpsOutboundLive } from "@/lib/show-ops/outbound";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -185,6 +187,39 @@ export function buildGuestTicketText(input: GuestTicketInput): string {
   return lines.join("\n");
 }
 
+/**
+ * The blanks of the "Booking confirmed" / "Pick-up changed" WhatsApp templates,
+ * in the order inbox/templates.ts gives them. Null without a ticket link.
+ * Partner-billed (invoice) bookings never show money, only "Nothing".
+ */
+export function guestTicketTemplate(input: GuestTicketInput): { kind: "ticket" | "pickup"; variables: Record<string, string> } | null {
+  if (!input.ticketUrl) return null;
+  const showTime = showTimeLine(input);
+  const show = showTime ? `${input.showName} (${showTime})` : input.showName;
+  const gettingThere = pickupLine(input).replace(/\.$/, "");
+  if (input.updated) {
+    return {
+      kind: "pickup",
+      variables: templateVariables([firstName(input.guestName), show, dateLine(input), gettingThere, input.bookingRef, input.ticketUrl]),
+    };
+  }
+  const balance = Math.max(0, Number(input.balanceRemaining ?? 0));
+  const toPay = input.billingMode === "deposit" && balance > 0 ? formatShowOpsMoney(balance, input.currency) : "Nothing";
+  return {
+    kind: "ticket",
+    variables: templateVariables([
+      firstName(input.guestName),
+      show,
+      dateLine(input),
+      formatShowOpsPax(input.adults, input.children, input.infants),
+      gettingThere,
+      toPay,
+      input.bookingRef,
+      input.ticketUrl,
+    ]),
+  };
+}
+
 /** Subject + HTML of the confirmation email, shared by the sender and previews/tests. */
 export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: boolean): { subject: string; html: string; rows: Array<[string, string]> } {
   const attachment = hasAttachment;
@@ -307,8 +342,13 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
  * rates in Spain/UK), falling back to SMS when WhatsApp is not configured or fails.
  */
 export async function sendGuestTicketSms(input: GuestTicketInput): Promise<NotificationSendResult> {
-  if (!showOpsOutboundLive()) return showOpsOutboundHeldResult();
+  const live = showOpsOutboundLive();
   const phone = input.guestMobile?.trim() ?? "";
+  if (!live) {
+    // Test mode: only SHOW_OPS_PHONE_ALLOWLIST numbers, and only through the workspace's own Twilio.
+    const { phoneOutboundAllowed } = await import("@/lib/show-ops/inbox/connection");
+    if (!input.businessId || !phoneOutboundAllowed(normalisePhone(phone) ?? "")) return showOpsOutboundHeldResult();
+  }
   if (!phone) return { ok: false, reason: "invalid_recipient", message: "Guest mobile is missing." };
   const body = buildGuestTicketText(input);
 
@@ -320,9 +360,10 @@ export async function sendGuestTicketSms(input: GuestTicketInput): Promise<Notif
       body,
       bookingId: input.bookingId ?? null,
       guestName: input.guestName,
+      template: guestTicketTemplate(input),
     });
     if (own.ok) return { ok: true };
-    if (own.reason !== "not_configured") return own;
+    if (own.reason !== "not_configured" || !live) return own;
   }
 
   if (isTwilioWhatsAppConfigured()) {

@@ -95,5 +95,8 @@ export type TwilioIntegrationMeta = {
   reopen_content_sid: string;
   /** The re-open template has {{1}} for the guest's first name. */
   reopen_uses_name: boolean;
+  /** WhatsApp templates for the Hub's own messages (see inbox/templates.ts). */
+  ticket_content_sid: string;
+  pickup_content_sid: string;
   hint: string;
 };

@@ -4,7 +4,9 @@ import {
   saveTwilioNumbersAction,
   testTwilioAction,
 } from "@/app/dashboard/show-ops/actions-twilio";
+import { PhoneInput } from "@/components/show-ops/phone-input";
 import { inboundWebhookUrl } from "@/lib/show-ops/inbox/connection";
+import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import type { TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
 
 export type MessagingSettingsState = {
@@ -27,10 +29,12 @@ const NO_AUTOFILL = { "data-1p-ignore": "true", "data-lpignore": "true", "data-b
  */
 export function MessagingSettings({
   state,
+  businessName,
   flash,
   flashError,
 }: {
   state: MessagingSettingsState;
+  businessName: string;
   flash?: string;
   flashError?: string;
 }) {
@@ -52,7 +56,7 @@ export function MessagingSettings({
       ) : flash === "ok" ? (
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Twilio answered: the connection works.</p>
       ) : flash === "saved" ? (
-        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Numbers saved.</p>
+        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Numbers and templates saved.</p>
       ) : flash === "disconnected" ? (
         <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Twilio disconnected. Past conversations stay in the inbox.</p>
       ) : null}
@@ -89,9 +93,10 @@ export function MessagingSettings({
 
           <form action={saveTwilioNumbersAction} className="grid gap-3 sm:grid-cols-2">
             <NumberFields meta={meta} />
+            <TemplateFields meta={meta} businessName={businessName} />
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
-                Save numbers
+                Save numbers and templates
               </button>
             </div>
           </form>
@@ -142,6 +147,11 @@ export function MessagingSettings({
             />
           </label>
           <NumberFields meta={meta} />
+          {/* Templates are set after connecting; a new token must not wipe them. */}
+          {meta
+            ? TEMPLATE_SPECS.map((spec) => <input key={spec.kind} type="hidden" name={spec.metaKey} value={meta[spec.metaKey]} />)
+            : null}
+          {meta?.reopen_uses_name ? <input type="hidden" name="reopen_uses_name" value="on" /> : null}
           <div className="sm:col-span-2">
             <button type="submit" className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white">
               {meta ? "Save new token" : "Connect Twilio"}
@@ -158,21 +168,60 @@ function NumberFields({ meta }: { meta: TwilioIntegrationMeta | null }) {
     <>
       <label className="text-xs text-slate-600">
         WhatsApp Business sender
-        <input name="whatsapp_from" type="tel" defaultValue={meta?.whatsapp_from ?? ""} placeholder="+34 928 000 000" className={input} />
+        <PhoneInput name="whatsapp_from" defaultValue={meta?.whatsapp_from ?? ""} className={input} />
       </label>
       <label className="text-xs text-slate-600">
-        SMS number
-        <input name="sms_from" type="tel" defaultValue={meta?.sms_from ?? ""} placeholder="+34 928 000 000" className={input} />
-      </label>
-      <label className="text-xs text-slate-600 sm:col-span-2">
-        WhatsApp template SID
-        <input name="reopen_content_sid" defaultValue={meta?.reopen_content_sid ?? ""} spellCheck={false} className={`${input} font-mono`} />
-        <span className="mt-1 block text-[11px] text-slate-500">Used to message a guest after 24 hours.</span>
-      </label>
-      <label className="flex items-center gap-2 text-xs text-slate-600 sm:col-span-2">
-        <input type="checkbox" name="reopen_uses_name" defaultChecked={meta?.reopen_uses_name ?? false} className="h-4 w-4" />
-        Template uses {"{{1}}"} for first name
+        SMS number (a Twilio number; leave empty if SMS goes elsewhere)
+        <PhoneInput name="sms_from" defaultValue={meta?.sms_from ?? ""} className={input} />
       </label>
     </>
+  );
+}
+
+/** One approved WhatsApp template per kind of message, with the wording to paste into Twilio. */
+function TemplateFields({ meta, businessName }: { meta: TwilioIntegrationMeta | null; businessName: string }) {
+  return (
+    <div className="space-y-3 sm:col-span-2">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">WhatsApp templates</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          After 24 hours WhatsApp only delivers messages Meta has approved. Make each one in Twilio (Content Template Builder,
+          category Utility) with this wording, then paste its SID (HX…) here. Without one, that message goes by SMS.
+        </p>
+      </div>
+      {TEMPLATE_SPECS.map((spec) => (
+        <div key={spec.kind} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+          <p className="text-sm font-semibold">{spec.title}</p>
+          <p className="text-xs text-slate-500">{spec.when}</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs font-semibold text-violet-700">Wording for Twilio (name: {spec.twilioName})</summary>
+            <textarea
+              readOnly
+              value={spec.wording(businessName)}
+              rows={spec.wording(businessName).split("\n").length + 1}
+              aria-label={`${spec.title} wording`}
+              className="mt-2 block w-full rounded-lg border bg-white px-2 py-1.5 font-mono text-xs"
+            />
+            <ol className="mt-2 grid gap-0.5 text-[11px] text-slate-600 sm:grid-cols-2">
+              {spec.blanks.map((b, i) => (
+                <li key={b.label}>
+                  {`{{${i + 1}}}`} {b.label}, sample: <span className="font-mono">{b.sample}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+          <label className="mt-2 block text-xs text-slate-600">
+            Template SID
+            <input name={spec.metaKey} defaultValue={meta?.[spec.metaKey] ?? ""} spellCheck={false} placeholder="HX…" className={`${input} font-mono`} />
+          </label>
+          {spec.kind === "reopen" ? (
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" name="reopen_uses_name" defaultChecked={meta?.reopen_content_sid ? meta.reopen_uses_name : true} className="h-4 w-4" />
+              Template uses {"{{1}}"} for first name
+            </label>
+          ) : null}
+        </div>
+      ))}
+    </div>
   );
 }

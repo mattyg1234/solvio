@@ -21,13 +21,16 @@ export type TwilioConnection = {
 export function parseTwilioMeta(raw: unknown): TwilioIntegrationMeta {
   const o = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const s = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+  const hx = (k: string) => (/^HX[0-9a-f]{32}$/i.test(s(k)) ? s(k) : "");
   return {
     account_sid: s("account_sid"),
     whatsapp_from: normalisePhone(s("whatsapp_from")) ?? "",
     sms_from: normalisePhone(s("sms_from")) ?? "",
     webhook_token: /^[0-9a-f]{40}$/.test(s("webhook_token")) ? s("webhook_token") : "",
-    reopen_content_sid: /^HX[0-9a-f]{32}$/i.test(s("reopen_content_sid")) ? s("reopen_content_sid") : "",
+    reopen_content_sid: hx("reopen_content_sid"),
     reopen_uses_name: o.reopen_uses_name === true,
+    ticket_content_sid: hx("ticket_content_sid"),
+    pickup_content_sid: hx("pickup_content_sid"),
     hint: s("hint"),
   };
 }

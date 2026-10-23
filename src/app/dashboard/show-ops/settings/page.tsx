@@ -1187,7 +1187,7 @@ export default async function ShowOpsSettingsPage({
         </form>
       </section>
 
-      <MessagingSettings state={messaging} flash={sp.twilio} flashError={sp.twilio_error} />
+      <MessagingSettings state={messaging} businessName={ctx.branding.displayName} flash={sp.twilio} flashError={sp.twilio_error} />
 
       <section id="channels" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">GetYourGuide products</h2>

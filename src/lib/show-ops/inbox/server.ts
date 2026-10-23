@@ -37,6 +37,7 @@ import {
   twilioErrorText,
   type InboundTwilioMessage,
 } from "@/lib/show-ops/inbox/logic";
+import { templateSpec } from "@/lib/show-ops/inbox/templates";
 import { sendTwilioMessage } from "@/lib/show-ops/inbox/twilio";
 import type {
   InboxBookingSummary,
@@ -827,13 +828,20 @@ export type BusinessTextResult = { ok: true } | { ok: false; reason: "not_config
 
 /**
  * A ticket or pick-up text from the Hub, through the workspace's own Twilio and
- * logged in its inbox so replies land next to it. WhatsApp when the guest wrote
- * in the last 24 hours, otherwise SMS (WhatsApp would refuse free text).
+ * logged in its inbox so replies land next to it. WhatsApp free text when the guest
+ * wrote in the last 24 hours, else that kind's approved WhatsApp template, else SMS
+ * (WhatsApp refuses free text after 24 hours).
  * Returns not_configured when the workspace has no Twilio, so the caller can fall back.
  */
 export async function sendBusinessTextToGuest(
   businessId: string,
-  input: { phone: string; body: string; bookingId?: string | null; guestName?: string | null },
+  input: {
+    phone: string;
+    body: string;
+    bookingId?: string | null;
+    guestName?: string | null;
+    template?: { kind: "ticket" | "pickup"; variables: Record<string, string> } | null;
+  },
 ): Promise<BusinessTextResult> {
   const conn = await loadTwilioConnection(businessId).catch(() => null);
   if (!conn || (!conn.meta.whatsapp_from && !conn.meta.sms_from)) {
@@ -844,6 +852,7 @@ export async function sendBusinessTextToGuest(
 
   const db = admin();
   let channel: InboxChannel | null = null;
+  let template: { sid: string; variables: Record<string, string> } | undefined;
   if (conn.meta.whatsapp_from) {
     const { data } = await db
       .from("show_ops_inbox_conversations")
@@ -854,9 +863,16 @@ export async function sendBusinessTextToGuest(
       .maybeSingle();
     const last = (data as { last_inbound_at?: string | null } | null)?.last_inbound_at;
     if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
+    else if (input.template) {
+      const sid = conn.meta[templateSpec(input.template.kind).metaKey];
+      if (sid) {
+        channel = "whatsapp";
+        template = { sid, variables: input.template.variables };
+      }
+    }
   }
   if (!channel) channel = conn.meta.sms_from ? "sms" : null;
-  if (!channel) return { ok: false, reason: "not_configured", message: "No SMS number is set up and the guest has no open WhatsApp chat." };
+  if (!channel) return { ok: false, reason: "not_configured", message: "No WhatsApp template or SMS number is set up for this message." };
 
   try {
     const conv = await upsertConversation({
@@ -866,7 +882,7 @@ export async function sendBusinessTextToGuest(
       name: input.guestName ?? "",
       bookingId: input.bookingId && isUuid(input.bookingId) ? input.bookingId : null,
     });
-    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: "ticket" });
+    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: "ticket", template });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: "provider_error", message: e instanceof Error ? e.message : "Send failed." };
