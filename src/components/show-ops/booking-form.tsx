@@ -16,6 +16,7 @@ import {
   type ShowOpsNightLoad,
 } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsNightCalendar } from "@/components/show-ops/night-calendar";
+import { PhoneInput } from "@/components/show-ops/phone-input";
 import {
   SearchableSelect,
   type SearchableOption,
@@ -1540,11 +1541,7 @@ export function ShowOpsBookingForm({
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div>
               <FieldLabel>Mobile</FieldLabel>
-              <input
-                name="guest_mobile"
-                defaultValue={defaults.guest_mobile ?? ""}
-                className={INPUT}
-              />
+              <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} className={INPUT} />
             </div>
             <div>
               <FieldLabel>Email</FieldLabel>

@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { startInboxConversationAction } from "@/app/dashboard/show-ops/inbox/actions";
 import { ChatBookingPicker } from "@/components/show-ops/chat/booking-picker";
+import { PhoneInput } from "@/components/show-ops/phone-input";
 import { INBOX_MAX_TEXT } from "@/lib/show-ops/inbox/logic";
 import type { ChatBookingSearchHit } from "@/lib/show-ops/chat/types";
 import type { InboxConnectionSummary } from "@/lib/show-ops/inbox/types";
@@ -113,15 +114,9 @@ export function InboxNewForm({
 
       <label className="block text-xs font-semibold text-slate-700">
         Mobile{booking ? " (leave empty to use the booking's)" : ""}
-        <input
-          type="tel"
-          inputMode="tel"
-          autoComplete="off"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="+34 612 345 678"
-          className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-base tabular-nums sm:text-sm"
-        />
+        <span className="mt-1 block">
+          <PhoneInput onChange={setPhone} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-base sm:text-sm" />
+        </span>
       </label>
       {!booking ? (
         <label className="block text-xs font-semibold text-slate-700">
