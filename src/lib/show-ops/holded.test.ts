@@ -5,6 +5,7 @@ import {
   holdedContactBody,
   holdedContactFromSupplier,
   holdedInvoiceFromPack,
+  holdedInvoiceListRow,
   holdedItemsFromLines,
   holdedTag,
   pickHoldedTaxKey,
@@ -58,15 +59,29 @@ test("supplier → contact uses legal name, tax id as code, island tag", () => {
   assert.equal("email" in bare, false);
 });
 
-test("booking line splits into adult and child items with exact unit prices", () => {
+test("booking line is one Holded item named like MHT's own invoices", () => {
   const items = holdedItemsFromLines(
-    [{ description: "MHT ACE 12 Sept", booking_ref: "MHT-319001", guest_name: "Smith", adults: 2, children: 1, adult_unit_price: 27.95, child_unit_price: 15, vat_rate: 7 }],
+    [{ description: "Smith A · MHT-319378", booking_ref: "MHT-319378", guest_name: "Smith A", supplier_ticket_number: "GYGWZAL8Y858", adults: 2, children: 1, adult_unit_price: 27.95, child_unit_price: 15, vat_rate: 7 }],
     (r) => (r === 7 ? IGIC_7 : null),
     TAXES,
+    "MHT Tenerife",
   );
-  assert.equal(items.length, 2);
-  assert.deepEqual(items[0], { name: "MHT ACE 12 Sept — 2 adults", desc: "MHT-319001", units: 2, subtotal: 27.95, taxes: ["s_igic_7"] });
-  assert.deepEqual(items[1], { name: "MHT ACE 12 Sept — 1 child", desc: "MHT-319001", units: 1, subtotal: 15, taxes: ["s_igic_7"] });
+  assert.deepEqual(items, [
+    { name: "MHT Tenerife", desc: "Smith A MHT-319378 GYGWZAL8Y858 · 2 adults, 1 child", units: 1, subtotal: 70.9, taxes: ["s_igic_7"] },
+  ]);
+  // Without an item name the line's own description is used.
+  const plain = holdedItemsFromLines([{ description: "Smith", guest_name: "Smith", adults: 1, adult_unit_price: 0.1, vat_rate: 7 }], () => IGIC_7, TAXES);
+  assert.equal(plain[0].name, "Smith");
+  assert.equal(plain[0].subtotal, 0.1);
+});
+
+test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
+  const items = holdedItemsFromLines(
+    [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],
+    () => IGIC_7,
+    TAXES,
+  );
+  assert.equal(items[0].desc, "MHT-319001 · Ticket 4471 · No show");
 });
 
 test("manual line requires a configured and validated IGIC sales tax key", () => {
@@ -91,7 +106,8 @@ test("pack → Holded invoice is a draft with Solvio reference, dates as unix da
   );
   assert.equal(inv.approveDoc, false);
   assert.equal(inv.contactId, "contact-1");
-  assert.match(inv.desc, /Sunny Reps · 2026-09-01 → 2026-09-30 · Solvio MHT-2026-0007/);
+  assert.equal(inv.desc, "MHT Tenerife · Sunny Reps · 2026-09-01 → 2026-09-30 · Solvio MHT-2026-0007");
+  assert.deepEqual(inv.tags, ["solvio", "islandtenerife", "tfs"]);
   assert.equal(inv.date, unixDay("2026-10-01"));
   assert.equal(inv.dueDate, unixDay("2026-10-31"));
   assert.equal(inv.currency, undefined);
@@ -166,4 +182,17 @@ test("a real Holded draft (numeric status 0, draft true) parses; paid needs stat
   assert.equal(paid.status, "paid");
   assert.throws(() => summariseHoldedDocument({ ...real, draft: false, status: 1, docNumber: "F260001", approvedAt: 1788900000, paymentsPending: 100 }), /inconsistent/);
   assert.throws(() => summariseHoldedDocument({ ...real, status: 7 }), /malformed document status/);
+});
+
+test("holdedInvoiceListRow reads v2 and v1 list entries for the Holded-style invoice list", () => {
+  assert.deepEqual(
+    holdedInvoiceListRow({ id: "a1", draft: true, date: "2026-10-27T00:00:00Z", due_date: "2026-11-26", contact_name: "Admiral Excursion Point SC", description: "MHT Tenerife", tags: ["tfs"], total: 107, payments_pending: 107 }),
+    { id: "a1", docNumber: null, date: "2026-10-27", dueDate: "2026-11-26", contactName: "Admiral Excursion Point SC", description: "MHT Tenerife", tags: ["tfs"], total: 107, status: "draft" },
+  );
+  const v1 = holdedInvoiceListRow({ id: "b2", docNumber: "F260001", date: unixDay("2026-10-01"), dueDate: unixDay("2026-10-31"), contactName: "Sunny Reps", desc: "Sept", total: 50, paymentsPending: 0, status: 1 });
+  assert.equal(v1?.status, "paid");
+  assert.equal(v1?.date, "2026-10-01");
+  assert.equal(v1?.docNumber, "F260001");
+  assert.equal(holdedInvoiceListRow({ id: "c3", document_number: "F260002", draft: false, total: 20, payments_pending: 20 })?.status, "approved");
+  assert.equal(holdedInvoiceListRow({ name: "no id" }), null);
 });

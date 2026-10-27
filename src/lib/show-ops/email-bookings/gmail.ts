@@ -88,13 +88,55 @@ export function googleRefresh(refreshToken: string): Promise<TokenSet> {
   return tokenRequest({ grant_type: "refresh_token", refresh_token: refreshToken });
 }
 
+type GoogleError = { error?: { code?: string | number; status?: string; details?: { reason?: string }[]; errors?: { reason?: string }[] } };
+
+/** Google's reason for a refusal: SERVICE_DISABLED (API off), ACCESS_TOKEN_SCOPE_INSUFFICIENT, rateLimitExceeded… */
+export function googleErrorReason(body: GoogleError): string {
+  return body.error?.details?.find((d) => d?.reason)?.reason ?? body.error?.errors?.find((e) => e?.reason)?.reason ?? "";
+}
+
+/** Gmail says "slow down" with a 429, or a 403 whose reason is a rate limit. */
+export function isRateLimited(status: number, reason: string): boolean {
+  return status === 429 || (status === 403 && /rateLimitExceeded|RATE_LIMIT_EXCEEDED|quotaExceeded/i.test(reason));
+}
+
+/**
+ * At most `n` Gmail requests in flight from this server. A scan of a couple of dozen senders
+ * otherwise fires far more reads at once than Gmail's per-user rate (about 50 a second) allows,
+ * and a scan and a Refresh can run side by side, so each keeps well under it.
+ */
+function limiter(n: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active < n) active++;
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      return await fn();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+
+const gmailSlot = limiter(3);
+const RETRY_WAITS_MS = [1000, 2000, 4000];
+
 async function apiJson<T>(url: string, accessToken: string, who: string): Promise<T> {
-  const res = await fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, cache: "no-store" });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: { code?: string | number; status?: string } };
-    throw new MailProviderError(`${who} request failed (${res.status} ${body.error?.status ?? body.error?.code ?? ""})`.trim(), res.status);
+  for (let attempt = 0; ; attempt++) {
+    const res = await gmailSlot(() => fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, cache: "no-store" }));
+    if (res.ok) return (await res.json()) as T;
+    const body = (await res.json().catch(() => ({}))) as GoogleError;
+    const reason = googleErrorReason(body);
+    if (isRateLimited(res.status, reason) && attempt < RETRY_WAITS_MS.length) {
+      const asked = Number(res.headers.get("retry-after")) * 1000;
+      await new Promise((r) => setTimeout(r, Math.min(8000, asked || RETRY_WAITS_MS[attempt] + Math.random() * 500)));
+      continue;
+    }
+    throw new MailProviderError(`${who} request failed (${res.status} ${body.error?.status ?? body.error?.code ?? ""} ${reason})`.replace(/\s+\)/, ")").trim(), res.status);
   }
-  return (await res.json()) as T;
 }
 
 export async function googleEmail(accessToken: string): Promise<string | null> {
