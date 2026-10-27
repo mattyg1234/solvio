@@ -17,8 +17,9 @@ const SUGGEST_CAP = 150;
 const MAX_SUGGESTIONS = 6;
 
 /**
- * Looks through the last 90 days of the bookings inbox for known booking partners, re-counts the
- * senders the office added itself, and suggests other senders whose emails look like bookings.
+ * Re-counts the last 90 days of the bookings inbox for the senders the office added, and suggests
+ * other senders (by exact address) whose emails look like bookings. Built-in booking sites are no
+ * longer added on their own: the office adds the exact addresses orders come from.
  * Ticks are kept; only counts and suggestions change.
  */
 export async function POST() {
@@ -32,9 +33,11 @@ export async function POST() {
 
     // Senders the office added or ticked; untouched suggestions are found afresh below.
     const custom = conn.sellers.filter((s) => s.custom && (!s.suggested || s.track));
-    const skip = [...SELLERS.flatMap((s) => s.domains), ...custom.map((s) => s.domain)];
+    // Built-in site entries saved before the office added exact addresses: still counted until removed.
+    const sites = SELLERS.filter((s) => conn.sellers.some((x) => x.key === s.key));
+    const skip = [...sites.flatMap((s) => s.domains), ...custom.map((s) => s.domain)];
     const [counts, customCounts, suggestions, total] = await Promise.all([
-      mapLimit(SELLERS, 3, async (s) => ({ seller: s, ...(await mail.countFrom(s.domains, DAYS, CAP)) })),
+      mapLimit(sites, 3, async (s) => ({ seller: s, ...(await mail.countFrom(s.domains, DAYS, CAP)) })),
       mapLimit(custom, 3, async (s) => ({ seller: s, ...(await mail.countFrom([s.domain], DAYS, CAP)) })),
       mail.bookingLikeSenders(conn.address, DAYS, skip, SUGGEST_CAP).catch(() => []),
       mail.inboxTotal(DAYS),
@@ -45,8 +48,7 @@ export async function POST() {
     const sellers: SellerFound[] = [];
     for (const { seller, found, lastSeen, examples, other } of counts) {
       const before = previous.get(seller.key);
-      // Only partners that actually sent bookings are offered; adverts alone don't count.
-      if (found === 0 && !before) continue;
+      if (!before) continue;
       seen.add(seller.key);
       sellers.push({
         key: seller.key,

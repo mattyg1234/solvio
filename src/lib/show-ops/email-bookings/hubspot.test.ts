@@ -38,7 +38,7 @@ test("token check", () => {
   assert.equal(cleanHubSpotToken("has spaces in the middle of it ok"), null);
 });
 
-test("suggested senders group booking-looking subjects by domain", () => {
+test("suggested senders group booking-looking subjects by exact address", () => {
   const s = suggestSenders(
     [
       { subject: "New booking for Saturday", date: "2026-10-22T00:00:00Z", from: "Hotel Desk <desk@hotel-sol.es>" },
@@ -47,7 +47,11 @@ test("suggested senders group booking-looking subjects by domain", () => {
     ],
     "bookings@musichalltavern.com",
   );
-  assert.equal(s.length, 1);
-  assert.equal(s[0].sender, "hotel-sol.es");
-  assert.equal(s[0].found, 2);
+  assert.deepEqual(
+    s.map((x) => [x.sender, x.found]).sort(),
+    [
+      ["desk@hotel-sol.es", 1],
+      ["res@hotel-sol.es", 1],
+    ],
+  );
 });

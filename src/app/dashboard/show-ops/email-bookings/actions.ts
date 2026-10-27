@@ -47,8 +47,8 @@ export async function saveEmailSendersAction(choices: { key: string; track: bool
     for (const c of choices) {
       if (c && typeof c.key === "string" && typeof c.track === "boolean") wanted.set(c.key, { track: c.track, name: typeof c.name === "string" ? c.name : undefined });
     }
-    // Suggestions from a scan that ran after the page loaded are kept; the office's own senders go if left out.
-    const byKey = new Map(conn.sellers.filter((s) => !s.custom || s.suggested || wanted.has(s.key)).map((s) => [s.key, s]));
+    // Suggestions from a scan that ran after the page loaded are kept; any other sender left out was removed.
+    const byKey = new Map(conn.sellers.filter((s) => s.suggested || wanted.has(s.key)).map((s) => [s.key, s]));
     for (const [key, { track, name }] of wanted) {
       const known = byKey.get(key);
       if (known) {

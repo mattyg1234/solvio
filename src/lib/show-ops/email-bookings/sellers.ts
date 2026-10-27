@@ -65,21 +65,15 @@ export function senderMatches(fromEmail: string, sender: string): boolean {
   return domain === sender || domain.endsWith(`.${sender}`);
 }
 
-/** Free email providers: a sender there is a person, so only the whole address is ever suggested. */
-export const FREE_MAIL = /^(gmail|googlemail|hotmail|outlook|live|yahoo|icloud|me|aol|proton|protonmail|gmx|msn)\./i;
-
 /** Adds a sender to the list, or ticks it if it's already there. */
 export function withSender(all: SellerFound[], s: SellerFound): SellerFound[] {
   return all.some((x) => x.key === s.key) ? all.map((x) => (x.key === s.key ? { ...x, track: true, suggested: undefined } : x)) : [...all, s];
 }
 
-/** A typed sender as a list entry: a catalog marketplace if it is one, else a custom sender. */
+/** A typed sender as a list entry: exactly the address (or domain) typed, named after the site if it's a known one. */
 export function senderEntry(name: string, cleaned: string): SellerFound {
   const catalog = sellerForEmail(cleaned.includes("@") ? cleaned : `x@${cleaned}`);
-  const known = catalog && SELLERS.find((x) => x.key === catalog.key);
-  return known
-    ? { key: known.key, name: known.name, domain: known.domains[0], found: 0, lastSeen: new Date().toISOString(), track: true }
-    : customSeller(name || cleaned, cleaned);
+  return customSeller(name || catalog?.name || cleaned, cleaned);
 }
 
 /* ---------- Is this email a booking MHT received as the supplier? ---------- */
@@ -124,16 +118,14 @@ export function isReplyOrForward(subject: string): boolean {
 }
 
 /**
- * The bookings inbox's scan suggests unknown senders whose subjects look like bookings.
- * A company domain covers all its addresses; on a free-mail domain it's one person, and on the
- * inbox's own domain it's one mailbox (MHT's website shop, support@musichalltavern.com), so those
- * keep the whole address.
+ * The bookings inbox's scan suggests unknown senders whose subjects look like bookings, always by
+ * the exact address they send from: partners' order emails often come from one mailbox that isn't
+ * on their website's domain (TUI's come from a Gmail address), so a whole domain would be a guess.
  */
 export function suggestionSender(fromEmail: string, inboxAddress: string): string | null {
   const address = fromEmail.trim().toLowerCase();
   const domain = address.split("@")[1] ?? "";
   const own = inboxAddress.trim().toLowerCase();
   if (!domain || address === own) return null;
-  const ownDomain = own.split("@")[1] ?? "";
-  return FREE_MAIL.test(domain) || domain === ownDomain ? address : domain;
+  return address;
 }
