@@ -9,7 +9,7 @@ import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTe
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
 import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { templateVariables } from "@/lib/show-ops/inbox/templates";
-import { filterShowOpsOutboundTo, showOpsOutboundHeldResult, showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { filterShowOpsOutboundTo, showOpsMessagesLive, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
@@ -342,7 +342,7 @@ export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<Not
  * rates in Spain/UK), falling back to SMS when WhatsApp is not configured or fails.
  */
 export async function sendGuestTicketSms(input: GuestTicketInput): Promise<NotificationSendResult> {
-  const live = showOpsOutboundLive();
+  const live = showOpsMessagesLive();
   const phone = input.guestMobile?.trim() ?? "";
   if (!live) {
     // Test mode: only SHOW_OPS_PHONE_ALLOWLIST numbers, and only through the workspace's own Twilio.

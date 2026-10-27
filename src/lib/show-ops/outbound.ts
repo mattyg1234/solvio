@@ -6,6 +6,18 @@ export function showOpsOutboundLive(): boolean {
   return process.env.SHOW_OPS_EMAILS_LIVE === "1";
 }
 
+/**
+ * Guest texts and WhatsApp (Twilio) are live on the production site before email (Matty, 27 Oct):
+ * they go to every guest while emails stay on the test allowlist. SHOW_OPS_MESSAGES_LIVE=0 puts
+ * them back on the test list (SHOW_OPS_PHONE_ALLOWLIST); =1 also turns them on outside production.
+ * Email going live takes texts with it.
+ */
+export function showOpsMessagesLive(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.SHOW_OPS_EMAILS_LIVE === "1" || env.SHOW_OPS_MESSAGES_LIVE === "1") return true;
+  if (env.SHOW_OPS_MESSAGES_LIVE === "0") return false;
+  return env.VERCEL_ENV === "production";
+}
+
 export function showOpsOutboundAllowlist(): Set<string> {
   const fromEnv = (process.env.SHOW_OPS_EMAIL_ALLOWLIST || "")
     .split(/[,;\s]+/)

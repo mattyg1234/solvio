@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { filterShowOpsOutboundTo, showOpsOutboundLive } from "./outbound";
+import { filterShowOpsOutboundTo, showOpsMessagesLive, showOpsOutboundLive } from "./outbound";
 
 function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
   const prev: Record<string, string | undefined> = {};
@@ -44,5 +44,23 @@ test("live mode sends to every valid address", () => {
   withEnv({ SHOW_OPS_EMAILS_LIVE: "1", SHOW_OPS_EMAIL_ALLOWLIST: "" }, () => {
     assert.equal(showOpsOutboundLive(), true);
     assert.deepEqual(filterShowOpsOutboundTo(["agent@hotel.com", "bad"]), ["agent@hotel.com"]);
+  });
+});
+
+test("texts are live on production while emails stay on the test list", () => {
+  const live = (vars: Record<string, string | undefined>) => {
+    let out = false;
+    withEnv({ SHOW_OPS_EMAILS_LIVE: undefined, SHOW_OPS_MESSAGES_LIVE: undefined, VERCEL_ENV: undefined, ...vars }, () => (out = showOpsMessagesLive()));
+    return out;
+  };
+  assert.equal(live({ VERCEL_ENV: "production" }), true);
+  assert.equal(live({ VERCEL_ENV: "preview" }), false);
+  assert.equal(live({}), false);
+  assert.equal(live({ VERCEL_ENV: "production", SHOW_OPS_MESSAGES_LIVE: "0" }), false);
+  assert.equal(live({ VERCEL_ENV: "preview", SHOW_OPS_MESSAGES_LIVE: "1" }), true);
+  assert.equal(live({ SHOW_OPS_EMAILS_LIVE: "1" }), true);
+  withEnv({ SHOW_OPS_EMAILS_LIVE: undefined, VERCEL_ENV: "production", SHOW_OPS_EMAIL_ALLOWLIST: undefined }, () => {
+    assert.equal(showOpsOutboundLive(), false);
+    assert.deepEqual(filterShowOpsOutboundTo(["agent@hotel.com"]), []);
   });
 });
