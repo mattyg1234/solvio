@@ -80,7 +80,9 @@ export default async function MasterDataPage({
   searchParams: Promise<{
     tab?: string;
     saved?: string;
+    holded?: string;
     created?: string;
+    edit?: string;
     error?: string;
   }>;
 }) {
@@ -104,6 +106,7 @@ export default async function MasterDataPage({
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "")
     ? sp.created
     : undefined;
+  const editId = /^[0-9a-f-]{36}$/i.test(sp.edit ?? "") ? sp.edit : undefined;
   const ctx = await requireShowOpsPage(
     tab === "partners"
       ? "partners"
@@ -292,6 +295,11 @@ export default async function MasterDataPage({
           Saved. The new row is at the top of the list.
         </p>
       ) : null}
+      {sp.holded === "ok" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Holded contact updated to match.</p>
+      ) : sp.holded ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Saved in the Hub, but Holded wasn&apos;t updated: {sp.holded}</p>
+      ) : null}
       <ScrollToCreated id={created} />
 
       {tab === "rates" ? (
@@ -380,8 +388,9 @@ export default async function MasterDataPage({
             partnerTypes={ctx.config.partner_types}
             islands={islands}
             rates={(rates ?? []) as never}
-            suppliers={pinCreated((suppliers ?? []) as never, created)}
+            suppliers={pinCreated((suppliers ?? []) as never, created ?? editId)}
             highlightId={created}
+            editId={editId}
             stats={supplierStats}
             statsLabel={String(statsYear)}
             currency={ctx.config.currency}
