@@ -839,6 +839,18 @@ export class HoldedClient {
     return Array.isArray(list) ? list.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object") : [];
   }
 
+  /** One contact, raw (read-only). Null when Holded no longer has it. */
+  async getContact(id: string): Promise<Record<string, unknown> | null> {
+    if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return null;
+    try {
+      const raw = await this.request<unknown>("GET", this.v2 ? `/v2/contacts/${encodeURIComponent(id)}` : `/invoicing/v1/contacts/${encodeURIComponent(id)}`);
+      return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+    } catch (e) {
+      if (e instanceof HoldedApiError && (e.status === 404 || e.status === 400)) return null;
+      throw e;
+    }
+  }
+
   /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */
   async findContactByName(name: string): Promise<{ id: string } | null> {
     const wanted = String(name || "").trim().toLowerCase();
