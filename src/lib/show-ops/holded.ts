@@ -339,6 +339,8 @@ export function holdedItemsFromLines(
   return out;
 }
 
+const HOLDED_ISLAND_CODES: Record<string, string> = { tenerife: "tfs", lanzarote: "ace", "gran canaria": "lpa", "uk tour": "uk" };
+
 export function holdedInvoiceFromPack(
   pack: Pack,
   lines: PackLine[],
@@ -348,11 +350,14 @@ export function holdedInvoiceFromPack(
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
   const tags = ["solvio"];
+  const islandCode = pack.island ? HOLDED_ISLAND_CODES[pack.island.toLowerCase()] : undefined;
   if (pack.island) tags.push(holdedTag(`island ${pack.island}`));
+  // MHT tags its own Holded invoices by island code (#tfs, #ace, #lpa); match it so filters catch both.
+  if (islandCode) tags.push(islandCode);
   const notes = [pack.notes?.trim(), `Solvio pack ${pack.id}`].filter(Boolean).join("\n");
   const input: HoldedInvoiceInput = {
     contactId,
-    desc: `${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
+    desc: `${pack.island ? `MHT ${pack.island} · ` : ""}${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
     items: holdedItemsFromLines(lines, taxForRate, taxes),
     notes,
@@ -630,6 +635,60 @@ export function holdedV2Page(raw: unknown): { items: Record<string, unknown>[]; 
   return { items: items.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x)), cursor: more };
 }
 
+/** One sales invoice as Holded's invoice list shows it. Read-only, for the Hub's Holded-style list. */
+export type HoldedInvoiceListRow = {
+  id: string;
+  docNumber: string | null;
+  /** Issue date, YYYY-MM-DD. */
+  date: string | null;
+  dueDate: string | null;
+  contactName: string | null;
+  description: string | null;
+  tags: string[];
+  total: number | null;
+  status: "draft" | "approved" | "paid";
+};
+
+function listDay(v: unknown): string | null {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return isoDayFromUnix(v);
+  if (typeof v === "string" && /^\d+$/.test(v.trim())) return isoDayFromUnix(Number(v));
+  if (typeof v === "string" && Number.isFinite(Date.parse(v))) return v.slice(0, 10);
+  return null;
+}
+
+function listMoney(v: unknown): number | null {
+  const x = typeof v === "string" ? Number(v) : v;
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
+}
+
+/**
+ * A Holded invoice list entry (v2 snake_case or v1 camelCase). Lenient: a list is only
+ * displayed, never acted on, so a missing field shows as blank instead of failing the page.
+ */
+export function holdedInvoiceListRow(raw: unknown): HoldedInvoiceListRow | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const d = raw as Record<string, unknown>;
+  const id = typeof d.id === "string" || typeof d.id === "number" ? String(d.id) : "";
+  if (!id) return null;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const contact = d.contact && typeof d.contact === "object" ? (d.contact as Record<string, unknown>) : {};
+  const total = listMoney(d.total);
+  const pending = listMoney(d.payments_pending ?? d.paymentsPending);
+  const draft = d.draft === true || (d.draft == null && !str(d.document_number ?? d.docNumber));
+  const paid = !draft && (d.status === 1 || d.status === "paid" || (pending !== null && total !== null && Math.round(pending * 100) === 0 && total > 0));
+  return {
+    id,
+    docNumber: str(d.document_number ?? d.docNumber),
+    date: listDay(d.date),
+    dueDate: listDay(d.due_date ?? d.dueDate),
+    contactName: str(d.contact_name ?? d.contactName ?? contact.name),
+    description: str(d.description ?? d.desc),
+    tags: Array.isArray(d.tags) ? d.tags.map((t) => String(t ?? "").trim()).filter(Boolean) : [],
+    total,
+    status: draft ? "draft" : paid ? "paid" : "approved",
+  };
+}
+
 export class HoldedApiError extends Error {
   status: number;
   body: string;
@@ -855,6 +914,15 @@ export class HoldedClient {
       : await this.request<unknown>("POST", "/invoicing/v1/documents/invoice", input);
     if (!res || typeof res !== "object" || Array.isArray(res)) throw new Error("Holded returned a malformed invoice response.");
     return { id: requiredString((res as Record<string, unknown>).id, "invoice id") };
+  }
+
+  /** Sales invoices issued on or after `sinceIsoDay` (read-only), newest Holded can list. */
+  async listInvoices(sinceIsoDay: string): Promise<HoldedInvoiceListRow[]> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sinceIsoDay)) throw new Error("Invalid invoice list start date.");
+    const raw = this.v2
+      ? await this.listV2("/v2/invoices", { start_date: `${sinceIsoDay}T00:00:00Z` })
+      : await this.request<unknown>("GET", `/invoicing/v1/documents/invoice?starttmp=${Math.floor(Date.parse(`${sinceIsoDay}T00:00:00Z`) / 1000)}&endtmp=${Math.floor(Date.now() / 1000) + 366 * 86400}`);
+    return (Array.isArray(raw) ? raw : []).map(holdedInvoiceListRow).filter((x): x is HoldedInvoiceListRow => x !== null);
   }
 
   async createInvoiceDraft(input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
