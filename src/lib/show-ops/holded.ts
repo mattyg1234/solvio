@@ -753,6 +753,13 @@ export class HoldedClient {
     return hit?.id ? { id: String(hit.id) } : null;
   }
 
+  /** Every contact in the company (read-only), raw, for the partner details import. */
+  async listContacts(): Promise<Record<string, unknown>[]> {
+    if (this.v2) return this.listV2("/v2/contacts", {}, 50);
+    const list = await this.request<unknown>("GET", "/invoicing/v1/contacts");
+    return Array.isArray(list) ? list.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object") : [];
+  }
+
   /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */
   async findContactByName(name: string): Promise<{ id: string } | null> {
     const wanted = String(name || "").trim().toLowerCase();
