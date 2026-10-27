@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Crown } from "lucide-react";
 import {
   importCsvAction,
@@ -1119,6 +1120,14 @@ export default async function ShowOpsSettingsPage({
                   Test connection
                 </button>
               </form>
+              {holded.connected ? (
+                <Link
+                  href="/dashboard/show-ops/settings/holded-partners"
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200"
+                >
+                  Fill partner details from Holded
+                </Link>
+              ) : null}
               <form action={disconnectHoldedAction}>
                 <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">
                   Disconnect
