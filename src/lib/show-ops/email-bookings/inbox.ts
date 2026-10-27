@@ -60,7 +60,7 @@ export function suggestSenders(items: Heading[], inbox: string): SuggestedSender
  * Subjects read per sender when counting. Each read costs Gmail quota (about 3,000 a minute per
  * inbox), so a scan of a couple of dozen senders samples the newest emails and scales the counts.
  */
-const GMAIL_SUBJECT_SAMPLE = 25;
+const GMAIL_SUBJECT_SAMPLE = 10;
 
 /** Gmail's adverts and social tabs never hold supplier bookings. */
 const GMAIL_SKIP_TABS = "-category:promotions -category:social -category:forums";
@@ -73,13 +73,13 @@ export function gmailSource(token: string): MailSource {
     async countFrom(senders, days, cap) {
       const { ids } = await gmailSearch(token, `${gmailFromQuery(senders)} newer_than:${days}d ${GMAIL_SKIP_TABS}`, cap);
       const sample = ids.slice(0, GMAIL_SUBJECT_SAMPLE);
-      return sortedCount(await mapLimit(sample, 5, (id) => gmailSubject(token, id)), ids.length);
+      return sortedCount(await mapLimit(sample, 3, (id) => gmailSubject(token, id)), ids.length);
     },
     async bookingLikeSenders(inbox, days, skip, cap) {
       if (cap <= 0) return [];
       const minus = skip.length ? ` -from:(${skip.join(" OR ")})` : "";
       const { ids } = await gmailSearch(token, `subject:${BOOKING_WORDS} newer_than:${days}d ${GMAIL_SKIP_TABS}${minus}`, cap);
-      return suggestSenders(await mapLimit(ids, 5, (id) => gmailSubject(token, id)), inbox);
+      return suggestSenders(await mapLimit(ids, 3, (id) => gmailSubject(token, id)), inbox);
     },
     async inboxTotal(days) {
       try {

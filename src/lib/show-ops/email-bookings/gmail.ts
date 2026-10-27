@@ -102,7 +102,8 @@ export function isRateLimited(status: number, reason: string): boolean {
 
 /**
  * At most `n` Gmail requests in flight from this server. A scan of a couple of dozen senders
- * otherwise fires far more reads at once than Gmail's per-user rate (about 50 a second) allows.
+ * otherwise fires far more reads at once than Gmail's per-user rate (about 50 a second) allows,
+ * and a scan and a Refresh can run side by side, so each keeps well under it.
  */
 function limiter(n: number) {
   let active = 0;
@@ -120,7 +121,7 @@ function limiter(n: number) {
   };
 }
 
-const gmailSlot = limiter(5);
+const gmailSlot = limiter(3);
 const RETRY_WAITS_MS = [1000, 2000, 4000];
 
 async function apiJson<T>(url: string, accessToken: string, who: string): Promise<T> {

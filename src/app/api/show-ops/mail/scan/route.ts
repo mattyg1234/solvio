@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { loadEmailConnection, openMailSource } from "@/lib/show-ops/email-bookings/connection";
-import { mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
+import { describeMailError, mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
+import { needsReconnect } from "@/lib/show-ops/email-bookings/gmail";
 import { customSenderKey, SELLERS } from "@/lib/show-ops/email-bookings/sellers";
 import { mapLimit } from "@/lib/show-ops/email-bookings/text";
 import type { SellerFound } from "@/lib/show-ops/email-bookings/types";
@@ -36,9 +37,19 @@ export async function POST() {
     // Built-in site entries saved before the office added exact addresses: still counted until removed.
     const sites = SELLERS.filter((s) => conn.sellers.some((x) => x.key === s.key));
     const skip = [...sites.flatMap((s) => s.domains), ...custom.map((s) => s.domain)];
+    // A sender Gmail won't count right now keeps its last count instead of failing the whole scan.
+    const countFrom = async (senders: string[]) => {
+      try {
+        return await mail.countFrom(senders, DAYS, CAP);
+      } catch (e) {
+        if (needsReconnect(e)) throw e;
+        console.error(`[show-ops/mail/scan] kept the last count for ${senders.join(", ")}: ${describeMailError(e)}`);
+        return null;
+      }
+    };
     const [counts, customCounts, suggestions, total] = await Promise.all([
-      mapLimit(sites, 3, async (s) => ({ seller: s, ...(await mail.countFrom(s.domains, DAYS, CAP)) })),
-      mapLimit(custom, 3, async (s) => ({ seller: s, ...(await mail.countFrom([s.domain], DAYS, CAP)) })),
+      mapLimit(sites, 3, async (s) => ({ seller: s, count: await countFrom(s.domains) })),
+      mapLimit(custom, 3, async (s) => ({ seller: s, count: await countFrom([s.domain]) })),
       mail.bookingLikeSenders(conn.address, DAYS, skip, SUGGEST_CAP).catch(() => []),
       mail.inboxTotal(DAYS),
     ]);
@@ -46,10 +57,15 @@ export async function POST() {
     const previous = new Map(conn.sellers.map((s) => [s.key, s]));
     const seen = new Set<string>();
     const sellers: SellerFound[] = [];
-    for (const { seller, found, lastSeen, examples, other } of counts) {
+    for (const { seller, count } of counts) {
       const before = previous.get(seller.key);
       if (!before) continue;
       seen.add(seller.key);
+      if (!count) {
+        sellers.push(before);
+        continue;
+      }
+      const { found, lastSeen, examples, other } = count;
       sellers.push({
         key: seller.key,
         name: seller.name,
@@ -63,8 +79,13 @@ export async function POST() {
         other,
       });
     }
-    for (const { seller, found, lastSeen, examples, other } of customCounts) {
+    for (const { seller, count } of customCounts) {
       seen.add(seller.key);
+      if (!count) {
+        sellers.push({ ...seller, suggested: undefined });
+        continue;
+      }
+      const { found, lastSeen, examples, other } = count;
       sellers.push({ ...seller, found, lastSeen: lastSeen ?? seller.lastSeen, examples: examples.length ? examples : seller.examples, other, suggested: undefined });
     }
     // Senders chosen earlier that are no longer in the catalog stay, so a choice is never lost.

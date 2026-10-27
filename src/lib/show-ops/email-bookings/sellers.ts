@@ -112,9 +112,23 @@ export function looksLikeSupplierBooking(subject: string): boolean {
   return SUPPLIER_SIGNS.some((re) => re.test(s));
 }
 
+/** "Re:" in English, Spanish, German, Swedish, Dutch and Italian mail. */
+const REPLY = /^\s*(re|aw|sv|antw|rif)\s*:/i;
+/** "Fwd:", Spanish "RV:", French "TR:", German "WG:", Portuguese "ENC:". */
+const FORWARD = /^\s*(fwd?|rv|tr|wg|enc)\s*:/i;
+
+/** A reply is someone talking about a booking (often quoting it), never the booking itself. */
+export function isReply(subject: string): boolean {
+  return REPLY.test(subject);
+}
+
+export function isForward(subject: string): boolean {
+  return FORWARD.test(subject);
+}
+
 /** Replies and forwards are people talking about a booking, not the booking itself. */
 export function isReplyOrForward(subject: string): boolean {
-  return /^\s*(re|fwd?|rv|tr|aw|wg)\s*:/i.test(subject);
+  return isReply(subject) || isForward(subject);
 }
 
 /**
