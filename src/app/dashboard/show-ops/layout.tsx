@@ -4,7 +4,7 @@ import { showOpsRoleLabel } from "@/lib/show-ops/nav";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
 import { getShowOpsRenderContext } from "@/lib/show-ops/access";
-import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { showOpsMessagesLive, showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
 /**
  * Browser tab and bookmark name. Operators name their own system, so the
@@ -57,6 +57,7 @@ export default async function ShowOpsLayout({
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
           Show Ops is in test mode. Emails are only sent to approved test
           addresses; other recipients stay blocked.
+          {showOpsMessagesLive() ? " Texts and WhatsApp are live and go to guests." : ""}
         </p>
       ) : null}
       {children}

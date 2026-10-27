@@ -5,7 +5,7 @@
  */
 
 import { decryptSecret } from "@/lib/show-ops/secrets";
-import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { showOpsMessagesLive } from "@/lib/show-ops/outbound";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
 import type { InboxConnectionSummary, TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
 import type { TwilioCreds } from "@/lib/show-ops/inbox/twilio";
@@ -75,7 +75,7 @@ export async function loadTwilioConnectionByWebhookToken(token: string): Promise
 
 /** Numbers that may be messaged while Show Ops is still in test mode (SHOW_OPS_PHONE_ALLOWLIST). */
 export function phoneOutboundAllowed(phone: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (showOpsOutboundLive()) return true;
+  if (showOpsMessagesLive(env)) return true;
   const allow = String(env.SHOW_OPS_PHONE_ALLOWLIST ?? "")
     .split(/[,;\s]+/)
     .map((p) => normalisePhone(p))
@@ -89,7 +89,7 @@ export function connectionSummary(c: TwilioConnection | null): InboxConnectionSu
     whatsapp: Boolean(c?.meta.whatsapp_from),
     sms: Boolean(c?.meta.sms_from),
     reopenTemplate: Boolean(c?.meta.whatsapp_from && c.meta.reopen_content_sid),
-    live: showOpsOutboundLive(),
+    live: showOpsMessagesLive(),
   };
 }
 
