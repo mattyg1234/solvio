@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { loadEmailConnection, openMailSource } from "@/lib/show-ops/email-bookings/connection";
 import { findBookingByReference } from "@/lib/show-ops/email-bookings/data";
 import { extractBooking } from "@/lib/show-ops/email-bookings/extract";
+import { needsReconnect } from "@/lib/show-ops/email-bookings/gmail";
 import { describeMailError, mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
 import { channelFor, channelRefFor, normRef, sellerSource } from "@/lib/show-ops/email-bookings/mapping";
 import { looksLikeSupplierBooking, sendersFor } from "@/lib/show-ops/email-bookings/sellers";
@@ -66,15 +67,30 @@ export async function POST() {
     const since = conn.last_sync_at ? new Date(new Date(conn.last_sync_at).getTime() - OVERLAP_MS) : lookBack;
     const mail = await openMailSource(conn);
 
-    // Every new email from each tracked sender, once.
+    // Every new email from each tracked sender, once. One sender Gmail won't list right now
+    // doesn't stop the rest; the run counts as unfinished so the next one tries it again.
     const candidates = new Map<string, Candidate>();
+    let failed = 0;
+    let listError: unknown = null;
     for (const seller of tracked) {
       // A sender ticked since the last check hasn't had its past emails read yet.
       const from = seller.syncedAt ? since : lookBack;
-      for (const id of await mail.idsFrom(sendersFor(seller), from, PER_SELLER)) {
+      let ids: string[];
+      try {
+        ids = await mail.idsFrom(sendersFor(seller), from, PER_SELLER);
+      } catch (e) {
+        if (needsReconnect(e)) throw e;
+        failed++;
+        listError = e;
+        console.error(`[show-ops/mail/sync] skipped sender ${seller.key}: ${describeMailError(e)}`);
+        continue;
+      }
+      for (const id of ids) {
         if (!candidates.has(id)) candidates.set(id, { id, sellerKey: seller.key, sellerName: seller.name, custom: Boolean(seller.custom) });
       }
     }
+    // Nothing could be listed at all: say why rather than "up to date".
+    if (failed === tracked.length && listError) throw listError;
     // Drop the ones already stored.
     const allIds = [...candidates.keys()];
     for (let i = 0; i < allIds.length; i += 100) {
@@ -90,7 +106,6 @@ export async function POST() {
     const aiReads = Boolean(process.env.ANTHROPIC_API_KEY);
     const batch = [...candidates.values()].slice(0, MAX_PER_RUN);
     const more = candidates.size > batch.length;
-    let failed = 0;
 
     const read = await mapLimit(batch, 5, async (item): Promise<Row | null> => {
       try {
