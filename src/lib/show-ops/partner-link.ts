@@ -41,13 +41,16 @@ export type RefCounterClient = {
  * Next ref for a booking created without an app session (the RPC refuses the
  * service role). Concurrency is handled by the caller retrying on the unique
  * (business_id, booking_ref) constraint. Floor of 1000 matches the RPC.
+ * `usedUpTo` is businesses.show_ops_booking_ref_floor: the highest number already
+ * used, so refs keep counting after old bookings are removed.
  */
-export async function nextBookingRefWithoutSession(client: RefCounterClient, businessId: string, series: string): Promise<string> {
+export async function nextBookingRefWithoutSession(client: RefCounterClient, businessId: string, series: string, usedUpTo?: number | null): Promise<string> {
   const { data, error } = await client.from("show_bookings").select("booking_ref_num").eq("business_id", businessId)
     .order("booking_ref_num", { ascending: false, nullsFirst: false }).limit(1);
   if (error) throw new Error("Could not allocate a booking reference. Please retry.");
   const max = Number(data?.[0]?.booking_ref_num ?? 0);
-  const n = Math.max(Number.isFinite(max) ? max + 1 : 1, 1000);
+  const floor = Number(usedUpTo ?? 0);
+  const n = Math.max(Number.isFinite(max) ? max + 1 : 1, Number.isFinite(floor) ? floor + 1 : 1, 1000);
   return `${series}-${n}`;
 }
 
