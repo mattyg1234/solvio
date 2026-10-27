@@ -39,6 +39,12 @@ export function mailErrorAnswer(where: string, e: unknown): { error: string; sta
   if (e instanceof MailProviderError && e.status === 403 && /^HubSpot/.test(e.message)) {
     return { error: "HubSpot refused: the key needs the conversations.read permission (HubSpot → Settings → Integrations → Private apps → Scopes).", status: 502 };
   }
+  if (e instanceof MailProviderError && /SERVICE_DISABLED/.test(e.message)) {
+    return { error: "Google refused: the Gmail API is switched off in the Google Cloud project. Turn it on (APIs & Services → Library → Gmail API → Enable), wait a minute and try again.", status: 502 };
+  }
+  if (e instanceof MailProviderError && /ACCESS_TOKEN_SCOPE_INSUFFICIENT/.test(e.message)) {
+    return { error: "Google didn't give the Hub permission to read this inbox. Connect it again and leave the Gmail box ticked on Google's screen.", status: 409, reconnect: true };
+  }
   if (e instanceof MailProviderError) return { error: `${/^HubSpot/.test(e.message) ? "HubSpot" : "Gmail"} didn't answer as expected. Try again in a minute.`, status: 502 };
   if (e instanceof Error && /SHOW_OPS_SECRETS_KEY/.test(e.message)) return { error: "The server's secrets key (SHOW_OPS_SECRETS_KEY) isn't set, so the inbox sign-in can't be stored.", status: 503 };
   return { error: "Something went wrong. Try again.", status: 500 };

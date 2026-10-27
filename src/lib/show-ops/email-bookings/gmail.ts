@@ -91,8 +91,10 @@ export function googleRefresh(refreshToken: string): Promise<TokenSet> {
 async function apiJson<T>(url: string, accessToken: string, who: string): Promise<T> {
   const res = await fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, cache: "no-store" });
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: { code?: string | number; status?: string } };
-    throw new MailProviderError(`${who} request failed (${res.status} ${body.error?.status ?? body.error?.code ?? ""})`.trim(), res.status);
+    const body = (await res.json().catch(() => ({}))) as { error?: { code?: string | number; status?: string; details?: { reason?: string }[] } };
+    // Google's reason tells a switched-off Gmail API (SERVICE_DISABLED) from a missing permission.
+    const reason = body.error?.details?.find((d) => d?.reason)?.reason ?? "";
+    throw new MailProviderError(`${who} request failed (${res.status} ${body.error?.status ?? body.error?.code ?? ""} ${reason})`.replace(/\s+\)/, ")").trim(), res.status);
   }
   return (await res.json()) as T;
 }
