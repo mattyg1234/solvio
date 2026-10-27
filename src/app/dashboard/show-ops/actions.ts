@@ -6,7 +6,7 @@ import { bookingRefSeries, isPartnerLinkToken, isUniqueViolation, nextBookingRef
 import { sendShowOpsPartnerLinkEmail } from "@/lib/notifications/show-ops-emails";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { pushInvoiceToHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { redirect } from "next/navigation";
@@ -3260,8 +3260,10 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
   const packIslands = new Set(priced.map((b) => (b.island ? String(b.island) : "")).filter(Boolean));
   const packIsland = packIslands.size === 1 ? [...packIslands][0] : island || null;
   // The partner's agreed payment days win over the run's default (Joel's per-partner invoice days).
-  const partnerTerms = Number((supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days);
-  const termsDays = Number.isInteger(partnerTerms) && partnerTerms >= 0 ? partnerTerms : terms;
+  // A partner with no days set (null) falls back to the run's default; Number(null) would be 0, which invoices reject.
+  const rawPartnerTerms = (supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days;
+  const partnerTerms = rawPartnerTerms == null ? NaN : Number(rawPartnerTerms);
+  const termsDays = Number.isInteger(partnerTerms) && partnerTerms > 0 ? partnerTerms : terms;
   const due_date = addDaysIso(invoice_date, termsDays);
   const invoiceCfg = ctx.config.invoice;
   const vatRate = invoiceCfg.defaultVatRate;
@@ -3442,6 +3444,15 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
     throw new Error("No uninvoiced reservations for that filter — they may have just been invoiced elsewhere.");
   }
 
+  if (formData.get("send_to_holded") === "1") {
+    // Made in the Hub, made in Holded: issue straight away and create the Holded draft in the same press.
+    await issueSavedInvoice(ctx, invoiceId, invoice_date);
+    revalidateShowOps();
+    const next = new FormData();
+    next.set("invoice_id", invoiceId);
+    return pushInvoiceToHoldedAction(next);
+  }
+
   revalidateShowOps();
   redirect(`/dashboard/show-ops/invoices/${invoiceId}`);
 }
@@ -3479,6 +3490,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
   if (!supplierIds.length) throw new Error("No uninvoiced reservations in that period.");
 
   let generated = 0;
+  const created: string[] = [];
   for (const supplier_id of supplierIds) {
     const invoiceId = await generateInvoicePackCore(ctx, {
       supplier_id,
@@ -3488,7 +3500,17 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
       terms,
       invoice_date,
     });
-    if (invoiceId) generated += 1;
+    if (invoiceId) {
+      generated += 1;
+      created.push(invoiceId);
+    }
+  }
+
+  if (formData.get("send_to_holded") === "1" && created.length) {
+    // Issue every new pack, then the sync creates each one in Holded (and pulls back the rest).
+    for (const id of created) await issueSavedInvoice(ctx, id, invoice_date);
+    revalidateShowOps();
+    return syncHoldedInvoicesAction();
   }
 
   revalidateShowOps();
@@ -3790,13 +3812,20 @@ export async function issueInvoiceAndSendToHoldedAction(formData: FormData): Pro
 
 async function issueInvoiceDraft(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, formData: FormData): Promise<string> {
   const saved = await persistInvoiceDraft(ctx, formData);
+  return issueSavedInvoice(ctx, saved.inv.id, saved.invoice_date);
+}
+
+/** Numbers and locks a saved draft (lines already stored), e.g. one just generated from bookings. */
+async function issueSavedInvoice(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, invoiceId: string, fallbackDate: string): Promise<string> {
+  const saved = { invoice_date: fallbackDate };
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
     .select("*")
-    .eq("id", saved.inv.id)
+    .eq("id", invoiceId)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!inv) throw new Error("Invoice not found.");
+  if (inv.status !== "draft") return inv.id;
 
   const { data: lineRows } = await ctx.supabase
     .from("show_invoice_lines")
