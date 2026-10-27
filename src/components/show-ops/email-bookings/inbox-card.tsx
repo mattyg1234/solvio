@@ -35,6 +35,14 @@ type SyncAnswer = { added: number; stored: number; more: boolean };
 const scanInbox = () => postJson<{ sellers: SellerFound[]; skipped: number }>("/api/show-ops/mail/scan");
 const syncInbox = () => postJson<SyncAnswer>("/api/show-ops/mail/sync");
 
+/**
+ * One Refresh keeps bringing emails in, a batch at a time, while more are waiting. The pause keeps
+ * the inbox under Gmail's per-minute read limit; after the last round the office presses again.
+ */
+const AUTO_ROUNDS = 12;
+const ROUND_PAUSE_MS = 4000;
+const plural = (n: number) => `${n} new booking email${n === 1 ? "" : "s"}`;
+
 const MARKS: Record<Provider, { letter: string; tone: string }> = {
   gmail: { letter: "G", tone: "bg-rose-50 text-rose-600" },
   microsoft: { letter: "O", tone: "bg-sky-50 text-sky-700" },
@@ -271,28 +279,51 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
   const [sellers, setSellers] = useState<SellerFound[]>(inbox.sellers);
   const [saving, startSave] = useTransition();
   const [confirmOff, setConfirmOff] = useState(false);
+  const [recounting, setRecounting] = useState(false);
   const tracked = inbox.sellers.filter((s) => s.track);
 
-  /** Refresh: re-count senders, then bring in new booking emails. */
+  /** Refresh: bring in new booking emails, batch after batch, until the inbox is up to date. */
   async function refresh() {
     setSyncing(true);
     setNotice(null);
+    let added = 0;
     try {
-      await scanInbox().catch(() => undefined);
-      const r = await syncInbox();
-      setNotice(
-        r.added > 0
-          ? `${r.added} new booking email${r.added === 1 ? "" : "s"} to check.${r.more ? " More are coming: press Refresh again in a moment." : ""}`
-          : r.more
-            ? "Still bringing emails in. Press Refresh again in a moment."
-            : "Up to date: no new booking emails.",
-      );
+      for (let round = 1; ; round++) {
+        const r = await syncInbox();
+        added += r.added;
+        if (!r.more) {
+          setNotice(added > 0 ? `${plural(added)} to check. Up to date.` : "Up to date: no new booking emails.");
+          break;
+        }
+        router.refresh();
+        if (round >= AUTO_ROUNDS) {
+          setNotice(`${plural(added)} so far. More are waiting: press Refresh again in a minute.`);
+          break;
+        }
+        setNotice(`Bringing emails in… ${plural(added)} so far.`);
+        await new Promise((resolve) => setTimeout(resolve, ROUND_PAUSE_MS));
+      }
       router.refresh();
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Couldn't check the inbox.");
+      const why = e instanceof Error ? e.message : "Couldn't check the inbox.";
+      setNotice(added > 0 ? `${why} (${plural(added)} came in before that.)` : why);
+      if (added > 0) router.refresh();
     } finally {
       setSyncing(false);
     }
+  }
+
+  /** Opening Senders re-counts them in the background; the office's own edits are never overwritten. */
+  function toggleSenders() {
+    setSellers(inbox.sellers);
+    const opening = !managing;
+    setManaging(opening);
+    if (!opening) return;
+    setRecounting(true);
+    scanInbox()
+      .then((r) => setSellers((current) => (current === inbox.sellers ? r.sellers : current)))
+      .catch(() => undefined)
+      .finally(() => setRecounting(false));
   }
 
   function saveSenders() {
@@ -332,7 +363,7 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
           <button
             type="button"
             className={SHOW_OPS_GHOST_BTN}
-            onClick={() => (setSellers(inbox.sellers), setManaging((v) => !v))}
+            onClick={toggleSenders}
             aria-expanded={managing}
           >
             <Settings2 className="mr-1.5 h-4 w-4" aria-hidden /> Senders
@@ -357,6 +388,11 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
       )}
       {managing && canManage && (
         <div className="flex flex-col gap-4 border-t border-slate-100 pt-4">
+          {recounting && (
+            <p className="flex items-center gap-1.5 text-xs text-slate-500" role="status">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Re-counting each sender&rsquo;s emails…
+            </p>
+          )}
           <SenderPick address={inbox.address} sellers={sellers} skipped={inbox.skipped} onSellers={setSellers} />
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className={SHOW_OPS_PRIMARY_BTN} disabled={saving} onClick={saveSenders}>

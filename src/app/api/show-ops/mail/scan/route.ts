@@ -13,7 +13,7 @@ export const maxDuration = 60;
 const DAYS = 90;
 const CAP = 200;
 /** How many booking-looking emails to sort through when suggesting senders the Hub doesn't know. */
-const SUGGEST_CAP = 150;
+const SUGGEST_CAP = 60;
 const MAX_SUGGESTIONS = 6;
 
 /**
