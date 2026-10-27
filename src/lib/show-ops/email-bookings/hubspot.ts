@@ -46,7 +46,9 @@ export async function hubspotAccount(token: string): Promise<{ address: string; 
       "/channel-accounts?limit=100",
       "channel accounts",
     );
-    address = accounts.results?.find((a) => a.deliveryIdentifier?.type === "HS_EMAIL_ADDRESS" && a.deliveryIdentifier.value)?.deliveryIdentifier?.value ?? "";
+    // Not in HubSpot's documented shape for every account, so take an address wherever one shows.
+    const values = (accounts.results ?? []).flatMap((a) => [a.deliveryIdentifier?.value ?? "", a.name ?? ""]).map((v) => v.trim());
+    address = values.find((v) => EMAIL_RE.test(v)) ?? "";
   } catch {
     // Not every token can list channel accounts; the inbox name will do.
   }
@@ -69,6 +71,8 @@ type Message = {
   truncationStatus?: string;
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** One incoming email, as the scan and sync need it. `id` is "threadId:messageId". */
 export type HubSpotEmail = { id: string; threadId: string; messageId: string; from: string; fromName: string; subject: string; date: string; text: string; truncated: boolean };
 
@@ -77,7 +81,8 @@ export function emailsFromMessages(threadId: string, messages: Message[]): HubSp
   const out: HubSpotEmail[] = [];
   for (const m of messages) {
     if ((m.type && m.type !== "MESSAGE") || m.direction !== "INCOMING") continue;
-    const sender = m.senders?.find((s) => s.deliveryIdentifier?.type === "HS_EMAIL_ADDRESS" && s.deliveryIdentifier.value);
+    // HubSpot's docs show inbound senders as HS_EMAIL_ADDRESS or an opaque id; go by the value.
+    const sender = m.senders?.find((s) => EMAIL_RE.test(s.deliveryIdentifier?.value?.trim() ?? ""));
     if (!sender) continue;
     const from = String(sender.deliveryIdentifier?.value).trim().toLowerCase();
     const date = new Date(m.createdAt ?? "");
@@ -119,10 +124,10 @@ async function threadsSince(token: string, since: Date, maxThreads: number): Pro
 async function threadEmails(token: string, threadId: string): Promise<HubSpotEmail[]> {
   const messages: Message[] = [];
   let after: string | undefined;
-  for (let page = 0; page < 5; page++) {
-    const q = new URLSearchParams({ limit: "100" });
-    if (after) q.set("after", after);
-    const res = await hubspotJson<Paged<Message>>(token, `/threads/${encodeURIComponent(threadId)}/messages?${q}`, "messages");
+  for (let page = 0; page < 10; page++) {
+    // HubSpot's page size is left at its default: the docs give no maximum for this list.
+    const q = after ? `?${new URLSearchParams({ after })}` : "";
+    const res = await hubspotJson<Paged<Message>>(token, `/threads/${encodeURIComponent(threadId)}/messages${q}`, "messages");
     messages.push(...(res.results ?? []));
     after = res.paging?.next?.after;
     if (!after) break;

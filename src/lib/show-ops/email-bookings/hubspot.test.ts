@@ -11,9 +11,11 @@ test("only incoming emails are kept, with a thread:message id", () => {
     { id: "a", type: "MESSAGE", direction: "INCOMING", createdAt: "2026-10-20T10:00:00Z", subject: "New booking - GYG123ABC", text: "Lead traveller: Jane", senders: [email("Partner@GetYourGuide.com")] },
     { id: "b", type: "MESSAGE", direction: "OUTGOING", createdAt: "2026-10-20T11:00:00Z", subject: "Re: New booking", text: "Thanks", senders: [email("bookings@musichalltavern.com")] },
     { id: "c", type: "COMMENT", direction: "INCOMING", createdAt: "2026-10-20T12:00:00Z", text: "internal note", senders: [] },
-    { id: "d", type: "MESSAGE", direction: "INCOMING", createdAt: "2026-10-20T13:00:00Z", text: "chat", senders: [{ name: "Visitor", deliveryIdentifier: { type: "HS_VISITOR", value: "x" } }] },
+    { id: "d", type: "MESSAGE", direction: "INCOMING", createdAt: "2026-10-20T13:00:00Z", text: "chat", senders: [{ name: "Visitor", deliveryIdentifier: { type: "CHANNEL_SPECIFIC_OPAQUE_ID", value: "x8f2" } }] },
+    { id: "e", type: "MESSAGE", direction: "INCOMING", createdAt: "2026-10-20T14:00:00Z", subject: "New order #1", text: "x", senders: [{ name: "Shop", deliveryIdentifier: { type: "CHANNEL_SPECIFIC_OPAQUE_ID", value: "shop@musichalltavern.com" } }] },
   ]);
-  assert.equal(out.length, 1);
+  assert.equal(out.length, 2);
+  assert.equal(out[1].from, "shop@musichalltavern.com");
   assert.equal(out[0].id, "123:a");
   assert.equal(out[0].from, "partner@getyourguide.com");
   assert.equal(out[0].subject, "New booking - GYG123ABC");
