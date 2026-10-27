@@ -178,6 +178,7 @@ type PackLine = {
   description?: string | null;
   guest_name?: string | null;
   booking_ref?: string | null;
+  supplier_ticket_number?: string | null;
   adults?: number | null;
   children?: number | null;
   adult_unit_price?: number | null;
@@ -320,7 +321,8 @@ export function holdedItemsFromLines(
     const tax = { taxes: [key] };
     const base = String(l.description || l.guest_name || "Line").trim();
     const ref = String(l.booking_ref || "").trim();
-    const desc = [ref, String(l.notes || "").trim()].filter(Boolean).join(" · ") || undefined;
+    const ticket = String(l.supplier_ticket_number || "").trim();
+    const desc = [ref, ticket ? `Ticket ${ticket}` : "", String(l.notes || "").trim()].filter(Boolean).join(" · ") || undefined;
     const adults = Math.max(0, Math.trunc(n(l.adults)));
     const children = Math.max(0, Math.trunc(n(l.children)));
     const adultUnit = strictMoney(l.adult_unit_price ?? 0, "adult unit price");

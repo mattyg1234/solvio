@@ -69,6 +69,15 @@ test("booking line splits into adult and child items with exact unit prices", ()
   assert.deepEqual(items[1], { name: "MHT ACE 12 Sept — 1 child", desc: "MHT-319001", units: 1, subtotal: 15, taxes: ["s_igic_7"] });
 });
 
+test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
+  const items = holdedItemsFromLines(
+    [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],
+    () => IGIC_7,
+    TAXES,
+  );
+  assert.equal(items[0].desc, "MHT-319001 · Ticket 4471 · No show");
+});
+
 test("manual line requires a configured and validated IGIC sales tax key", () => {
   const line = [{ description: "Bus supplement", quantity: 3, unit_price: 4.5, vat_rate: 7, notes: "Sept" }];
   const items = holdedItemsFromLines(line, () => IGIC_7, TAXES);
