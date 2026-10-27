@@ -3260,8 +3260,10 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
   const packIslands = new Set(priced.map((b) => (b.island ? String(b.island) : "")).filter(Boolean));
   const packIsland = packIslands.size === 1 ? [...packIslands][0] : island || null;
   // The partner's agreed payment days win over the run's default (Joel's per-partner invoice days).
-  const partnerTerms = Number((supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days);
-  const termsDays = Number.isInteger(partnerTerms) && partnerTerms >= 0 ? partnerTerms : terms;
+  // A partner with no days set (null) falls back to the run's default; Number(null) would be 0, which invoices reject.
+  const rawPartnerTerms = (supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days;
+  const partnerTerms = rawPartnerTerms == null ? NaN : Number(rawPartnerTerms);
+  const termsDays = Number.isInteger(partnerTerms) && partnerTerms > 0 ? partnerTerms : terms;
   const due_date = addDaysIso(invoice_date, termsDays);
   const invoiceCfg = ctx.config.invoice;
   const vatRate = invoiceCfg.defaultVatRate;
