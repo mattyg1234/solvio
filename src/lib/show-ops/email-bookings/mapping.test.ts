@@ -17,7 +17,7 @@ import {
   type CatalogProduct,
   type CatalogSupplier,
 } from "./mapping";
-import { isReplyOrForward, looksLikeSupplierBooking, senderMatches, suggestionSender, cleanSender, sellerForEmail } from "./sellers";
+import { isReplyOrForward, looksLikeSupplierBooking, senderMatches, suggestionSender, cleanSender, sellerForEmail, senderEntry } from "./sellers";
 import { cleanEmailText, readKnownTemplate } from "./templates";
 import { GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT } from "./test-fixtures";
 
@@ -212,10 +212,16 @@ test("senders: catalog, custom, suggestions, and the subject classifier", () => 
   assert.equal(senderMatches("support@musichalltavern.com", "support@musichalltavern.com"), true);
   assert.equal(senderMatches("office@musichalltavern.com", "support@musichalltavern.com"), false);
   assert.equal(senderMatches("a@mail.tiqets.com", "tiqets.com"), true);
-  // On the inbox's own domain the single address is suggested, not the whole domain.
+  // Suggestions are always the exact address orders come from, never a whole domain.
   assert.equal(suggestionSender("support@musichalltavern.com", "tenerife@musichalltavern.com"), "support@musichalltavern.com");
   assert.equal(suggestionSender("someone@gmail.com", "tenerife@musichalltavern.com"), "someone@gmail.com");
-  assert.equal(suggestionSender("desk@hotel-example.com", "tenerife@musichalltavern.com"), "hotel-example.com");
+  assert.equal(suggestionSender("Desk@Hotel-Example.com", "tenerife@musichalltavern.com"), "desk@hotel-example.com");
+  // A typed address at a known site stays that exact address, named after the site.
+  const gyg = senderEntry("", "partner-bookings@getyourguide.com");
+  assert.equal(gyg.key, "custom:partner-bookings@getyourguide.com");
+  assert.equal(gyg.domain, "partner-bookings@getyourguide.com");
+  assert.equal(gyg.name, "GetYourGuide");
+  assert.equal(senderEntry("TUI ops", "ops.tfs@gmail.com").name, "TUI ops");
   assert.equal(suggestionSender("tenerife@musichalltavern.com", "tenerife@musichalltavern.com"), null);
   assert.equal(looksLikeSupplierBooking(WOO_SUBJECT), true);
   assert.equal(looksLikeSupplierBooking(GYG_SUBJECT), true);

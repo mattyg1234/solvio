@@ -100,11 +100,10 @@ function SenderRow({ s, onSellers }: { s: SellerFound; onSellers: (update: (all:
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-slate-900">
             {s.name}
-            {s.custom && !s.suggested && <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">Added by you</span>}
           </span>
           <span className="block truncate text-xs text-slate-500">
             {s.domain}
-            {s.found > 0 ? ` · last booking ${relativeTime(s.lastSeen)}` : s.custom ? " · every email from here is read" : ""}
+            {s.found > 0 ? ` · last booking ${relativeTime(s.lastSeen)}` : s.custom ? " · every email from here is read" : " · every email from this website is read"}
             {s.other ? ` · ${s.other} other email${s.other === 1 ? "" : "s"} (adverts, account mail) ignored` : ""}
           </span>
           {s.examples?.length ? (
@@ -118,7 +117,7 @@ function SenderRow({ s, onSellers }: { s: SellerFound; onSellers: (update: (all:
         {s.found}
         <span className="block text-xs font-normal text-slate-500">{s.suggested ? "look like bookings" : "bookings"}</span>
       </span>
-      {s.custom && !s.suggested && (
+      {!s.suggested && (
         <button
           type="button"
           onClick={() => onSellers((all) => all.filter((x) => x.key !== s.key))}
