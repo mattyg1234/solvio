@@ -6,6 +6,7 @@ import { bookingRefSeries, isPartnerLinkToken, isUniqueViolation, nextBookingRef
 import { sendShowOpsPartnerLinkEmail } from "@/lib/notifications/show-ops-emails";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { pushInvoiceToHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { redirect } from "next/navigation";
@@ -3772,6 +3773,22 @@ export async function saveInvoiceDraftAction(formData: FormData): Promise<void> 
 
 export async function issueInvoiceAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsAction("finance", "invoices");
+  const invoiceId = await issueInvoiceDraft(ctx, formData);
+  revalidateShowOps();
+  redirect(`/dashboard/show-ops/invoices/${invoiceId}?issued=1`);
+}
+
+/** One press, like Holded's Approve: number the draft in the Hub, then send it straight to Holded. */
+export async function issueInvoiceAndSendToHoldedAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const invoiceId = await issueInvoiceDraft(ctx, formData);
+  revalidateShowOps();
+  const next = new FormData();
+  next.set("invoice_id", invoiceId);
+  return pushInvoiceToHoldedAction(next);
+}
+
+async function issueInvoiceDraft(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, formData: FormData): Promise<string> {
   const saved = await persistInvoiceDraft(ctx, formData);
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
@@ -3866,9 +3883,7 @@ export async function issueInvoiceAction(formData: FormData): Promise<void> {
     .eq("id", inv.id)
     .eq("business_id", ctx.business.id);
   if (error) throw new Error(error.message);
-
-  revalidateShowOps();
-  redirect(`/dashboard/show-ops/invoices/${inv.id}?issued=1`);
+  return inv.id;
 }
 
 export async function retryVerifactuAction(formData: FormData): Promise<void> {

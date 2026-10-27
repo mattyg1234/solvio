@@ -650,6 +650,11 @@ export function holdedV2Page(raw: unknown): { items: Record<string, unknown>[]; 
   return { items: items.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x)), cursor: more };
 }
 
+/** Where a sales invoice opens in Holded's web app. */
+export function holdedInvoiceUrl(id: string): string {
+  return `https://app.holded.com/sales/revenue#open:invoice-${encodeURIComponent(id)}`;
+}
+
 /** One sales invoice as Holded's invoice list shows it. Read-only, for the Hub's Holded-style list. */
 export type HoldedInvoiceListRow = {
   id: string;

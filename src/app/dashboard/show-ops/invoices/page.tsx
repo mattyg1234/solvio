@@ -1,12 +1,13 @@
+import Link from "next/link";
+
 import {
   generateAllInvoicePacksAction,
   generateInvoicePackAction,
-  markInvoicePaidAction,
-  voidInvoiceAction,
 } from "@/app/dashboard/show-ops/actions";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
-import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
+import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
+import { pushInvoiceToHoldedAction, syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
+import { holdedInvoiceUrl } from "@/lib/show-ops/holded";
 import { listHoldedSalesInvoices, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { buildPnl } from "@/lib/show-ops/expenses";
 import { ExpensesPanel, PnlPanel, type ExpenseRow } from "@/components/show-ops/expenses-panel";
@@ -14,6 +15,9 @@ import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { calendarMonthBounds, shiftMonth } from "@/lib/show-ops/invoice";
+
+// "Sync with Holded" sends and reads many invoices in one press.
+export const maxDuration = 300;
 
 export default async function InvoicesPage({
   searchParams,
@@ -27,8 +31,14 @@ export default async function InvoicesPage({
     as_of?: string;
     sort?: string;
     generated?: string;
+    status?: string;
+    q?: string;
     holded_synced?: string;
+    holded_sent?: string;
     holded_failed?: string;
+    holded_drafts?: string;
+    holded_waiting?: string;
+    holded_msg?: string;
     holded_error?: string;
     expense?: string;
     expense_error?: string;
@@ -247,9 +257,90 @@ export default async function InvoicesPage({
     ? await listHoldedSalesInvoices(ctx, shiftMonth(today, -12).slice(0, 7) + "-01")
     : { invoices: [], error: null };
   const pushedIds = new Set(invoices.map((i) => i.holded_document_id).filter(Boolean));
-  const holdedOnly = holdedList.invoices
-    .filter((h) => !pushedIds.has(h.id))
-    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const holdedOnly = holdedList.invoices.filter((h) => !pushedIds.has(h.id));
+
+  // One row model for both sources, so tabs, search and totals treat them alike.
+  const listRows: ListRow[] = [
+    ...invoices.map((inv): ListRow => {
+      const lines = linesByInvoice.get(inv.id) || [];
+      const pax = lines.reduce((s, l) => s + Number(l.adults || 0) + Number(l.children || 0), 0);
+      const tag = islandTag(inv.island);
+      const client = inv.recipient_name && inv.recipient_name !== inv.supplier_name ? `${inv.recipient_name} (${inv.supplier_name})` : inv.supplier_name;
+      return {
+        key: inv.id,
+        source: "hub",
+        invoiceId: inv.id,
+        href: `/dashboard/show-ops/invoices/${inv.id}`,
+        holdedUrl: inv.holded_document_id ? holdedInvoiceUrl(inv.holded_document_id) : null,
+        date: inv.invoice_date,
+        docNumber: inv.holded_doc_number || null,
+        docSub: inv.invoice_number ? `Invoice · Hub ${inv.invoice_number}` : "Invoice · not issued yet",
+        dueDate: inv.due_date,
+        client: String(client || "—"),
+        description: inv.island ? `MHT ${inv.island}` : "—",
+        detail: `Shows ${dmy(inv.period_start)} → ${dmy(inv.period_end)} · ${lines.length} bookings / ${pax} pax`,
+        island: inv.island ?? null,
+        tags: tag ? [tag] : [],
+        total: Number(inv.total_amount || 0),
+        currency: inv.currency,
+        status: invoiceListStatus(inv, today),
+        search: [client, inv.invoice_number, inv.holded_doc_number, ...lines.map((l) => `${l.booking_ref} ${l.guest_name} ${l.supplier_ticket_number ?? ""}`)].join(" ").toLowerCase(),
+      };
+    }),
+    ...holdedOnly.map((h): ListRow => {
+      const status = h.status === "paid"
+        ? LIST_STATUS.paid
+        : h.status === "approved"
+          ? h.dueDate && h.dueDate < today ? LIST_STATUS.overdue : LIST_STATUS.approved
+          : LIST_STATUS.holded_draft;
+      const islandFromTag = ctx.config.islands.find((i) => h.tags.some((t) => t.toLowerCase() === islandTag(i))) ?? null;
+      return {
+        key: `holded-${h.id}`,
+        source: "holded",
+        invoiceId: null,
+        href: holdedInvoiceUrl(h.id),
+        holdedUrl: holdedInvoiceUrl(h.id),
+        date: h.date,
+        docNumber: h.docNumber,
+        docSub: "Invoice · made in Holded",
+        dueDate: h.dueDate,
+        client: h.contactName || "—",
+        description: h.description || "—",
+        detail: null,
+        island: islandFromTag,
+        tags: h.tags,
+        total: h.total,
+        currency: "eur",
+        status,
+        search: [h.contactName, h.docNumber, h.description, ...h.tags].join(" ").toLowerCase(),
+      };
+    }),
+  ];
+  const statusFilter = LIST_TABS.some(([id]) => id === sp.status) ? (sp.status as ListTab) : "all";
+  const search = String(sp.q ?? "").trim();
+  const islandFilter = String(sp.island ?? "").trim();
+  const shownRows = listRows
+    .filter((r) => statusFilter === "all" || rowInTab(r, statusFilter))
+    .filter((r) => !islandFilter || r.island === islandFilter)
+    .filter((r) => !search || search.toLowerCase().split(/\s+/).every((w) => r.search.includes(w)))
+    .sort((a, b) => {
+      const owed = (r: ListRow) => (r.status.key === "paid" || r.status.key === "draft" ? 0 : Number(r.total || 0));
+      if (sort === "owed") return owed(b) - owed(a) || String(b.date || "").localeCompare(String(a.date || ""));
+      if (sort === "supplier") return a.client.localeCompare(b.client);
+      if (sort === "due") return String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999"));
+      return String(b.date || "").localeCompare(String(a.date || ""));
+    });
+  const kpis = { invoiced: 0, invoicedCount: 0, collected: 0, collectedCount: 0, pending: 0, pendingCount: 0, overdue: 0, overdueCount: 0 };
+  for (const r of listRows) {
+    const total = Number(r.total || 0);
+    if (r.status.key === "draft" || r.status.key === "holded_draft") continue;
+    kpis.invoiced += total;
+    kpis.invoicedCount += 1;
+    if (r.status.key === "paid") { kpis.collected += total; kpis.collectedCount += 1; }
+    else if (r.status.key === "overdue") { kpis.overdue += total; kpis.overdueCount += 1; }
+    else { kpis.pending += total; kpis.pendingCount += 1; }
+  }
+  const syncNote = syncSummary(sp);
 
   return (
     <div className="space-y-6">
@@ -258,24 +349,29 @@ export default async function InvoicesPage({
         title="Invoicing"
         subtitle={
           holded.connected
-            ? "Draft invoices, edit prices, issue a number, then send to Holded for the legal number and Verifactu."
+            ? "Draft from bookings, check prices, then Issue and send: Holded gives the legal number and handles Verifactu. Sync pulls back numbers and payments."
             : "Draft invoices, edit prices, issue a number. Connect Holded in Settings for legal numbering and Verifactu."
         }
         actions={
-          holded.connected ? (
-            <form action={syncHoldedInvoicesAction}>
-              <button type="submit" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
-                Sync with Holded
-              </button>
-            </form>
-          ) : undefined
+          <>
+            <Link href="/dashboard/show-ops/invoices?view=generate" className={SHOW_OPS_GHOST_BTN}>
+              + New invoice
+            </Link>
+            {holded.connected ? (
+              <form action={syncHoldedInvoicesAction}>
+                <SubmitOnce className={SHOW_OPS_PRIMARY_BTN}>Sync with Holded</SubmitOnce>
+              </form>
+            ) : null}
+          </>
         }
       />
-      {sp.holded_synced != null ? (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
-          Holded sync: {sp.holded_synced} invoice{sp.holded_synced === "1" ? "" : "s"} updated
-          {sp.holded_failed && sp.holded_failed !== "0" ? `, ${sp.holded_failed} could not be read` : ""}.
-        </p>
+      {syncNote ? (
+        <div className={`rounded-xl px-4 py-3 text-sm ring-1 ${syncNote.tone === "ok" ? "bg-emerald-50 text-emerald-900 ring-emerald-200" : "bg-amber-50 text-amber-900 ring-amber-200"}`}>
+          <p className="font-semibold">{syncNote.title}</p>
+          {syncNote.lines.map((l) => (
+            <p key={l} className="mt-0.5">{l}</p>
+          ))}
+        </div>
       ) : null}
       {sp.holded_error ? (
         <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800 ring-1 ring-rose-200">{sp.holded_error}</p>
@@ -496,150 +592,152 @@ export default async function InvoicesPage({
       ) : null}
 
       {view === "list" ? (
-        <div className="space-y-3">
-          <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-            <input type="hidden" name="view" value="list" />
-            <label className="text-xs font-medium text-slate-600">
-              Sort
-              <select name="sort" defaultValue={sort} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm">
-                <option value="date">Issue date</option>
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: "Invoiced", value: kpis.invoiced, note: `${kpis.invoicedCount} invoice${kpis.invoicedCount === 1 ? "" : "s"}`, tone: "text-slate-900" },
+              { label: "Collected", value: kpis.collected, note: `${kpis.collectedCount} paid`, tone: "text-emerald-700" },
+              { label: "Pending to collect", value: kpis.pending, note: `${kpis.pendingCount} not due yet`, tone: "text-sky-700" },
+              { label: "Overdue", value: kpis.overdue, note: `${kpis.overdueCount} past due date`, tone: "text-rose-700" },
+            ].map((k) => (
+              <div key={k.label} className="rounded-2xl bg-white px-5 py-4 ring-1 ring-slate-200">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{k.label}</p>
+                <p className={`mt-1 text-2xl font-semibold tabular-nums ${k.tone}`}>{money(k.value, "eur")}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{k.note}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-slate-200 px-3 pt-3">
+              {LIST_TABS.map(([id, label]) => {
+                const on = statusFilter === id;
+                const count = id === "all" ? listRows.length : listRows.filter((r) => rowInTab(r, id)).length;
+                return (
+                  <a
+                    key={id}
+                    href={listHref({ status: id, q: search, island: islandFilter, sort })}
+                    className={`-mb-px border-b-2 px-3 pb-2.5 text-sm font-semibold ${on ? "border-[var(--show-ops-primary,#7c3aed)] text-[var(--show-ops-primary,#7c3aed)]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+                  >
+                    {label}
+                    <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] ${on ? "bg-[var(--show-ops-primary,#7c3aed)]/10" : "bg-slate-100 text-slate-500"}`}>{count}</span>
+                  </a>
+                );
+              })}
+            </div>
+            <form method="get" className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+              <input type="hidden" name="view" value="list" />
+              <input type="hidden" name="status" value={statusFilter} />
+              <input
+                name="q"
+                defaultValue={search}
+                placeholder="Search client, number, booking ref…"
+                className="min-w-[16rem] flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+              />
+              <select name="island" defaultValue={islandFilter} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm">
+                <option value="">All islands</option>
+                {ctx.config.islands.map((i) => (
+                  <option key={i} value={i}>
+                    {islandTag(i) ? `#${islandTag(i)} · ${i}` : i}
+                  </option>
+                ))}
+              </select>
+              <select name="sort" defaultValue={sort} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm">
+                <option value="date">Newest first</option>
                 <option value="owed">Owed (biggest first)</option>
                 <option value="due">Due date</option>
-                <option value="supplier">Client</option>
+                <option value="supplier">Client A–Z</option>
               </select>
-            </label>
-            <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
-              Apply
-            </button>
-            {holded.connected ? (
-              <p className="ml-auto text-xs text-slate-500">
-                Same columns as Holded → Sales → Invoices. Invoices made directly in Holded show with a Holded tag.
+              <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
+                Search
+              </button>
+            </form>
+            {holdedList.error ? (
+              <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                Couldn&apos;t read Holded&apos;s invoice list: {holdedList.error}
               </p>
             ) : null}
-          </form>
-          {holdedList.error ? (
-            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-              Couldn&apos;t read Holded&apos;s invoice list: {holdedList.error}
-            </p>
-          ) : null}
-          <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500">
-                  <th className="px-4 py-3">Issue date</th>
-                  <th className="px-3 py-3">Document no.</th>
-                  <th className="px-3 py-3">Accounting date</th>
-                  <th className="px-3 py-3">Due date</th>
-                  <th className="px-3 py-3">Client</th>
-                  <th className="px-3 py-3">Description</th>
-                  <th className="px-3 py-3">Tags</th>
-                  <th className="px-3 py-3 text-right">Total</th>
-                  <th className="px-3 py-3">Status</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv) => {
-                  const lines = linesByInvoice.get(inv.id) || [];
-                  const pax = lines.reduce((s, l) => s + Number(l.adults || 0) + Number(l.children || 0), 0);
-                  const tag = islandTag(inv.island);
-                  const st = invoiceListStatus(inv, today);
-                  const client = inv.recipient_name && inv.recipient_name !== inv.supplier_name
-                    ? `${inv.recipient_name} (${inv.supplier_name})`
-                    : inv.supplier_name;
-                  return (
-                    <tr key={inv.id} className="border-b border-slate-100 align-top last:border-0">
-                      <td className="px-4 py-3 whitespace-nowrap">{dmy(inv.invoice_date)}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500">
+                    <th className="px-4 py-3">Issue date</th>
+                    <th className="px-3 py-3">Document no.</th>
+                    <th className="px-3 py-3">Due date</th>
+                    <th className="px-3 py-3">Client</th>
+                    <th className="px-3 py-3">Description</th>
+                    <th className="px-3 py-3">Tags</th>
+                    <th className="px-3 py-3 text-right">Total</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownRows.map((r) => (
+                    <tr key={r.key} className="group border-b border-slate-100 align-top last:border-0 hover:bg-slate-50/70">
+                      <td className="px-4 py-3 whitespace-nowrap">{dmy(r.date)}</td>
                       <td className="px-3 py-3">
-                        {inv.holded_doc_number ? (
-                          <span className="font-medium">{inv.holded_doc_number}</span>
-                        ) : (
-                          <span className="font-medium">Draft</span>
-                        )}
-                        <span className="block text-xs text-slate-500">Invoice{inv.invoice_number ? ` · Hub ${inv.invoice_number}` : ""}</span>
+                        <a href={r.href} target={r.source === "holded" ? "_blank" : undefined} rel="noreferrer" className="font-semibold text-slate-900 hover:underline">
+                          {r.docNumber || "Draft"}
+                        </a>
+                        <span className="block text-xs text-slate-500">{r.docSub}</span>
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">{dmy(inv.invoice_date)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">{dmy(inv.due_date)}</td>
+                      <td className={`px-3 py-3 whitespace-nowrap ${r.status.key === "overdue" ? "font-semibold text-rose-700" : ""}`}>{dmy(r.dueDate)}</td>
                       <td className="px-3 py-3">
-                        <a href={`/dashboard/show-ops/invoices/${inv.id}`} className="font-medium hover:underline" style={{ color: "inherit" }}>
-                          {client}
+                        <a href={r.href} target={r.source === "holded" ? "_blank" : undefined} rel="noreferrer" className="font-medium text-slate-900 hover:underline">
+                          {r.client}
                         </a>
                       </td>
                       <td className="px-3 py-3 text-slate-600">
-                        {inv.island ? `MHT ${inv.island}` : "—"}
-                        <span className="block text-xs text-slate-500">
-                          Shows {dmy(inv.period_start)} → {dmy(inv.period_end)} · {lines.length} bookings / {pax} pax
+                        {r.description}
+                        {r.detail ? <span className="block text-xs text-slate-500">{r.detail}</span> : null}
+                      </td>
+                      <td className="px-3 py-3 text-[var(--show-ops-primary,#7c3aed)]">{r.tags.map((t) => `#${t}`).join(" ")}</td>
+                      <td className="px-3 py-3 text-right font-semibold whitespace-nowrap tabular-nums">{r.total === null ? "—" : money(r.total, r.currency)}</td>
+                      <td className="px-3 py-3">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${r.status.tone}`}>
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          {r.status.label}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-[var(--show-ops-primary,#7c3aed)]">{tag ? `#${tag}` : ""}</td>
-                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{money(Number(inv.total_amount || 0), inv.currency)}</td>
-                      <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.tone}`}>{st.label}</span>
-                      </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <a href={`/dashboard/show-ops/invoices/${inv.id}`} className="rounded bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            {inv.status === "draft" ? "Edit" : "Open"}
-                          </a>
-                          {!inv.paid ? (
-                            <form action={markInvoicePaidAction} className="flex items-center gap-1">
-                              <input type="hidden" name="invoice_id" value={inv.id} />
-                              <input type="hidden" name="paid_at" value={today} />
-                              <button type="submit" className="rounded bg-emerald-600 px-3 py-1 text-xs text-white">
-                                Paid
-                              </button>
+                        <div className="flex justify-end gap-2">
+                          {r.status.key === "to_send" && r.invoiceId && holded.connected ? (
+                            <form action={pushInvoiceToHoldedAction}>
+                              <input type="hidden" name="invoice_id" value={r.invoiceId} />
+                              <SubmitOnce className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-1 text-xs font-semibold text-white disabled:opacity-60">
+                                Send to Holded
+                              </SubmitOnce>
                             </form>
                           ) : null}
-                          <form action={voidInvoiceAction}>
-                            <input type="hidden" name="invoice_id" value={inv.id} />
-                            <button type="submit" className="rounded bg-rose-700 px-3 py-1 text-xs text-white">
-                              Void
-                            </button>
-                          </form>
+                          {r.holdedUrl && r.source === "hub" ? (
+                            <a href={r.holdedUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                              Holded ↗
+                            </a>
+                          ) : null}
+                          <a href={r.href} target={r.source === "holded" ? "_blank" : undefined} rel="noreferrer" className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                            {r.source === "holded" ? "Open in Holded ↗" : r.status.key === "draft" ? "Edit" : "Open"}
+                          </a>
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-                {holdedOnly.map((h) => {
-                  const st = h.status === "paid"
-                    ? { label: "Paid", tone: "bg-emerald-50 text-emerald-700" }
-                    : h.status === "approved"
-                      ? h.dueDate && h.dueDate < today
-                        ? { label: "Overdue", tone: "bg-rose-50 text-rose-700" }
-                        : { label: "Approved", tone: "bg-sky-50 text-sky-700" }
-                      : { label: "Draft", tone: "bg-amber-50 text-amber-700" };
-                  return (
-                    <tr key={`holded-${h.id}`} className="border-b border-slate-100 align-top last:border-0">
-                      <td className="px-4 py-3 whitespace-nowrap">{dmy(h.date)}</td>
-                      <td className="px-3 py-3">
-                        <span className="font-medium">{h.docNumber || "Draft"}</span>
-                        <span className="block text-xs text-slate-500">Invoice · made in Holded</span>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">{dmy(h.date)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap">{dmy(h.dueDate)}</td>
-                      <td className="px-3 py-3 font-medium">{h.contactName || "—"}</td>
-                      <td className="px-3 py-3 text-slate-600">{h.description || "—"}</td>
-                      <td className="px-3 py-3 text-[var(--show-ops-primary,#7c3aed)]">{h.tags.map((t) => `#${t}`).join(" ")}</td>
-                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{h.total === null ? "—" : money(h.total, "eur")}</td>
-                      <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.tone}`}>{st.label}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Holded</span>
+                  ))}
+                  {!shownRows.length ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                        {listRows.length ? "No invoices match this filter." : "No invoices yet. Generate a pack to make the first one."}
                       </td>
                     </tr>
-                  );
-                })}
-                {!invoices.length && !holdedOnly.length ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
-                      No invoices yet.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+              <span>
+                {shownRows.length} of {listRows.length} · total {money(round2(shownRows.reduce((s, r) => s + Number(r.total || 0), 0)), "eur")}
+              </span>
+              {holded.connected ? <span>Invoices made directly in Holded are listed too and open in Holded.</span> : null}
+            </div>
           </div>
         </div>
       ) : null}
@@ -718,14 +816,89 @@ function islandTag(island: string | null | undefined): string | null {
   return null;
 }
 
+type ListStatusKey = "draft" | "to_send" | "holded_draft" | "approved" | "overdue" | "paid";
+type ListStatus = { key: ListStatusKey; label: string; tone: string };
+const LIST_STATUS: Record<ListStatusKey, ListStatus> = {
+  draft: { key: "draft", label: "Draft", tone: "bg-slate-100 text-slate-600" },
+  to_send: { key: "to_send", label: "To send to Holded", tone: "bg-violet-50 text-violet-700" },
+  holded_draft: { key: "holded_draft", label: "Draft in Holded", tone: "bg-amber-50 text-amber-700" },
+  approved: { key: "approved", label: "Pending", tone: "bg-sky-50 text-sky-700" },
+  overdue: { key: "overdue", label: "Overdue", tone: "bg-rose-50 text-rose-700" },
+  paid: { key: "paid", label: "Paid", tone: "bg-emerald-50 text-emerald-700" },
+};
+
+type ListTab = "all" | "draft" | "to_send" | "holded" | "overdue" | "paid";
+const LIST_TABS: Array<[ListTab, string]> = [
+  ["all", "All"],
+  ["draft", "Drafts"],
+  ["to_send", "To send"],
+  ["holded", "In Holded"],
+  ["overdue", "Overdue"],
+  ["paid", "Paid"],
+];
+
+type ListRow = {
+  key: string;
+  source: "hub" | "holded";
+  invoiceId: string | null;
+  href: string;
+  holdedUrl: string | null;
+  date: string | null;
+  docNumber: string | null;
+  docSub: string;
+  dueDate: string | null;
+  client: string;
+  description: string;
+  detail: string | null;
+  island: string | null;
+  tags: string[];
+  total: number | null;
+  currency: string | null;
+  status: ListStatus;
+  search: string;
+};
+
+function rowInTab(r: ListRow, tab: ListTab): boolean {
+  if (tab === "all") return true;
+  if (tab === "holded") return r.status.key === "holded_draft" || r.status.key === "approved";
+  return r.status.key === tab;
+}
+
+function listHref(p: { status: string; q: string; island: string; sort: string }): string {
+  const q = new URLSearchParams({ view: "list", status: p.status });
+  if (p.q) q.set("q", p.q);
+  if (p.island) q.set("island", p.island);
+  if (p.sort && p.sort !== "date") q.set("sort", p.sort);
+  return `/dashboard/show-ops/invoices?${q.toString()}`;
+}
+
+/** Plain-words result of "Sync with Holded", from the redirect's counts. */
+function syncSummary(sp: { holded_synced?: string; holded_sent?: string; holded_failed?: string; holded_drafts?: string; holded_waiting?: string; holded_msg?: string }): { title: string; lines: string[]; tone: "ok" | "warn" } | null {
+  if (sp.holded_synced == null) return null;
+  const n = (v?: string) => Math.max(0, Number(v) || 0);
+  const plural = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+  const sent = n(sp.holded_sent);
+  const updated = n(sp.holded_synced);
+  const failed = n(sp.holded_failed);
+  const drafts = n(sp.holded_drafts);
+  const waiting = n(sp.holded_waiting);
+  const lines: string[] = [];
+  const parts = [sent ? `${plural(sent, "invoice")} sent to Holded` : null, updated ? `${plural(updated, "invoice")} updated from Holded` : null].filter(Boolean);
+  const title = parts.length ? `Holded sync done: ${parts.join(", ")}.` : "Holded sync done. Everything in Holded was already up to date.";
+  if (waiting) lines.push(`${plural(waiting, "more invoice")} still to send. Press Sync again to carry on.`);
+  if (failed) lines.push(`${plural(failed, "invoice")} could not be synced${sp.holded_msg ? `. First problem: ${sp.holded_msg}` : "."}`);
+  if (drafts) lines.push(`${plural(drafts, "draft")} in the Hub ${drafts === 1 ? "isn't" : "aren't"} issued yet, so ${drafts === 1 ? "it stays" : "they stay"} here. Open a draft and press Issue and send to Holded.`);
+  return { title, lines, tone: failed ? "warn" : "ok" };
+}
+
 function invoiceListStatus(
   inv: { status?: string | null; paid?: boolean | null; due_date?: string | null; holded_status?: string | null; holded_document_id?: string | null },
   today: string,
-): { label: string; tone: string } {
-  if (inv.paid || inv.holded_status === "paid") return { label: "Paid", tone: "bg-emerald-50 text-emerald-700" };
-  if (inv.status === "draft") return { label: "Draft", tone: "bg-amber-50 text-amber-700" };
-  if (inv.due_date && inv.due_date < today) return { label: "Overdue", tone: "bg-rose-50 text-rose-700" };
-  if (inv.holded_status === "approved") return { label: "Approved in Holded", tone: "bg-sky-50 text-sky-700" };
-  if (inv.holded_document_id) return { label: "Draft in Holded", tone: "bg-amber-50 text-amber-700" };
-  return { label: "Issued · not in Holded", tone: "bg-slate-100 text-slate-700" };
+): ListStatus {
+  if (inv.paid || inv.holded_status === "paid") return LIST_STATUS.paid;
+  if (inv.status === "draft") return LIST_STATUS.draft;
+  if (!inv.holded_document_id) return LIST_STATUS.to_send;
+  if (inv.holded_status !== "approved") return LIST_STATUS.holded_draft;
+  if (inv.due_date && inv.due_date < today) return LIST_STATUS.overdue;
+  return LIST_STATUS.approved;
 }

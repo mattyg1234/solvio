@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { issueInvoiceAction, saveInvoiceDraftAction } from "@/app/dashboard/show-ops/actions";
+import { issueInvoiceAction, issueInvoiceAndSendToHoldedAction, saveInvoiceDraftAction } from "@/app/dashboard/show-ops/actions";
 import { SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
@@ -40,6 +40,8 @@ export function InvoiceEditor({
   defaultVatRate,
   currency,
   lines: initialLines,
+  holdedConnected = false,
+  holdedBlocked = false,
 }: {
   invoiceId: string;
   series: string;
@@ -52,6 +54,10 @@ export function InvoiceEditor({
   defaultVatRate: number;
   currency: ShowOpsCurrency;
   lines: InvoiceEditorLine[];
+  /** Holded is connected, so issuing can send the invoice straight on. */
+  holdedConnected?: boolean;
+  /** The partner is missing details Holded needs (shown beside the editor). */
+  holdedBlocked?: boolean;
 }) {
   const [lines, setLines] = useState(initialLines);
   const money = (n: number) => formatShowOpsMoney(n, currency);
@@ -103,7 +109,8 @@ export function InvoiceEditor({
   }
 
   return (
-    <form className="space-y-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200 print:hidden">
+    <form className="space-y-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 print:hidden">
+      <p className="text-sm font-semibold text-slate-900">Edit draft</p>
       <input type="hidden" name="invoice_id" value={invoiceId} />
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="text-xs font-medium text-slate-600">
@@ -146,9 +153,9 @@ export function InvoiceEditor({
         <table className="min-w-full text-left text-sm">
           <thead className="text-xs uppercase text-slate-500">
             <tr>
-              <th className="py-1 pr-2">Description</th>
-              <th className="py-1 pr-2">Qty / pax</th>
-              <th className="py-1 pr-2">Unit</th>
+              <th className="py-1 pr-2">Concept</th>
+              <th className="py-1 pr-2">Units / pax</th>
+              <th className="py-1 pr-2">Price (adult / child)</th>
               <th className="py-1 pr-2">Tax %</th>
               <th className="py-1 pr-2 text-right">Net</th>
               <th className="py-1 pr-2 text-right">Tax</th>
@@ -269,19 +276,37 @@ export function InvoiceEditor({
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
-        Save keeps this as a draft so you can keep editing prices. Issue assigns the next number in this series and
-        locks the invoice. Verifactu is ready: with no API key it stays local (status manual); paste the key later and
-        retry from this page.
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <SubmitOnce formAction={saveInvoiceDraftAction} className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
-          Save draft
-        </SubmitOnce>
-        <SubmitOnce formAction={issueInvoiceAction} className={SHOW_OPS_PRIMARY_BTN}>
-          Issue invoice
-        </SubmitOnce>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+        <p className="max-w-xl text-xs text-slate-500">
+          {holdedConnected
+            ? "Save draft keeps editing open. Issue and send to Holded numbers the invoice, locks it and creates the same invoice as a draft in Holded, ready for the office to approve."
+            : "Save draft keeps editing open. Issue assigns the next number in this series and locks the invoice."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <SubmitOnce formAction={saveInvoiceDraftAction} className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+            Save draft
+          </SubmitOnce>
+          {holdedConnected ? (
+            <>
+              <SubmitOnce formAction={issueInvoiceAction} className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+                Issue only
+              </SubmitOnce>
+              {holdedBlocked ? (
+                <span className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400" title="Fill in the partner details first">
+                  Issue and send to Holded
+                </span>
+              ) : (
+                <SubmitOnce formAction={issueInvoiceAndSendToHoldedAction} className={SHOW_OPS_PRIMARY_BTN}>
+                  Issue and send to Holded
+                </SubmitOnce>
+              )}
+            </>
+          ) : (
+            <SubmitOnce formAction={issueInvoiceAction} className={SHOW_OPS_PRIMARY_BTN}>
+              Issue invoice
+            </SubmitOnce>
+          )}
+        </div>
       </div>
     </form>
   );

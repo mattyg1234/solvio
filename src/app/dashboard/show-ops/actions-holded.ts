@@ -274,34 +274,29 @@ async function syncFromSummary(businessId: string, invoiceId: string, summary: H
   if (error) throw new Error(error.message);
 }
 
-/** Issued pack → draft sales invoice in Holded, through the claim/complete lifecycle. */
-export async function pushInvoiceToHoldedAction(formData: FormData): Promise<void> {
-  const ctx = await requireShowOpsAction("finance", "invoices");
-  const id = String(formData.get("invoice_id") ?? "").trim();
-  const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
-  if (!inv) throw new Error("Invoice not found.");
-  if (inv.voided) throw new Error("Voided invoices are not sent to Holded.");
-  if (inv.status !== "issued") throw new Error("Issue the invoice in Solvio first, then send it to Holded.");
-  if (inv.holded_document_id) return refreshInvoiceFromHolded(ctx, inv.id, inv.holded_document_id);
+type InvoiceRow = Record<string, unknown> & { id: string; period_start: string; period_end: string; status: string; voided: boolean; supplier_id: string | null; supplier_name: string; recipient_name: string | null; recipient_tax_id: string | null; recipient_address: string | null; holded_document_id: string | null };
+type SendOutcome = { outcome: "sent" | "error" | "reconcile" | "existing"; message: string | null };
 
+/**
+ * Issued pack → draft sales invoice in Holded, through the claim/complete lifecycle.
+ * Shared by the invoice page, "Issue and send" and the bulk sync; never redirects.
+ */
+async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client: HoldedClient, approvals: Record<string, HoldedIgicTaxApproval>): Promise<SendOutcome> {
   const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
-  if (!lines?.length) throw new Error("This invoice has no lines.");
+  if (!lines?.length) return { outcome: "error", message: "This invoice has no lines." };
 
   // 1. Everything that can fail without touching Holded happens before the claim.
-  let prepared: { client: HoldedClient; payload: ReturnType<typeof holdedInvoiceFromPack> };
+  let payload: ReturnType<typeof holdedInvoiceFromPack>;
   try {
-    const { client, approvals } = await loadIntegration(ctx);
     const taxes = await client.listTaxes();
     const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
       name: inv.recipient_name,
       taxId: inv.recipient_tax_id,
       address: inv.recipient_address,
     });
-    const payload = holdedInvoiceFromPack(inv, lines, contactId, (rate) => approvalForRate(approvals, rate), taxes);
-    prepared = { client, payload };
+    payload = holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes);
   } catch (err) {
-    revalidate(inv.id);
-    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=error&holded_msg=${encodeURIComponent(safeMessage(err))}`);
+    return { outcome: "error", message: safeMessage(err) };
   }
 
   // 2. Claim: the database marks the pack "creating" and freezes the expected totals.
@@ -311,35 +306,45 @@ export async function pushInvoiceToHoldedAction(formData: FormData): Promise<voi
     p_invoice_id: inv.id,
     p_claim_token: claimToken,
   });
-  if (claimError) {
-    revalidate(inv.id);
-    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=error&holded_msg=${encodeURIComponent(claimMessage(claimError.message))}`);
-  }
+  if (claimError) return { outcome: "error", message: claimMessage(claimError.message) };
   const claim = (Array.isArray(claimRows) ? claimRows[0] : claimRows) as ClaimRow | undefined;
-  if (!claim || claim.claim_status !== "claimed") {
-    revalidate(inv.id);
-    redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${claim?.claim_status === "existing" ? "refreshed" : "reconcile"}`);
-  }
+  if (!claim || claim.claim_status !== "claimed") return { outcome: claim?.claim_status === "existing" ? "existing" : "reconcile", message: null };
 
   // 3. External write, then record the outcome — created, failed, or unknown.
-  let outcome: "sent" | "error" | "reconcile" = "sent";
-  let message: string | null = null;
+  // The client first looks for a draft carrying this pack's reference, so a pack that already reached Holded is linked, not duplicated.
   try {
-    const summary = await prepared.client.createInvoiceDraft(prepared.payload, { reference: operationReference(inv.id) });
+    const summary = await client.createInvoiceDraft(payload, { reference: operationReference(inv.id) });
     await completeClaim(ctx.business.id, inv.id, claimToken, "created", summary, null);
+    return { outcome: "sent", message: null };
   } catch (err) {
-    if (err instanceof HoldedWriteAmbiguousError || err instanceof HoldedReconciliationRequiredError) {
-      outcome = "reconcile";
-      message = safeMessage(err);
-      await completeClaim(ctx.business.id, inv.id, claimToken, "unknown", null, message);
-    } else {
-      outcome = "error";
-      message = safeMessage(err);
-      await completeClaim(ctx.business.id, inv.id, claimToken, "failed", null, message);
-    }
+    const message = safeMessage(err);
+    const ambiguous = err instanceof HoldedWriteAmbiguousError || err instanceof HoldedReconciliationRequiredError;
+    await completeClaim(ctx.business.id, inv.id, claimToken, ambiguous ? "unknown" : "failed", null, message);
+    return { outcome: ambiguous ? "reconcile" : "error", message };
   }
-  revalidate(inv.id);
-  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${outcome}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
+}
+
+function sentRedirect(invoiceId: string, r: SendOutcome): never {
+  revalidate(invoiceId);
+  const holded = r.outcome === "existing" ? "refreshed" : r.outcome;
+  redirect(`/dashboard/show-ops/invoices/${invoiceId}?holded=${holded}${r.message ? `&holded_msg=${encodeURIComponent(r.message)}` : ""}`);
+}
+
+export async function pushInvoiceToHoldedAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
+  if (!inv) throw new Error("Invoice not found.");
+  if (inv.voided) throw new Error("Voided invoices are not sent to Holded.");
+  if (inv.status !== "issued") throw new Error("Issue the invoice in Solvio first, then send it to Holded.");
+  if (inv.holded_document_id) return refreshInvoiceFromHolded(ctx, inv.id, inv.holded_document_id);
+  let integration: Awaited<ReturnType<typeof loadIntegration>>;
+  try {
+    integration = await loadIntegration(ctx);
+  } catch (err) {
+    return sentRedirect(inv.id, { outcome: "error", message: safeMessage(err) });
+  }
+  sentRedirect(inv.id, await sendInvoiceToHolded(ctx, inv as InvoiceRow, integration.client, integration.approvals));
 }
 
 function claimMessage(raw: string): string {
@@ -424,37 +429,84 @@ export async function reconcileHoldedInvoiceAction(formData: FormData): Promise<
   redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${result}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
 }
 
-/** Pulls status for every pack that is in Holded but not yet paid — the "sync with accounts" button. */
+/** Bulk sends per click, so one press stays well inside the server time limit. */
+const SYNC_SEND_LIMIT = 15;
+
+/**
+ * "Sync with Holded", both ways: sends every issued invoice that isn't in Holded
+ * yet (as a draft, linked to the partner's contact), then pulls number, status and
+ * payment back for every invoice that is. Drafts still being edited in the Hub are
+ * counted, not sent: they have to be issued first.
+ */
 export async function syncHoldedInvoicesAction(): Promise<void> {
   const ctx = await requireShowOpsAction("finance", "invoices");
-  const { data: rows } = await ctx.supabase
-    .from("show_invoices")
-    .select("id,holded_document_id,holded_claim_token")
-    .eq("business_id", ctx.business.id)
-    .not("holded_document_id", "is", null)
-    .is("holded_claim_token", null)
-    .neq("holded_status", "paid")
-    .eq("voided", false)
-    .limit(200);
+  const [{ data: toSend }, { data: linked }, { count: drafts }] = await Promise.all([
+    ctx.supabase
+      .from("show_invoices")
+      .select("*")
+      .eq("business_id", ctx.business.id)
+      .eq("status", "issued")
+      .eq("voided", false)
+      .is("holded_document_id", null)
+      .in("holded_status", ["not_sent", "failed", "error"])
+      .order("invoice_date")
+      .limit(200),
+    ctx.supabase
+      .from("show_invoices")
+      .select("id,holded_document_id")
+      .eq("business_id", ctx.business.id)
+      .not("holded_document_id", "is", null)
+      .is("holded_claim_token", null)
+      .neq("holded_status", "paid")
+      .eq("voided", false)
+      .limit(300),
+    ctx.supabase
+      .from("show_invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", ctx.business.id)
+      .eq("status", "draft")
+      .eq("voided", false),
+  ]);
+  let sent = 0;
   let updated = 0;
   let failed = 0;
+  let firstError: string | null = null;
+  const waiting = Math.max(0, (toSend?.length ?? 0) - SYNC_SEND_LIMIT);
   try {
-    const { client } = await loadIntegration(ctx);
-    for (const row of rows ?? []) {
+    const { client, approvals } = await loadIntegration(ctx);
+    for (const inv of (toSend ?? []).slice(0, SYNC_SEND_LIMIT)) {
+      const r = await sendInvoiceToHolded(ctx, inv as InvoiceRow, client, approvals);
+      if (r.outcome === "sent" || r.outcome === "existing") sent += 1;
+      else {
+        failed += 1;
+        firstError ??= `${inv.supplier_name}: ${r.message || "Holded did not confirm the write; open the invoice to reconcile."}`;
+      }
+    }
+    for (const row of linked ?? []) {
       try {
         const summary = await client.getInvoice(row.holded_document_id as string);
         await syncFromSummary(ctx.business.id, row.id, summary);
         updated += 1;
-      } catch {
+      } catch (err) {
         failed += 1;
+        firstError ??= safeMessage(err);
       }
     }
   } catch (err) {
     revalidate();
     redirect(`/dashboard/show-ops/invoices?view=list&holded_error=${encodeURIComponent(safeMessage(err))}`);
   }
+  const q = new URLSearchParams({
+    view: "list",
+    holded_synced: String(updated),
+    holded_sent: String(sent),
+    holded_failed: String(failed),
+    holded_drafts: String(drafts ?? 0),
+    holded_waiting: String(waiting),
+  });
+  if (firstError) q.set("holded_msg", firstError.slice(0, 300));
   revalidate();
-  redirect(`/dashboard/show-ops/invoices?view=list&holded_synced=${updated}&holded_failed=${failed}`);
+  redirect(`/dashboard/show-ops/invoices?${q.toString()}`);
 }
 
 function creditReference(invoiceId: string, claimToken: string): string {
