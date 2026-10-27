@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const FIRST_SYNC_DAYS = 30;
-const MAX_PER_RUN = 50;
+const MAX_PER_RUN = 25;
 const PER_SELLER = 100;
 /** Look a little before the last sync so nothing slips between runs; message ids stop repeats. */
 const OVERLAP_MS = 10 * 60 * 1000;
