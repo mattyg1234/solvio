@@ -2586,7 +2586,7 @@ export async function partnerLinkContext(token: unknown) {
   const { data: supplier } = await admin.from("show_suppliers").select("*").eq("booking_token", token).eq("active", true).maybeSingle();
   if (!supplier) return null;
   const { data: business } = await admin.from("businesses").select(
-    "id,name,owner_id,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_logo_url,show_ops_primary_color,show_ops_accent_color,show_ops_custom_domain,logo_url,stripe_connect_account_id,stripe_connect_charges_enabled,show_ops_booking_ref_floor",
+    "id,name,owner_id,show_ops_enabled,show_ops_config,show_ops_billing_tier,show_ops_display_name,show_ops_logo_url,show_ops_primary_color,show_ops_accent_color,show_ops_custom_domain,logo_url,stripe_connect_account_id,stripe_connect_charges_enabled",
   ).eq("id", supplier.business_id).maybeSingle();
   if (!business || !business.show_ops_enabled) return null;
   const config = parseShowOpsConfig(business.show_ops_config);
@@ -2633,7 +2633,9 @@ export async function createPartnerLinkBookingAction(
   }
 
   const series = bookingRefSeries(ctx.config);
-  const usedUpTo = (ctx.business as { show_ops_booking_ref_floor?: number | null }).show_ops_booking_ref_floor ?? null;
+  // Read on its own so a missing column (migration not yet applied) only loses the floor, not the booking.
+  const { data: refFloor } = await ctx.supabase.from("businesses").select("show_ops_booking_ref_floor").eq("id", ctx.business.id).maybeSingle();
+  const usedUpTo = (refFloor as { show_ops_booking_ref_floor?: number | null } | null)?.show_ops_booking_ref_floor ?? null;
   const id = crypto.randomUUID();
   for (let attempt = 0; attempt < 5; attempt++) {
     const booking_ref = await nextBookingRefWithoutSession(ctx.supabase as never, ctx.business.id, series, usedUpTo);
