@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 import { loadEmailConnection, openMailSource } from "@/lib/show-ops/email-bookings/connection";
 import { findBookingByReference } from "@/lib/show-ops/email-bookings/data";
 import { extractBooking } from "@/lib/show-ops/email-bookings/extract";
+import { needsReconnect } from "@/lib/show-ops/email-bookings/gmail";
 import { describeMailError, mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
 import { channelFor, channelRefFor, normRef, sellerSource } from "@/lib/show-ops/email-bookings/mapping";
-import { looksLikeSupplierBooking, sendersFor } from "@/lib/show-ops/email-bookings/sellers";
+import { isForward, isReply, looksLikeSupplierBooking, sendersFor } from "@/lib/show-ops/email-bookings/sellers";
 import { readKnownTemplate } from "@/lib/show-ops/email-bookings/templates";
 import { mapLimit } from "@/lib/show-ops/email-bookings/text";
+import type { MailMessage } from "@/lib/show-ops/email-bookings/extract";
 import type { EmailRead, EmailReader } from "@/lib/show-ops/email-bookings/types";
 
 export const runtime = "nodejs";
@@ -15,6 +17,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const FIRST_SYNC_DAYS = 30;
+/** Emails read per run. Most are quick to set aside (receipts, replies), and each is read only once. */
 const MAX_PER_RUN = 50;
 const PER_SELLER = 100;
 /** Look a little before the last sync so nothing slips between runs; message ids stop repeats. */
@@ -38,7 +41,7 @@ type Row = {
   extracted: EmailRead["extracted"];
   reference: string | null;
   confidence: number;
-  reader: EmailReader;
+  reader: EmailReader | null;
   status: "review" | "ignored";
   booking_id: string | null;
   system_note: string | null;
@@ -66,15 +69,31 @@ export async function POST() {
     const since = conn.last_sync_at ? new Date(new Date(conn.last_sync_at).getTime() - OVERLAP_MS) : lookBack;
     const mail = await openMailSource(conn);
 
-    // Every new email from each tracked sender, once.
+    // Every new email from each tracked sender, once. One sender Gmail won't list right now
+    // doesn't stop the rest; the run counts as unfinished so the next one tries it again.
     const candidates = new Map<string, Candidate>();
-    for (const seller of tracked) {
+    let failed = 0;
+    let listError: unknown = null;
+    const listed = await mapLimit(tracked, 3, async (seller) => {
       // A sender ticked since the last check hasn't had its past emails read yet.
       const from = seller.syncedAt ? since : lookBack;
-      for (const id of await mail.idsFrom(sendersFor(seller), from, PER_SELLER)) {
+      try {
+        return await mail.idsFrom(sendersFor(seller), from, PER_SELLER);
+      } catch (e) {
+        if (needsReconnect(e)) throw e;
+        failed++;
+        listError = e;
+        console.error(`[show-ops/mail/sync] skipped sender ${seller.key}: ${describeMailError(e)}`);
+        return [];
+      }
+    });
+    tracked.forEach((seller, i) => {
+      for (const id of listed[i]) {
         if (!candidates.has(id)) candidates.set(id, { id, sellerKey: seller.key, sellerName: seller.name, custom: Boolean(seller.custom) });
       }
-    }
+    });
+    // Nothing could be listed at all: say why rather than "up to date".
+    if (failed === tracked.length && listError) throw listError;
     // Drop the ones already stored.
     const allIds = [...candidates.keys()];
     for (let i = 0; i < allIds.length; i += 100) {
@@ -88,20 +107,28 @@ export async function POST() {
     }
 
     const aiReads = Boolean(process.env.ANTHROPIC_API_KEY);
+    const ownAddress = conn.address.trim().toLowerCase();
     const batch = [...candidates.values()].slice(0, MAX_PER_RUN);
     const more = candidates.size > batch.length;
-    let failed = 0;
 
-    const read = await mapLimit(batch, 5, async (item): Promise<Row | null> => {
+    /** Why an email isn't read as a booking at all, or null when it might be one. */
+    function setAside(m: MailMessage, item: Candidate): string | null {
+      if (isReply(m.subject)) return "A reply in an email conversation, not a new booking.";
+      if (isForward(m.subject) && m.fromEmail.trim().toLowerCase() === ownAddress) return "Forwarded from this inbox, not a new booking.";
+      // Adverts from the same company are dropped before the AI reads anything. A sender the
+      // office added is its own channel (the website shop, say), so an email from it also goes
+      // through when an exact reader knows the layout or the AI is there to judge it.
+      const passes = looksLikeSupplierBooking(m.subject) || (item.custom && (aiReads || readKnownTemplate(m.fromEmail, m.subject, m.text) !== null));
+      return passes ? null : "Doesn't look like a booking, so nothing from it was kept.";
+    }
+
+    const read = await mapLimit(batch, 3, async (item): Promise<Row | null> => {
       try {
         const m = await mail.message(item.id);
-        // Adverts from the same company are dropped before the AI reads anything. A sender the
-        // office added is its own channel (the website shop, say), so an email from it also goes
-        // through when an exact reader knows the layout or the AI is there to judge it.
-        const passes = looksLikeSupplierBooking(m.subject) || (item.custom && (aiReads || readKnownTemplate(m.fromEmail, m.subject, m.text) !== null));
-        if (!passes) return null;
-        const r = await extractBooking(m, item.sellerName);
-        const booking = r.kind !== "not-booking";
+        // Emails set aside are still saved (subject only), so they're never read again.
+        const aside = setAside(m, item);
+        const r = aside ? null : await extractBooking(m, item.sellerName);
+        const booking = r !== null && r.kind !== "not-booking";
         return {
           business_id: businessId,
           connection_id: conn.id,
@@ -115,14 +142,14 @@ export async function POST() {
           body: booking ? m.text.slice(0, MAX_BODY) : "",
           seller_key: item.sellerKey,
           seller_name: item.sellerName,
-          kind: r.kind,
+          kind: r?.kind ?? "not-booking",
           extracted: booking ? r.extracted : { partner: item.sellerName },
           reference: booking ? normRef(r.extracted.reference) || null : null,
-          confidence: r.confidence,
-          reader: r.reader,
+          confidence: r?.confidence ?? 0,
+          reader: r?.reader ?? null,
           status: booking ? "review" : "ignored",
           booking_id: null,
-          system_note: booking ? null : "Not a booking, so nothing from it was kept.",
+          system_note: booking ? null : (aside ?? "Not a booking, so nothing from it was kept."),
         };
       } catch (e) {
         failed++;
@@ -187,7 +214,8 @@ export async function POST() {
         .eq("id", conn.id)
         .eq("business_id", businessId);
     }
-    return NextResponse.json({ added, stored: rows.length, more: more || failed > 0 });
+    // `slowed`: Gmail asked to slow down (or a read failed), so the next run tries those again.
+    return NextResponse.json({ added, stored: rows.length, more: more || failed > 0, slowed: failed > 0 });
   } catch (e) {
     const a = mailErrorAnswer("show-ops/mail/sync", e);
     return NextResponse.json({ error: a.error, reconnect: a.reconnect }, { status: a.status });
