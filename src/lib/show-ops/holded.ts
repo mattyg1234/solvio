@@ -312,6 +312,8 @@ export function holdedItemsFromLines(
   lines: PackLine[],
   taxForRate: (rate: number) => HoldedIgicTaxApproval | null,
   taxes: HoldedTax[] = [],
+  /** Item name for booking lines, as MHT names them in Holded ("MHT Tenerife"). Defaults to the line description. */
+  bookingItemName?: string,
 ): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
@@ -329,8 +331,19 @@ export function holdedItemsFromLines(
     const childUnit = strictMoney(l.child_unit_price ?? 0, "child unit price");
     const hasSplit = (adults > 0 && adultUnit > 0) || (children > 0 && childUnit > 0);
     if (hasSplit) {
-      if (adults > 0) out.push({ name: `${base} — ${adults} adult${adults === 1 ? "" : "s"}`, desc, units: adults, subtotal: adultUnit, ...tax });
-      if (children > 0) out.push({ name: `${base} — ${children} child${children === 1 ? "" : "ren"}`, desc, units: children, subtotal: childUnit, ...tax });
+      // One item per booking, like MHT's own Holded invoices: "MHT Tenerife" / "Smith A MHT-319378 GYGWZAL8Y858".
+      // A single item also rounds tax per booking, the way the Hub's invoice lines do.
+      const pax = [adults > 0 ? `${adults} adult${adults === 1 ? "" : "s"}` : "", children > 0 ? `${children} child${children === 1 ? "" : "ren"}` : ""]
+        .filter(Boolean)
+        .join(", ");
+      const who = [String(l.guest_name || "").trim(), ref, ticket].filter(Boolean).join(" ");
+      out.push({
+        name: bookingItemName || base,
+        desc: [who, pax, String(l.notes || "").trim()].filter(Boolean).join(" · "),
+        units: 1,
+        subtotal: Math.round((adults * adultUnit + children * childUnit) * 100) / 100,
+        ...tax,
+      });
       continue;
     }
     const units = strictMoney(l.quantity ?? 1, "line quantity");
@@ -356,7 +369,7 @@ export function holdedInvoiceFromPack(
     contactId,
     desc: `${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
-    items: holdedItemsFromLines(lines, taxForRate, taxes),
+    items: holdedItemsFromLines(lines, taxForRate, taxes, pack.island ? `MHT ${pack.island}` : undefined),
     notes,
     tags,
     approveDoc: false,
