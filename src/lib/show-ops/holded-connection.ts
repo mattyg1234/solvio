@@ -1,5 +1,5 @@
 import type { ShowOpsContext } from "@/lib/show-ops/access";
-import { HoldedClient, parseIgicApprovals, rateKey } from "@/lib/show-ops/holded";
+import { HoldedClient, holdedErrorMessage, parseIgicApprovals, rateKey, type HoldedInvoiceListRow } from "@/lib/show-ops/holded";
 import { decryptSecret } from "@/lib/show-ops/secrets";
 
 export type HoldedConnection = {
@@ -53,5 +53,21 @@ export async function listHoldedIgicTaxes(ctx: ShowOpsContext): Promise<{ taxes:
     return { taxes, error: null };
   } catch (err) {
     return { taxes: [], error: err instanceof Error ? err.message : "Could not read Holded taxes." };
+  }
+}
+
+/** For the invoice list: Holded's own sales invoices since a date. Never returns the token. */
+export async function listHoldedSalesInvoices(ctx: ShowOpsContext, sinceIsoDay: string): Promise<{ invoices: HoldedInvoiceListRow[]; error: string | null }> {
+  const { data } = await ctx.supabase
+    .from("show_ops_integrations")
+    .select("secret_ciphertext,status")
+    .eq("business_id", ctx.business.id)
+    .eq("provider", "holded")
+    .maybeSingle();
+  if (!data || data.status !== "connected") return { invoices: [], error: null };
+  try {
+    return { invoices: await new HoldedClient(decryptSecret(data.secret_ciphertext)).listInvoices(sinceIsoDay), error: null };
+  } catch (err) {
+    return { invoices: [], error: holdedErrorMessage(err) };
   }
 }

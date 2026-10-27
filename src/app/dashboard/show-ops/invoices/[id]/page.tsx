@@ -18,8 +18,11 @@ import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { loadInvoiceDelivery } from "@/lib/show-ops/invoice-delivery";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
-import { holdedInvoiceView } from "@/lib/show-ops/holded";
+import { holdedInvoiceUrl, holdedInvoiceView } from "@/lib/show-ops/holded";
 import { holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
+
+// "Issue and send to Holded" runs the Holded write in the same request.
+export const maxDuration = 60;
 
 export default async function InvoicePrintPage({
   params,
@@ -97,10 +100,11 @@ export default async function InvoicePrintPage({
   const displayNumber = inv.invoice_number || inv.verifactu_number || "Draft";
   const canEmail = inv.status === "issued" && !inv.voided;
   const holdedView = holdedInvoiceView(inv, holded.connected);
+  const stage = invoiceStage(inv, today);
   const holdedLabel = holdedView.label;
   // What Holded still needs before this can go as a full invoice (same check the send runs).
   const holdedMissing =
-    holded.connected && holdedView.canSend && inv.supplier_id
+    holded.connected && (holdedView.canSend || inv.status === "draft") && inv.supplier_id
       ? holdedReadiness(
           supplier
             ? { ...(supplier as PartnerBilling), name: String(supplier.name ?? inv.supplier_name), tax_id: supplier.tax_id || inv.recipient_tax_id }
@@ -131,21 +135,36 @@ export default async function InvoicePrintPage({
     <div className="space-y-4">
       <div className="print:hidden">
         <ShowOpsPageHeader
-          eyebrow="Operations"
-          title={inv.status === "draft" ? "Draft invoice" : `Invoice ${displayNumber}`}
-          subtitle={`${inv.supplier_name} · ${inv.period_start} → ${inv.period_end}`}
+          eyebrow="Invoicing"
+          title={inv.status === "draft" ? "Draft invoice" : `Invoice ${inv.holded_doc_number || displayNumber}`}
+          subtitle={
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${stage.tone}`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                {stage.label}
+              </span>
+              <span>
+                {inv.recipient_name || inv.supplier_name} · {money(Number(inv.total_amount || 0))} · due {dmy(inv.due_date)}
+              </span>
+            </span>
+          }
           actions={
             <>
               <Link href="/dashboard/show-ops/invoices?view=list" className={SHOW_OPS_GHOST_BTN}>
                 ← All invoices
               </Link>
+              {inv.holded_document_id ? (
+                <a href={holdedInvoiceUrl(inv.holded_document_id)} target="_blank" rel="noreferrer" className={SHOW_OPS_GHOST_BTN}>
+                  Open in Holded ↗
+                </a>
+              ) : null}
               <PrintButton />
               {canEmail ? (
                 <a href={`/dashboard/show-ops/invoices/${id}/pdf`} className={SHOW_OPS_GHOST_BTN}>
                   Download PDF
                 </a>
               ) : null}
-              {!inv.paid && !inv.voided ? (
+              {!inv.paid && !inv.voided && inv.status !== "draft" ? (
                 <form action={markInvoicePaidAction}>
                   <input type="hidden" name="invoice_id" value={inv.id} />
                   <input type="hidden" name="paid_at" value={today} />
@@ -159,14 +178,25 @@ export default async function InvoicePrintPage({
               ) : (
                 <form action={voidInvoiceAction}>
                   <input type="hidden" name="invoice_id" value={inv.id} />
-                  <button type="submit" className="rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white">
-                    Void invoice
+                  <button type="submit" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50">
+                    {inv.status === "draft" ? "Delete draft" : "Void"}
                   </button>
                 </form>
               )}
             </>
           }
         />
+        <ol className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {stage.steps.map((st, i) => (
+            <li
+              key={st.label}
+              className={`rounded-xl px-3 py-2 text-xs ring-1 ${st.state === "done" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : st.state === "now" ? "bg-[var(--show-ops-primary,#7c3aed)]/10 text-[var(--show-ops-primary,#7c3aed)] ring-[var(--show-ops-primary,#7c3aed)]/30" : "bg-white text-slate-400 ring-slate-200"}`}
+            >
+              <span className="font-semibold">{st.state === "done" ? "✓" : i + 1}. {st.label}</span>
+              <span className="block opacity-80">{st.note}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       {sp.saved === "1" ? (
@@ -211,8 +241,12 @@ export default async function InvoicePrintPage({
         </p>
       ) : null}
 
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] print:block">
+      <div className="min-w-0 space-y-4 lg:order-1">
       {!locked ? (
         <InvoiceEditor
+          holdedConnected={holded.connected}
+          holdedBlocked={holdedMissing.length > 0}
           invoiceId={inv.id}
           series={inv.series || ctx.config.invoice.series}
           invoiceDate={inv.invoice_date || today}
@@ -241,7 +275,129 @@ export default async function InvoicePrintPage({
             line_kind: l.line_kind === "manual" ? "manual" : "booking",
           }))}
         />
-      ) : !inv.voided ? (
+      ) : null}
+
+      <article className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8 print:rounded-none print:p-0 print:shadow-none print:ring-0">
+        <header className="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            {ctx.branding.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={ctx.branding.logoUrl} alt="" className="mb-3 h-12 w-auto object-contain" />
+            ) : null}
+            <p className="font-semibold text-slate-900">{inv.issuer_name || ctx.branding.displayName}</p>
+            {inv.issuer_tax_id ? <p className="text-sm text-slate-600">NIF {inv.issuer_tax_id}</p> : null}
+            {inv.issuer_address ? <p className="text-sm text-slate-600">{inv.issuer_address}</p> : null}
+          </div>
+          <div className="text-right">
+            <h1 className="text-2xl font-semibold tracking-tight" style={{ color: ctx.branding.primaryColor }}>
+              {inv.status === "draft" ? "Draft invoice" : "Invoice"}
+            </h1>
+            <p className="mt-1 text-lg font-semibold text-slate-900">{inv.holded_doc_number || displayNumber}</p>
+            {inv.holded_doc_number && inv.invoice_number ? <p className="text-xs text-slate-500">Hub {inv.invoice_number}</p> : null}
+          </div>
+        </header>
+
+        <div className="mt-6 grid gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-[1fr_auto] print:bg-white print:ring-1 print:ring-slate-200">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bill to</p>
+            <p className="mt-1 font-semibold text-slate-900">{inv.recipient_name || inv.supplier_name}</p>
+            {inv.recipient_tax_id ? <p className="text-slate-600">NIF {inv.recipient_tax_id}</p> : null}
+            {inv.recipient_address ? <p className="text-slate-600">{inv.recipient_address}</p> : null}
+          </div>
+          <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-slate-600 sm:text-right">
+            <dt>Date</dt><dd className="font-medium text-slate-900">{dmy(inv.invoice_date)}</dd>
+            <dt>Due</dt><dd className="font-medium text-slate-900">{dmy(inv.due_date)}</dd>
+            <dt>Shows</dt><dd className="font-medium text-slate-900">{dmy(inv.period_start)} → {dmy(inv.period_end)}</dd>
+            <dt>Status</dt>
+            <dd className={`font-semibold ${inv.paid ? "text-emerald-700" : "text-amber-700"}`}>{inv.paid ? `Paid ${dmy(inv.paid_at)}` : "Unpaid"}</dd>
+          </dl>
+        </div>
+
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead className="border-b border-slate-200 text-xs font-semibold text-slate-500">
+              <tr>
+                <th className="py-2 pr-3">Concept</th>
+                <th className="py-2 pr-3 text-right">Units</th>
+                <th className="py-2 pr-3 text-right">Price</th>
+                <th className="py-2 pr-3 text-right">{ctx.config.invoice.taxLabel}</th>
+                <th className="py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(lines ?? []).map((l) => {
+                const booking = Boolean(l.booking_id || l.booking_ref);
+                const showDate = (l.booking_id && dateByBooking.get(l.booking_id)) || null;
+                const concept = booking && inv.island ? `MHT ${inv.island}` : l.description || l.guest_name || "Line";
+                const detail = booking
+                  ? [l.guest_name || l.description, l.booking_ref, l.supplier_ticket_number].filter(Boolean).join(" ")
+                  : null;
+                const pax = `${Number(l.adults || 0)}${Number(l.children || 0) ? `+${Number(l.children)}` : ""} pax`;
+                return (
+                  <tr key={l.id} className="border-b border-slate-100 align-top">
+                    <td className="py-2 pr-3">
+                      <span className="font-medium text-slate-900">{concept}</span>
+                      {detail ? <span className="block text-xs text-slate-600">{detail}</span> : null}
+                      {showDate || l.notes ? (
+                        <span className="block text-[11px] text-slate-400">{[showDate ? `Show ${dmy(showDate)}` : null, l.notes].filter(Boolean).join(" · ")}</span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap">{booking ? pax : Number(l.quantity || 0)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{money(Number(l.net_total || 0))}</td>
+                    <td className="py-2 pr-3 text-right whitespace-nowrap text-slate-600">{Number(l.vat_rate || 0)}%</td>
+                    <td className="py-2 text-right font-medium tabular-nums">{money(Number(l.line_total))}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-6 ml-auto w-full max-w-xs space-y-1 text-sm">
+          <p className="flex justify-between text-slate-600"><span>Subtotal</span><span className="tabular-nums">{money(Number(inv.net_total || inv.total_amount))}</span></p>
+          <p className="flex justify-between text-slate-600"><span>{ctx.config.invoice.taxLabel}</span><span className="tabular-nums">{money(Number(inv.vat_total || 0))}</span></p>
+          <p className="flex justify-between border-t border-slate-200 pt-2 text-lg font-semibold text-slate-900">
+            <span>Total</span><span className="tabular-nums">{money(Number(inv.total_amount))}</span>
+          </p>
+        </div>
+        {inv.notes ? <p className="mt-4 text-sm text-slate-600">{inv.notes}</p> : null}
+        {delivery ? (
+          <section id="invoice-ticket-photos" className="mt-6 border-t border-slate-200 pt-4 print:break-inside-avoid">
+            <h2 className="text-sm font-semibold">Ticket attachments for {inv.supplier_name}</h2>
+            <p className="mt-1 text-sm text-slate-600">{delivery.evidence.photos.length} photo(s) attached · {delivery.evidence.missing.length} booking(s) without a photo.</p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              {delivery.evidence.photos.map((photo) => {
+                const url = proofByBooking.get(photo.bookingId);
+                return (
+                  <div key={photo.bookingId} className="max-w-60 text-sm">
+                    {url ? <a href={url} target="_blank" rel="noreferrer" className="block text-violet-700 underline">
+                      {photo.mimeType === "image/heic" || photo.mimeType === "image/heif" ? "Open original HEIC/HEIF ticket photo" : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={url} alt={`${photo.bookingRef} ${photo.guestName} ticket photo`} className="h-28 w-auto rounded-lg ring-1 ring-slate-200" />
+                      )}
+                    </a> : <p className="text-rose-700">Photo preview unavailable; sending is blocked.</p>}
+                    <p className="mt-1 font-medium">{photo.bookingRef} · {photo.guestName}</p>
+                    <p className="break-all text-xs text-slate-500">{photo.filename}</p>
+                  </div>
+                );
+              })}
+            </div>
+            {delivery.evidence.missing.length ? (
+              <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Bookings without ticket photos</p>
+                <ul className="mt-1 space-y-1">
+                  {delivery.evidence.missing.map((booking) => <li key={booking.id}>
+                    <Link href={`/dashboard/show-ops/bookings/${booking.id}`} className="underline">{booking.booking_ref} · {booking.guest_name}</Link>
+                  </li>)}
+                </ul>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+      </article>
+      </div>
+      <aside className="space-y-4 lg:sticky lg:top-4 lg:order-2 print:hidden">
+        {locked && !inv.voided ? (
         <div className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200 print:hidden">
           <p className="text-sm text-slate-600">{verifactuLabel}</p>
           <div className="space-y-2 rounded-xl bg-slate-50 p-3">
@@ -325,9 +481,9 @@ export default async function InvoicePrintPage({
                       Net amount to credit
                       <input name="credit_amount" type="number" step="0.01" min="0.01" max={Number(inv.net_total || inv.total_amount)} required className="mt-1 block w-32 rounded-lg border px-2 py-1.5 text-sm" />
                     </label>
-                    <label className="text-xs font-medium text-slate-600">
+                    <label className="w-full text-xs font-medium text-slate-600">
                       Reason (printed on the credit note)
-                      <input name="credit_reason" required maxLength={200} placeholder="2 no-shows on 12 Sept not chargeable" className="mt-1 block min-w-[18rem] rounded-lg border px-2 py-1.5 text-sm" />
+                      <input name="credit_reason" required maxLength={200} placeholder="2 no-shows on 12 Sept not chargeable" className="mt-1 block w-full rounded-lg border px-2 py-1.5 text-sm" />
                     </label>
                     <SubmitOnce className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">Draft credit note in Holded</SubmitOnce>
                     {inv.holded_credit_status === "failed" ? <p className="w-full text-xs text-rose-700">Last attempt failed. Try again or raise it in Holded.</p> : null}
@@ -377,7 +533,7 @@ export default async function InvoicePrintPage({
                 ) : null}
               </div>
             ) : null}
-            <label className="text-xs font-medium text-slate-600">
+            <label className="w-full text-xs font-medium text-slate-600">
               Email invoice to
               <input
                 name="to"
@@ -385,7 +541,7 @@ export default async function InvoicePrintPage({
                 required
                 defaultValue={supplierEmail}
                 placeholder="accounts@agency.com"
-                className="mt-1 block min-w-[16rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="mt-1 block w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
               />
             </label>
             {canEmail && delivery && !deliveryError ? (
@@ -400,108 +556,91 @@ export default async function InvoicePrintPage({
             ) : null}
           </form>
         </div>
-      ) : null}
-
-      <article className="rounded-2xl bg-white p-6 ring-1 ring-slate-200 print:rounded-none print:ring-0">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
-            {ctx.branding.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={ctx.branding.logoUrl} alt="" className="mb-2 h-12 w-auto object-contain" />
-            ) : null}
-            <h1 className="text-xl font-semibold" style={{ color: ctx.branding.primaryColor }}>
-              {inv.issuer_name || ctx.branding.displayName}
-            </h1>
-            {inv.issuer_tax_id ? <p className="text-sm text-slate-600">NIF {inv.issuer_tax_id}</p> : null}
-            {inv.issuer_address ? <p className="text-sm text-slate-600">{inv.issuer_address}</p> : null}
-            <p className="text-sm text-slate-600">{inv.status === "draft" ? "Draft invoice" : "Invoice"}</p>
-          </div>
-          <div className="text-right text-sm">
-            <p className="font-semibold text-slate-900">{inv.recipient_name || inv.supplier_name}</p>
-            {inv.recipient_tax_id ? <p className="text-slate-600">NIF {inv.recipient_tax_id}</p> : null}
-            {inv.recipient_address ? <p className="text-slate-600">{inv.recipient_address}</p> : null}
-            <p className="text-slate-600">
-              {inv.period_start} → {inv.period_end}
-            </p>
-            <p className="text-slate-600">Due {inv.due_date || "—"}</p>
-            <p className="text-lg font-semibold text-slate-900">{displayNumber}</p>
-            <p className={`mt-1 font-medium ${inv.paid ? "text-emerald-700" : "text-amber-700"}`}>
-              {inv.paid ? `PAID ${inv.paid_at || ""}` : "UNPAID"}
-            </p>
-          </div>
-        </header>
-
-        <table className="mt-6 w-full text-left text-sm">
-          <thead className="border-b text-xs uppercase text-slate-500">
-            <tr>
-              <th className="py-2 pr-2">Date</th>
-              <th className="py-2 pr-2">Description</th>
-              <th className="py-2 pr-2 text-right">Qty</th>
-              <th className="py-2 pr-2 text-right">Net</th>
-              <th className="py-2 pr-2 text-right">{ctx.config.invoice.taxLabel}</th>
-              <th className="py-2 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(lines ?? []).map((l) => (
-              <tr key={l.id} className="border-b border-slate-100">
-                <td className="py-1.5 pr-2">{(l.booking_id && dateByBooking.get(l.booking_id)) || inv.invoice_date || "—"}</td>
-                <td className="py-1.5 pr-2">
-                  {l.description || l.guest_name}
-                  {l.notes ? <span className="mt-0.5 block text-xs text-slate-500">{l.notes}</span> : null}
-                  {l.booking_ref ? <span className="mt-0.5 block font-mono text-[11px] text-slate-400">{l.booking_ref}</span> : null}
-                </td>
-                <td className="py-1.5 pr-2 text-right">{Number(l.quantity || 0)}</td>
-                <td className="py-1.5 pr-2 text-right">{money(Number(l.net_total || 0))}</td>
-                <td className="py-1.5 pr-2 text-right">{money(Number(l.vat_amount || 0))}</td>
-                <td className="py-1.5 text-right font-medium">{money(Number(l.line_total))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mt-6 ml-auto w-full max-w-xs space-y-1 text-sm">
-          <p className="flex justify-between text-slate-600"><span>Net</span><span className="tabular-nums">{money(Number(inv.net_total || inv.total_amount))}</span></p>
-          <p className="flex justify-between text-slate-600"><span>{ctx.config.invoice.taxLabel}</span><span className="tabular-nums">{money(Number(inv.vat_total || 0))}</span></p>
-          <p className="flex justify-between rounded-lg px-3 py-2 text-base font-semibold text-slate-900 ring-1" style={{ borderColor: ctx.branding.primaryColor, backgroundColor: `${ctx.branding.primaryColor}12`, boxShadow: `0 0 0 1px ${ctx.branding.primaryColor}` }}>
-            <span>Total</span><span className="tabular-nums">{money(Number(inv.total_amount))}</span>
-          </p>
-        </div>
-        {inv.notes ? <p className="mt-4 text-sm text-slate-600">{inv.notes}</p> : null}
-        {delivery ? (
-          <section id="invoice-ticket-photos" className="mt-6 border-t border-slate-200 pt-4 print:break-inside-avoid">
-            <h2 className="text-sm font-semibold">Ticket attachments for {inv.supplier_name}</h2>
-            <p className="mt-1 text-sm text-slate-600">{delivery.evidence.photos.length} photo(s) attached · {delivery.evidence.missing.length} booking(s) without a photo.</p>
-            <div className="mt-3 flex flex-wrap gap-4">
-              {delivery.evidence.photos.map((photo) => {
-                const url = proofByBooking.get(photo.bookingId);
-                return (
-                  <div key={photo.bookingId} className="max-w-60 text-sm">
-                    {url ? <a href={url} target="_blank" rel="noreferrer" className="block text-violet-700 underline">
-                      {photo.mimeType === "image/heic" || photo.mimeType === "image/heif" ? "Open original HEIC/HEIF ticket photo" : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={url} alt={`${photo.bookingRef} ${photo.guestName} ticket photo`} className="h-28 w-auto rounded-lg ring-1 ring-slate-200" />
-                      )}
-                    </a> : <p className="text-rose-700">Photo preview unavailable; sending is blocked.</p>}
-                    <p className="mt-1 font-medium">{photo.bookingRef} · {photo.guestName}</p>
-                    <p className="break-all text-xs text-slate-500">{photo.filename}</p>
-                  </div>
-                );
-              })}
-            </div>
-            {delivery.evidence.missing.length ? (
-              <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                <p className="font-medium">Bookings without ticket photos</p>
-                <ul className="mt-1 space-y-1">
-                  {delivery.evidence.missing.map((booking) => <li key={booking.id}>
-                    <Link href={`/dashboard/show-ops/bookings/${booking.id}`} className="underline">{booking.booking_ref} · {booking.guest_name}</Link>
-                  </li>)}
-                </ul>
-              </div>
-            ) : null}
-          </section>
         ) : null}
-      </article>
+        {!locked && holdedMissing.length ? (
+          <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+            <p className="font-semibold">Before this can go to Holded, {inv.supplier_name} needs:</p>
+            <ul className="mt-1 list-disc pl-5">
+              {holdedMissing.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+            <Link href={inv.supplier_id ? `/dashboard/show-ops/master/partners/${inv.supplier_id}` : "/dashboard/show-ops/master?tab=partners"} className="mt-2 inline-block font-semibold underline">
+              Edit partner
+            </Link>
+          </div>
+        ) : null}
+        {!locked ? (
+          <div className="rounded-2xl bg-white p-4 text-sm text-slate-600 ring-1 ring-slate-200">
+            <p className="font-semibold text-slate-900">How this invoice reaches Holded</p>
+            <p className="mt-1">
+              Check the lines and prices, then press <span className="font-semibold">Issue and send to Holded</span>. It goes to Holded as a
+              draft on {inv.supplier_name}&apos;s contact with the same lines, IGIC and #{holdedTagFor(inv.island)} tag.
+              Approving it in Holded gives the legal number and sends it to Verifactu; Sync brings the number and payment back here.
+            </p>
+          </div>
+        ) : null}
+        <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-slate-200">
+          <p className="font-semibold text-slate-900">Details</p>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-slate-600">
+            <dt>Client</dt><dd className="text-right text-slate-900">{inv.recipient_name || inv.supplier_name}</dd>
+            <dt>NIF</dt><dd className="text-right">{inv.recipient_tax_id || supplier?.tax_id || "—"}</dd>
+            <dt>Issue date</dt><dd className="text-right">{dmy(inv.invoice_date)}</dd>
+            <dt>Due date</dt><dd className="text-right">{dmy(inv.due_date)}</dd>
+            <dt>Shows</dt><dd className="text-right">{dmy(inv.period_start)} → {dmy(inv.period_end)}</dd>
+            <dt>Hub number</dt><dd className="text-right">{inv.invoice_number || "—"}</dd>
+            <dt>Holded number</dt><dd className="text-right">{inv.holded_doc_number || "—"}</dd>
+            <dt>Bookings</dt><dd className="text-right">{(lines ?? []).filter((l) => l.booking_id).length}</dd>
+          </dl>
+        </div>
+      </aside>
+      </div>
     </div>
   );
+}
+
+/** dd/mm/yyyy, as Holded shows dates. */
+function dmy(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+}
+
+function holdedTagFor(island: string | null | undefined): string {
+  const key = String(island || "").toLowerCase();
+  return key === "tenerife" ? "tfs" : key === "lanzarote" ? "ace" : key === "gran canaria" ? "lpa" : key === "uk tour" ? "uk" : "island";
+}
+
+type Step = { label: string; note: string; state: "done" | "now" | "todo" };
+
+/** Where the invoice is on its way from a Hub draft to paid in Holded. */
+function invoiceStage(inv: {
+  status?: string | null;
+  voided?: boolean | null;
+  paid?: boolean | null;
+  invoice_number?: string | null;
+  holded_document_id?: string | null;
+  holded_status?: string | null;
+  holded_doc_number?: string | null;
+  due_date?: string | null;
+}, today: string): { label: string; tone: string; steps: Step[] } {
+  const issued = inv.status !== "draft";
+  const inHolded = Boolean(inv.holded_document_id);
+  const approved = ["approved", "paid", "corrected"].includes(String(inv.holded_status));
+  const paid = Boolean(inv.paid) || inv.holded_status === "paid";
+  const reached = [true, issued, inHolded, approved, paid];
+  const current = reached.lastIndexOf(true) + 1;
+  const steps: Step[] = [
+    { label: "Draft", note: "Lines from bookings" },
+    { label: "Issued", note: inv.invoice_number ? `Hub ${inv.invoice_number}` : "Hub number" },
+    { label: "In Holded", note: inHolded ? "Draft on the contact" : "Sent as a draft" },
+    { label: "Approved", note: inv.holded_doc_number || "Legal number · Verifactu" },
+    { label: "Paid", note: paid ? "Collected" : "Payment synced" },
+  ].map((st, i) => ({ ...st, state: reached[i] ? "done" : i === current ? "now" : "todo" }));
+  if (inv.voided) return { label: "Voided", tone: "bg-slate-200 text-slate-700", steps };
+  if (paid) return { label: "Paid", tone: "bg-emerald-50 text-emerald-700", steps };
+  if (!issued) return { label: "Draft", tone: "bg-slate-100 text-slate-600", steps };
+  if (!inHolded) return { label: "To send to Holded", tone: "bg-violet-50 text-violet-700", steps };
+  if (!approved) return { label: "Draft in Holded", tone: "bg-amber-50 text-amber-700", steps };
+  if (inv.due_date && inv.due_date < today) return { label: "Overdue", tone: "bg-rose-50 text-rose-700", steps };
+  return { label: "Pending", tone: "bg-sky-50 text-sky-700", steps };
 }
