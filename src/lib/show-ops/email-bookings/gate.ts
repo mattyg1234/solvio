@@ -36,7 +36,10 @@ export function mailErrorAnswer(where: string, e: unknown): { error: string; sta
   console.error(`[${where}] ${describeMailError(e)}`);
   if (e instanceof MailConfigError) return { error: "Gmail connection isn't switched on yet on the server.", status: 503 };
   if (needsReconnect(e)) return { error: "The inbox sign-in has expired or was removed. Connect it again.", status: 409, reconnect: true };
-  if (e instanceof MailProviderError) return { error: "Gmail didn't answer as expected. Try again in a minute.", status: 502 };
+  if (e instanceof MailProviderError && e.status === 403 && /^HubSpot/.test(e.message)) {
+    return { error: "HubSpot refused: the key needs the conversations.read permission (HubSpot → Settings → Integrations → Private apps → Scopes).", status: 502 };
+  }
+  if (e instanceof MailProviderError) return { error: `${/^HubSpot/.test(e.message) ? "HubSpot" : "Gmail"} didn't answer as expected. Try again in a minute.`, status: 502 };
   if (e instanceof Error && /SHOW_OPS_SECRETS_KEY/.test(e.message)) return { error: "The server's secrets key (SHOW_OPS_SECRETS_KEY) isn't set, so the inbox sign-in can't be stored.", status: 503 };
   return { error: "Something went wrong. Try again.", status: 500 };
 }

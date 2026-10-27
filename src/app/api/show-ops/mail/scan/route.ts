@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { getEmailAccessToken, loadEmailConnection } from "@/lib/show-ops/email-bookings/connection";
+import { loadEmailConnection, openMailSource } from "@/lib/show-ops/email-bookings/connection";
 import { mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
-import { bookingLikeSenders, countFrom, inboxTotal } from "@/lib/show-ops/email-bookings/inbox";
 import { customSenderKey, SELLERS } from "@/lib/show-ops/email-bookings/sellers";
 import { mapLimit } from "@/lib/show-ops/email-bookings/text";
 import type { SellerFound } from "@/lib/show-ops/email-bookings/types";
@@ -29,16 +28,16 @@ export async function POST() {
   try {
     const conn = await loadEmailConnection(ctx.supabase, ctx.business.id);
     if (!conn) return NextResponse.json({ error: "Connect the bookings inbox first." }, { status: 404 });
-    const token = await getEmailAccessToken(conn);
+    const mail = await openMailSource(conn);
 
     // Senders the office added or ticked; untouched suggestions are found afresh below.
     const custom = conn.sellers.filter((s) => s.custom && (!s.suggested || s.track));
     const skip = [...SELLERS.flatMap((s) => s.domains), ...custom.map((s) => s.domain)];
     const [counts, customCounts, suggestions, total] = await Promise.all([
-      mapLimit(SELLERS, 3, async (s) => ({ seller: s, ...(await countFrom(token, s.domains, DAYS, CAP)) })),
-      mapLimit(custom, 3, async (s) => ({ seller: s, ...(await countFrom(token, [s.domain], DAYS, CAP)) })),
-      bookingLikeSenders(token, conn.address, DAYS, skip, SUGGEST_CAP).catch(() => []),
-      inboxTotal(token, DAYS),
+      mapLimit(SELLERS, 3, async (s) => ({ seller: s, ...(await mail.countFrom(s.domains, DAYS, CAP)) })),
+      mapLimit(custom, 3, async (s) => ({ seller: s, ...(await mail.countFrom([s.domain], DAYS, CAP)) })),
+      mail.bookingLikeSenders(conn.address, DAYS, skip, SUGGEST_CAP).catch(() => []),
+      mail.inboxTotal(DAYS),
     ]);
 
     const previous = new Map(conn.sellers.map((s) => [s.key, s]));

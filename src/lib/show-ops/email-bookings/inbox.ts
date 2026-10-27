@@ -1,21 +1,32 @@
-import { gmailEstimate, gmailFromQuery, gmailSearch, gmailSubject } from "./gmail";
-import { isReplyOrForward, looksLikeSupplierBooking, suggestionSender } from "./sellers";
+import type { MailMessage } from "./extract";
+import { gmailEstimate, gmailFromQuery, gmailMessage, gmailSearch, gmailSubject } from "./gmail";
+import { hubspotEmailById, hubspotEmailsSince, hubspotMessage, type HubSpotEmail } from "./hubspot";
+import { isReplyOrForward, looksLikeSupplierBooking, senderMatches, suggestionSender } from "./sellers";
 import { mapLimit, parseFrom } from "./text";
 
-/** The questions the scan and sync ask of the Gmail bookings inbox (ported from Solvio Connect). */
-
-/** Gmail's adverts and social tabs never hold supplier bookings. */
-const GMAIL_SKIP_TABS = "-category:promotions -category:social -category:forums";
+/**
+ * The questions the scan and sync ask of the bookings inbox (ported from Solvio Connect), answered
+ * by Gmail search or, for a HubSpot inbox, by filtering the emails HubSpot lists for the window.
+ */
 
 export type SellerCount = { found: number; other: number; lastSeen: string | null; examples: string[] };
+export type SuggestedSender = { sender: string; name: string; found: number; lastSeen: string | null; examples: string[] };
+type Heading = { subject: string; date: string | null; from: string };
 
-/**
- * Emails from these senders in the last `days` days, sorted by subject line into bookings MHT
- * received as the supplier versus everything else (adverts, account emails).
- */
-export async function countFrom(token: string, senders: string[], days: number, cap: number): Promise<SellerCount> {
-  const { ids } = await gmailSearch(token, `${gmailFromQuery(senders)} newer_than:${days}d ${GMAIL_SKIP_TABS}`, cap);
-  const items = await mapLimit(ids, 10, (id) => gmailSubject(token, id));
+export type MailSource = {
+  /** Emails from these senders in the last `days` days, sorted into bookings MHT received as the supplier versus everything else. */
+  countFrom(senders: string[], days: number, cap: number): Promise<SellerCount>;
+  /** Senders the Hub doesn't know whose subject lines look like bookings (the website shop, a hotel desk). */
+  bookingLikeSenders(inbox: string, days: number, skip: string[], cap: number): Promise<SuggestedSender[]>;
+  /** Everything that reached the inbox in the last `days` days, when it's cheap to find out; else 0. */
+  inboxTotal(days: number): Promise<number>;
+  /** Message ids (newest first) of emails from these senders since a time. */
+  idsFrom(senders: string[], since: Date, max: number): Promise<string[]>;
+  message(id: string): Promise<MailMessage>;
+};
+
+/** Newest first. */
+function sortedCount(items: Heading[]): SellerCount {
   const bookings = items.filter((i) => looksLikeSupplierBooking(i.subject));
   return {
     found: bookings.length,
@@ -25,20 +36,8 @@ export async function countFrom(token: string, senders: string[], days: number, 
   };
 }
 
-export type SuggestedSender = { sender: string; name: string; found: number; lastSeen: string | null; examples: string[] };
-
-/** Subject words that booking and order emails from a shop, hotel or agent tend to use. */
-const BOOKING_WORDS = '(order OR booking OR reservation OR reserva OR pedido OR buchung OR "new order" OR "new booking")';
-
-/**
- * Senders the Hub doesn't know whose subject lines look like bookings: MHT's own website shop
- * ("[MHT- Music Hall Tavern]: New order #TFS/20957"), a hotel desk, a local agent.
- */
-export async function bookingLikeSenders(token: string, inbox: string, days: number, skip: string[], cap: number): Promise<SuggestedSender[]> {
-  if (cap <= 0) return [];
-  const minus = skip.length ? ` -from:(${skip.join(" OR ")})` : "";
-  const { ids } = await gmailSearch(token, `subject:${BOOKING_WORDS} newer_than:${days}d ${GMAIL_SKIP_TABS}${minus}`, cap);
-  const items = await mapLimit(ids, 10, (id) => gmailSubject(token, id));
+/** Newest first. */
+export function suggestSenders(items: Heading[], inbox: string): SuggestedSender[] {
   const bySender = new Map<string, SuggestedSender>();
   for (const i of items) {
     if (isReplyOrForward(i.subject) || !looksLikeSupplierBooking(i.subject)) continue;
@@ -54,17 +53,93 @@ export async function bookingLikeSenders(token: string, inbox: string, days: num
   return [...bySender.values()].sort((a, b) => b.found - a.found);
 }
 
-/** Everything that reached the inbox in the last `days` days, when it's cheap to find out; else 0. */
-export async function inboxTotal(token: string, days: number): Promise<number> {
-  try {
-    return await gmailEstimate(token, `in:inbox newer_than:${days}d`);
-  } catch {
-    return 0;
-  }
+/* ---------- Gmail ---------- */
+
+/** Gmail's adverts and social tabs never hold supplier bookings. */
+const GMAIL_SKIP_TABS = "-category:promotions -category:social -category:forums";
+
+/** Subject words that booking and order emails from a shop, hotel or agent tend to use. */
+const BOOKING_WORDS = '(order OR booking OR reservation OR reserva OR pedido OR buchung OR "new order" OR "new booking")';
+
+export function gmailSource(token: string): MailSource {
+  return {
+    async countFrom(senders, days, cap) {
+      const { ids } = await gmailSearch(token, `${gmailFromQuery(senders)} newer_than:${days}d ${GMAIL_SKIP_TABS}`, cap);
+      return sortedCount(await mapLimit(ids, 10, (id) => gmailSubject(token, id)));
+    },
+    async bookingLikeSenders(inbox, days, skip, cap) {
+      if (cap <= 0) return [];
+      const minus = skip.length ? ` -from:(${skip.join(" OR ")})` : "";
+      const { ids } = await gmailSearch(token, `subject:${BOOKING_WORDS} newer_than:${days}d ${GMAIL_SKIP_TABS}${minus}`, cap);
+      return suggestSenders(await mapLimit(ids, 10, (id) => gmailSubject(token, id)), inbox);
+    },
+    async inboxTotal(days) {
+      try {
+        return await gmailEstimate(token, `in:inbox newer_than:${days}d`);
+      } catch {
+        return 0;
+      }
+    },
+    async idsFrom(senders, since, max) {
+      const { ids } = await gmailSearch(token, `${gmailFromQuery(senders)} after:${Math.floor(since.getTime() / 1000)}`, max);
+      return ids;
+    },
+    message: (id) => gmailMessage(token, id),
+  };
 }
 
-/** Gmail ids (newest first) of emails from these senders since a time. */
-export async function idsFrom(token: string, senders: string[], since: Date, max: number): Promise<string[]> {
-  const { ids } = await gmailSearch(token, `${gmailFromQuery(senders)} after:${Math.floor(since.getTime() / 1000)}`, max);
-  return ids;
+/* ---------- HubSpot ---------- */
+
+/** The same subject words as the Gmail search above. */
+const BOOKING_WORDS_RE = /\b(order|booking|reservation|reserva|pedido|buchung)\b/i;
+/** Threads read per window; a quiet bookings inbox has far fewer in 90 days. */
+const HUBSPOT_MAX_THREADS = 300;
+
+const heading = (e: HubSpotEmail): Heading => ({ subject: e.subject, date: e.date, from: `${e.fromName} <${e.from}>` });
+
+export function hubspotSource(token: string, maxThreads = HUBSPOT_MAX_THREADS): MailSource {
+  // One listing per run, shared by the scan's parallel questions; a wider window lists again.
+  let loaded: { since: number; emails: Promise<HubSpotEmail[]> } | null = null;
+  const byId = new Map<string, HubSpotEmail>();
+  function emailsSince(since: Date): Promise<HubSpotEmail[]> {
+    if (!loaded || since.getTime() < loaded.since) {
+      const emails = hubspotEmailsSince(token, since, maxThreads).then((list) => {
+        for (const e of list) byId.set(e.id, e);
+        return list;
+      });
+      loaded = { since: since.getTime(), emails };
+    }
+    const from = since.toISOString();
+    return loaded.emails.then((list) => list.filter((e) => e.date >= from));
+  }
+  const daysAgo = (days: number) => new Date(Date.now() - days * 86400000);
+  const fromAny = (senders: string[]) => (e: HubSpotEmail) => senders.some((s) => senderMatches(e.from, s));
+
+  return {
+    async countFrom(senders, days, cap) {
+      const list = (await emailsSince(daysAgo(days))).filter(fromAny(senders)).slice(0, cap);
+      return sortedCount(list.map(heading));
+    },
+    async bookingLikeSenders(inbox, days, skip, cap) {
+      if (cap <= 0) return [];
+      const skipped = fromAny(skip);
+      const list = (await emailsSince(daysAgo(days))).filter((e) => BOOKING_WORDS_RE.test(e.subject) && !skipped(e)).slice(0, cap);
+      return suggestSenders(list.map(heading), inbox);
+    },
+    async inboxTotal(days) {
+      try {
+        return (await emailsSince(daysAgo(days))).length;
+      } catch {
+        return 0;
+      }
+    },
+    async idsFrom(senders, since, max) {
+      return (await emailsSince(since)).filter(fromAny(senders)).slice(0, max).map((e) => e.id);
+    },
+    async message(id) {
+      const email = byId.get(id) ?? (await hubspotEmailById(token, id));
+      if (!email) throw new Error("That HubSpot email is no longer there.");
+      return hubspotMessage(token, email);
+    },
+  };
 }

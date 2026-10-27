@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getEmailAccessToken, loadEmailConnection } from "@/lib/show-ops/email-bookings/connection";
+import { loadEmailConnection, openMailSource } from "@/lib/show-ops/email-bookings/connection";
 import { findBookingByReference } from "@/lib/show-ops/email-bookings/data";
 import { extractBooking } from "@/lib/show-ops/email-bookings/extract";
 import { describeMailError, mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
-import { gmailMessage } from "@/lib/show-ops/email-bookings/gmail";
-import { idsFrom } from "@/lib/show-ops/email-bookings/inbox";
 import { channelFor, channelRefFor, normRef, sellerSource } from "@/lib/show-ops/email-bookings/mapping";
 import { looksLikeSupplierBooking, sendersFor } from "@/lib/show-ops/email-bookings/sellers";
 import { readKnownTemplate } from "@/lib/show-ops/email-bookings/templates";
@@ -66,14 +64,14 @@ export async function POST() {
     const startedAt = new Date();
     const lookBack = new Date(Date.now() - FIRST_SYNC_DAYS * 86400000);
     const since = conn.last_sync_at ? new Date(new Date(conn.last_sync_at).getTime() - OVERLAP_MS) : lookBack;
-    const token = await getEmailAccessToken(conn);
+    const mail = await openMailSource(conn);
 
     // Every new email from each tracked sender, once.
     const candidates = new Map<string, Candidate>();
     for (const seller of tracked) {
       // A sender ticked since the last check hasn't had its past emails read yet.
       const from = seller.syncedAt ? since : lookBack;
-      for (const id of await idsFrom(token, sendersFor(seller), from, PER_SELLER)) {
+      for (const id of await mail.idsFrom(sendersFor(seller), from, PER_SELLER)) {
         if (!candidates.has(id)) candidates.set(id, { id, sellerKey: seller.key, sellerName: seller.name, custom: Boolean(seller.custom) });
       }
     }
@@ -84,7 +82,7 @@ export async function POST() {
         .from("show_email_bookings")
         .select("provider_message_id")
         .eq("business_id", businessId)
-        .eq("provider", "gmail")
+        .eq("provider", conn.provider)
         .in("provider_message_id", allIds.slice(i, i + 100));
       for (const r of data ?? []) candidates.delete(String(r.provider_message_id));
     }
@@ -96,7 +94,7 @@ export async function POST() {
 
     const read = await mapLimit(batch, 5, async (item): Promise<Row | null> => {
       try {
-        const m = await gmailMessage(token, item.id);
+        const m = await mail.message(item.id);
         // Adverts from the same company are dropped before the AI reads anything. A sender the
         // office added is its own channel (the website shop, say), so an email from it also goes
         // through when an exact reader knows the layout or the AI is there to judge it.
@@ -107,7 +105,7 @@ export async function POST() {
         return {
           business_id: businessId,
           connection_id: conn.id,
-          provider: "gmail",
+          provider: conn.provider,
           provider_message_id: m.providerId,
           from_name: (m.fromName || item.sellerName).slice(0, 200),
           from_email: m.fromEmail.slice(0, 320),
