@@ -100,7 +100,7 @@ export default async function EmailBookingsPage({ searchParams }: { searchParams
           Email bookings needs a database update before it can be used (migration 20260930010000_show_ops_email_bookings).
         </p>
       )}
-      {gmailReady && !secretsKeyConfigured() && (
+      {!secretsKeyConfigured() && (
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
           The server&rsquo;s secrets key (SHOW_OPS_SECRETS_KEY) isn&rsquo;t set, so an inbox sign-in can&rsquo;t be stored yet.
         </p>

@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret } from "@/lib/show-ops/secrets";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 import { googleRefresh, MailProviderError, type TokenSet } from "./gmail";
+import { gmailSource, hubspotSource, type MailSource } from "./inbox";
 import type { SellerFound } from "./types";
 
 /**
@@ -35,10 +36,12 @@ export function mailRedirectUri(requestOrigin: string): string {
 export const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 export const newOAuthState = () => randomBytes(32).toString("base64url");
 
+export type EmailProvider = "gmail" | "microsoft" | "hubspot";
+
 export type EmailBookingConnection = {
   id: string;
   business_id: string;
-  provider: "gmail" | "microsoft";
+  provider: EmailProvider;
   address: string;
   sellers: SellerFound[];
   skipped: number;
@@ -95,9 +98,12 @@ export async function saveEmailTokens(connectionId: string, businessId: string, 
 
 const REFRESH_MARGIN_MS = 2 * 60 * 1000;
 
-/** A working Gmail access token, refreshed (and saved) when it expires within two minutes. */
+/**
+ * A working access token: Gmail's is refreshed (and saved) when it expires within two minutes;
+ * a HubSpot private app token doesn't expire.
+ */
 export async function getEmailAccessToken(conn: Pick<EmailBookingConnection, "id" | "business_id" | "provider">): Promise<string> {
-  if (conn.provider !== "gmail") throw new MailProviderError("Only Gmail inboxes can be read so far", 400);
+  if (conn.provider === "microsoft") throw new MailProviderError("Outlook inboxes can't be read yet", 400);
   const admin = createSupabaseServiceRoleClient();
   const { data, error } = await admin
     .from("show_email_booking_tokens")
@@ -107,10 +113,17 @@ export async function getEmailAccessToken(conn: Pick<EmailBookingConnection, "id
     .maybeSingle();
   if (error) throw new Error("Could not read the inbox sign-in.");
   if (!data) throw new MailProviderError("No saved sign-in; the inbox needs to be connected again", 401);
+  if (conn.provider === "hubspot") return decryptSecret(String(data.access_token_enc));
   const expires = data.expires_at ? new Date(data.expires_at).getTime() : 0;
   if (expires - Date.now() > REFRESH_MARGIN_MS) return decryptSecret(String(data.access_token_enc));
   if (!data.refresh_token_enc) throw new MailProviderError("No refresh token saved; the inbox needs to be connected again", 401);
   const fresh = await googleRefresh(decryptSecret(String(data.refresh_token_enc)));
   await saveEmailTokens(conn.id, conn.business_id, fresh, true);
   return fresh.accessToken;
+}
+
+/** The bookings inbox to ask questions of, whichever service it lives in. */
+export async function openMailSource(conn: Pick<EmailBookingConnection, "id" | "business_id" | "provider">): Promise<MailSource> {
+  const token = await getEmailAccessToken(conn);
+  return conn.provider === "hubspot" ? hubspotSource(token) : gmailSource(token);
 }

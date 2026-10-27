@@ -1,11 +1,11 @@
 "use client";
 
-import { Check, Loader2, Mail, RefreshCw, Settings2, ShieldCheck, Unplug } from "lucide-react";
+import { Check, Loader2, RefreshCw, Settings2, ShieldCheck, Unplug } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
-import { disconnectEmailInboxAction, saveEmailSendersAction } from "@/app/dashboard/show-ops/email-bookings/actions";
+import { connectHubSpotInboxAction, disconnectEmailInboxAction, saveEmailSendersAction } from "@/app/dashboard/show-ops/email-bookings/actions";
 import type { SellerFound } from "@/lib/show-ops/email-bookings/types";
 
 import { relativeTime } from "./relative-time";
@@ -14,8 +14,10 @@ import { SenderPick, senderChoices } from "./sender-pick";
 const PAGE = "/dashboard/show-ops/email-bookings";
 const CARD = "rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80";
 
+type Provider = "gmail" | "microsoft" | "hubspot";
+
 export type InboxSummary = {
-  provider: "gmail" | "microsoft";
+  provider: Provider;
   address: string;
   skipped: number;
   sellers: SellerFound[];
@@ -33,11 +35,65 @@ type SyncAnswer = { added: number; stored: number; more: boolean };
 const scanInbox = () => postJson<{ sellers: SellerFound[]; skipped: number }>("/api/show-ops/mail/scan");
 const syncInbox = () => postJson<SyncAnswer>("/api/show-ops/mail/sync");
 
-function ProviderMark({ provider }: { provider: "gmail" | "microsoft" }) {
+const MARKS: Record<Provider, { letter: string; tone: string }> = {
+  gmail: { letter: "G", tone: "bg-rose-50 text-rose-600" },
+  microsoft: { letter: "O", tone: "bg-sky-50 text-sky-700" },
+  hubspot: { letter: "H", tone: "bg-orange-50 text-orange-600" },
+};
+
+function ProviderMark({ provider }: { provider: Provider }) {
+  const m = MARKS[provider];
+  return <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${m.tone}`}>{m.letter}</span>;
+}
+
+/** Paste a HubSpot private app token (scope conversations.read). It goes to the server once and is stored encrypted. */
+function HubSpotConnect({ onCancel }: { onCancel: () => void }) {
+  const router = useRouter();
+  const [token, setToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  function connect(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    start(async () => {
+      const r = await connectHubSpotInboxAction(token);
+      if (!r.ok) return setError(r.message);
+      setToken("");
+      router.replace(`${PAGE}?connected=1`);
+      router.refresh();
+    });
+  }
+
   return (
-    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${provider === "gmail" ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-700"}`}>
-      {provider === "gmail" ? "G" : "O"}
-    </span>
+    <form onSubmit={connect} className="flex flex-col gap-2 rounded-xl p-4 ring-1 ring-orange-200 sm:col-span-2">
+      <label htmlFor="hubspot-token" className="text-sm font-semibold text-slate-900">
+        HubSpot private app token
+      </label>
+      <input
+        id="hubspot-token"
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        placeholder="pat-eu1-…"
+        className="rounded-lg px-3 py-2 text-sm ring-1 ring-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-400"
+      />
+      <p className="text-xs text-slate-500">
+        In HubSpot: Settings → Integrations → Private apps. The app needs the <span className="font-mono">conversations.read</span> scope. The key is
+        stored encrypted and never shown again.
+      </p>
+      {error && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">{error}</p>}
+      <div className="flex gap-2">
+        <button type="submit" className={SHOW_OPS_PRIMARY_BTN} disabled={pending || token.trim().length < 20}>
+          {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden /> : null} Connect HubSpot
+        </button>
+        <button type="button" className={SHOW_OPS_GHOST_BTN} onClick={onCancel} disabled={pending}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -76,19 +132,6 @@ export function EmailInboxCard({
   justConnected: boolean;
 }) {
   if (!inbox) {
-    if (!gmailReady) {
-      return (
-        <section className={CARD}>
-          <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
-            <Mail className="h-5 w-5 text-slate-400" aria-hidden /> Gmail connection isn&rsquo;t switched on yet
-          </h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Once Solvio adds the Google sign-in keys on the server, the office can connect the bookings inbox here. Until then, bookings are entered as
-            usual from New booking.
-          </p>
-        </section>
-      );
-    }
     if (!canManage) {
       return (
         <section className={`${CARD} text-sm text-slate-600`}>
@@ -96,15 +139,24 @@ export function EmailInboxCard({
         </section>
       );
     }
-    return (
-      <section className={`${CARD} grid gap-5 lg:grid-cols-2`}>
-        <div className="flex flex-col gap-3">
-          <h3 className="text-base font-semibold text-slate-900">Connect the bookings inbox</h3>
-          <p className="text-sm text-slate-600">
-            Use the inbox GetYourGuide and the website shop send bookings to. You&rsquo;ll sign in with Google; the Hub never sees the password and can only
-            read.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+    return <ConnectChoice gmailReady={gmailReady} />;
+  }
+  if (justConnected && canManage) return <FirstScan inbox={inbox} />;
+  return <ConnectedCard inbox={inbox} canManage={canManage} />;
+}
+
+function ConnectChoice({ gmailReady }: { gmailReady: boolean }) {
+  const [hubspot, setHubspot] = useState(false);
+  return (
+    <section className={`${CARD} grid gap-5 lg:grid-cols-2`}>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-base font-semibold text-slate-900">Connect the bookings inbox</h3>
+        <p className="text-sm text-slate-600">
+          Use the inbox GetYourGuide and the website shop send bookings to: sign in with Google for Gmail, or paste a HubSpot key if the emails land in
+          HubSpot. Either way the Hub can only read.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {gmailReady ? (
             <a href="/api/show-ops/mail/oauth/start" className="flex items-center gap-3 rounded-xl p-4 ring-1 ring-slate-200 hover:bg-slate-50">
               <ProviderMark provider="gmail" />
               <span>
@@ -112,21 +164,33 @@ export function EmailInboxCard({
                 <span className="block text-xs text-slate-500">Google Workspace (musichalltavern.com)</span>
               </span>
             </a>
+          ) : (
             <span className="flex cursor-not-allowed items-center gap-3 rounded-xl p-4 opacity-60 ring-1 ring-slate-200" aria-disabled>
-              <ProviderMark provider="microsoft" />
+              <ProviderMark provider="gmail" />
               <span>
-                <span className="block text-sm font-semibold text-slate-900">Outlook</span>
-                <span className="block text-xs text-slate-500">Coming soon</span>
+                <span className="block text-sm font-semibold text-slate-900">Gmail</span>
+                <span className="block text-xs text-slate-500">Google sign-in keys not added on the server yet</span>
               </span>
             </span>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setHubspot(true)}
+            aria-expanded={hubspot}
+            className="flex items-center gap-3 rounded-xl p-4 text-left ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            <ProviderMark provider="hubspot" />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">HubSpot</span>
+              <span className="block text-xs text-slate-500">Emails in HubSpot&rsquo;s Conversations inbox</span>
+            </span>
+          </button>
+          {hubspot && <HubSpotConnect onCancel={() => setHubspot(false)} />}
         </div>
-        <SafetyList />
-      </section>
-    );
-  }
-  if (justConnected && canManage) return <FirstScan inbox={inbox} />;
-  return <ConnectedCard inbox={inbox} canManage={canManage} />;
+      </div>
+      <SafetyList />
+    </section>
+  );
 }
 
 /** Straight after signing in: search the inbox, tick senders, save, bring their emails in. */

@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { createBookingAction } from "@/app/dashboard/show-ops/actions";
-import { EMAIL_BOOKINGS_PATH, loadEmailConnection } from "@/lib/show-ops/email-bookings/connection";
+import { EMAIL_BOOKINGS_PATH, loadEmailConnection, saveEmailTokens } from "@/lib/show-ops/email-bookings/connection";
 import { findBookingByReference, loadEmail } from "@/lib/show-ops/email-bookings/data";
 import { coerceExtracted } from "@/lib/show-ops/email-bookings/extract";
-import { mailGate } from "@/lib/show-ops/email-bookings/gate";
+import { describeMailError, mailGate } from "@/lib/show-ops/email-bookings/gate";
+import { MailProviderError } from "@/lib/show-ops/email-bookings/gmail";
+import { cleanHubSpotToken, hubspotAccount } from "@/lib/show-ops/email-bookings/hubspot";
 import { channelFor, channelRefFor, normRef, sellerSource } from "@/lib/show-ops/email-bookings/mapping";
 import { cleanSender, customSeller, customSenderKey, SELLERS } from "@/lib/show-ops/email-bookings/sellers";
 import type { InboundEmailRow, SellerFound } from "@/lib/show-ops/email-bookings/types";
@@ -78,14 +80,72 @@ export async function saveEmailSendersAction(choices: { key: string; track: bool
   }
 }
 
+/**
+ * Connects MHT's HubSpot inbox with a private app token pasted by the office. The token is checked
+ * against HubSpot, stored encrypted, and never sent back to the browser or written to a log.
+ */
+export async function connectHubSpotInboxAction(rawToken: string): Promise<Result> {
+  try {
+    const ctx = await gateOrThrow("office");
+    const token = cleanHubSpotToken(rawToken);
+    if (!token) return { ok: false, message: "That doesn't look like a HubSpot private app token (it starts pat-…)." };
+    let account;
+    try {
+      account = await hubspotAccount(token);
+    } catch (e) {
+      console.error(`[show-ops/email-bookings/hubspot-connect] ${describeMailError(e)}`);
+      if (e instanceof MailProviderError && e.status === 401) return { ok: false, message: "HubSpot didn't accept that key. Copy it again from the private app's Auth tab." };
+      if (e instanceof MailProviderError && e.status === 403) {
+        return { ok: false, message: "The key works, but it needs the conversations.read permission. Add it under the private app's Scopes, then paste the key again." };
+      }
+      return { ok: false, message: "Couldn't reach HubSpot. Try again in a minute." };
+    }
+
+    // Reconnecting the same HubSpot inbox keeps its senders and sync position; anything else starts afresh.
+    const existing = await loadEmailConnection(ctx.supabase, ctx.business.id);
+    const now = new Date().toISOString();
+    const same = existing && existing.provider === "hubspot" && existing.address === account.address;
+    let connectionId: string;
+    if (existing) {
+      const patch = same
+        ? { updated_at: now, connected_by: ctx.user.id }
+        : { provider: "hubspot", address: account.address, sellers: [], skipped: 0, last_scan_at: null, last_sync_at: null, updated_at: now, connected_by: ctx.user.id };
+      const { error } = await ctx.supabase.from("show_email_booking_connections").update(patch).eq("id", existing.id).eq("business_id", ctx.business.id);
+      if (error) return { ok: false, message: "Couldn't save the connection. Try again." };
+      connectionId = existing.id;
+    } else {
+      const { data, error } = await ctx.supabase
+        .from("show_email_booking_connections")
+        .insert({ business_id: ctx.business.id, provider: "hubspot", address: account.address, connected_by: ctx.user.id })
+        .select("id")
+        .single();
+      if (error || !data) return { ok: false, message: "Couldn't save the connection. Try again." };
+      connectionId = String(data.id);
+    }
+    await saveEmailTokens(connectionId, ctx.business.id, { accessToken: token, expiresAt: null }, false);
+    revalidatePath(EMAIL_BOOKINGS_PATH);
+    return { ok: true, message: account.address };
+  } catch (e) {
+    if (e instanceof Error && /SHOW_OPS_SECRETS_KEY/.test(e.message)) return { ok: false, message: "The server's secrets key (SHOW_OPS_SECRETS_KEY) isn't set, so the key can't be stored." };
+    return fail(e);
+  }
+}
+
 /** Disconnects the inbox and forgets its saved sign-in. Emails and bookings already made stay. */
 export async function disconnectEmailInboxAction(): Promise<Result> {
   try {
     const ctx = await gateOrThrow("office");
+    const conn = await loadEmailConnection(ctx.supabase, ctx.business.id);
     const { error } = await ctx.supabase.from("show_email_booking_connections").delete().eq("business_id", ctx.business.id);
     if (error) return { ok: false, message: "Couldn't disconnect. Try again." };
     revalidatePath(EMAIL_BOOKINGS_PATH);
-    return { ok: true, message: "Disconnected. The Google permission itself can be removed in the Google account's security settings." };
+    return {
+      ok: true,
+      message:
+        conn?.provider === "hubspot"
+          ? "Disconnected and the key was forgotten. The key itself can be removed in HubSpot under Settings → Integrations → Private apps."
+          : "Disconnected. The Google permission itself can be removed in the Google account's security settings.",
+    };
   } catch (e) {
     return fail(e);
   }
