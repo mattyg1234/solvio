@@ -2,7 +2,7 @@
 
 import { Check, Loader2, RefreshCw, Settings2, ShieldCheck, Unplug } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
 import { connectHubSpotInboxAction, disconnectEmailInboxAction, saveEmailSendersAction } from "@/app/dashboard/show-ops/email-bookings/actions";
@@ -31,7 +31,7 @@ async function postJson<T>(url: string): Promise<T> {
   return data;
 }
 
-type SyncAnswer = { added: number; stored: number; more: boolean };
+type SyncAnswer = { added: number; stored: number; more: boolean; slowed?: boolean };
 const scanInbox = () => postJson<{ sellers: SellerFound[]; skipped: number }>("/api/show-ops/mail/scan");
 const syncInbox = () => postJson<SyncAnswer>("/api/show-ops/mail/sync");
 
@@ -39,9 +39,11 @@ const syncInbox = () => postJson<SyncAnswer>("/api/show-ops/mail/sync");
  * One Refresh keeps bringing emails in, a batch at a time, while more are waiting. The pause keeps
  * the inbox under Gmail's per-minute read limit; after the last round the office presses again.
  */
-const AUTO_ROUNDS = 12;
+const AUTO_ROUNDS = 20;
 const ROUND_PAUSE_MS = 4000;
 const plural = (n: number) => `${n} new booking email${n === 1 ? "" : "s"}`;
+/** Opening Senders re-counts at most this often, so opening and closing it doesn't pile up Gmail reads. */
+const RECOUNT_EVERY_MS = 5 * 60 * 1000;
 
 const MARKS: Record<Provider, { letter: string; tone: string }> = {
   gmail: { letter: "G", tone: "bg-rose-50 text-rose-600" },
@@ -280,6 +282,7 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
   const [saving, startSave] = useTransition();
   const [confirmOff, setConfirmOff] = useState(false);
   const [recounting, setRecounting] = useState(false);
+  const recountedAt = useRef(0);
   const tracked = inbox.sellers.filter((s) => s.track);
 
   /** Refresh: bring in new booking emails, batch after batch, until the inbox is up to date. */
@@ -287,10 +290,12 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
     setSyncing(true);
     setNotice(null);
     let added = 0;
+    let read = 0;
     try {
       for (let round = 1; ; round++) {
         const r = await syncInbox();
         added += r.added;
+        read += r.stored;
         if (!r.more) {
           setNotice(added > 0 ? `${plural(added)} to check. Up to date.` : "Up to date: no new booking emails.");
           break;
@@ -300,7 +305,11 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
           setNotice(`${plural(added)} so far. More are waiting: press Refresh again in a minute.`);
           break;
         }
-        setNotice(`Bringing emails in… ${plural(added)} so far.`);
+        setNotice(
+          r.slowed
+            ? `Gmail asked the Hub to slow down, so it's pausing between batches… ${plural(added)} so far.`
+            : `Reading the inbox… ${read} email${read === 1 ? "" : "s"} read, ${plural(added)} so far.`,
+        );
         await new Promise((resolve) => setTimeout(resolve, ROUND_PAUSE_MS));
       }
       router.refresh();
@@ -318,7 +327,8 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
     setSellers(inbox.sellers);
     const opening = !managing;
     setManaging(opening);
-    if (!opening) return;
+    if (!opening || Date.now() - recountedAt.current < RECOUNT_EVERY_MS) return;
+    recountedAt.current = Date.now();
     setRecounting(true);
     scanInbox()
       .then((r) => setSellers((current) => (current === inbox.sellers ? r.sellers : current)))
@@ -332,6 +342,7 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
       setNotice(r.ok ? "Senders saved. Press Refresh to bring in any newly ticked sender's emails." : r.message);
       if (r.ok) {
         setManaging(false);
+        recountedAt.current = 0;
         router.refresh();
       }
     });

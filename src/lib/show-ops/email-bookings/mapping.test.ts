@@ -17,7 +17,7 @@ import {
   type CatalogProduct,
   type CatalogSupplier,
 } from "./mapping";
-import { isReplyOrForward, looksLikeSupplierBooking, senderMatches, suggestionSender, cleanSender, sellerForEmail, senderEntry } from "./sellers";
+import { isForward, isReply, isReplyOrForward, looksLikeSupplierBooking, senderMatches, suggestionSender, cleanSender, sellerForEmail, senderEntry } from "./sellers";
 import { cleanEmailText, readKnownTemplate } from "./templates";
 import { GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT } from "./test-fixtures";
 
@@ -228,4 +228,12 @@ test("senders: catalog, custom, suggestions, and the subject classifier", () => 
   assert.equal(looksLikeSupplierBooking("Your booking is confirmed: Paris weekend"), false);
   assert.equal(looksLikeSupplierBooking("50% off experiences this weekend"), false);
   assert.equal(isReplyOrForward("Fwd: Booking - S100001 - GYGTEST12345"), true);
+  // The office's answer to a website order quotes the order, but it isn't a new booking.
+  assert.equal(isReply(`Re: ${WOO_SUBJECT}`), true);
+  assert.equal(isReply(`RE: ${WOO_SUBJECT}`), true);
+  assert.equal(isReply(`AW: ${WOO_SUBJECT}`), true);
+  assert.equal(isReply(WOO_SUBJECT), false);
+  assert.equal(isReply("Fwd: Booking - S100001 - GYGTEST12345"), false);
+  assert.equal(isForward("RV: Nueva reserva 4 pax"), true);
+  assert.equal(isForward("Reserva 4 pax"), false);
 });
