@@ -7,7 +7,7 @@ import {
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
-import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { listHoldedSalesInvoices, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { buildPnl } from "@/lib/show-ops/expenses";
 import { ExpensesPanel, PnlPanel, type ExpenseRow } from "@/components/show-ops/expenses-panel";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -95,7 +95,7 @@ export default async function InvoicesPage({
   const periodStart = sp.period_start || thisMonth.start;
   const periodEnd = sp.period_end || thisMonth.end;
   const asOf = sp.as_of || today;
-  const sort = sp.sort || "owed";
+  const sort = sp.sort || (view === "list" ? "date" : "owed");
   const money = (n: number, cur?: string | null) =>
     formatShowOpsMoney(n, cur === "gbp" || cur === "usd" || cur === "eur" ? cur : ctx.config.currency);
 
@@ -241,6 +241,15 @@ export default async function InvoicesPage({
     list.push(line);
     linesByInvoice.set(line.invoice_id, list);
   }
+
+  // Invoices made directly in Holded (not pushed from the Hub), so the list shows everything.
+  const holdedList = view === "list" && holded.connected
+    ? await listHoldedSalesInvoices(ctx, shiftMonth(today, -12).slice(0, 7) + "-01")
+    : { invoices: [], error: null };
+  const pushedIds = new Set(invoices.map((i) => i.holded_document_id).filter(Boolean));
+  const holdedOnly = holdedList.invoices
+    .filter((h) => !pushedIds.has(h.id))
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
   return (
     <div className="space-y-6">
@@ -493,111 +502,145 @@ export default async function InvoicesPage({
             <label className="text-xs font-medium text-slate-600">
               Sort
               <select name="sort" defaultValue={sort} className="mt-1 block rounded-lg border px-2 py-1.5 text-sm">
+                <option value="date">Issue date</option>
                 <option value="owed">Owed (biggest first)</option>
-                <option value="date">Invoice date</option>
                 <option value="due">Due date</option>
-                <option value="supplier">Supplier</option>
+                <option value="supplier">Client</option>
               </select>
             </label>
             <button type="submit" className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white">
               Apply
             </button>
+            {holded.connected ? (
+              <p className="ml-auto text-xs text-slate-500">
+                Same columns as Holded → Sales → Invoices. Invoices made directly in Holded show with a Holded tag.
+              </p>
+            ) : null}
           </form>
-          {(invoices ?? []).map((inv) => {
-            const lines = linesByInvoice.get(inv.id) || [];
-            const guests = lines.length;
-            const pax = lines.reduce((s, l) => s + Number(l.adults || 0) + Number(l.children || 0), 0);
-            const owed = inv.paid ? 0 : Number(inv.total_amount || 0);
-            return (
-              <div key={inv.id} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <div>
-                    <p className="font-medium">
-                      <a
-                        href={`/dashboard/show-ops/invoices/${inv.id}`}
-                        className="hover:underline"
-                        style={{ color: "inherit" }}
-                      >
-                        {inv.supplier_name}
-                      </a>{" "}
-                      · {money(Number(inv.total_amount || 0), inv.currency)}
-                      <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {inv.status || "draft"}
-                      </span>
-                      {inv.paid ? (
-                        <span className="ml-2 text-xs text-emerald-600">PAID {inv.paid_at || ""}</span>
-                      ) : (
-                        <span className="ml-2 text-xs font-semibold text-amber-700">Owed {money(owed, inv.currency)}</span>
-                      )}
-                      <a
-                        href={`/dashboard/show-ops/invoices/${inv.id}`}
-                        className="ml-2 text-xs font-normal text-[var(--show-ops-primary,#7c3aed)] underline"
-                      >
-                        {inv.status === "draft" ? "Edit draft" : "Open / print"}
-                      </a>
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      {inv.holded_doc_number ? `${inv.holded_doc_number} (Holded)` : inv.invoice_number || inv.verifactu_number || "No number yet"} · Invoice {inv.invoice_date || "—"} · shows{" "}
-                      {inv.period_start} → {inv.period_end} · due {inv.due_date || "—"} · {guests} guests / {pax} pax
-                      {inv.emailed_at ? ` · emailed ${inv.emailed_to || ""}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {!inv.paid ? (
-                      <form action={markInvoicePaidAction} className="flex items-end gap-2">
-                        <input type="hidden" name="invoice_id" value={inv.id} />
-                        <input
-                          type="date"
-                          name="paid_at"
-                          defaultValue={today}
-                          className="rounded border px-2 py-1 text-sm"
-                        />
-                        <button type="submit" className="rounded bg-emerald-600 px-3 py-1 text-sm text-white">
-                          Mark paid
-                        </button>
-                      </form>
-                    ) : null}
-                    <form action={voidInvoiceAction}>
-                      <input type="hidden" name="invoice_id" value={inv.id} />
-                      <button type="submit" className="rounded bg-rose-700 px-3 py-1 text-sm text-white">
-                        Void
-                      </button>
-                    </form>
-                  </div>
-                </div>
-                {lines.length ? (
-                  <table className="mt-3 w-full text-left text-xs text-slate-600">
-                    <thead>
-                      <tr className="uppercase text-slate-400">
-                        <th className="py-1">Guest</th>
-                        <th>Ref</th>
-                        <th>Ticket</th>
-                        <th>Pax</th>
-                        <th>Adult nett</th>
-                        <th>Child nett</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((l) => (
-                        <tr key={l.id} className="border-t border-slate-100">
-                          <td className="py-1">{l.guest_name}</td>
-                          <td className="font-mono">{l.booking_ref}</td>
-                          <td>{l.supplier_ticket_number || "—"}</td>
-                          <td>
-                            {l.adults}/{l.children}
-                          </td>
-                          <td>{money(Number(l.adult_nett_total), inv.currency)}</td>
-                          <td>{money(Number(l.child_nett_total), inv.currency)}</td>
-                          <td>{money(Number(l.line_total), inv.currency)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          {holdedList.error ? (
+            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
+              Couldn&apos;t read Holded&apos;s invoice list: {holdedList.error}
+            </p>
+          ) : null}
+          <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-semibold text-slate-500">
+                  <th className="px-4 py-3">Issue date</th>
+                  <th className="px-3 py-3">Document no.</th>
+                  <th className="px-3 py-3">Accounting date</th>
+                  <th className="px-3 py-3">Due date</th>
+                  <th className="px-3 py-3">Client</th>
+                  <th className="px-3 py-3">Description</th>
+                  <th className="px-3 py-3">Tags</th>
+                  <th className="px-3 py-3 text-right">Total</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => {
+                  const lines = linesByInvoice.get(inv.id) || [];
+                  const pax = lines.reduce((s, l) => s + Number(l.adults || 0) + Number(l.children || 0), 0);
+                  const tag = islandTag(inv.island);
+                  const st = invoiceListStatus(inv, today);
+                  const client = inv.recipient_name && inv.recipient_name !== inv.supplier_name
+                    ? `${inv.recipient_name} (${inv.supplier_name})`
+                    : inv.supplier_name;
+                  return (
+                    <tr key={inv.id} className="border-b border-slate-100 align-top last:border-0">
+                      <td className="px-4 py-3 whitespace-nowrap">{dmy(inv.invoice_date)}</td>
+                      <td className="px-3 py-3">
+                        {inv.holded_doc_number ? (
+                          <span className="font-medium">{inv.holded_doc_number}</span>
+                        ) : (
+                          <span className="font-medium">Draft</span>
+                        )}
+                        <span className="block text-xs text-slate-500">Invoice{inv.invoice_number ? ` · Hub ${inv.invoice_number}` : ""}</span>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">{dmy(inv.invoice_date)}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">{dmy(inv.due_date)}</td>
+                      <td className="px-3 py-3">
+                        <a href={`/dashboard/show-ops/invoices/${inv.id}`} className="font-medium hover:underline" style={{ color: "inherit" }}>
+                          {client}
+                        </a>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600">
+                        {inv.island ? `MHT ${inv.island}` : "—"}
+                        <span className="block text-xs text-slate-500">
+                          Shows {dmy(inv.period_start)} → {dmy(inv.period_end)} · {lines.length} bookings / {pax} pax
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-[var(--show-ops-primary,#7c3aed)]">{tag ? `#${tag}` : ""}</td>
+                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{money(Number(inv.total_amount || 0), inv.currency)}</td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.tone}`}>{st.label}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <a href={`/dashboard/show-ops/invoices/${inv.id}`} className="rounded bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {inv.status === "draft" ? "Edit" : "Open"}
+                          </a>
+                          {!inv.paid ? (
+                            <form action={markInvoicePaidAction} className="flex items-center gap-1">
+                              <input type="hidden" name="invoice_id" value={inv.id} />
+                              <input type="hidden" name="paid_at" value={today} />
+                              <button type="submit" className="rounded bg-emerald-600 px-3 py-1 text-xs text-white">
+                                Paid
+                              </button>
+                            </form>
+                          ) : null}
+                          <form action={voidInvoiceAction}>
+                            <input type="hidden" name="invoice_id" value={inv.id} />
+                            <button type="submit" className="rounded bg-rose-700 px-3 py-1 text-xs text-white">
+                              Void
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {holdedOnly.map((h) => {
+                  const st = h.status === "paid"
+                    ? { label: "Paid", tone: "bg-emerald-50 text-emerald-700" }
+                    : h.status === "approved"
+                      ? h.dueDate && h.dueDate < today
+                        ? { label: "Overdue", tone: "bg-rose-50 text-rose-700" }
+                        : { label: "Approved", tone: "bg-sky-50 text-sky-700" }
+                      : { label: "Draft", tone: "bg-amber-50 text-amber-700" };
+                  return (
+                    <tr key={`holded-${h.id}`} className="border-b border-slate-100 align-top last:border-0">
+                      <td className="px-4 py-3 whitespace-nowrap">{dmy(h.date)}</td>
+                      <td className="px-3 py-3">
+                        <span className="font-medium">{h.docNumber || "Draft"}</span>
+                        <span className="block text-xs text-slate-500">Invoice · made in Holded</span>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">{dmy(h.date)}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">{dmy(h.dueDate)}</td>
+                      <td className="px-3 py-3 font-medium">{h.contactName || "—"}</td>
+                      <td className="px-3 py-3 text-slate-600">{h.description || "—"}</td>
+                      <td className="px-3 py-3 text-[var(--show-ops-primary,#7c3aed)]">{h.tags.map((t) => `#${t}`).join(" ")}</td>
+                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{h.total === null ? "—" : money(h.total, "eur")}</td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.tone}`}>{st.label}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">Holded</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!invoices.length && !holdedOnly.length ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
+                      No invoices yet.
+                    </td>
+                  </tr>
                 ) : null}
-              </div>
-            );
-          })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
 
@@ -657,4 +700,32 @@ export default async function InvoicesPage({
       {view === "pnl" ? <PnlPanel rows={pnlRows} currency={ctx.config.currency} from={pnlFrom} to={pnlTo} /> : null}
     </div>
   );
+}
+
+/** dd/mm/yyyy, as Holded shows dates. */
+function dmy(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+}
+
+/** The island tag MHT uses in Holded (#tfs, #ace, #lpa). */
+function islandTag(island: string | null | undefined): string | null {
+  const key = String(island || "").toLowerCase();
+  if (key === "tenerife") return "tfs";
+  if (key === "lanzarote") return "ace";
+  if (key === "gran canaria") return "lpa";
+  if (key === "uk tour") return "uk";
+  return null;
+}
+
+function invoiceListStatus(
+  inv: { status?: string | null; paid?: boolean | null; due_date?: string | null; holded_status?: string | null; holded_document_id?: string | null },
+  today: string,
+): { label: string; tone: string } {
+  if (inv.paid || inv.holded_status === "paid") return { label: "Paid", tone: "bg-emerald-50 text-emerald-700" };
+  if (inv.status === "draft") return { label: "Draft", tone: "bg-amber-50 text-amber-700" };
+  if (inv.due_date && inv.due_date < today) return { label: "Overdue", tone: "bg-rose-50 text-rose-700" };
+  if (inv.holded_status === "approved") return { label: "Approved in Holded", tone: "bg-sky-50 text-sky-700" };
+  if (inv.holded_document_id) return { label: "Draft in Holded", tone: "bg-amber-50 text-amber-700" };
+  return { label: "Issued · not in Holded", tone: "bg-slate-100 text-slate-700" };
 }

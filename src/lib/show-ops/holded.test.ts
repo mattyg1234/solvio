@@ -5,6 +5,7 @@ import {
   holdedContactBody,
   holdedContactFromSupplier,
   holdedInvoiceFromPack,
+  holdedInvoiceListRow,
   holdedItemsFromLines,
   holdedTag,
   pickHoldedTaxKey,
@@ -105,7 +106,8 @@ test("pack → Holded invoice is a draft with Solvio reference, dates as unix da
   );
   assert.equal(inv.approveDoc, false);
   assert.equal(inv.contactId, "contact-1");
-  assert.match(inv.desc, /Sunny Reps · 2026-09-01 → 2026-09-30 · Solvio MHT-2026-0007/);
+  assert.equal(inv.desc, "MHT Tenerife · Sunny Reps · 2026-09-01 → 2026-09-30 · Solvio MHT-2026-0007");
+  assert.deepEqual(inv.tags, ["solvio", "islandtenerife", "tfs"]);
   assert.equal(inv.date, unixDay("2026-10-01"));
   assert.equal(inv.dueDate, unixDay("2026-10-31"));
   assert.equal(inv.currency, undefined);
@@ -180,4 +182,17 @@ test("a real Holded draft (numeric status 0, draft true) parses; paid needs stat
   assert.equal(paid.status, "paid");
   assert.throws(() => summariseHoldedDocument({ ...real, draft: false, status: 1, docNumber: "F260001", approvedAt: 1788900000, paymentsPending: 100 }), /inconsistent/);
   assert.throws(() => summariseHoldedDocument({ ...real, status: 7 }), /malformed document status/);
+});
+
+test("holdedInvoiceListRow reads v2 and v1 list entries for the Holded-style invoice list", () => {
+  assert.deepEqual(
+    holdedInvoiceListRow({ id: "a1", draft: true, date: "2026-10-27T00:00:00Z", due_date: "2026-11-26", contact_name: "Admiral Excursion Point SC", description: "MHT Tenerife", tags: ["tfs"], total: 107, payments_pending: 107 }),
+    { id: "a1", docNumber: null, date: "2026-10-27", dueDate: "2026-11-26", contactName: "Admiral Excursion Point SC", description: "MHT Tenerife", tags: ["tfs"], total: 107, status: "draft" },
+  );
+  const v1 = holdedInvoiceListRow({ id: "b2", docNumber: "F260001", date: unixDay("2026-10-01"), dueDate: unixDay("2026-10-31"), contactName: "Sunny Reps", desc: "Sept", total: 50, paymentsPending: 0, status: 1 });
+  assert.equal(v1?.status, "paid");
+  assert.equal(v1?.date, "2026-10-01");
+  assert.equal(v1?.docNumber, "F260001");
+  assert.equal(holdedInvoiceListRow({ id: "c3", document_number: "F260002", draft: false, total: 20, payments_pending: 20 })?.status, "approved");
+  assert.equal(holdedInvoiceListRow({ name: "no id" }), null);
 });
