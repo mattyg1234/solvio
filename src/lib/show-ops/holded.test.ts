@@ -58,15 +58,29 @@ test("supplier → contact uses legal name, tax id as code, island tag", () => {
   assert.equal("email" in bare, false);
 });
 
-test("booking line splits into adult and child items with exact unit prices", () => {
+test("booking line is one Holded item named like MHT's own invoices", () => {
   const items = holdedItemsFromLines(
-    [{ description: "MHT ACE 12 Sept", booking_ref: "MHT-319001", guest_name: "Smith", adults: 2, children: 1, adult_unit_price: 27.95, child_unit_price: 15, vat_rate: 7 }],
+    [{ description: "Smith A · MHT-319378", booking_ref: "MHT-319378", guest_name: "Smith A", supplier_ticket_number: "GYGWZAL8Y858", adults: 2, children: 1, adult_unit_price: 27.95, child_unit_price: 15, vat_rate: 7 }],
     (r) => (r === 7 ? IGIC_7 : null),
     TAXES,
+    "MHT Tenerife",
   );
-  assert.equal(items.length, 2);
-  assert.deepEqual(items[0], { name: "MHT ACE 12 Sept — 2 adults", desc: "MHT-319001", units: 2, subtotal: 27.95, taxes: ["s_igic_7"] });
-  assert.deepEqual(items[1], { name: "MHT ACE 12 Sept — 1 child", desc: "MHT-319001", units: 1, subtotal: 15, taxes: ["s_igic_7"] });
+  assert.deepEqual(items, [
+    { name: "MHT Tenerife", desc: "Smith A MHT-319378 GYGWZAL8Y858 · 2 adults, 1 child", units: 1, subtotal: 70.9, taxes: ["s_igic_7"] },
+  ]);
+  // Without an item name the line's own description is used.
+  const plain = holdedItemsFromLines([{ description: "Smith", guest_name: "Smith", adults: 1, adult_unit_price: 0.1, vat_rate: 7 }], () => IGIC_7, TAXES);
+  assert.equal(plain[0].name, "Smith");
+  assert.equal(plain[0].subtotal, 0.1);
+});
+
+test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
+  const items = holdedItemsFromLines(
+    [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],
+    () => IGIC_7,
+    TAXES,
+  );
+  assert.equal(items[0].desc, "MHT-319001 · Ticket 4471 · No show");
 });
 
 test("manual line requires a configured and validated IGIC sales tax key", () => {
