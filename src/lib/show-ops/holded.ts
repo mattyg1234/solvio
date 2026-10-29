@@ -656,6 +656,78 @@ function holdedV2BillAddress(c: HoldedContactInput): Record<string, unknown> | n
  * overwrite the fields the Hub owns (name, NIF, email, billing address, type).
  * Whatever the office added in Holded (IBAN, phones, notes, accounts) stays.
  */
+export type HoldedContactCandidate = { id: string; name: string; tradeName: string | null; tags: string[] };
+
+function contactCandidate(raw: unknown): HoldedContactCandidate | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.id !== "string" || !c.id) return null;
+  const trade = c.trade_name ?? c.tradeName ?? c.tradename;
+  return {
+    id: c.id,
+    name: String(c.name ?? ""),
+    tradeName: trade ? String(trade) : null,
+    tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t ?? "")).filter(Boolean) : [],
+  };
+}
+
+/** A NIF compared by letters and digits only; Spanish ids may carry an "ES" prefix. Placeholders like "Online" count as none. */
+export function taxIdKey(value: unknown): string {
+  let v = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/\d/.test(v)) return "";
+  if (/^ES[0-9A-Z]{9}$/.test(v)) v = v.slice(2);
+  return v;
+}
+
+/** MHT's offices, as Joel tags Holded contacts and prefixes Hub partners. */
+const OFFICE_TAGS: Record<string, string[]> = {
+  ace: ["ace", "islandlanzarote", "lanzarote"],
+  tfs: ["tfs", "islandtenerife", "tenerife"],
+  lpa: ["lpa", "islandgrancanaria", "grancanaria"],
+};
+const ISLAND_OFFICE: Record<string, string> = { lanzarote: "ace", tenerife: "tfs", grancanaria: "lpa" };
+
+function words(value: string): string[] {
+  return value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function partnerOffice(p: { name?: string | null; island?: string | null }): string | null {
+  const island = ISLAND_OFFICE[words(p.island ?? "").join("")];
+  if (island) return island;
+  const first = words(p.name ?? "")[0];
+  return first && OFFICE_TAGS[first] ? first : null;
+}
+
+/** "TFS First Excursions -FB - INVOICE" and "First Excursions - FB" → "firstexcursionsfb". */
+function tradeCore(value: string): string {
+  const w = words(value);
+  if (w.length && OFFICE_TAGS[w[0]]) w.shift();
+  while (w.length && /^(invoice|deposit|dep|\d+)$/.test(w[w.length - 1])) w.pop();
+  return w.join("");
+}
+
+/**
+ * Several Holded contacts can share one NIF or name (Joel keeps one per island, and one per agent for First Excursions).
+ * Keep the one tagged for the partner's office, then the one whose trade name is the partner's; never guess between the rest.
+ */
+export function pickHoldedContact(candidates: HoldedContactCandidate[], partner: { name?: string | null; island?: string | null }): HoldedContactCandidate | null {
+  let pool = [...new Map(candidates.map((c) => [c.id, c])).values()];
+  if (pool.length <= 1) return pool[0] ?? null;
+  const office = partnerOffice(partner);
+  if (office) {
+    const tagged = pool.filter((c) => c.tags.some((t) => OFFICE_TAGS[office].includes(words(t).join(""))));
+    if (tagged.length) pool = tagged;
+  }
+  if (pool.length > 1 && partner.name) {
+    const want = tradeCore(partner.name);
+    const named = pool.filter((c) => c.tradeName && tradeCore(c.tradeName) === want);
+    if (named.length) pool = named;
+  }
+  if (pool.length === 1) return pool[0];
+  const who = partner.name || "this partner";
+  throw new Error(`Holded has ${pool.length} contacts that could be ${who} (${pool.map((c) => [c.tradeName || c.name, ...c.tags.map((t) => `#${t}`)].join(" ")).join("; ")}). Solvio will not guess: link the right Holded contact to ${who} first.`);
+}
+
 export function mergeHoldedV2Contact(current: Record<string, unknown>, c: HoldedContactInput): Record<string, unknown> {
   const editable = [
     "name", "code", "vat_number", "trade_name", "is_person", "email", "phone", "mobile", "website", "type",
@@ -919,17 +991,20 @@ export class HoldedClient {
   }
 
   async findContactByCode(code: string): Promise<{ id: string } | null> {
-    const wanted = String(code || "").trim().toUpperCase();
-    if (!wanted) return null;
-    if (this.v2) {
-      const all = await this.listV2("/v2/contacts");
-      const hit = all.find((c) => String(c.code ?? "").trim().toUpperCase() === wanted || String(c.vat_number ?? "").trim().toUpperCase() === wanted);
-      return hit?.id ? { id: String(hit.id) } : null;
-    }
-    const list = await this.request<Array<Record<string, unknown>>>("GET", "/invoicing/v1/contacts");
-    if (!Array.isArray(list)) return null;
-    const hit = list.find((c) => String(c.code ?? "").trim().toUpperCase() === wanted || String(c.vatnumber ?? "").trim().toUpperCase() === wanted);
-    return hit?.id ? { id: String(hit.id) } : null;
+    const hit = (await this.contactsByCode(code))[0];
+    return hit ? { id: hit.id } : null;
+  }
+
+  /** Every contact carrying this NIF ("B-07844764" and "B07844764" are the same). One business can have several, e.g. one per island. */
+  async contactsByCode(code: string): Promise<HoldedContactCandidate[]> {
+    const wanted = taxIdKey(code);
+    if (!wanted) return [];
+    const list = this.v2 ? await this.listV2("/v2/contacts") : await this.request<unknown>("GET", "/invoicing/v1/contacts");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((c) => c && typeof c === "object" && (taxIdKey(c.code) === wanted || taxIdKey(c.vat_number ?? c.vatnumber) === wanted))
+      .map(contactCandidate)
+      .filter((c): c is HoldedContactCandidate => c !== null);
   }
 
   /** Every contact in the company (read-only), raw, for the partner details import. */
@@ -941,18 +1016,23 @@ export class HoldedClient {
 
   /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */
   async findContactByName(name: string): Promise<{ id: string } | null> {
+    const hit = (await this.contactsByName(name))[0];
+    return hit ? { id: hit.id } : null;
+  }
+
+  /** Every contact whose name is exactly this (case-insensitive). */
+  async contactsByName(name: string): Promise<HoldedContactCandidate[]> {
     const wanted = String(name || "").trim().toLowerCase();
-    if (!wanted) return null;
-    if (this.v2) {
-      // Prefix search on name; keep only the exact (case-insensitive) match.
-      const hits = await this.listV2("/v2/contacts/search", { name: String(name).trim().slice(0, 100) }, 5);
-      const hit = hits.find((c) => String(c.name ?? "").trim().toLowerCase() === wanted);
-      return hit?.id ? { id: String(hit.id) } : null;
-    }
-    const list = await this.request<Array<Record<string, unknown>>>("GET", "/invoicing/v1/contacts");
-    if (!Array.isArray(list)) return null;
-    const hit = list.find((c) => String(c.name ?? "").trim().toLowerCase() === wanted);
-    return hit?.id ? { id: String(hit.id) } : null;
+    if (!wanted) return [];
+    // v2: prefix search on name; keep only exact matches.
+    const list = this.v2
+      ? await this.listV2("/v2/contacts/search", { name: String(name).trim().slice(0, 100) }, 5)
+      : await this.request<unknown>("GET", "/invoicing/v1/contacts");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((c) => c && typeof c === "object" && String(c.name ?? "").trim().toLowerCase() === wanted)
+      .map(contactCandidate)
+      .filter((c): c is HoldedContactCandidate => c !== null);
   }
 
   /** Draft purchase (a cost we owe/paid). Drafts only — approval stays with the accountant in Holded. */
@@ -1008,6 +1088,12 @@ export class HoldedClient {
     try {
       if (this.v2) {
         const current = await this.request<Record<string, unknown>>("GET", `/v2/contacts/${encodeURIComponent(id)}`);
+        // The office keeps the NIF in Holded; a different one in the Hub is a typo on one side, and a send must not overwrite it.
+        const held = taxIdKey(current?.vat_number) || taxIdKey(current?.code);
+        const ours = taxIdKey(input.code);
+        if (held && ours && held !== ours) {
+          throw new Error(`Holded has NIF ${String(current?.vat_number || current?.code)} for ${input.name}, the Hub has ${input.code}. Fix whichever is wrong, then send again.`);
+        }
         await this.request("PUT", `/v2/contacts/${encodeURIComponent(id)}`, mergeHoldedV2Contact(current ?? {}, input));
       } else {
         await this.request("PUT", `/invoicing/v1/contacts/${encodeURIComponent(id)}`, holdedContactBody(input));
