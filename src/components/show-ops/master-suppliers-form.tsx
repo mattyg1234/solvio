@@ -14,6 +14,7 @@ import {
 import { isPartnerLinkToken, partnerLinkPath } from "@/lib/show-ops/partner-link";
 import { partnerIslands, partnerSearchHaystack, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
+import { PartnerHoldedLink } from "@/components/show-ops/partner-holded-link";
 import { NumberInput } from "@/components/ui/number-input";
 
 function stopEnterSubmit(e: KeyboardEvent<HTMLFormElement>) {
@@ -47,6 +48,7 @@ export type MasterSupplierRow = {
   payment_terms_days?: number | null;
   is_person?: boolean | null;
   can_choose_billing_mode?: boolean | null;
+  holded_contact_id?: string | null;
   active: boolean | null;
 };
 
@@ -100,6 +102,8 @@ export function MasterSuppliersForm({
   statsLabel = "this year",
   currency = "eur",
   highlightId,
+  openId,
+  holdedConnected = false,
 }: {
   suppliers: MasterSupplierRow[];
   partnerTypes: string[];
@@ -110,6 +114,9 @@ export function MasterSuppliersForm({
   statsLabel?: string;
   currency?: string;
   highlightId?: string;
+  /** Opened and scrolled to on load, e.g. from an invoice's "Edit partner" link. */
+  openId?: string;
+  holdedConnected?: boolean;
 }) {
   const fmtMoney = (n: number) =>
     new Intl.NumberFormat("en-GB", {
@@ -119,7 +126,7 @@ export function MasterSuppliersForm({
     }).format(n || 0);
   const formRef = useRef<HTMLFormElement>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [openIds, setOpenIds] = useState<Set<string>>(() => (highlightId ? new Set([highlightId]) : new Set()));
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set([highlightId, openId].filter((x): x is string => Boolean(x))));
   const [copied, setCopied] = useState<string | null>(null);
   const [loginNotice, setLoginNotice] = useState<{ id: string; ok: boolean; message: string } | null>(null);
   const [sendingLogin, setSendingLogin] = useState<string | null>(null);
@@ -153,10 +160,11 @@ export function MasterSuppliersForm({
   });
 
   useEffect(() => {
-    if (!highlightId) return;
-    setOpenIds((cur) => new Set(cur).add(highlightId));
-    document.getElementById(`created-${highlightId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [highlightId]);
+    const id = highlightId ?? openId;
+    if (!id) return;
+    setOpenIds((cur) => new Set(cur).add(id));
+    document.getElementById(`created-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, openId]);
 
   function toggleOpen(id: string) {
     setOpenIds((cur) => {
@@ -432,6 +440,7 @@ export function MasterSuppliersForm({
                 <input name={`${prefix}email`} type="email" defaultValue={s.email ?? ""} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />
               </label>
               <PartnerBillingAddressFields prefix={prefix} values={s} />
+              {holdedConnected ? <PartnerHoldedLink supplierId={s.id} linkedId={s.holded_contact_id ?? null} /> : null}
               <label className="text-xs font-medium text-slate-600">
                 Partner type
                 <select name={`${prefix}partner_type`} defaultValue={s.partner_type} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">

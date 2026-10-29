@@ -21,6 +21,9 @@ import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { holdedInvoiceUrl, holdedInvoiceView } from "@/lib/show-ops/holded";
 import { holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 
+// Holded errors fixed on the partner (its Holded contact, NIF or invoicing details), not on the invoice.
+const PARTNER_FIX = /contacts that could be|Holded has NIF|is missing:|refused the update to/;
+
 // "Issue and send to Holded" runs the Holded write in the same request.
 export const maxDuration = 60;
 
@@ -102,6 +105,7 @@ export default async function InvoicePrintPage({
   const holdedView = holdedInvoiceView(inv, holded.connected);
   const stage = invoiceStage(inv, today);
   const holdedLabel = holdedView.label;
+  const partnerHref = inv.supplier_id ? `/dashboard/show-ops/master?tab=partners&open=${inv.supplier_id}` : "/dashboard/show-ops/master?tab=partners";
   // What Holded still needs before this can go as a full invoice (same check the send runs).
   const holdedMissing =
     holded.connected && (holdedView.canSend || inv.status === "draft") && inv.supplier_id
@@ -229,7 +233,17 @@ export default async function InvoicePrintPage({
           {sp.holded_msg ? ` ${sp.holded_msg}` : ""}
         </p>
       ) : sp.holded === "error" ? (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">{sp.holded_msg || holdedLabel}</p>
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">
+          {sp.holded_msg || holdedLabel}
+          {inv.supplier_id && PARTNER_FIX.test(sp.holded_msg ?? "") ? (
+            <>
+              {" "}
+              <Link href={partnerHref} className="font-semibold underline">
+                Open {inv.supplier_name}
+              </Link>
+            </>
+          ) : null}
+        </p>
       ) : null}
       {sp.emailed === "1" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
@@ -441,7 +455,7 @@ export default async function InvoicePrintPage({
                       <li key={m}>{m}</li>
                     ))}
                   </ul>
-                  <Link href="/dashboard/show-ops/master?tab=partners" className="mt-1 inline-block font-semibold underline">
+                  <Link href={partnerHref} className="mt-1 inline-block font-semibold underline">
                     Edit partner
                   </Link>
                 </div>
@@ -577,7 +591,7 @@ export default async function InvoicePrintPage({
                 <li key={m}>{m}</li>
               ))}
             </ul>
-            <Link href={inv.supplier_id ? `/dashboard/show-ops/master/partners/${inv.supplier_id}` : "/dashboard/show-ops/master?tab=partners"} className="mt-2 inline-block font-semibold underline">
+            <Link href={partnerHref} className="mt-2 inline-block font-semibold underline">
               Edit partner
             </Link>
           </div>
