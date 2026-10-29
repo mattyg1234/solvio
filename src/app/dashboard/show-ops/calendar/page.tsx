@@ -12,6 +12,7 @@ import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { buildCalendarDays, type CloseKind, type CalendarProduct, type CalendarBooking, type CalendarBusOrder } from "@/lib/show-ops/calendar";
 import { parseIsoYearMonth, shiftYearMonth, showOpsNightMonth } from "@/lib/show-ops/nights";
 import { loadReportRows } from "@/lib/show-ops/report-data";
+import { CLOSE_SALE_EMAILS_ON } from "@/lib/show-ops/close-sale";
 import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
 
 const WEEK_HEAD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -139,7 +140,9 @@ export default async function ShowOpsCalendarPage({
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
           {sp.emailed && sp.emailed !== "0"
             ? `Close saved · emailed ${sp.emailed} partner${sp.emailed === "1" ? "" : "s"}.`
-            : "Close saved. Partner email was not sent (test mode)."}
+            : CLOSE_SALE_EMAILS_ON
+              ? "Close saved. Partner email was not sent (test mode)."
+              : "Close saved. No partners were emailed."}
         </p>
       ) : null}
       {sp.reopened ? (
@@ -232,7 +235,7 @@ export default async function ShowOpsCalendarPage({
                     nextUrl={nextUrl}
                     island={island}
                     canClose={canClose}
-                    emailsLive={showOpsOutboundLive()}
+                    emailsLive={CLOSE_SALE_EMAILS_ON && showOpsOutboundLive()}
                     currency={ctx.config.currency}
                     bookings={nightBookings}
                     closes={closeRows}
