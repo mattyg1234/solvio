@@ -656,18 +656,23 @@ function holdedV2BillAddress(c: HoldedContactInput): Record<string, unknown> | n
  * overwrite the fields the Hub owns (name, NIF, email, billing address, type).
  * Whatever the office added in Holded (IBAN, phones, notes, accounts) stays.
  */
-export type HoldedContactCandidate = { id: string; name: string; tradeName: string | null; tags: string[] };
+export type HoldedContactCandidate = { id: string; name: string; tradeName: string | null; tags: string[]; nif?: string | null; city?: string | null };
 
 function contactCandidate(raw: unknown): HoldedContactCandidate | null {
   if (!raw || typeof raw !== "object") return null;
   const c = raw as Record<string, unknown>;
   if (typeof c.id !== "string" || !c.id) return null;
   const trade = c.trade_name ?? c.tradeName ?? c.tradename;
+  const nif = c.vat_number ?? c.vatnumber ?? c.code;
+  const bill = (c.bill_address ?? c.billAddress) as Record<string, unknown> | undefined;
+  const city = bill && typeof bill === "object" ? bill.city : c.city;
   return {
     id: c.id,
     name: String(c.name ?? ""),
     tradeName: trade ? String(trade) : null,
     tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t ?? "")).filter(Boolean) : [],
+    nif: nif ? String(nif) : null,
+    city: city ? String(city) : null,
   };
 }
 
@@ -725,7 +730,60 @@ export function pickHoldedContact(candidates: HoldedContactCandidate[], partner:
   }
   if (pool.length === 1) return pool[0];
   const who = partner.name || "this partner";
-  throw new Error(`Holded has ${pool.length} contacts that could be ${who} (${pool.map((c) => [c.tradeName || c.name, ...c.tags.map((t) => `#${t}`)].join(" ")).join("; ")}). Solvio will not guess: link the right Holded contact to ${who} first.`);
+  throw new Error(`Holded has ${pool.length} contacts that could be ${who} (${pool.map((c) => [c.tradeName || c.name, ...c.tags.map((t) => `#${t}`)].join(" ")).join("; ")}). Solvio will not guess: open ${who} in Partners and pick its Holded contact.`);
+}
+
+export type RankedHoldedContact = HoldedContactCandidate & { suggested: boolean; nifMatches: boolean };
+
+const SEARCH_NOISE = new Set(["invoice", "deposit", "dep", "sl", "slu", "sa", "ltd", "limited", "the", "y", "and", "de"]);
+
+/**
+ * Holded contacts that could be this partner, for a person to pick from. `suggested` is the one a send would
+ * use today (same NIF-then-exact-name rule as the send), so the office sees what will happen before it happens.
+ * A typed query must match every word (name, trade name, tag, NIF or city); with no query, the partner's own
+ * NIF and name words are used and any hit counts.
+ */
+export function rankHoldedContacts(
+  raw: unknown[],
+  opts: { query?: string | null; partner: { name?: string | null; island?: string | null; taxId?: string | null } },
+  limit = 8,
+): RankedHoldedContact[] {
+  const all = raw.map(contactCandidate).filter((c): c is HoldedContactCandidate => c !== null);
+  const partnerNif = taxIdKey(opts.partner.taxId);
+  const typed = String(opts.query ?? "").trim();
+  const queryNif = taxIdKey(typed).length >= 8 ? taxIdKey(typed) : "";
+  let want = words(typed);
+  if (!typed) {
+    want = words(opts.partner.name ?? "");
+    if (want.length && OFFICE_TAGS[want[0]]) want.shift();
+    want = want.filter((w) => !SEARCH_NOISE.has(w) && !/^\d+$/.test(w) && w.length > 1);
+  }
+  const office = partnerOffice(opts.partner);
+
+  let suggestedId: string | null = null;
+  const byNif = partnerNif ? all.filter((c) => taxIdKey(c.nif) === partnerNif) : [];
+  const exactName = String(opts.partner.name ?? "").trim().toLowerCase();
+  const byName = all.filter((c) => exactName && c.name.trim().toLowerCase() === exactName);
+  try {
+    suggestedId = pickHoldedContact(byNif.length ? byNif : byName, opts.partner)?.id ?? null;
+  } catch {
+    suggestedId = null;
+  }
+
+  const scored = all.map((c) => {
+    const hay = words([c.name, c.tradeName ?? "", c.nif ?? "", c.city ?? "", ...c.tags].join(" "));
+    const hits = want.filter((w) => hay.some((h) => h.startsWith(w))).length;
+    const nifMatches = Boolean((partnerNif && taxIdKey(c.nif) === partnerNif) || (queryNif && taxIdKey(c.nif) === queryNif));
+    const onOffice = Boolean(office && c.tags.some((t) => OFFICE_TAGS[office].includes(words(t).join(""))));
+    const matched = typed ? nifMatches || (want.length > 0 && hits === want.length) : nifMatches || hits > 0;
+    const score = (c.id === suggestedId ? 1000 : 0) + (nifMatches ? 100 : 0) + hits * 10 + (onOffice ? 3 : 0);
+    return { c, matched: matched || c.id === suggestedId, score, nifMatches };
+  });
+  return scored
+    .filter((x) => x.matched)
+    .sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name))
+    .slice(0, limit)
+    .map((x) => ({ ...x.c, suggested: x.c.id === suggestedId, nifMatches: x.nifMatches }));
 }
 
 export function mergeHoldedV2Contact(current: Record<string, unknown>, c: HoldedContactInput): Record<string, unknown> {
@@ -817,6 +875,10 @@ export function holdedV2Page(raw: unknown): { items: Record<string, unknown>[]; 
 /** Where a sales invoice opens in Holded's web app. */
 export function holdedInvoiceUrl(id: string): string {
   return `https://app.holded.com/sales/revenue#open:invoice-${encodeURIComponent(id)}`;
+}
+
+export function holdedContactUrl(id: string): string {
+  return `https://app.holded.com/contacts/${encodeURIComponent(id)}`;
 }
 
 /** One sales invoice as Holded's invoice list shows it. Read-only, for the Hub's Holded-style list. */
@@ -1012,6 +1074,18 @@ export class HoldedClient {
     if (this.v2) return this.listV2("/v2/contacts", {}, 50);
     const list = await this.request<unknown>("GET", "/invoicing/v1/contacts");
     return Array.isArray(list) ? list.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === "object") : [];
+  }
+
+  /** One contact as a pickable summary, or null when this Holded company has no such contact. */
+  async getContactCandidate(id: string): Promise<HoldedContactCandidate | null> {
+    if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return null;
+    try {
+      const raw = await this.request<unknown>("GET", this.v2 ? `/v2/contacts/${encodeURIComponent(id)}` : `/invoicing/v1/contacts/${encodeURIComponent(id)}`);
+      return contactCandidate(raw);
+    } catch (e) {
+      if (e instanceof HoldedApiError && e.status === 404) return null;
+      throw e;
+    }
   }
 
   /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */

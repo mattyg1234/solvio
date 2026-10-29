@@ -6,6 +6,7 @@ import {
   HoldedReconciliationRequiredError,
   holdedV2DocumentBody,
   pickHoldedContact,
+  rankHoldedContacts,
   taxIdKey,
   holdedV2Page,
   isHoldedV2Token,
@@ -333,4 +334,39 @@ test("v2 contact sync: never overwrites a different NIF the office keeps in Hold
   serve("Online");
   assert.equal(await new HoldedClient(TOKEN).syncContact("6adf8585f66d5bb7ae0bf182", input), true);
   assert.equal(puts, 2);
+});
+
+test("partner picker: what a send would use comes first, then NIF and name hits; a typed search needs every word", () => {
+  const contacts = [
+    { id: "fb", name: "First Excursions Canary Islands SL", trade_name: "First Excursions - FB", vat_number: "B44798775", tags: ["TFS"], bill_address: { city: "Adeje" } },
+    { id: "ota", name: "First Excursions Canary Islands SL", trade_name: "First Excursions - OTA", vat_number: "B44798775", tags: ["TFS"] },
+    { id: "gc", name: "First Excursions Canary Islands SL", trade_name: "First Excursions - GC", vat_number: "B44798775", tags: ["LPA"] },
+    { id: "gyg", name: "Get Your Guide Deutschland GmbH", trade_name: "Get Your Guide", vat_number: "DE264878256", tags: ["TFS"] },
+    { id: "ht", name: "Holiday Tours Tenerife SL", vat_number: "", tags: [] },
+  ];
+  const fb = rankHoldedContacts(contacts, { partner: { name: "TFS First Excursions -FB - INVOICE", island: "Tenerife", taxId: "B-44798775" } });
+  assert.deepEqual(fb.map((c) => c.id), ["fb", "ota", "gc"]);
+  assert.equal(fb[0].suggested, true);
+  assert.equal(fb[0].city, "Adeje");
+  assert.ok(fb.every((c) => c.nifMatches) && fb.slice(1).every((c) => !c.suggested));
+
+  // No NIF in the Hub: the name's words find it, and nothing is suggested.
+  const ht = rankHoldedContacts(contacts, { partner: { name: "TFS Holiday Tours 30%", island: "Tenerife", taxId: null } });
+  assert.deepEqual(ht.map((c) => [c.id, c.suggested]), [["ht", false]]);
+  // Five First Excursions-style contacts and no agent code: shown, none suggested.
+  assert.ok(rankHoldedContacts(contacts, { partner: { name: "TFS First Excursions", island: "Tenerife", taxId: "B44798775" } }).every((c) => !c.suggested));
+
+  assert.deepEqual(rankHoldedContacts(contacts, { query: "first ota", partner: { name: "x" } }).map((c) => c.id), ["ota"]);
+  assert.deepEqual(rankHoldedContacts(contacts, { query: "DE 264878256", partner: { name: "x" } }).map((c) => c.id), ["gyg"]);
+  assert.deepEqual(rankHoldedContacts(contacts, { query: "nothing here", partner: { name: "x" } }), []);
+});
+
+test("v2 one contact for the picker: summary with NIF and city; a missing one is null", async () => {
+  globalThis.fetch = async () => json({ id: "6adf857e2cfc69eec2002a84", name: "MTS Incoming SL", trade_name: "MTS Jet2", vat_number: "B-07844764", tags: ["ACE"], bill_address: { city: "Arrecife" } });
+  assert.deepEqual(await new HoldedClient(TOKEN).getContactCandidate("6adf857e2cfc69eec2002a84"), {
+    id: "6adf857e2cfc69eec2002a84", name: "MTS Incoming SL", tradeName: "MTS Jet2", tags: ["ACE"], nif: "B-07844764", city: "Arrecife",
+  });
+  globalThis.fetch = async () => json({ message: "Not found" }, 404);
+  assert.equal(await new HoldedClient(TOKEN).getContactCandidate("6adf857e2cfc69eec2002a84"), null);
+  assert.equal(await new HoldedClient(TOKEN).getContactCandidate("../contacts"), null);
 });

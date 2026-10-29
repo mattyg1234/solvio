@@ -25,6 +25,7 @@ import {
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 
 function Field({
   label,
@@ -81,6 +82,7 @@ export default async function MasterDataPage({
     tab?: string;
     saved?: string;
     created?: string;
+    open?: string;
     error?: string;
   }>;
 }) {
@@ -104,6 +106,7 @@ export default async function MasterDataPage({
   const created = /^[0-9a-f-]{36}$/i.test(sp.created ?? "")
     ? sp.created
     : undefined;
+  const openId = /^[0-9a-f-]{36}$/i.test(sp.open ?? "") ? sp.open : undefined;
   const ctx = await requireShowOpsPage(
     tab === "partners"
       ? "partners"
@@ -212,6 +215,9 @@ export default async function MasterDataPage({
       if (!data || data.length < 500) break;
     }
   }
+
+  // The partner card's Holded contact picker only shows when Holded is connected.
+  const holdedConnected = tab === "partners" ? (await loadHoldedConnection(ctx)).connected : false;
 
   // Per-partner sales for the list rows — aggregated in SQL, never row-fetched.
   const statsYear = new Date().getUTCFullYear();
@@ -380,8 +386,10 @@ export default async function MasterDataPage({
             partnerTypes={ctx.config.partner_types}
             islands={islands}
             rates={(rates ?? []) as never}
-            suppliers={pinCreated((suppliers ?? []) as never, created)}
+            suppliers={pinCreated((suppliers ?? []) as never, created ?? openId)}
             highlightId={created}
+            openId={openId}
+            holdedConnected={holdedConnected}
             stats={supplierStats}
             statsLabel={String(statsYear)}
             currency={ctx.config.currency}

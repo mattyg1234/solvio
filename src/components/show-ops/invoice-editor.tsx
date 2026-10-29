@@ -124,7 +124,8 @@ export function InvoiceEditor({
         <label className="text-xs font-medium text-slate-600">
           Payment terms
           <select name="payment_terms_days" defaultValue={paymentTermsDays} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm">
-            {[7, 15, 30, 45, 60, 90].map((d) => (
+            {/* The partner's own days (e.g. Get Your Guide's 14) stay selectable alongside the usual ones. */}
+            {[...new Set([7, 15, 30, 45, 60, 90, paymentTermsDays])].sort((a, b) => a - b).map((d) => (
               <option key={d} value={d}>
                 {d} days
               </option>

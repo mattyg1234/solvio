@@ -76,11 +76,12 @@ export async function buildShowOpsDigestForBusiness(
         .eq("show_date", today)
         .eq("transport_required", true)
         .is("cancelled_at", null),
-      // Unpaid, not voided, past due as of this morning — the chase list.
+      // Issued, unpaid, not voided, past due as of this morning — the chase list. Drafts were never sent, so nobody owes them yet.
       admin
         .from("show_invoices")
         .select("id,supplier_name,invoice_number,verifactu_number,total_amount,currency,due_date")
         .eq("business_id", b.id)
+        .eq("status", "issued")
         .eq("paid", false)
         .eq("voided", false)
         .lt("due_date", today)
