@@ -97,6 +97,18 @@ test("prices include IGIC: a line still saved with IGIC on top is refused, not s
   assert.equal(holdedInvoiceFromPack(pack, [{ ...stale, net_total: 32.06 }], "c1", () => IGIC_7, TAXES, { pricesIncludeTax: true }).items[0].subtotal, 32.06);
 });
 
+test("a booking with nobody left to bill (0 pax, €0) is left off the Holded invoice", () => {
+  const zero = { description: "cummings · MHT-317002", guest_name: "cummings", adults: 0, children: 0, quantity: 0, unit_price: 0, vat_rate: 7, net_total: 0 };
+  const paid = { description: "Baker · MHT-317583", guest_name: "Baker", adults: 2, adult_unit_price: 34.3, vat_rate: 7, net_total: 64.11 };
+  const items = holdedItemsFromLines([zero, paid, zero], () => IGIC_7, TAXES, "MHT Lanzarote", true);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].subtotal, 64.11);
+  // Lines without a quantity still default to one unit, and free tickets still go over at €0.
+  assert.equal(holdedItemsFromLines([{ description: "Extra", unit_price: 5, vat_rate: 7 }], () => IGIC_7, TAXES)[0].units, 1);
+  assert.equal(holdedItemsFromLines([{ description: "Comp", adults: 2, quantity: 2, unit_price: 0, vat_rate: 7 }], () => IGIC_7, TAXES)[0].units, 2);
+  assert.throws(() => holdedItemsFromLines([zero], () => IGIC_7, TAXES), /charges nothing/);
+});
+
 test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
   const items = holdedItemsFromLines(
     [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],

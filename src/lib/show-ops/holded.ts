@@ -336,6 +336,8 @@ export function holdedItemsFromLines(
 ): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
+    // A booking with nobody left to bill (0 pax, 0 units) charges nothing, and Holded refuses a line with no units.
+    if (Math.trunc(n(l.adults)) <= 0 && Math.trunc(n(l.children)) <= 0 && l.quantity != null && n(l.quantity) === 0) continue;
     const rate = strictMoney(l.vat_rate ?? 0, "line tax rate");
     if (rate < 0) throw new Error("Line tax rate cannot be negative.");
     const key = requireHoldedIgicTaxKey(taxes, rate, taxForRate(rate));
@@ -376,6 +378,7 @@ export function holdedItemsFromLines(
     }
     out.push({ name: base, desc, units, subtotal: unit, ...tax });
   }
+  if (lines.length && !out.length) throw new Error("This invoice charges nothing, so there is nothing to send to Holded.");
   return out;
 }
 
