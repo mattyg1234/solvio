@@ -25,13 +25,16 @@ function ContactLine({ c }: { c: HoldedContactCandidate }) {
   );
 }
 
+/** Links made on this page since it loaded, so a card closed and reopened shows them, not the page's first read. */
+const linkedThisVisit = new Map<string, string | null>();
+
 /**
  * Which Holded contact this partner's invoices land on. Joel's Holded keeps one contact per island for the big
  * agents (and one per agent code for First Excursions), so the office picks the right one here once, instead of
  * the send stopping to ask. Lives inside the partners form, so it uses buttons, never a nested form.
  */
 export function PartnerHoldedLink({ supplierId, linkedId: initialLinkedId }: { supplierId: string; linkedId: string | null }) {
-  const [linkedId, setLinkedId] = useState(initialLinkedId);
+  const [linkedId, setLinkedId] = useState(linkedThisVisit.has(supplierId) ? (linkedThisVisit.get(supplierId) ?? null) : initialLinkedId);
   const [linked, setLinked] = useState<HoldedContactCandidate | null>(null);
   const [candidates, setCandidates] = useState<RankedHoldedContact[] | null>(null);
   const [query, setQuery] = useState("");
@@ -46,6 +49,7 @@ export function PartnerHoldedLink({ supplierId, linkedId: initialLinkedId }: { s
       void call()
         .then((r) => {
           if (!r.ok) return setNotice({ ok: false, text: r.message });
+          linkedThisVisit.set(supplierId, r.linkedId);
           setLinkedId(r.linkedId);
           setLinked(r.linked);
           if (r.candidates) setCandidates(r.candidates);

@@ -785,7 +785,8 @@ export async function linkHoldedContactAction(supplierId: string, contactId: str
     .limit(5);
   const shared = (others ?? []).map((o) => o.name).filter(Boolean);
   const note = [nifNote(partner, contact), shared.length ? `Also linked to: ${shared.join(", ")}.` : ""].filter(Boolean).join(" ") || undefined;
-  revalidatePath("/dashboard/show-ops/master");
+  // No revalidatePath: refreshing the Partners page remounted the card and wiped the confirmation and NIF warning.
+  // The page is dynamic, so the next visit reads the new link anyway.
   return { ok: true, linkedId: contact.id, linked: contact, note };
 }
 
@@ -800,6 +801,5 @@ export async function unlinkHoldedContactAction(supplierId: string): Promise<Hol
     .eq("id", partner.id)
     .eq("business_id", ctx.business.id);
   if (error) return { ok: false, message: error.message };
-  revalidatePath("/dashboard/show-ops/master");
   return { ok: true, linkedId: null, linked: null };
 }
