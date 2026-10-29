@@ -124,6 +124,11 @@ export function approvalForRate(approvals: Record<string, HoldedIgicTaxApproval>
   return approvals[rateKey(rate)] ?? null;
 }
 
+/** Whether a stored approval is this Holded tax: same id, or same key after Holded re-issued the id. */
+export function approvalMatches(approval: HoldedIgicTaxApproval | null | undefined, tax: Pick<HoldedTax, "id" | "key">): boolean {
+  return Boolean(approval) && (approval!.id === tax.id || approval!.key === tax.key);
+}
+
 /** Turn an approved Holded tax into the stored approval shape; refuses anything that is not IGIC on sales. */
 export function approvalFromTax(tax: HoldedTax): HoldedIgicTaxApproval | null {
   if (!tax.id || tax.legalTreatment !== "igic" || (tax.scope ?? "sales") !== "sales") return null;
@@ -244,7 +249,9 @@ export function requireHoldedIgicTaxKey(taxes: HoldedTax[], rate: number, approv
   const id = requiredString(approval.id, "approved Holded tax id");
   const key = requiredString(approval.key, "approved Holded tax key");
   const wanted = moneyCents(rate, "tax rate");
-  const match = taxes.find((tax) => tax.id === id && tax.key === key);
+  // Holded can give an account's tax a new id (MHT's IGIC 7% went from "s_igic_7" to an ObjectId on 27 Oct 2026);
+  // the key is stable, so an approval still holds for the same key. Rate and treatment are checked below either way.
+  const match = taxes.find((tax) => tax.id === id && tax.key === key) ?? taxes.find((tax) => tax.key === key);
   if (approval.legalTreatment !== "igic" || approval.category !== "sales" || !match || match.legalTreatment !== "igic" || match.category !== "sales" || match.scope !== "sales" || moneyCents(match.amount, "Holded tax rate") !== wanted || moneyCents(approval.rate, "approved tax rate") !== wanted) {
     throw new Error(`Approved Holded tax ${key} does not match the required IGIC sales treatment at ${strictMoney(rate, "tax rate")}%`);
   }
@@ -485,6 +492,47 @@ function strictMoney(value: unknown, label: string): number {
   return parsed;
 }
 
+/** A value's type and, for short strings, the value itself: enough to see a format change, never a name. */
+function shapeOf(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "string") return `string "${value.slice(0, 24)}"`;
+  if (typeof value === "object") return `object {${Object.keys(value as object).slice(0, 6).join(",")}}`;
+  return typeof value;
+}
+
+/**
+ * v2 amounts are documented as decimal strings ("100.00"). Also take a number, a
+ * decimal comma ("3938,96"), grouped thousands ("3,938.96" / "3.938,96") and an
+ * { amount } / { value } wrapper, so a formatting change never blocks the read-back.
+ */
+function v2Money(value: unknown, label: string): number {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    if (o.amount != null) return v2Money(o.amount, label);
+    if (o.value != null) return v2Money(o.value, label);
+  }
+  if (typeof value === "string") {
+    let s = value.trim().replace(/[\s€]/g, "");
+    const comma = s.lastIndexOf(",");
+    const dot = s.lastIndexOf(".");
+    if (comma > dot) s = s.replace(/\./g, "").replace(",", ".");
+    else if (comma !== -1) s = s.replace(/,/g, "");
+    if (/^-?\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  } else if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw new Error(`Holded returned malformed ${label} (${shapeOf(value)}).`);
+}
+
+function v2MoneyOrNull(value: unknown): number | null {
+  try {
+    return value == null ? null : v2Money(value, "amount");
+  } catch {
+    return null;
+  }
+}
+
 function moneyCents(value: unknown, label: string): number {
   const raw = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : "";
   if (!/^-?\d+(?:\.\d+)?$/.test(raw)) { strictMoney(value, label); throw new Error(`Holded returned malformed ${label}.`); }
@@ -614,7 +662,8 @@ export function mergeHoldedV2Contact(current: Record<string, unknown>, c: Holded
     "client_record", "supplier_record", "iban", "swift", "sepa_ref", "sepa_date", "bill_address", "tags", "custom_fields", "defaults",
   ];
   const out: Record<string, unknown> = {};
-  for (const k of editable) if (current[k] !== undefined && current[k] !== null) out[k] = current[k];
+  // Holded returns blanks as "" but refuses some of them back (an update whose email has no valid address is a 400).
+  for (const k of editable) if (current[k] !== undefined && current[k] !== null && current[k] !== "") out[k] = current[k];
   // Accounting records come back as objects; the update takes the account number only.
   for (const k of ["client_record", "supplier_record"]) {
     const v = out[k];
@@ -630,7 +679,8 @@ export function mergeHoldedV2Contact(current: Record<string, unknown>, c: Holded
     out.code = c.code;
   }
   if (c.email) out.email = c.email;
-  if (c.tradeName) out.trade_name = c.tradeName;
+  // A trade name the office set in Holded stays; the Hub's partner name only fills a blank one.
+  if (c.tradeName && !out.trade_name) out.trade_name = c.tradeName;
   if (c.isPerson != null) out.is_person = c.isPerson;
   if (!out.type) out.type = c.type ?? "client";
   const bill = holdedV2BillAddress(c);
@@ -658,14 +708,27 @@ export function summariseHoldedV2Document(raw: unknown): HoldedDocumentSummary {
   }
   if (draft && approvedAt !== null) throw new Error("Holded returned an approved timestamp for a draft document.");
   if (!draft && docNumber === null) throw new Error("Holded returned an approved document without a document number.");
-  const net = strictMoney(d.subtotal, "document net");
-  const tax = strictMoney(d.tax, "document tax");
-  const total = strictMoney(d.total, "document total");
-  const pending = d.payments_pending == null ? total : strictMoney(d.payments_pending, "document pending total");
+  let net: number, tax: number, total: number, pending: number;
+  try {
+    tax = v2Money(d.tax, "document tax");
+    total = v2Money(d.total, "document total");
+    // subtotal is "before tax and discounts"; the Hub never sends discounts, so a missing one is total minus tax.
+    net = d.subtotal == null && !Number(v2MoneyOrNull(d.discount)) ? Math.round((total - tax) * 100) / 100 : v2Money(d.subtotal, "document net");
+    pending = d.payments_pending == null ? total : v2Money(d.payments_pending, "document pending total");
+  } catch (err) {
+    // The only window on what Holded actually sent: field names and value types, no names or contact data.
+    console.error("[holded] unexpected v2 document amounts", JSON.stringify({ keys: Object.keys(d), subtotal: shapeOf(d.subtotal), tax: shapeOf(d.tax), total: shapeOf(d.total), discount: shapeOf(d.discount), payments_pending: shapeOf(d.payments_pending) }));
+    throw err;
+  }
   if (d.status != null && !["failed", "completed", "pending", "partial", "cancelled", "overdue", "outstanding"].includes(String(d.status))) {
     throw new Error("Holded returned a malformed document status.");
   }
   const status: HoldedDocumentSummary["status"] = draft ? "draft" : moneyCents(pending, "document pending total") === 0 ? "paid" : "approved";
+  if (draft && Array.isArray(d.lines)) {
+    // Which tax Holded actually put on the lines (rates and tax ids only), so a dropped IGIC shows up in the logs.
+    const seen = new Set(d.lines.map((l) => (l && typeof l === "object" ? `${String((l as Record<string, unknown>).tax ?? "")}%[${String((l as Record<string, unknown>).taxes ?? "")}]` : "?")));
+    console.info(`[holded] draft ${id} tax ${tax} on ${d.lines.length} lines: ${[...seen].slice(0, 5).join(" ")}`);
+  }
   return { id, docNumber, draft, status, net, tax, total, paymentsPending: pending, approvedAt };
 }
 
@@ -818,7 +881,11 @@ export class HoldedClient {
       cache: "no-store",
     });
     const text = await res.text();
-    if (!res.ok) throw new HoldedApiError(res.status, text, path);
+    if (!res.ok) {
+      // Holded's refusal reason, so a rejected write is never silent. The token is in the headers, never in the path or body.
+      console.error(`[holded] ${method} ${path.split("?")[0]} → ${res.status}: ${text.slice(0, 500)}`);
+      throw new HoldedApiError(res.status, text, path);
+    }
     if (!text) return undefined as T;
     try {
       return JSON.parse(text) as T;
@@ -943,7 +1010,9 @@ export class HoldedClient {
       }
       return true;
     } catch (e) {
-      if (e instanceof HoldedApiError && (e.status === 404 || e.status === 400)) return false;
+      if (e instanceof HoldedApiError && e.status === 404) return false;
+      // A refused update used to read as "contact gone", so the invoice went out with Holded's stale address. Say why instead.
+      if (e instanceof HoldedApiError && e.status === 400) throw new Error(`Holded refused the update to ${input.name}'s contact: ${e.body.slice(0, 300)}`);
       throw e;
     }
   }

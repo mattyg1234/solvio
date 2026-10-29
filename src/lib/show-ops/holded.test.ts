@@ -10,6 +10,7 @@ import {
   holdedTag,
   pickHoldedTaxKey,
   requireHoldedIgicTaxKey,
+  approvalMatches,
   summariseHoldedDocument,
   unixDay,
 } from "./holded";
@@ -39,6 +40,16 @@ test("explicit IGIC mapping fails closed when absent, wrong-scope, wrong-rate, o
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...IGIC_7, id: "pigic7", key: "p_igic_7" }), /does not match/);
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...IGIC_7, id: "iva7", key: "s_iva_7" }), /does not match/);
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 21, IGIC_7), /does not match/);
+});
+
+test("an approval survives Holded re-issuing the tax id (same key), but not a different key", () => {
+  // MHT's approval was saved as id "s_igic_7"; Holded later listed the same tax under an ObjectId.
+  const stale = { ...IGIC_7, id: "s_igic_7" };
+  assert.equal(requireHoldedIgicTaxKey(TAXES, 7, stale), "s_igic_7");
+  assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...stale, key: "s_igic_bu_7" }), /does not match/);
+  assert.equal(approvalMatches(stale, { id: "igic7", key: "s_igic_7" }), true);
+  assert.equal(approvalMatches(stale, { id: "other", key: "s_igic_art_7" }), false);
+  assert.equal(approvalMatches(null, { id: "igic7", key: "s_igic_7" }), false);
 });
 
 test("tags survive Holded's punctuation stripping", () => {
@@ -123,7 +134,8 @@ test("manual line requires a configured and validated IGIC sales tax key", () =>
   const items = holdedItemsFromLines(line, () => IGIC_7, TAXES);
   assert.deepEqual(items, [{ name: "Bus supplement", desc: "Sept", units: 3, subtotal: 4.5, taxes: ["s_igic_7"] }]);
   assert.throws(() => holdedItemsFromLines(line, () => null, TAXES), /No approved Canary\/IGIC/);
-  assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "missing" }), TAXES), /does not match/);
+  // A stale id with the same key is the same tax (Holded re-issues ids); the key decides.
+  assert.deepEqual(holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "missing" }), TAXES), items);
   assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "iva7", key: "s_iva_7" }), TAXES), /does not match/);
   assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "pigic7", key: "p_igic_7" }), TAXES), /does not match/);
   assert.throws(() => holdedItemsFromLines(line, () => IGIC_7), /does not match/);

@@ -1,5 +1,5 @@
 import type { ShowOpsContext } from "@/lib/show-ops/access";
-import { HoldedClient, holdedErrorMessage, parseIgicApprovals, rateKey, type HoldedInvoiceListRow } from "@/lib/show-ops/holded";
+import { approvalMatches, HoldedClient, holdedErrorMessage, parseIgicApprovals, rateKey, type HoldedInvoiceListRow } from "@/lib/show-ops/holded";
 import { decryptSecret } from "@/lib/show-ops/secrets";
 
 export type HoldedConnection = {
@@ -48,7 +48,7 @@ export async function listHoldedIgicTaxes(ctx: ShowOpsContext): Promise<{ taxes:
     const approvals = parseIgicApprovals(data.meta);
     const taxes = (await client.listTaxes())
       .filter((t) => Boolean(t.id) && t.legalTreatment === "igic" && (t.scope ?? "sales") === "sales")
-      .map((t) => ({ id: t.id as string, key: t.key, name: t.name, rate: Math.round(t.amount * 100) / 100, approved: approvals[rateKey(t.amount)]?.id === t.id }))
+      .map((t) => ({ id: t.id as string, key: t.key, name: t.name, rate: Math.round(t.amount * 100) / 100, approved: approvalMatches(approvals[rateKey(t.amount)], t) }))
       .sort((a, b) => a.rate - b.rate);
     return { taxes, error: null };
   } catch (err) {

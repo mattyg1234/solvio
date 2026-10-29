@@ -7,6 +7,7 @@ import {
   holdedV2DocumentBody,
   holdedV2Page,
   isHoldedV2Token,
+  mergeHoldedV2Contact,
   normaliseHoldedV2Tax,
   summariseHoldedV2Document,
   type HoldedInvoiceInput,
@@ -98,6 +99,32 @@ test("v2 read-back: draft vs issued, legal number required once issued", () => {
   assert.throws(() => summariseHoldedV2Document(v2Draft({ approved_at: "2026-10-15T13:00:00" })), /approved timestamp for a draft/);
   assert.throws(() => summariseHoldedV2Document(v2Draft({ draft: undefined })), /draft flag/);
   assert.throws(() => summariseHoldedV2Document(v2Draft({ total: "abc" })), /malformed/);
+});
+
+test("v2 read-back takes the amount formats Holded may send, and says what it got when it can't", () => {
+  const pick = (d: ReturnType<typeof summariseHoldedV2Document>) => [d.net, d.tax, d.total];
+  assert.deepEqual(pick(summariseHoldedV2Document(v2Draft({ subtotal: 3938.96, tax: 0, total: 3938.96, payments_pending: 3938.96 }))), [3938.96, 0, 3938.96]);
+  assert.deepEqual(pick(summariseHoldedV2Document(v2Draft({ subtotal: "3938,96", tax: "275,73", total: "4214,69", payments_pending: "4214,69" }))), [3938.96, 275.73, 4214.69]);
+  assert.deepEqual(pick(summariseHoldedV2Document(v2Draft({ subtotal: "3,938.96", tax: "275.73", total: "4,214.69", payments_pending: "4.214,69" }))), [3938.96, 275.73, 4214.69]);
+  assert.deepEqual(pick(summariseHoldedV2Document(v2Draft({ subtotal: { amount: "3938.96" }, tax: "275.73", total: "4214.69", payments_pending: "4214.69" }))), [3938.96, 275.73, 4214.69]);
+  // No subtotal and no discount: net is total minus tax.
+  assert.deepEqual(pick(summariseHoldedV2Document(v2Draft({ subtotal: undefined, tax: "275.73", total: "4214.69", payments_pending: "4214.69" }))), [3938.96, 275.73, 4214.69]);
+  assert.throws(() => summariseHoldedV2Document(v2Draft({ subtotal: undefined, discount: "10", tax: "1", total: "2" })), /document net \(undefined\)/);
+  assert.throws(() => summariseHoldedV2Document(v2Draft({ total: null })), /document total \(null\)/);
+});
+
+test("v2 contact merge: Holded's blank fields are not sent back, and the office's trade name stays", () => {
+  const input = { name: "Get Your Guide Deutschland GmbH", tradeName: "ACE Get Your Guide", code: "DE276456081", email: null, address: "Sonnenburger Strasse 73", postalCode: "10437", city: "Berlin", province: null, countryCode: "DE", isPerson: null, type: "client" as const, tags: ["solvio"] };
+  const out = mergeHoldedV2Contact({ name: "Get Your Guide", trade_name: "Get Your Guide", email: "", phone: "", sepa_date: "", tags: ["ACE"], defaults: { due_days: 30 } }, input);
+  assert.equal("email" in out, false, "an empty email makes Holded refuse the whole update");
+  assert.equal("phone" in out, false);
+  assert.equal("sepa_date" in out, false);
+  assert.equal(out.trade_name, "Get Your Guide");
+  assert.equal(out.name, "Get Your Guide Deutschland GmbH");
+  assert.deepEqual(out.bill_address, { address: "Sonnenburger Strasse 73", postal_code: "10437", city: "Berlin", country_code: "DE" });
+  assert.deepEqual(out.defaults, { due_days: 30 });
+  assert.deepEqual(out.tags, ["ACE", "solvio"]);
+  assert.equal(mergeHoldedV2Contact({ name: "x" }, input).trade_name, "ACE Get Your Guide", "a blank trade name is filled");
 });
 
 test("v2 pages: items + cursor only when has_more", () => {
@@ -197,4 +224,15 @@ test("v2 contacts: exact name match from the prefix search; create sends vat_num
   assert.deepEqual(await client.findContactByCode("b12345678"), { id: "z" });
   assert.deepEqual(await client.createContact({ name: "Hotel Sol", code: "B1", address: "Calle 1", type: "supplier" }), { id: "new" });
   assert.deepEqual(seen.at(-1)?.body, { name: "Hotel Sol", type: "supplier", tags: [], vat_number: "B1", code: "B1", bill_address: { address: "Calle 1" } });
+});
+
+test("v2 contact sync: a refused update says why instead of passing as 'contact gone'", async () => {
+  const input = { name: "Get Your Guide Deutschland GmbH", code: "DE276456081", address: "Sonnenburger Strasse 73", postalCode: "10437", city: "Berlin", countryCode: "DE", type: "client" as const, tags: ["solvio"] };
+  globalThis.fetch = async (_url, init) =>
+    String(init?.method) === "GET"
+      ? new Response(JSON.stringify({ id: "6adf857d2cfc69eec2002a78", name: "Get Your Guide" }), { status: 200 })
+      : new Response(JSON.stringify({ error: "email: no valid address" }), { status: 400 });
+  await assert.rejects(new HoldedClient(TOKEN).syncContact("6adf857d2cfc69eec2002a78", input), /Holded refused the update to Get Your Guide Deutschland GmbH's contact: .*no valid address/);
+  globalThis.fetch = async () => new Response("{}", { status: 404 });
+  assert.equal(await new HoldedClient(TOKEN).syncContact("6adf857d2cfc69eec2002a78", input), false);
 });
