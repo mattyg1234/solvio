@@ -5,6 +5,8 @@ import {
   HoldedClient,
   HoldedReconciliationRequiredError,
   holdedV2DocumentBody,
+  pickHoldedContact,
+  taxIdKey,
   holdedV2Page,
   isHoldedV2Token,
   mergeHoldedV2Contact,
@@ -273,4 +275,62 @@ test("v2 replace draft: never touches an approved invoice or a draft Solvio did 
   serve(v2Draft({ notes: "[solvio-operation:invoice:pack-0002]" }));
   await assert.rejects(new HoldedClient(TOKEN).replaceInvoiceDraft("507f1f77bcf86cd799439011", invoice, { reference: "invoice:pack-0001" }), /not made by Solvio/);
   assert.equal(puts, 0);
+});
+
+test("contacts: one business per island or agent in Holded → the partner's own contact, never a guess", () => {
+  const gyg = (id: string, tag: string) => ({ id, name: "Get Your Guide Deutschland GmbH", tradeName: "Get Your Guide", tags: [tag] });
+  const gygs = [gyg("ace", "ACE"), gyg("tfs", "TFS"), gyg("lpa", "LPA")];
+  // LPA partners carry island "ALL" in the Hub; the name prefix says which office.
+  assert.equal(pickHoldedContact(gygs, { name: "LPA Get Your Guide", island: "ALL" })?.id, "lpa");
+  assert.equal(pickHoldedContact(gygs, { name: "ACE Get Your Guide", island: "Lanzarote" })?.id, "ace");
+  assert.equal(pickHoldedContact([gyg("ace", "ace"), { ...gyg("x", "solvio"), tags: ["solvio", "islandtenerife"] }], { name: "TFS Get Your Guide - INVOICE", island: "Tenerife" })?.id, "x");
+
+  const fe = (id: string, code: string, tag = "TFS") => ({ id, name: "First Excursions Canary Islands SL", tradeName: `First Excursions - ${code}`, tags: [tag] });
+  const firsts = [fe("cs", "CS"), fe("fb", "FB"), fe("gc", "GC", "LPA"), fe("gm", "GM"), fe("ota", "OTA"), fe("ote", "OTE")];
+  assert.equal(pickHoldedContact(firsts, { name: "TFS First Excursions -FB - INVOICE", island: "Tenerife" })?.id, "fb");
+  assert.equal(pickHoldedContact(firsts, { name: "TFS First Excursions -OTA - INVOICE", island: "Tenerife" })?.id, "ota");
+  assert.equal(pickHoldedContact(firsts, { name: "LPA First Excursions - GC - INVOICE", island: "ALL" })?.id, "gc");
+  assert.throws(() => pickHoldedContact(firsts, { name: "TFS First Excursions", island: "Tenerife" }), /5 contacts .*will not guess/);
+  assert.throws(() => pickHoldedContact(gygs, { name: "Get Your Guide", island: null }), /3 contacts/);
+
+  assert.equal(pickHoldedContact([gyg("only", "ACE")], { name: "LPA Get Your Guide", island: "ALL" })?.id, "only");
+  assert.equal(pickHoldedContact([], { name: "x" }), null);
+});
+
+test("contacts: NIF compared on letters and digits; 'Online' is no NIF", () => {
+  assert.equal(taxIdKey("B-07844764"), "B07844764");
+  assert.equal(taxIdKey("ESB07844764"), "B07844764");
+  assert.equal(taxIdKey(" nl853573876b01 "), "NL853573876B01");
+  assert.equal(taxIdKey("Online"), "");
+  assert.equal(taxIdKey(null), "");
+});
+
+test("v2 contacts by NIF: every contact with it, hyphens ignored", async () => {
+  globalThis.fetch = async () => json({ items: [
+    { id: "a", name: "MTS Incoming SL", trade_name: "MTS Jet2", vat_number: "B-07844764", tags: ["ACE"] },
+    { id: "b", name: "MTS Incoming SL", trade_name: "MTS Jet2", vat_number: "B-07844764", tags: ["TFS"] },
+    { id: "c", name: "Other", vat_number: "B11111111", tags: [] },
+  ], has_more: false });
+  const hits = await new HoldedClient(TOKEN).contactsByCode("B07844764");
+  assert.deepEqual(hits.map((h) => h.id), ["a", "b"]);
+  assert.equal(pickHoldedContact(hits, { name: "TFS Jet2/MTS - INVOICE", island: "Tenerife" })?.id, "b");
+});
+
+test("v2 contact sync: never overwrites a different NIF the office keeps in Holded", async () => {
+  const input = { name: "Admiral Excursion Point SC", code: "J22621213", type: "client" as const, tags: ["solvio"] };
+  let puts = 0;
+  const serve = (vat: string) => {
+    globalThis.fetch = async (_url, init) => {
+      if (init?.method === "PUT") { puts += 1; return json({}); }
+      return json({ id: "6adf8585f66d5bb7ae0bf182", name: "Admiral Excursion Point SC", vat_number: vat });
+    };
+  };
+  serve("J22221213");
+  await assert.rejects(new HoldedClient(TOKEN).syncContact("6adf8585f66d5bb7ae0bf182", input), /Holded has NIF J22221213 .* the Hub has J22621213/);
+  assert.equal(puts, 0);
+  serve("J-22621213");
+  assert.equal(await new HoldedClient(TOKEN).syncContact("6adf8585f66d5bb7ae0bf182", input), true);
+  serve("Online");
+  assert.equal(await new HoldedClient(TOKEN).syncContact("6adf8585f66d5bb7ae0bf182", input), true);
+  assert.equal(puts, 2);
 });

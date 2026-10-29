@@ -16,6 +16,7 @@ import {
   holdedErrorMessage,
   holdedInvoiceFromPack,
   parseIgicApprovals,
+  pickHoldedContact,
   rateKey,
   holdedItemsFromLines,
   unixDay,
@@ -220,7 +221,11 @@ async function ensureHoldedContact(
     // Gone from Holded (deleted, or it belonged to another Holded company): find or create it again.
     await remember(null);
   }
-  const existing = (input.code ? await client.findContactByCode(input.code) : null) ?? (await client.findContactByName(input.name));
+  // One business can have a Holded contact per island (or per agent): pick the partner's own, or stop rather than guess.
+  const partner = { name: supplier?.name ?? fallbackName, island: supplier?.island ?? null };
+  const existing =
+    (input.code ? pickHoldedContact(await client.contactsByCode(input.code), partner) : null) ??
+    pickHoldedContact(await client.contactsByName(input.name), partner);
   if (existing) {
     await client.syncContact(existing.id, input);
     await remember(existing.id);
