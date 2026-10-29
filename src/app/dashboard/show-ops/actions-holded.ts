@@ -222,7 +222,7 @@ async function ensureHoldedContact(
   }
   const existing = (input.code ? await client.findContactByCode(input.code) : null) ?? (await client.findContactByName(input.name));
   if (existing) {
-    await client.syncContact(existing.id, input).catch(() => false);
+    await client.syncContact(existing.id, input);
     await remember(existing.id);
     return existing.id;
   }
