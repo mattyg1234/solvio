@@ -9,7 +9,7 @@ export function bookingExtrasSummary(raw: unknown): string {
 /** Separate invoice rows preserve the agreed extra charge without unit division rounding. */
 export function invoiceSupplements(input: {
   extras: unknown; infantNett: number; infants: number; booked: number;
-  missing: number; writeOff: boolean; vatRate: number;
+  missing: number; writeOff: boolean; vatRate: number; pricesIncludeTax?: boolean;
 }): Array<{ description: string; money: RecalcInvoiceLineResult }> {
   const ratio = input.writeOff && input.booked > 0 ? Math.max(0, (input.booked - input.missing) / input.booked) : 1;
   const charges: Array<{ description: string; amount: number }> = [];
@@ -22,5 +22,5 @@ export function invoiceSupplements(input: {
       charges.push({ description: `${line.name} × ${Number(line.quantity)}`, amount: Number(line.nett_total) });
     }
   }
-  return charges.map((charge) => ({ description: charge.description, money: recalcInvoiceLine({ quantity: 1, unitPrice: charge.amount * ratio, vatRate: input.vatRate }) }));
+  return charges.map((charge) => ({ description: charge.description, money: recalcInvoiceLine({ quantity: 1, unitPrice: charge.amount * ratio, vatRate: input.vatRate, pricesIncludeTax: input.pricesIncludeTax }) }));
 }

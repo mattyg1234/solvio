@@ -294,7 +294,9 @@ async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client:
       taxId: inv.recipient_tax_id,
       address: inv.recipient_address,
     });
-    payload = holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes);
+    payload = holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes, {
+      pricesIncludeTax: ctx.config.invoice.pricesIncludeTax,
+    });
   } catch (err) {
     return { outcome: "error", message: safeMessage(err) };
   }

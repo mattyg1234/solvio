@@ -12,6 +12,8 @@ export type RecalcInvoiceLineInput = {
   quantity?: number;
   unitPrice?: number;
   vatRate?: number;
+  /** The prices already include the tax (MHT's IGIC): it is taken out of them, not added on top. */
+  pricesIncludeTax?: boolean;
 };
 
 export type RecalcInvoiceLineResult = {
@@ -34,7 +36,26 @@ function n(v: unknown, fallback = 0): number {
   return Number.isFinite(x) ? x : fallback;
 }
 
-/** Line money: booking (adults/children × unit) or extra (qty × unit). VAT is on the net. */
+/**
+ * The net that grows back to a tax-inclusive price once the tax is added on top
+ * and rounded, the way Holded works: €34.30 at 7% → €32.06 + €2.24. A few prices
+ * can't land on the cent that way; those come out a cent under, never over.
+ */
+export function taxBaseFromGross(gross: number, vatRate: number): number {
+  const cents = Math.round(round2(Math.max(0, n(gross))) * 100);
+  const rate = Math.max(0, n(vatRate));
+  if (rate === 0 || cents === 0) return cents / 100;
+  // Same rounding as the tax on a line, all in whole cents.
+  const totalCents = (base: number) => Math.round((base / 100 + round2((base / 100) * (rate / 100))) * 100);
+  let base = Math.round(cents / (1 + rate / 100)) + 2;
+  while (base > 0 && totalCents(base) > cents) base -= 1;
+  return base / 100;
+}
+
+/**
+ * Line money: booking (adults/children × unit) or extra (qty × unit). VAT is on the net;
+ * when prices include the tax, the net is worked back out of them first.
+ */
 export function recalcInvoiceLine(input: RecalcInvoiceLineInput): RecalcInvoiceLineResult {
   const vatRate = Math.max(0, n(input.vatRate));
   const hasBookingUnits =
@@ -62,6 +83,7 @@ export function recalcInvoiceLine(input: RecalcInvoiceLineInput): RecalcInvoiceL
     netTotal = round2(quantity * unitPrice);
   }
 
+  if (input.pricesIncludeTax) netTotal = taxBaseFromGross(netTotal, vatRate);
   const vatAmount = round2(netTotal * (vatRate / 100));
   return {
     adults,

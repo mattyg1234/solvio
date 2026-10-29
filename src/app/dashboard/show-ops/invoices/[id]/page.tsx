@@ -256,6 +256,7 @@ export default async function InvoicePrintPage({
           recipientTaxId={inv.recipient_tax_id || supplier?.tax_id || ""}
           recipientAddress={inv.recipient_address || supplier?.invoice_address || ""}
           defaultVatRate={ctx.config.invoice.defaultVatRate}
+          pricesIncludeTax={ctx.config.invoice.pricesIncludeTax}
           currency={invCurrency}
           lines={(lines ?? []).map((l) => ({
             id: l.id,

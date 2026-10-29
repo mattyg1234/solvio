@@ -89,6 +89,8 @@ export type ShowOpsConfig = {
   invoice: {
     series: string;
     defaultVatRate: number;
+    /** Partner prices already include the tax (MHT: €34.30 includes IGIC), so invoices take it out instead of adding it on top. */
+    pricesIncludeTax: boolean;
     issuerName: string;
     issuerTaxId: string;
     issuerAddress: string;
@@ -122,6 +124,7 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
   invoice: {
     series: "INV",
     defaultVatRate: 7,
+    pricesIncludeTax: false,
     issuerName: "",
     issuerTaxId: "",
     issuerAddress: "",

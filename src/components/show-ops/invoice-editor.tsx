@@ -38,6 +38,7 @@ export function InvoiceEditor({
   recipientTaxId,
   recipientAddress,
   defaultVatRate,
+  pricesIncludeTax = false,
   currency,
   lines: initialLines,
   holdedConnected = false,
@@ -52,6 +53,8 @@ export function InvoiceEditor({
   recipientTaxId: string;
   recipientAddress: string;
   defaultVatRate: number;
+  /** Prices already include the tax, so Net is worked back out of them. */
+  pricesIncludeTax?: boolean;
   currency: ShowOpsCurrency;
   lines: InvoiceEditorLine[];
   /** Holded is connected, so issuing can send the invoice straight on. */
@@ -67,17 +70,18 @@ export function InvoiceEditor({
       lines.map((l) => {
         const row =
           l.line_kind === "manual"
-            ? recalcInvoiceLine({ quantity: l.quantity, unitPrice: l.unit_price, vatRate: l.vat_rate })
+            ? recalcInvoiceLine({ quantity: l.quantity, unitPrice: l.unit_price, vatRate: l.vat_rate, pricesIncludeTax })
             : recalcInvoiceLine({
                 adults: l.adults,
                 children: l.children,
                 adultUnit: l.adult_unit_price,
                 childUnit: l.child_unit_price,
                 vatRate: l.vat_rate,
+                pricesIncludeTax,
               });
         return { ...l, row };
       }),
-    [lines],
+    [lines, pricesIncludeTax],
   );
   const totals = sumInvoiceLines(computed.map((c) => c.row));
 
@@ -155,7 +159,7 @@ export function InvoiceEditor({
             <tr>
               <th className="py-1 pr-2">Concept</th>
               <th className="py-1 pr-2">Units / pax</th>
-              <th className="py-1 pr-2">Price (adult / child)</th>
+              <th className="py-1 pr-2">Price (adult / child){pricesIncludeTax ? " incl. tax" : ""}</th>
               <th className="py-1 pr-2">Tax %</th>
               <th className="py-1 pr-2 text-right">Net</th>
               <th className="py-1 pr-2 text-right">Tax</th>

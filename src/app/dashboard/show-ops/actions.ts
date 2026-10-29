@@ -548,6 +548,10 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
         const v = Number(formData.get("invoice_vat_rate"));
         return Number.isFinite(v) && v >= 0 ? v : ctx.config.invoice.defaultVatRate;
       })(),
+      pricesIncludeTax: (() => {
+        const v = String(formData.get("invoice_prices_include_tax") ?? "");
+        return v === "1" ? true : v === "0" ? false : ctx.config.invoice.pricesIncludeTax;
+      })(),
       issuerName: String(formData.get("invoice_issuer_name") ?? "").trim(),
       issuerTaxId: String(formData.get("invoice_issuer_tax_id") ?? "").trim(),
       issuerAddress: String(formData.get("invoice_issuer_address") ?? "").trim(),
@@ -3348,6 +3352,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       adultUnit: adults > 0 ? round2(billed.billedAdultNett / adults) : 0,
       childUnit: children > 0 ? round2(billed.billedChildNett / children) : 0,
       vatRate,
+      pricesIncludeTax: invoiceCfg.pricesIncludeTax,
     });
     return {
       business_id: ctx.business.id,
@@ -3377,6 +3382,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     extras: b.extras_snapshot, infantNett: Number(b.infant_nett_total || 0), infants: Number(b.infants),
     booked: paxTotal(Number(b.adults), Number(b.children), Number(b.infants)),
     missing: billed.missing, writeOff: billed.charge === "write_off", vatRate,
+    pricesIncludeTax: invoiceCfg.pricesIncludeTax,
   }).map(({ description, money }) => ({
     business_id: ctx.business.id, invoice_id: inv.id, booking_id: null, source_booking_id: b.id,
     booking_ref: b.booking_ref, guest_name: b.guest_name, supplier_ticket_number: b.supplier_ticket_number,
@@ -3617,7 +3623,7 @@ type ParsedInvoiceLine = {
   money: ReturnType<typeof recalcInvoiceLine>;
 };
 
-function parseInvoiceEditorForm(formData: FormData): {
+function parseInvoiceEditorForm(formData: FormData, pricesIncludeTax: boolean): {
   invoiceId: string;
   invoice_date: string;
   terms: number;
@@ -3640,6 +3646,7 @@ function parseInvoiceEditorForm(formData: FormData): {
             quantity: Number(formData.get(`quantity_${id}`) ?? 0),
             unitPrice: Number(formData.get(`unit_price_${id}`) ?? 0),
             vatRate: Number(formData.get(`vat_rate_${id}`) ?? 0),
+            pricesIncludeTax,
           })
         : recalcInvoiceLine({
             adults: Number(formData.get(`adults_${id}`) ?? 0),
@@ -3647,6 +3654,7 @@ function parseInvoiceEditorForm(formData: FormData): {
             adultUnit: Number(formData.get(`adult_unit_${id}`) ?? 0),
             childUnit: Number(formData.get(`child_unit_${id}`) ?? 0),
             vatRate: Number(formData.get(`vat_rate_${id}`) ?? 0),
+            pricesIncludeTax,
           });
     const description = String(formData.get(`description_${id}`) ?? "").trim();
     const guest = String(formData.get(`guest_name_${id}`) ?? "").trim() || description || "Line";
@@ -3681,7 +3689,7 @@ async function persistInvoiceDraft(
   ctx: Awaited<ReturnType<typeof requireShowOpsRole>>,
   formData: FormData,
 ) {
-  const parsed = parseInvoiceEditorForm(formData);
+  const parsed = parseInvoiceEditorForm(formData, ctx.config.invoice.pricesIncludeTax);
   if (!parsed.invoiceId) throw new Error("Invoice required.");
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
