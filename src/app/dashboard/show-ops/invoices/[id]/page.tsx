@@ -320,7 +320,7 @@ export default async function InvoicePrintPage({
               <tr>
                 <th className="py-2 pr-3">Concept</th>
                 <th className="py-2 pr-3 text-right">Units</th>
-                <th className="py-2 pr-3 text-right">Price</th>
+                <th className="py-2 pr-3 text-right">Net</th>
                 <th className="py-2 pr-3 text-right">{ctx.config.invoice.taxLabel}</th>
                 <th className="py-2 text-right">Total</th>
               </tr>
