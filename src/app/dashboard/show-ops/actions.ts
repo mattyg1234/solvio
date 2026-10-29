@@ -58,7 +58,7 @@ import { parseStopRunsOn, stopRunsOnDate } from "@/lib/show-ops/bus";
 import { showRunsOnDate } from "@/lib/show-ops/nights";
 import { showOpsDayName } from "@/lib/show-ops/calc";
 import { isReceptionPartner } from "@/lib/show-ops/partners";
-import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
+import { CLOSE_SALE_EMAILS_ON, closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
 import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSnapshot, type ShowExtra } from "@/lib/show-ops/extras";
@@ -4147,10 +4147,9 @@ export async function closeSaleAction(formData: FormData): Promise<void> {
     redirect(`${next}${next.includes("?") ? "&" : "?"}error=${encodeURIComponent(insErr.message.slice(0, 180))}`);
   }
 
-  const { data: partners } = await ctx.supabase
-    .from("show_suppliers")
-    .select("name,email,island,active")
-    .eq("business_id", ctx.business.id);
+  const { data: partners } = CLOSE_SALE_EMAILS_ON
+    ? await ctx.supabase.from("show_suppliers").select("name,email,island,active").eq("business_id", ctx.business.id)
+    : { data: [] };
   const rec = closeSaleRecipients(partners ?? [], island);
   const copy = closeSaleCopy({
     kind: close_kind,

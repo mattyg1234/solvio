@@ -2,6 +2,9 @@ import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 
 import type { CloseKind } from "@/lib/show-ops/calendar";
 
+/** Off for now (Matty, 29 Oct 2026): closing a night marks it closed in the Hub and emails no partners. */
+export const CLOSE_SALE_EMAILS_ON = false;
+
 export type CloseSalePartner = {
   name: string;
   email: string | null;
