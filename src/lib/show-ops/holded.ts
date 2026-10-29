@@ -10,6 +10,8 @@
  * the token and keeps one interface, so callers never care which one is in use.
  */
 
+import { taxBaseFromGross } from "./invoice";
+
 export const HOLDED_BASE = "https://api.holded.com/api";
 
 export type HoldedTax = { id?: string; key: string; name: string; amount: number; scope?: string; legalTreatment?: string; category?: string };
@@ -186,6 +188,8 @@ type PackLine = {
   quantity?: number | null;
   unit_price?: number | null;
   vat_rate?: number | null;
+  /** The net the Hub saved for the line; checked against the tax-included maths before sending. */
+  net_total?: number | string | null;
   notes?: string | null;
 };
 
@@ -304,9 +308,23 @@ export function unixDay(iso: string | null | undefined, fallback = new Date()): 
 }
 
 /**
+ * Holded always adds the tax on top of the price it is sent, so a tax-included
+ * line goes over as its net. A line the Hub saved before prices included the tax
+ * still holds the old net; sending it would put the tax on top again, so it stops here.
+ */
+function includedNet(l: PackLine, gross: number, rate: number): number {
+  const net = taxBaseFromGross(gross, rate);
+  if (l.net_total != null && moneyCents(l.net_total, "line net") !== Math.round(net * 100)) {
+    throw new Error("This invoice was worked out with the tax added on top of the prices. Recalculate it before sending it to Holded.");
+  }
+  return net;
+}
+
+/**
  * One Solvio pack → one Holded invoice. Booking lines become up to two items
  * (adults, children) so Holded's maths matches Solvio's to the cent; manual
- * lines pass through as quantity × unit price.
+ * lines pass through as quantity × unit price. When prices include the tax,
+ * every line goes over as one item at its net.
  */
 export function holdedItemsFromLines(
   lines: PackLine[],
@@ -314,6 +332,7 @@ export function holdedItemsFromLines(
   taxes: HoldedTax[] = [],
   /** Item name for booking lines, as MHT names them in Holded ("MHT Tenerife"). Defaults to the line description. */
   bookingItemName?: string,
+  pricesIncludeTax = false,
 ): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
@@ -337,11 +356,12 @@ export function holdedItemsFromLines(
         .filter(Boolean)
         .join(", ");
       const who = [String(l.guest_name || "").trim(), ref, ticket].filter(Boolean).join(" ");
+      const gross = Math.round((adults * adultUnit + children * childUnit) * 100) / 100;
       out.push({
         name: bookingItemName || base,
         desc: [who, pax, String(l.notes || "").trim()].filter(Boolean).join(" · "),
         units: 1,
-        subtotal: Math.round((adults * adultUnit + children * childUnit) * 100) / 100,
+        subtotal: pricesIncludeTax ? includedNet(l, gross, rate) : gross,
         ...tax,
       });
       continue;
@@ -349,6 +369,11 @@ export function holdedItemsFromLines(
     const units = strictMoney(l.quantity ?? 1, "line quantity");
     if (units <= 0) throw new Error("Line quantity must be greater than zero.");
     const unit = strictMoney(l.unit_price, "unit price");
+    if (pricesIncludeTax) {
+      const gross = Math.round(units * unit * 100) / 100;
+      out.push({ name: base, desc: [units !== 1 ? `${units} × ${unit.toFixed(2)}` : "", desc].filter(Boolean).join(" · ") || undefined, units: 1, subtotal: includedNet(l, gross, rate), ...tax });
+      continue;
+    }
     out.push({ name: base, desc, units, subtotal: unit, ...tax });
   }
   return out;
@@ -362,6 +387,7 @@ export function holdedInvoiceFromPack(
   contactId: string,
   taxForRate: (rate: number) => HoldedIgicTaxApproval | null,
   taxes: HoldedTax[] = [],
+  opts: { pricesIncludeTax?: boolean } = {},
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
   const tags = ["solvio"];
@@ -374,7 +400,7 @@ export function holdedInvoiceFromPack(
     contactId,
     desc: `${pack.island ? `MHT ${pack.island} · ` : ""}${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
-    items: holdedItemsFromLines(lines, taxForRate, taxes, pack.island ? `MHT ${pack.island}` : undefined),
+    items: holdedItemsFromLines(lines, taxForRate, taxes, pack.island ? `MHT ${pack.island}` : undefined, opts.pricesIncludeTax),
     notes,
     tags,
     approveDoc: false,

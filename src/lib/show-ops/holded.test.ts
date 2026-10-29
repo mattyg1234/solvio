@@ -75,6 +75,28 @@ test("booking line is one Holded item named like MHT's own invoices", () => {
   assert.equal(plain[0].subtotal, 0.1);
 });
 
+test("prices include IGIC: Holded gets the net, so it adds the IGIC back to the price", () => {
+  const booking = { description: "Smith A · MHT-319378", booking_ref: "MHT-319378", guest_name: "Smith A", adults: 2, adult_unit_price: 34.3, vat_rate: 7, net_total: 64.11 };
+  const manual = { description: "Bus supplement", quantity: 2, unit_price: 15, vat_rate: 7, notes: "Sept", net_total: "28.04" };
+  const items = holdedItemsFromLines([booking, manual], () => IGIC_7, TAXES, "MHT Tenerife", true);
+  assert.deepEqual(items, [
+    { name: "MHT Tenerife", desc: "Smith A MHT-319378 · 2 adults", units: 1, subtotal: 64.11, taxes: ["s_igic_7"] },
+    { name: "Bus supplement", desc: "2 × 15.00 · Sept", units: 1, subtotal: 28.04, taxes: ["s_igic_7"] },
+  ]);
+  // 64.11 + 4.49 and 28.04 + 1.96: the IGIC Holded adds brings each line back to its price.
+  assert.equal(Math.round((64.11 + Math.round(64.11 * 7) / 100) * 100) / 100, 68.6);
+  // Off by default: the price is sent as it is.
+  assert.equal(holdedItemsFromLines([booking], () => IGIC_7, TAXES)[0].subtotal, 68.6);
+});
+
+test("prices include IGIC: a line still saved with IGIC on top is refused, not sent", () => {
+  const stale = { description: "Smith", guest_name: "Smith", adults: 1, adult_unit_price: 34.3, vat_rate: 7, net_total: 34.3 };
+  assert.throws(() => holdedItemsFromLines([stale], () => IGIC_7, TAXES, undefined, true), /Recalculate it/);
+  const pack = { id: "p1", supplier_name: "Sunny", period_start: "2026-10-01", period_end: "2026-10-31", island: "Tenerife" };
+  assert.throws(() => holdedInvoiceFromPack(pack, [stale], "c1", () => IGIC_7, TAXES, { pricesIncludeTax: true }), /Recalculate it/);
+  assert.equal(holdedInvoiceFromPack(pack, [{ ...stale, net_total: 32.06 }], "c1", () => IGIC_7, TAXES, { pricesIncludeTax: true }).items[0].subtotal, 32.06);
+});
+
 test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
   const items = holdedItemsFromLines(
     [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],

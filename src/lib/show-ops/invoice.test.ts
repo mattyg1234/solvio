@@ -8,6 +8,7 @@ import {
   nextInvoiceSequence,
   recalcInvoiceLine,
   sumInvoiceLines,
+  taxBaseFromGross,
 } from "./invoice";
 
 test("booking line: 4 adults at €55.25 is €221 plus 0% tax", () => {
@@ -96,4 +97,50 @@ test("Verifactu payload has the fields the API will need", () => {
   assert.equal(payload.totals.grandTotal, 214);
   assert.equal(payload.lines.length, 1);
   assert.equal(payload.lines[0].vatRate, 7);
+});
+
+test("prices include IGIC: €34.30 is €32.06 net + €2.24 IGIC, not €36.70", () => {
+  const line = recalcInvoiceLine({ adults: 1, children: 0, adultUnit: 34.3, childUnit: 0, vatRate: 7, pricesIncludeTax: true });
+  assert.equal(line.adultNettTotal, 34.3);
+  assert.equal(line.netTotal, 32.06);
+  assert.equal(line.vatAmount, 2.24);
+  assert.equal(line.lineTotal, 34.3);
+  const onTop = recalcInvoiceLine({ adults: 1, children: 0, adultUnit: 34.3, childUnit: 0, vatRate: 7 });
+  assert.equal(onTop.lineTotal, 36.7);
+});
+
+test("prices include IGIC: MHT's usual booking totals land to the cent", () => {
+  for (const [adults, unit] of [[2, 34.3], [3, 41.3], [5, 48.3], [4, 31.85], [7, 44.85], [1, 33.08]] as const) {
+    const line = recalcInvoiceLine({ adults, children: 0, adultUnit: unit, childUnit: 0, vatRate: 7, pricesIncludeTax: true });
+    assert.equal(line.lineTotal, Math.round(adults * unit * 100) / 100, `${adults} × ${unit}`);
+    assert.equal(line.vatAmount, Math.round(line.netTotal * 7) / 100);
+  }
+  const extra = recalcInvoiceLine({ quantity: 2, unitPrice: 15, vatRate: 7, pricesIncludeTax: true });
+  assert.deepEqual([extra.netTotal, extra.vatAmount, extra.lineTotal], [28.04, 1.96, 30]);
+});
+
+test("taxBaseFromGross never invoices more than the price; misses are a cent under", () => {
+  assert.equal(taxBaseFromGross(34.3, 7), 32.06);
+  assert.equal(taxBaseFromGross(41.3, 7), 38.6);
+  assert.equal(taxBaseFromGross(48.3, 7), 45.14);
+  assert.equal(taxBaseFromGross(50, 0), 50);
+  assert.equal(taxBaseFromGross(0, 7), 0);
+  // €330.40 has no net that rounds back to it: €308.78 + €21.61 = €330.39.
+  assert.equal(taxBaseFromGross(330.4, 7), 308.78);
+  for (let cents = 1; cents <= 20000; cents++) {
+    const gross = cents / 100;
+    const line = recalcInvoiceLine({ quantity: 1, unitPrice: gross, vatRate: 7, pricesIncludeTax: true });
+    const short = Math.round((gross - line.lineTotal) * 100);
+    assert.ok(short === 0 || short === 1, `${gross} → ${line.lineTotal}`);
+  }
+});
+
+test("prices include IGIC: invoice totals add up from the lines", () => {
+  const lines = [
+    recalcInvoiceLine({ adults: 2, children: 1, adultUnit: 34.3, childUnit: 17.15, vatRate: 7, pricesIncludeTax: true }),
+    recalcInvoiceLine({ adults: 4, children: 0, adultUnit: 41.3, childUnit: 0, vatRate: 7, pricesIncludeTax: true }),
+  ];
+  const totals = sumInvoiceLines(lines);
+  assert.equal(totals.grandTotal, 85.75 + 165.2);
+  assert.equal(totals.grandTotal, Math.round((totals.netTotal + totals.vatTotal) * 100) / 100);
 });

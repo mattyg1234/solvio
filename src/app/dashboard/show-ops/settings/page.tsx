@@ -992,6 +992,20 @@ export default async function ShowOpsSettingsPage({
                 />
               </label>
               <label className="text-sm">
+                Partner prices
+                <select
+                  name="invoice_prices_include_tax"
+                  defaultValue={ctx.config.invoice.pricesIncludeTax ? "1" : "0"}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                >
+                  <option value="1">Already include the tax</option>
+                  <option value="0">Tax is added on top</option>
+                </select>
+                <span className="mt-1 block text-xs text-slate-500">
+                  Included: a €34.30 ticket at 7% invoices as €32.06 + €2.24 tax = €34.30.
+                </span>
+              </label>
+              <label className="text-sm">
                 Tax name on invoices
                 <input
                   name="invoice_tax_label"
