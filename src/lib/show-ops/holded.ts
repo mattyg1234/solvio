@@ -859,13 +859,17 @@ export class HoldedClient {
     throw new Error(`Holded list ${path} has more than ${maxPages * 100} entries; narrow it before retrying.`);
   }
 
-  /** v2 line items reference a tax by its id; the Hub stores keys (s_igic7). */
+  /**
+   * v2 line taxes: the docs say "id", but Holded's documents store and price taxes by key ("s_igic_7").
+   * Once MHT's IGIC 7% got its own id (27 Oct 2026), lines sent with that id kept it yet showed "No taxes" and 0%.
+   * Looking the tax up still proves it exists in this Holded company.
+   */
   private async v2TaxRef(): Promise<(key: string) => string> {
     const taxes = this.taxCache ?? (await this.listTaxes());
     return (key: string) => {
-      const hit = taxes.find((t) => t.key === key || t.id === key);
+      const hit = taxes.find((t) => t.key === key) ?? taxes.find((t) => t.id === key);
       if (!hit) throw new Error(`Holded has no tax ${key}. Check the taxes in Holded and the approvals in Settings.`);
-      return hit.id ?? hit.key;
+      return hit.key || (hit.id as string);
     };
   }
 
@@ -1045,6 +1049,24 @@ export class HoldedClient {
 
   async createInvoiceDraft(input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
     return this.createDraft("invoice", input, operation);
+  }
+
+  /**
+   * v2: overwrite a draft Solvio made for this pack with the pack's lines (PUT replaces the whole document).
+   * Only an unapproved draft carrying this pack's operation marker is touched; after approval, use a credit note.
+   */
+  async replaceInvoiceDraft(id: string, input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
+    if (!this.v2) throw new Error("Replacing a Holded draft needs a Holded v2 token.");
+    if (input.approveDoc !== false) throw new Error("Solvio may only write Holded invoice drafts.");
+    const reference = validOperationReference(operation.reference);
+    const path = `/v2/invoices/${encodeURIComponent(requiredString(id, "invoice id"))}`;
+    const current = await this.request<unknown>("GET", path);
+    if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("Holded returned a malformed document.");
+    const doc = current as Record<string, unknown>;
+    if (doc.draft !== true) throw new Error("Holded has already approved this invoice. Correct it with a credit note instead.");
+    if (!String(doc.notes ?? "").includes(operationMarker(reference))) throw new Error("This Holded draft was not made by Solvio for this pack, so Solvio will not overwrite it.");
+    await this.request("PUT", path, holdedV2DocumentBody(withOperationReference(input, reference), await this.v2TaxRef()));
+    return this.getInvoice(id);
   }
 
   async getInvoice(id: string): Promise<HoldedDocumentSummary> {

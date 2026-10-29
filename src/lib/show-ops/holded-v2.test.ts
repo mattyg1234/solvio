@@ -133,7 +133,7 @@ test("v2 pages: items + cursor only when has_more", () => {
   assert.throws(() => holdedV2Page({ nope: 1 }), /malformed list/);
 });
 
-test("v2 invoice draft: Bearer auth, checks for an earlier write, posts once to /v2/invoices with tax ids, never approves", async () => {
+test("v2 invoice draft: Bearer auth, checks for an earlier write, posts once to /v2/invoices with tax keys, never approves", async () => {
   const calls: Array<{ method: string; url: string; headers: Record<string, string>; body?: Record<string, unknown> }> = [];
   globalThis.fetch = async (input, init) => {
     const call = {
@@ -156,7 +156,8 @@ test("v2 invoice draft: Bearer auth, checks for an earlier write, posts once to 
   assert.equal(posts[0].url, "https://api.holded.com/api/v2/invoices");
   assert.equal(posts[0].headers.authorization, `Bearer ${TOKEN}`);
   assert.equal("key" in posts[0].headers, false);
-  assert.deepEqual((posts[0].body?.items as Array<{ taxes: string[] }>)[0].taxes, ["tax-igic-7"]);
+  // Holded prices document lines by tax key; a tax's own id is stored but read as "No taxes" (MHT, 29 Oct 2026).
+  assert.deepEqual((posts[0].body?.items as Array<{ taxes: string[] }>)[0].taxes, ["s_igic_7"]);
   assert.match(String(posts[0].body?.notes), /\[solvio-operation:invoice:pack-0001\]/);
   assert.equal(calls.some((c) => /approve/.test(c.url)), false, "Solvio never approves in Holded");
 });
@@ -235,4 +236,41 @@ test("v2 contact sync: a refused update says why instead of passing as 'contact 
   await assert.rejects(new HoldedClient(TOKEN).syncContact("6adf857d2cfc69eec2002a78", input), /Holded refused the update to Get Your Guide Deutschland GmbH's contact: .*no valid address/);
   globalThis.fetch = async () => new Response("{}", { status: 404 });
   assert.equal(await new HoldedClient(TOKEN).syncContact("6adf857d2cfc69eec2002a78", input), false);
+});
+
+test("v2 replace draft: PUTs the pack's lines (tax keys) over Solvio's own draft, then reads it back", async () => {
+  const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
+  globalThis.fetch = async (input, init) => {
+    const call = { method: String(init?.method ?? "GET"), url: String(input), body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined };
+    calls.push(call);
+    if (call.url.includes("/v2/taxes")) return json({ items: [{ ...taxes.items[0], id: "6ae0ae25dd92ee7555035982" }] });
+    if (call.method === "PUT") return json({ id: "507f1f77bcf86cd799439011" });
+    return json(v2Draft());
+  };
+  const result = await new HoldedClient(TOKEN).replaceInvoiceDraft("507f1f77bcf86cd799439011", invoice, { reference: "invoice:pack-0001" });
+  assert.equal(result.total, 107);
+  const puts = calls.filter((c) => c.method === "PUT");
+  assert.equal(puts.length, 1);
+  assert.equal(puts[0].url, "https://api.holded.com/api/v2/invoices/507f1f77bcf86cd799439011");
+  assert.deepEqual((puts[0].body?.items as Array<{ taxes: string[] }>)[0].taxes, ["s_igic_7"]);
+  assert.match(String(puts[0].body?.notes), /\[solvio-operation:invoice:pack-0001\]/);
+  assert.equal(calls.some((c) => c.method === "POST" || /approve/.test(c.url)), false);
+});
+
+test("v2 replace draft: never touches an approved invoice or a draft Solvio did not make for this pack", async () => {
+  let puts = 0;
+  const serve = (doc: Record<string, unknown>) => {
+    globalThis.fetch = async (input, init) => {
+      if (init?.method === "PUT") { puts += 1; return json({}); }
+      if (String(input).includes("/v2/taxes")) return json(taxes);
+      return json(doc);
+    };
+  };
+  serve(v2Draft({ draft: false, approved_at: "2026-10-29T10:00:00Z", document_number: "F260001" }));
+  await assert.rejects(new HoldedClient(TOKEN).replaceInvoiceDraft("507f1f77bcf86cd799439011", invoice, { reference: "invoice:pack-0001" }), /credit note/);
+  serve(v2Draft({ notes: "typed by hand" }));
+  await assert.rejects(new HoldedClient(TOKEN).replaceInvoiceDraft("507f1f77bcf86cd799439011", invoice, { reference: "invoice:pack-0001" }), /not made by Solvio/);
+  serve(v2Draft({ notes: "[solvio-operation:invoice:pack-0002]" }));
+  await assert.rejects(new HoldedClient(TOKEN).replaceInvoiceDraft("507f1f77bcf86cd799439011", invoice, { reference: "invoice:pack-0001" }), /not made by Solvio/);
+  assert.equal(puts, 0);
 });
