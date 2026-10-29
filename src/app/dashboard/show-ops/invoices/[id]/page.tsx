@@ -7,7 +7,7 @@ import {
   sendShowOpsInvoiceEmailAction,
   voidInvoiceAction,
 } from "@/app/dashboard/show-ops/actions";
-import { pushInvoiceToHoldedAction, reconcileHoldedCreditNoteAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction, requestHoldedCreditNoteAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, reconcileHoldedCreditNoteAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction, replaceHoldedDraftAction, requestHoldedCreditNoteAction } from "@/app/dashboard/show-ops/actions-holded";
 import { InvoiceEditor } from "@/components/show-ops/invoice-editor";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -213,6 +213,8 @@ export default async function InvoicePrintPage({
         </p>
       ) : sp.holded === "refreshed" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Updated from Holded. {holdedLabel}.</p>
+      ) : sp.holded === "replaced" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Holded draft replaced with Solvio&apos;s lines. {holdedLabel}.</p>
       ) : sp.holded === "credit_sent" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
           Credit note drafted in Holded. The accountant links it to the invoice and approves it there.
@@ -451,9 +453,18 @@ export default async function InvoicePrintPage({
               ) : null}
             </div>
             {inv.holded_expected_total != null && inv.holded_actual_total != null && inv.holded_amounts_match === false ? (
-              <p className="text-xs text-rose-800">
-                Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}. Fix the draft in Holded, then Refresh.
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-rose-800">
+                  Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}.{" "}
+                  {inv.holded_status === "draft" ? "Replace the draft with Solvio's lines, or fix it in Holded and Refresh." : "Fix it in Holded, then Refresh."}
+                </p>
+                {inv.holded_status === "draft" && holded.connected ? (
+                  <form action={replaceHoldedDraftAction}>
+                    <input type="hidden" name="invoice_id" value={inv.id} />
+                    <SubmitOnce className="rounded-xl bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white">Replace the Holded draft</SubmitOnce>
+                  </form>
+                ) : null}
+              </div>
             ) : null}
             {["approved", "paid", "corrected"].includes(String(inv.holded_status)) && holded.connected ? (
               <div className="rounded-lg border border-slate-200 p-3">

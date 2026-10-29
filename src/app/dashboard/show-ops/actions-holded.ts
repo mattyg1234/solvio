@@ -277,26 +277,30 @@ async function syncFromSummary(businessId: string, invoiceId: string, summary: H
 type InvoiceRow = Record<string, unknown> & { id: string; period_start: string; period_end: string; status: string; voided: boolean; supplier_id: string | null; supplier_name: string; recipient_name: string | null; recipient_tax_id: string | null; recipient_address: string | null; holded_document_id: string | null };
 type SendOutcome = { outcome: "sent" | "error" | "reconcile" | "existing"; message: string | null };
 
+/** The pack as a Holded draft body: partner contact synced first, IGIC from the approved taxes. Touches no invoice in Holded. */
+async function holdedPayloadForPack(ctx: ShowOpsContext, inv: InvoiceRow, client: HoldedClient, approvals: Record<string, HoldedIgicTaxApproval>) {
+  const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
+  if (!lines?.length) throw new Error("This invoice has no lines.");
+  const taxes = await client.listTaxes();
+  const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
+    name: inv.recipient_name,
+    taxId: inv.recipient_tax_id,
+    address: inv.recipient_address,
+  });
+  return holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes, {
+    pricesIncludeTax: ctx.config.invoice.pricesIncludeTax,
+  });
+}
+
 /**
  * Issued pack → draft sales invoice in Holded, through the claim/complete lifecycle.
  * Shared by the invoice page, "Issue and send" and the bulk sync; never redirects.
  */
 async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client: HoldedClient, approvals: Record<string, HoldedIgicTaxApproval>): Promise<SendOutcome> {
-  const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
-  if (!lines?.length) return { outcome: "error", message: "This invoice has no lines." };
-
   // 1. Everything that can fail without touching Holded happens before the claim.
-  let payload: ReturnType<typeof holdedInvoiceFromPack>;
+  let payload: Awaited<ReturnType<typeof holdedPayloadForPack>>;
   try {
-    const taxes = await client.listTaxes();
-    const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
-      name: inv.recipient_name,
-      taxId: inv.recipient_tax_id,
-      address: inv.recipient_address,
-    });
-    payload = holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes, {
-      pricesIncludeTax: ctx.config.invoice.pricesIncludeTax,
-    });
+    payload = await holdedPayloadForPack(ctx, inv, client, approvals);
   } catch (err) {
     return { outcome: "error", message: safeMessage(err) };
   }
@@ -376,6 +380,30 @@ export async function refreshHoldedInvoiceAction(formData: FormData): Promise<vo
   const { data: inv } = await ctx.supabase.from("show_invoices").select("id,holded_document_id").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
   if (!inv?.holded_document_id) throw new Error("This invoice has not been sent to Holded yet.");
   return refreshInvoiceFromHolded(ctx, inv.id, inv.holded_document_id);
+}
+
+/**
+ * The linked Holded draft differs from the pack (for example it was made before a fix):
+ * write the pack's lines over it. Drafts only; Holded refuses anything Solvio did not make for this pack.
+ */
+export async function replaceHoldedDraftAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
+  if (!inv) throw new Error("Invoice not found.");
+  if (inv.voided || inv.status !== "issued") throw new Error("Only issued invoices go to Holded.");
+  if (!inv.holded_document_id || inv.holded_status !== "draft") throw new Error("Only a Holded draft can be replaced. After approval, use a credit note.");
+  let message: string | null = null;
+  try {
+    const { client, approvals } = await loadIntegration(ctx);
+    const payload = await holdedPayloadForPack(ctx, inv as InvoiceRow, client, approvals);
+    const summary = await client.replaceInvoiceDraft(inv.holded_document_id, payload, { reference: operationReference(inv.id) });
+    await syncFromSummary(ctx.business.id, inv.id, summary);
+  } catch (err) {
+    message = safeMessage(err);
+  }
+  revalidate(inv.id);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${message ? "error" : "replaced"}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
 }
 
 /**
