@@ -86,6 +86,9 @@ export type InboxActionResult<T = undefined> =
   | ({ ok: true } & (T extends undefined ? { data?: undefined } : { data: T }))
   | { ok: false; error: string };
 
+/** A venue's full Google address and its Google Maps link. */
+export type TwilioVenue = { address: string; maps_url: string };
+
 /** Stored in show_ops_integrations.meta for provider 'twilio'. The auth token is the encrypted secret. */
 export type TwilioIntegrationMeta = {
   account_sid: string;
@@ -96,7 +99,10 @@ export type TwilioIntegrationMeta = {
   /** The re-open template has {{1}} for the guest's first name. */
   reopen_uses_name: boolean;
   /** WhatsApp templates for the Hub's own messages (see inbox/templates.ts). */
-  ticket_content_sid: string;
+  booking_content_sid: string;
+  booking_transport_content_sid: string;
   pickup_content_sid: string;
+  /** Per island: the venue the no-transport booking template points guests to. */
+  venues: Record<string, TwilioVenue>;
   hint: string;
 };

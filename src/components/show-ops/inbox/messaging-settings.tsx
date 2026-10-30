@@ -29,12 +29,12 @@ const NO_AUTOFILL = { "data-1p-ignore": "true", "data-lpignore": "true", "data-b
  */
 export function MessagingSettings({
   state,
-  businessName,
+  islands,
   flash,
   flashError,
 }: {
   state: MessagingSettingsState;
-  businessName: string;
+  islands: readonly string[];
   flash?: string;
   flashError?: string;
 }) {
@@ -93,7 +93,8 @@ export function MessagingSettings({
 
           <form action={saveTwilioNumbersAction} className="grid gap-3 sm:grid-cols-2">
             <NumberFields meta={meta} />
-            <TemplateFields meta={meta} businessName={businessName} />
+            <TemplateFields meta={meta} />
+            <VenueFields meta={meta} islands={islands} />
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
                 Save numbers and templates
@@ -152,6 +153,12 @@ export function MessagingSettings({
             ? TEMPLATE_SPECS.map((spec) => <input key={spec.kind} type="hidden" name={spec.metaKey} value={meta[spec.metaKey]} />)
             : null}
           {meta?.reopen_uses_name ? <input type="hidden" name="reopen_uses_name" value="on" /> : null}
+          {meta
+            ? Object.entries(meta.venues).flatMap(([island, v]) => [
+                <input key={`a:${island}`} type="hidden" name={`venue_address:${island}`} value={v.address} />,
+                <input key={`m:${island}`} type="hidden" name={`venue_maps:${island}`} value={v.maps_url} />,
+              ])
+            : null}
           <div className="sm:col-span-2">
             <button type="submit" className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-2 text-sm font-semibold text-white">
               {meta ? "Save new token" : "Connect Twilio"}
@@ -179,7 +186,7 @@ function NumberFields({ meta }: { meta: TwilioIntegrationMeta | null }) {
 }
 
 /** One approved WhatsApp template per kind of message, with the wording to paste into Twilio. */
-function TemplateFields({ meta, businessName }: { meta: TwilioIntegrationMeta | null; businessName: string }) {
+function TemplateFields({ meta }: { meta: TwilioIntegrationMeta | null }) {
   return (
     <div className="space-y-3 sm:col-span-2">
       <div>
@@ -194,11 +201,11 @@ function TemplateFields({ meta, businessName }: { meta: TwilioIntegrationMeta | 
           <p className="text-sm font-semibold">{spec.title}</p>
           <p className="text-xs text-slate-500">{spec.when}</p>
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs font-semibold text-violet-700">Wording for Twilio (name: {spec.twilioName})</summary>
+            <summary className="cursor-pointer text-xs font-semibold text-violet-700">Wording (name: {spec.twilioName})</summary>
             <textarea
               readOnly
-              value={spec.wording(businessName)}
-              rows={spec.wording(businessName).split("\n").length + 1}
+              value={spec.wording}
+              rows={spec.wording.split("\n").length + 1}
               aria-label={`${spec.title} wording`}
               className="mt-2 block w-full rounded-lg border bg-white px-2 py-1.5 font-mono text-xs"
             />
@@ -220,6 +227,39 @@ function TemplateFields({ meta, businessName }: { meta: TwilioIntegrationMeta | 
               Template uses {"{{1}}"} for first name
             </label>
           ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Per island: where the "making own way" booking template sends guests. */
+function VenueFields({ meta, islands }: { meta: TwilioIntegrationMeta | null; islands: readonly string[] }) {
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">Venues for the booking message</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Guests making their own way get the venue&apos;s full Google address and Maps link for their island. Leave an island
+          empty and its guests get the booking by SMS or email instead.
+        </p>
+      </div>
+      {islands.map((island) => (
+        <div key={island} className="grid gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200 sm:grid-cols-2">
+          <label className="text-xs text-slate-600">
+            {island}: venue address
+            <input name={`venue_address:${island}`} defaultValue={meta?.venues[island]?.address ?? ""} className={input} />
+          </label>
+          <label className="text-xs text-slate-600">
+            {island}: Google Maps link
+            <input
+              name={`venue_maps:${island}`}
+              type="url"
+              defaultValue={meta?.venues[island]?.maps_url ?? ""}
+              placeholder="https://maps.app.goo.gl/…"
+              className={input}
+            />
+          </label>
         </div>
       ))}
     </div>
