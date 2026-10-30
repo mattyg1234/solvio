@@ -24,6 +24,15 @@ test("ref series follows the invoice series and refs continue the operator's num
   assert.equal(await nextBookingRefWithoutSession(client([{ booking_ref_num: 12 }]), "b", "SO"), "SO-1000");
 });
 
+test("refs keep counting past numbers used by bookings that were removed", async () => {
+  const client = (rows: Array<{ booking_ref_num: number | null }>) => ({
+    from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: async () => ({ data: rows, error: null }) }) }) }) }),
+  });
+  assert.equal(await nextBookingRefWithoutSession(client([]), "b", "MHT", 319917), "MHT-319918");
+  assert.equal(await nextBookingRefWithoutSession(client([{ booking_ref_num: 319920 }]), "b", "MHT", 319917), "MHT-319921");
+  assert.equal(await nextBookingRefWithoutSession(client([{ booking_ref_num: 1004 }]), "b", "MHT", null), "MHT-1005");
+});
+
 test("unique violations are recognised so the caller can retry the ref", () => {
   assert.ok(isUniqueViolation({ code: "23505" }));
   assert.ok(isUniqueViolation({ message: 'duplicate key value violates unique constraint "show_bookings_business_id_booking_ref_key"' }));

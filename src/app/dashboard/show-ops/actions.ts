@@ -2638,9 +2638,12 @@ export async function createPartnerLinkBookingAction(
   }
 
   const series = bookingRefSeries(ctx.config);
+  // Read on its own so a missing column (migration not yet applied) only loses the floor, not the booking.
+  const { data: refFloor } = await ctx.supabase.from("businesses").select("show_ops_booking_ref_floor").eq("id", ctx.business.id).maybeSingle();
+  const usedUpTo = (refFloor as { show_ops_booking_ref_floor?: number | null } | null)?.show_ops_booking_ref_floor ?? null;
   const id = crypto.randomUUID();
   for (let attempt = 0; attempt < 5; attempt++) {
-    const booking_ref = await nextBookingRefWithoutSession(ctx.supabase as never, ctx.business.id, series);
+    const booking_ref = await nextBookingRefWithoutSession(ctx.supabase as never, ctx.business.id, series, usedUpTo);
     const { error } = await ctx.supabase.rpc("show_ops_create_partner_link_booking", {
       p_token: String(formData.get("partner_token")),
       p_booking: {
