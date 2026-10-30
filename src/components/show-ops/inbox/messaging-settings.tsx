@@ -1,17 +1,20 @@
 import {
   connectTwilioAction,
+  disconnectMetaAction,
   disconnectTwilioAction,
+  refreshMetaAction,
+  saveMetaAction,
   saveTwilioNumbersAction,
   testTwilioAction,
 } from "@/app/dashboard/show-ops/actions-twilio";
 import { PhoneInput } from "@/components/show-ops/phone-input";
-import { inboundWebhookUrl } from "@/lib/show-ops/inbox/connection";
+import { inboundWebhookUrl, metaWebhookUrl } from "@/lib/show-ops/inbox/connection";
 import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import type { TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
 
 export type MessagingSettingsState = {
   /** null = not connected. */
-  meta: (TwilioIntegrationMeta & { account_name?: string }) | null;
+  meta: (TwilioIntegrationMeta & { account_name?: string; meta_number_name?: string }) | null;
   status: string | null;
   lastError: string | null;
   lastCheckedAt: string | null;
@@ -57,6 +60,10 @@ export function MessagingSettings({
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Twilio answered: the connection works.</p>
       ) : flash === "saved" ? (
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Numbers and templates saved.</p>
+      ) : flash === "meta_saved" ? (
+        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Meta answered: the details work and the approved templates were read.</p>
+      ) : flash === "meta_removed" ? (
+        <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Meta removed. WhatsApp goes through Twilio again.</p>
       ) : flash === "disconnected" ? (
         <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Twilio disconnected. Past conversations stay in the inbox.</p>
       ) : null}
@@ -114,6 +121,8 @@ export function MessagingSettings({
               </button>
             </form>
           </div>
+
+          <MetaSettings meta={meta} />
         </div>
       ) : null}
 
@@ -201,7 +210,7 @@ function TemplateFields({ meta }: { meta: TwilioIntegrationMeta | null }) {
           <p className="text-sm font-semibold">{spec.title}</p>
           <p className="text-xs text-slate-500">{spec.when}</p>
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs font-semibold text-violet-700">Wording (name: {spec.twilioName})</summary>
+            <summary className="cursor-pointer text-xs font-semibold text-violet-700">Wording (name: {spec.name})</summary>
             <textarea
               readOnly
               value={spec.wording}
@@ -263,5 +272,109 @@ function VenueFields({ meta, islands }: { meta: TwilioIntegrationMeta | null; is
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * WhatsApp through Meta's own Cloud API instead of Twilio (cheaper per message, no
+ * Twilio Trust Hub). SMS and the inbox stay on this connection either way.
+ */
+function MetaSettings({ meta }: { meta: TwilioIntegrationMeta & { meta_number_name?: string } }) {
+  const saved = Boolean(meta.meta_phone_number_id && meta.meta_token_hint);
+  const onMeta = meta.whatsapp_provider === "meta" && saved;
+  const providerChoice = (
+    <fieldset className="text-xs text-slate-600 sm:col-span-2">
+      <legend className="font-semibold text-slate-700">Send WhatsApp through</legend>
+      <label className="mr-4 inline-flex items-center gap-1.5">
+        <input type="radio" name="whatsapp_provider" value="twilio" defaultChecked={!onMeta} /> Twilio
+      </label>
+      <label className="inline-flex items-center gap-1.5">
+        <input type="radio" name="whatsapp_provider" value="meta" defaultChecked={onMeta || !saved} /> Meta (Cloud API)
+      </label>
+    </fieldset>
+  );
+  return (
+    <details className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200" open={saved}>
+      <summary className="cursor-pointer text-sm font-semibold">
+        WhatsApp through Meta directly {onMeta ? "· in use" : saved ? "· saved, not in use" : ""}
+      </summary>
+      <p className="mt-2 text-xs text-slate-600">
+        Uses Meta&apos;s WhatsApp Cloud API instead of Twilio: no Twilio fee per message and no Twilio Trust Hub. The number must be
+        registered on the Cloud API in Meta (moved off Twilio). Templates are sent by their approved name, so no HX IDs are needed.
+      </p>
+      {saved ? (
+        <dl className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+          <div>
+            <dt className="text-slate-500">Number</dt>
+            <dd className="font-medium">
+              {meta.meta_number_name || "WhatsApp number"} · {meta.whatsapp_from || "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Hub templates approved in Meta</dt>
+            <dd>
+              {TEMPLATE_SPECS.map((spec) => (
+                <span key={spec.kind} className={`mr-2 inline-block ${meta.meta_templates[spec.name] ? "text-emerald-700" : "text-slate-400"}`}>
+                  {meta.meta_templates[spec.name] ? "✓" : "–"} {spec.name}
+                </span>
+              ))}
+            </dd>
+          </div>
+        </dl>
+      ) : null}
+      {meta.webhook_token ? (
+        <div className="mt-3 text-xs text-slate-600">
+          <p className="font-semibold text-slate-700">In the Meta app → WhatsApp → Configuration → Webhook</p>
+          <label className="mt-1 block">
+            Callback URL
+            <input readOnly value={metaWebhookUrl(meta.webhook_token)} className={`${input} bg-white font-mono text-xs`} />
+          </label>
+          <label className="mt-1 block">
+            Verify token
+            <input readOnly value={meta.webhook_token} className={`${input} bg-white font-mono text-xs`} />
+          </label>
+          <p className="mt-1">Then subscribe to the &quot;messages&quot; field so guest replies and delivery ticks reach the inbox.</p>
+        </div>
+      ) : null}
+      <form action={saveMetaAction} autoComplete="off" className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-slate-600">
+          Phone number ID
+          <input name="meta_phone_number_id" required defaultValue={meta.meta_phone_number_id} inputMode="numeric" {...NO_AUTOFILL} className={`${input} font-mono`} />
+        </label>
+        <label className="text-xs text-slate-600">
+          WhatsApp Business Account ID
+          <input name="meta_waba_id" required defaultValue={meta.meta_waba_id} inputMode="numeric" {...NO_AUTOFILL} className={`${input} font-mono`} />
+        </label>
+        <label className="text-xs text-slate-600">
+          Permanent access token (system user){saved ? `, now ending ${meta.meta_token_hint}; leave empty to keep` : ""}
+          <input name="meta_access_token" type="password" required={!saved} autoComplete="new-password" spellCheck={false} {...NO_AUTOFILL} className={`${input} font-mono`} />
+        </label>
+        <label className="text-xs text-slate-600">
+          App secret{saved ? " (leave empty to keep)" : ""}
+          <input name="meta_app_secret" type="password" required={!saved} autoComplete="new-password" spellCheck={false} {...NO_AUTOFILL} className={`${input} font-mono`} />
+        </label>
+        {providerChoice}
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <button type="submit" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white">
+            {saved ? "Save and check with Meta" : "Connect Meta"}
+          </button>
+        </div>
+      </form>
+      {saved ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <form action={refreshMetaAction}>
+            <input type="hidden" name="whatsapp_provider" value={meta.whatsapp_provider} />
+            <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+              Re-check approved templates
+            </button>
+          </form>
+          <form action={disconnectMetaAction}>
+            <button type="submit" className="rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:underline">
+              Remove Meta
+            </button>
+          </form>
+        </div>
+      ) : null}
+    </details>
   );
 }

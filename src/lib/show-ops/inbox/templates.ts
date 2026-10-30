@@ -16,8 +16,8 @@ export type TemplateSpec = {
   title: string;
   /** When the Hub sends it. */
   when: string;
-  /** Name in Twilio / Meta. */
-  twilioName: string;
+  /** Name in Twilio / Meta. Meta sends approved templates by this name. */
+  name: string;
   /** What each numbered blank holds, with the sample Meta asks for. */
   blanks: Array<{ label: string; sample: string }>;
   /** The wording as approved. */
@@ -32,7 +32,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     metaKey: "booking_content_sid",
     title: "Booking confirmed, making own way",
     when: "Sent when a booking without transport is made. Needs the venue address and Maps link for the island (below).",
-    twilioName: "mht_booking_no_transport",
+    name: "mht_booking_no_transport",
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -65,7 +65,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     metaKey: "booking_transport_content_sid",
     title: "Booking confirmed, with transport",
     when: "Sent when a booking with a bus or private pick-up is made.",
-    twilioName: "mht_booking_with_transport",
+    name: "mht_booking_with_transport",
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -100,7 +100,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     metaKey: "pickup_content_sid",
     title: "Transport confirmed / changed",
     when: "Sent from the bus list when a guest's pick-up time or stop is confirmed or changes.",
-    twilioName: "mht_transport_confirmation",
+    name: "mht_transport_confirmation",
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -133,7 +133,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     metaKey: "reopen_content_sid",
     title: "Chat follow-up",
     when: "Sent from the inbox to message a guest after 24 hours.",
-    twilioName: "chat_follow_up",
+    name: "chat_follow_up",
     blanks: [{ label: "First name (optional)", sample: "Sarah" }],
     wording:
       "Hi {{1}}, this is MHT with an update about your booking. Please reply to this message so we can continue the chat.",

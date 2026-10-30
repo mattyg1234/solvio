@@ -142,7 +142,11 @@ export default async function ShowOpsSettingsPage({
   ]);
   const messaging: MessagingSettingsState = twilioRow
     ? {
-        meta: { ...parseTwilioMeta(twilioRow.meta), account_name: String((twilioRow.meta as { account_name?: string } | null)?.account_name ?? "") },
+        meta: {
+          ...parseTwilioMeta(twilioRow.meta),
+          account_name: String((twilioRow.meta as { account_name?: string } | null)?.account_name ?? ""),
+          meta_number_name: String((twilioRow.meta as { meta_number_name?: string } | null)?.meta_number_name ?? ""),
+        },
         status: twilioRow.status as string,
         lastError: (twilioRow.last_error as string | null) ?? null,
         lastCheckedAt: (twilioRow.last_checked_at as string | null) ?? null,
