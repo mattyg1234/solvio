@@ -9,6 +9,7 @@ import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
+import { checkMetaNumber, isMetaId, listApprovedTemplates, subscribeMetaApp } from "@/lib/show-ops/inbox/meta";
 import { checkTwilioAccount, isAccountSid, isContentSid } from "@/lib/show-ops/inbox/twilio";
 import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
@@ -81,8 +82,9 @@ export async function connectTwilioAction(formData: FormData): Promise<void> {
     .eq("business_id", ctx.business.id)
     .eq("provider", "twilio")
     .maybeSingle();
-  // Keep the webhook address when reconnecting, so Twilio's settings stay valid.
+  // Keep the webhook address (and any Meta settings) when reconnecting, so Twilio's and Meta's settings stay valid.
   const webhookToken = parseTwilioMeta(existing?.meta).webhook_token || randomBytes(20).toString("hex");
+  const kept = (existing?.meta ?? {}) as Record<string, unknown>;
   const now = new Date().toISOString();
   const { error } = await ctx.supabase.from("show_ops_integrations").upsert(
     {
@@ -90,7 +92,7 @@ export async function connectTwilioAction(formData: FormData): Promise<void> {
       provider: "twilio",
       secret_ciphertext: encryptSecret(authToken),
       status: "connected",
-      meta: { account_sid: accountSid, webhook_token: webhookToken, hint: secretHint(authToken), account_name: check.name, ...numbers },
+      meta: { ...kept, account_sid: accountSid, webhook_token: webhookToken, hint: secretHint(authToken), account_name: check.name, ...numbers },
       last_checked_at: now,
       last_error: null,
       created_by: ctx.user.id,
@@ -158,4 +160,120 @@ export async function disconnectTwilioAction(): Promise<void> {
   await ctx.supabase.from("show_ops_integrations").delete().eq("business_id", ctx.business.id).eq("provider", "twilio");
   revalidatePath(BACK);
   redirect(`${BACK}?twilio=disconnected#messaging`);
+}
+
+/* ------------------------------------------------------------------ *
+ * WhatsApp through Meta's own Cloud API (saved on the same row as Twilio)
+ * ------------------------------------------------------------------ */
+
+async function loadRow(ctx: Awaited<ReturnType<typeof requireGlobalShowOpsAdmin>>) {
+  const { data } = await ctx.supabase
+    .from("show_ops_integrations")
+    .select("meta")
+    .eq("business_id", ctx.business.id)
+    .eq("provider", "twilio")
+    .maybeSingle();
+  if (!data) fail("Connect Twilio first (it keeps SMS and the inbox address), then add Meta.");
+  return (data.meta ?? {}) as Record<string, unknown>;
+}
+
+async function saveRow(ctx: Awaited<ReturnType<typeof requireGlobalShowOpsAdmin>>, meta: Record<string, unknown>) {
+  const { error } = await ctx.supabase
+    .from("show_ops_integrations")
+    .update({ meta, updated_at: new Date().toISOString() })
+    .eq("business_id", ctx.business.id)
+    .eq("provider", "twilio");
+  if (error) fail("Could not save.");
+}
+
+/**
+ * Meta's phone number ID, WhatsApp Business Account ID, a permanent system-user
+ * token and the app secret. The token is proven against Meta and the approved
+ * templates are read straight away. Token and secret are stored encrypted.
+ */
+export async function saveMetaAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const raw = (k: string) => String(formData.get(k) ?? "").trim();
+  const phoneNumberId = raw("meta_phone_number_id");
+  const wabaId = raw("meta_waba_id");
+  if (!isMetaId(phoneNumberId)) fail("The phone number ID is the long number Meta shows under WhatsApp → API Setup.");
+  if (!isMetaId(wabaId)) fail("The WhatsApp Business Account ID is the long number Meta shows under WhatsApp → API Setup.");
+  if (!secretsKeyConfigured()) fail("Server is missing SHOW_OPS_SECRETS_KEY. Add it to the environment first.");
+  const existing = await loadRow(ctx);
+
+  // Leave the token or secret empty to keep the saved one.
+  let accessToken = raw("meta_access_token");
+  let appSecret = raw("meta_app_secret");
+  try {
+    if (!accessToken && typeof existing.meta_token_ct === "string") accessToken = decryptSecret(existing.meta_token_ct);
+    if (!appSecret && typeof existing.meta_app_secret_ct === "string") appSecret = decryptSecret(existing.meta_app_secret_ct);
+  } catch {
+    fail("The saved Meta token cannot be read (the server key changed). Paste it again.");
+  }
+  if (!/^[A-Za-z0-9]{40,1000}$/.test(accessToken)) fail("Paste the permanent access token from the Meta system user.");
+  if (!/^[0-9a-f]{32}$/i.test(appSecret)) fail("Paste the App secret from the Meta app (App settings → Basic, 32 characters).");
+
+  const creds = { accessToken, appSecret, phoneNumberId, wabaId };
+  const number = await checkMetaNumber(creds);
+  if (!number.ok) fail(number.message);
+  const templates = await listApprovedTemplates(creds);
+  if (!templates.ok) fail(templates.message);
+  const subscribed = await subscribeMetaApp(creds);
+  if (!subscribed.ok) fail(`Meta would not send guest messages to the Hub: ${subscribed.message}`);
+
+  const meta: Record<string, unknown> = {
+    ...existing,
+    meta_phone_number_id: phoneNumberId,
+    meta_waba_id: wabaId,
+    meta_token_ct: encryptSecret(accessToken),
+    meta_app_secret_ct: encryptSecret(appSecret),
+    meta_token_hint: secretHint(accessToken),
+    meta_number_name: number.name,
+    meta_templates: templates.templates,
+    whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
+  };
+  if (number.phone) meta.whatsapp_from = number.phone;
+  await saveRow(ctx, meta);
+  revalidatePath(BACK);
+  redirect(`${BACK}?twilio=meta_saved#messaging`);
+}
+
+/** Re-read Meta's approved templates (after Meta approves a new one) and switch the sender. */
+export async function refreshMetaAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const existing = await loadRow(ctx);
+  const meta = parseTwilioMeta(existing);
+  if (typeof existing.meta_token_ct !== "string" || typeof existing.meta_app_secret_ct !== "string") fail("Save the Meta details first.");
+  let creds;
+  try {
+    creds = {
+      accessToken: decryptSecret(existing.meta_token_ct),
+      appSecret: decryptSecret(existing.meta_app_secret_ct),
+      phoneNumberId: meta.meta_phone_number_id,
+      wabaId: meta.meta_waba_id,
+    };
+  } catch {
+    fail("The saved Meta token cannot be read (the server key changed). Paste it again.");
+  }
+  const templates = await listApprovedTemplates(creds);
+  if (!templates.ok) fail(templates.message);
+  await saveRow(ctx, {
+    ...existing,
+    meta_templates: templates.templates,
+    whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
+  });
+  revalidatePath(BACK);
+  redirect(`${BACK}?twilio=meta_saved#messaging`);
+}
+
+export async function disconnectMetaAction(): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const existing = await loadRow(ctx);
+  const meta: Record<string, unknown> = { ...existing, whatsapp_provider: "twilio" };
+  for (const k of ["meta_phone_number_id", "meta_waba_id", "meta_token_ct", "meta_app_secret_ct", "meta_token_hint", "meta_number_name", "meta_templates"]) {
+    delete meta[k];
+  }
+  await saveRow(ctx, meta);
+  revalidatePath(BACK);
+  redirect(`${BACK}?twilio=meta_removed#messaging`);
 }
