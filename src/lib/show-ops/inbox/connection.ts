@@ -7,7 +7,7 @@
 import { decryptSecret } from "@/lib/show-ops/secrets";
 import { showOpsMessagesLive } from "@/lib/show-ops/outbound";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
-import type { InboxConnectionSummary, TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
+import type { InboxConnectionSummary, TwilioIntegrationMeta, TwilioVenue } from "@/lib/show-ops/inbox/types";
 import type { TwilioCreds } from "@/lib/show-ops/inbox/twilio";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
@@ -17,6 +17,18 @@ export type TwilioConnection = {
   meta: TwilioIntegrationMeta;
   status: string;
 };
+
+function parseVenues(raw: unknown): Record<string, TwilioVenue> {
+  const out: Record<string, TwilioVenue> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [island, v] of Object.entries(raw as Record<string, unknown>)) {
+    const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+    const address = typeof o.address === "string" ? o.address.trim() : "";
+    const maps = typeof o.maps_url === "string" ? o.maps_url.trim() : "";
+    if (address || maps) out[island] = { address, maps_url: /^https:\/\//.test(maps) ? maps : "" };
+  }
+  return out;
+}
 
 export function parseTwilioMeta(raw: unknown): TwilioIntegrationMeta {
   const o = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -29,8 +41,10 @@ export function parseTwilioMeta(raw: unknown): TwilioIntegrationMeta {
     webhook_token: /^[0-9a-f]{40}$/.test(s("webhook_token")) ? s("webhook_token") : "",
     reopen_content_sid: hx("reopen_content_sid"),
     reopen_uses_name: o.reopen_uses_name === true,
-    ticket_content_sid: hx("ticket_content_sid"),
+    booking_content_sid: hx("booking_content_sid"),
+    booking_transport_content_sid: hx("booking_transport_content_sid"),
     pickup_content_sid: hx("pickup_content_sid"),
+    venues: parseVenues(o.venues),
     hint: s("hint"),
   };
 }

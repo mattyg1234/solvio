@@ -10,6 +10,7 @@ import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import { checkTwilioAccount, isAccountSid, isContentSid } from "@/lib/show-ops/inbox/twilio";
+import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
 
 /*
@@ -33,7 +34,7 @@ function numbersFrom(formData: FormData) {
   if (whatsappFrom === null) fail("The WhatsApp sender must be a full number with country code, e.g. +34 928 000 000.");
   if (smsFrom === null) fail("The SMS number must be a full number with country code, e.g. +34 928 000 000.");
   if (!whatsappFrom && !smsFrom) fail("Add the WhatsApp sender, the SMS number, or both.");
-  const templates = { reopen_content_sid: "", ticket_content_sid: "", pickup_content_sid: "" };
+  const templates = { reopen_content_sid: "", booking_content_sid: "", booking_transport_content_sid: "", pickup_content_sid: "" };
   for (const spec of TEMPLATE_SPECS) {
     const sid = raw(spec.metaKey);
     if (sid && !isContentSid(sid)) fail(`The "${spec.title}" template SID starts with HX and has 34 characters.`);
@@ -44,7 +45,22 @@ function numbersFrom(formData: FormData) {
     sms_from: smsFrom ?? "",
     ...templates,
     reopen_uses_name: formData.get("reopen_uses_name") === "on",
+    venues: venuesFrom(formData),
   };
+}
+
+/** venue_address:<island> / venue_maps:<island> → { island: { address, maps_url } }. */
+function venuesFrom(formData: FormData): Record<string, TwilioVenue> {
+  const out: Record<string, TwilioVenue> = {};
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("venue_address:")) continue;
+    const island = key.slice("venue_address:".length);
+    const address = String(value).trim().replace(/\s+/g, " ");
+    const maps = String(formData.get(`venue_maps:${island}`) ?? "").trim();
+    if (maps && !/^https:\/\/\S+$/.test(maps)) fail(`The Google Maps link for ${island} must start with https://`);
+    if (address || maps) out[island] = { address, maps_url: maps };
+  }
+  return out;
 }
 
 export async function connectTwilioAction(formData: FormData): Promise<void> {

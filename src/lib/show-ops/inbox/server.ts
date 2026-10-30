@@ -47,6 +47,7 @@ import type {
   InboxMessage,
   InboxMessageStatus,
   InboxSyncResponse,
+  TwilioIntegrationMeta,
 } from "@/lib/show-ops/inbox/types";
 import { canSeeShowOpsPage } from "@/lib/show-ops/nav";
 import { SHOW_OPS_OUTBOUND_HELD } from "@/lib/show-ops/outbound";
@@ -830,7 +831,8 @@ export type BusinessTextResult = { ok: true } | { ok: false; reason: "not_config
  * A ticket or pick-up text from the Hub, through the workspace's own Twilio and
  * logged in its inbox so replies land next to it. WhatsApp free text when the guest
  * wrote in the last 24 hours, else that kind's approved WhatsApp template, else SMS
- * (WhatsApp refuses free text after 24 hours).
+ * (WhatsApp refuses free text after 24 hours). `template` picks the kind and its
+ * blanks from the connection's settings (e.g. the island's venue); null = none fits.
  * Returns not_configured when the workspace has no Twilio, so the caller can fall back.
  */
 export async function sendBusinessTextToGuest(
@@ -840,7 +842,7 @@ export async function sendBusinessTextToGuest(
     body: string;
     bookingId?: string | null;
     guestName?: string | null;
-    template?: { kind: "ticket" | "pickup"; variables: Record<string, string> } | null;
+    template?: ((meta: TwilioIntegrationMeta) => { kind: "booking" | "booking_transport" | "pickup"; variables: Record<string, string> } | null) | null;
   },
 ): Promise<BusinessTextResult> {
   const conn = await loadTwilioConnection(businessId).catch(() => null);
@@ -863,11 +865,12 @@ export async function sendBusinessTextToGuest(
       .maybeSingle();
     const last = (data as { last_inbound_at?: string | null } | null)?.last_inbound_at;
     if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
-    else if (input.template) {
-      const sid = conn.meta[templateSpec(input.template.kind).metaKey];
-      if (sid) {
+    else {
+      const chosen = input.template?.(conn.meta) ?? null;
+      const sid = chosen ? conn.meta[templateSpec(chosen.kind).metaKey] : "";
+      if (chosen && sid) {
         channel = "whatsapp";
-        template = { sid, variables: input.template.variables };
+        template = { sid, variables: chosen.variables };
       }
     }
   }

@@ -9,6 +9,7 @@ import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTe
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
 import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { templateVariables } from "@/lib/show-ops/inbox/templates";
+import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
 import { filterShowOpsOutboundTo, showOpsMessagesLive, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -187,36 +188,47 @@ export function buildGuestTicketText(input: GuestTicketInput): string {
   return lines.join("\n");
 }
 
+/** "Friday 6 November", as the WhatsApp templates read. */
+function templateDate(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).replace(",", "");
+}
+
 /**
- * The blanks of the "Booking confirmed" / "Pick-up changed" WhatsApp templates,
- * in the order inbox/templates.ts gives them. Null without a ticket link.
- * Partner-billed (invoice) bookings never show money, only "Nothing".
+ * Which WhatsApp template a ticket or pick-up text uses, with its blanks in the order
+ * inbox/templates.ts gives them. Bus or private pick-up → with transport; own way →
+ * no transport, which needs the island's venue (Settings → WhatsApp & SMS). A pick-up
+ * change for a guest making their own way has no template. Null = send free text or SMS.
  */
-export function guestTicketTemplate(input: GuestTicketInput): { kind: "ticket" | "pickup"; variables: Record<string, string> } | null {
-  if (!input.ticketUrl) return null;
-  const showTime = showTimeLine(input);
-  const show = showTime ? `${input.showName} (${showTime})` : input.showName;
-  const gettingThere = pickupLine(input).replace(/\.$/, "");
+export function guestTicketTemplate(
+  input: GuestTicketInput,
+  venues: Record<string, TwilioVenue> = {},
+): { kind: "booking" | "booking_transport" | "pickup"; variables: Record<string, string> } | null {
+  const transport = input.transportRequired || isPrivateTransfer(input);
+  const island = input.island?.trim() || "";
+  const guests = String((input.adults || 0) + (input.children || 0) + (input.infants || 0));
+  const time = input.pickupTime ? String(input.pickupTime).slice(0, 5) : "To be confirmed";
+  const point = input.transportRequired
+    ? input.pickupStopName?.trim() || "To be confirmed"
+    : input.pickupStopName?.trim() || privateLine(input);
+  const name = firstName(input.guestName);
   if (input.updated) {
+    if (!transport) return null;
+    return { kind: "pickup", variables: templateVariables([name, island, time, point]) };
+  }
+  if (transport) {
     return {
-      kind: "pickup",
-      variables: templateVariables([firstName(input.guestName), show, dateLine(input), gettingThere, input.bookingRef, input.ticketUrl]),
+      kind: "booking_transport",
+      variables: templateVariables([name, island, templateDate(input.showDate), guests, time, point]),
     };
   }
-  const balance = Math.max(0, Number(input.balanceRemaining ?? 0));
-  const toPay = input.billingMode === "deposit" && balance > 0 ? formatShowOpsMoney(balance, input.currency) : "Nothing";
+  const venue = venues[island];
+  if (!venue?.address || !venue.maps_url) return null;
   return {
-    kind: "ticket",
-    variables: templateVariables([
-      firstName(input.guestName),
-      show,
-      dateLine(input),
-      formatShowOpsPax(input.adults, input.children, input.infants),
-      gettingThere,
-      toPay,
-      input.bookingRef,
-      input.ticketUrl,
-    ]),
+    kind: "booking",
+    variables: templateVariables([name, island, templateDate(input.showDate), guests, venue.address, venue.maps_url]),
   };
 }
 
@@ -360,7 +372,7 @@ export async function sendGuestTicketSms(input: GuestTicketInput): Promise<Notif
       body,
       bookingId: input.bookingId ?? null,
       guestName: input.guestName,
-      template: guestTicketTemplate(input),
+      template: (meta) => guestTicketTemplate(input, meta.venues),
     });
     if (own.ok) return { ok: true };
     if (own.reason !== "not_configured" || !live) return own;
