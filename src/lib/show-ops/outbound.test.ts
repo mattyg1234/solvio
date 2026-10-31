@@ -59,20 +59,23 @@ test("texts are live on production and can be switched separately", () => {
   assert.equal(live({ VERCEL_ENV: "production", SHOW_OPS_MESSAGES_LIVE: "0" }), false);
   assert.equal(live({ VERCEL_ENV: "preview", SHOW_OPS_MESSAGES_LIVE: "1" }), true);
   assert.equal(live({ SHOW_OPS_EMAILS_LIVE: "1" }), true);
-  withEnv({ SHOW_OPS_EMAILS_LIVE: "0", VERCEL_ENV: "production", SHOW_OPS_EMAIL_ALLOWLIST: undefined }, () => {
+  withEnv({ SHOW_OPS_TEST_MODE: "1", VERCEL_ENV: "production", SHOW_OPS_EMAIL_ALLOWLIST: undefined }, () => {
     assert.equal(showOpsOutboundLive(), false);
     assert.deepEqual(filterShowOpsOutboundTo(["agent@hotel.com"]), []);
   });
 });
 
-test("emails are live on production unless switched off", () => {
+test("emails are live on production; only SHOW_OPS_TEST_MODE=1 holds them back", () => {
   const live = (vars: Record<string, string | undefined>) => {
     let out = false;
-    withEnv({ SHOW_OPS_EMAILS_LIVE: undefined, VERCEL_ENV: undefined, ...vars }, () => (out = showOpsOutboundLive()));
+    withEnv({ SHOW_OPS_EMAILS_LIVE: undefined, SHOW_OPS_TEST_MODE: undefined, VERCEL_ENV: undefined, VERCEL_TARGET_ENV: undefined, ...vars }, () => (out = showOpsOutboundLive()));
     return out;
   };
   assert.equal(live({ VERCEL_ENV: "production" }), true);
+  assert.equal(live({ VERCEL_TARGET_ENV: "production" }), true);
   assert.equal(live({ VERCEL_ENV: "preview" }), false);
-  assert.equal(live({ VERCEL_ENV: "production", SHOW_OPS_EMAILS_LIVE: "0" }), false);
+  // The old switch-off left in Vercel since before go-live no longer holds production back.
+  assert.equal(live({ VERCEL_ENV: "production", SHOW_OPS_EMAILS_LIVE: "0" }), true);
+  assert.equal(live({ VERCEL_ENV: "production", SHOW_OPS_TEST_MODE: "1" }), false);
   assert.equal(live({ SHOW_OPS_EMAILS_LIVE: "1" }), true);
 });
