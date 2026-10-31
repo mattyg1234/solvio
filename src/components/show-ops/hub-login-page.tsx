@@ -81,10 +81,7 @@ export function HubLoginPage({
         </section>
 
         <p className="text-center text-sm text-white/60">
-          Need access? Email{" "}
-          <a href={`mailto:${brand.contactEmail}`} className="font-semibold text-white hover:underline">
-            {brand.contactEmail}
-          </a>
+          MHT team only. Accounts are set up by your manager — no sign-ups here.
         </p>
       </main>
 
