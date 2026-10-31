@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { loadTwilioConnection } from "@/lib/show-ops/inbox/connection";
 import { getInboxViewer, InboxAccessError, messageMedia } from "@/lib/show-ops/inbox/server";
+import { fetchMetaMedia, META_MEDIA_PREFIX } from "@/lib/show-ops/inbox/meta";
 import { fetchTwilioMedia } from "@/lib/show-ops/inbox/twilio";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 const SAFE_INLINE = /^(image\/(jpeg|png|gif|webp)|audio\/(ogg|mpeg|mp4|amr)|video\/mp4|application\/pdf)$/i;
 
 /**
- * A guest's photo or file. Twilio keeps it behind the workspace's credentials,
+ * A guest's photo or file. Twilio or Meta keeps it behind the workspace's credentials,
  * so the Hub fetches it for staff who can read that conversation (RLS).
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ messageId: string; index: string }> }) {
@@ -26,9 +27,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ mes
   const item = media[Number.parseInt(index, 10)];
   if (!item) return new NextResponse("Not found.", { status: 404 });
   const conn = await loadTwilioConnection(viewer.businessId);
-  if (!conn) return new NextResponse("Twilio is not connected.", { status: 409 });
-  const res = await fetchTwilioMedia(conn.creds, item.url);
-  if (!res?.body) return new NextResponse("Could not fetch the file from Twilio.", { status: 502 });
+  if (!conn) return new NextResponse("WhatsApp & SMS are not connected.", { status: 409 });
+  const metaId = item.url.startsWith(META_MEDIA_PREFIX) ? item.url.slice(META_MEDIA_PREFIX.length) : null;
+  if (metaId && !conn.metaCreds) return new NextResponse("Meta is not connected.", { status: 409 });
+  const res = metaId ? await fetchMetaMedia(conn.metaCreds!, metaId) : await fetchTwilioMedia(conn.creds, item.url);
+  if (!res?.body) return new NextResponse("Could not fetch the file.", { status: 502 });
   const type = String(item.type || "application/octet-stream");
   const inline = SAFE_INLINE.test(type);
   return new NextResponse(res.body, {

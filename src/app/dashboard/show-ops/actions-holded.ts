@@ -16,11 +16,16 @@ import {
   holdedErrorMessage,
   holdedInvoiceFromPack,
   parseIgicApprovals,
+  pickHoldedContact,
+  rankHoldedContacts,
   rateKey,
+  taxIdKey,
   holdedItemsFromLines,
   unixDay,
+  type HoldedContactCandidate,
   type HoldedDocumentSummary,
   type HoldedIgicTaxApproval,
+  type RankedHoldedContact,
 } from "@/lib/show-ops/holded";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
 import { checkTaxId, holdedReadiness, normaliseCountry, type PartnerBilling } from "@/lib/show-ops/partner-billing";
@@ -220,9 +225,13 @@ async function ensureHoldedContact(
     // Gone from Holded (deleted, or it belonged to another Holded company): find or create it again.
     await remember(null);
   }
-  const existing = (input.code ? await client.findContactByCode(input.code) : null) ?? (await client.findContactByName(input.name));
+  // One business can have a Holded contact per island (or per agent): pick the partner's own, or stop rather than guess.
+  const partner = { name: supplier?.name ?? fallbackName, island: supplier?.island ?? null };
+  const existing =
+    (input.code ? pickHoldedContact(await client.contactsByCode(input.code), partner) : null) ??
+    pickHoldedContact(await client.contactsByName(input.name), partner);
   if (existing) {
-    await client.syncContact(existing.id, input).catch(() => false);
+    await client.syncContact(existing.id, input);
     await remember(existing.id);
     return existing.id;
   }
@@ -277,24 +286,30 @@ async function syncFromSummary(businessId: string, invoiceId: string, summary: H
 type InvoiceRow = Record<string, unknown> & { id: string; period_start: string; period_end: string; status: string; voided: boolean; supplier_id: string | null; supplier_name: string; recipient_name: string | null; recipient_tax_id: string | null; recipient_address: string | null; holded_document_id: string | null };
 type SendOutcome = { outcome: "sent" | "error" | "reconcile" | "existing"; message: string | null };
 
+/** The pack as a Holded draft body: partner contact synced first, IGIC from the approved taxes. Touches no invoice in Holded. */
+async function holdedPayloadForPack(ctx: ShowOpsContext, inv: InvoiceRow, client: HoldedClient, approvals: Record<string, HoldedIgicTaxApproval>) {
+  const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
+  if (!lines?.length) throw new Error("This invoice has no lines.");
+  const taxes = await client.listTaxes();
+  const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
+    name: inv.recipient_name,
+    taxId: inv.recipient_tax_id,
+    address: inv.recipient_address,
+  });
+  return holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes, {
+    pricesIncludeTax: ctx.config.invoice.pricesIncludeTax,
+  });
+}
+
 /**
  * Issued pack → draft sales invoice in Holded, through the claim/complete lifecycle.
  * Shared by the invoice page, "Issue and send" and the bulk sync; never redirects.
  */
 async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client: HoldedClient, approvals: Record<string, HoldedIgicTaxApproval>): Promise<SendOutcome> {
-  const { data: lines } = await ctx.supabase.from("show_invoice_lines").select("*").eq("invoice_id", inv.id).eq("business_id", ctx.business.id).order("guest_name");
-  if (!lines?.length) return { outcome: "error", message: "This invoice has no lines." };
-
   // 1. Everything that can fail without touching Holded happens before the claim.
-  let payload: ReturnType<typeof holdedInvoiceFromPack>;
+  let payload: Awaited<ReturnType<typeof holdedPayloadForPack>>;
   try {
-    const taxes = await client.listTaxes();
-    const contactId = await ensureHoldedContact(ctx, client, inv.supplier_id, inv.supplier_name, {
-      name: inv.recipient_name,
-      taxId: inv.recipient_tax_id,
-      address: inv.recipient_address,
-    });
-    payload = holdedInvoiceFromPack(inv as Parameters<typeof holdedInvoiceFromPack>[0], lines, contactId, (rate) => approvalForRate(approvals, rate), taxes);
+    payload = await holdedPayloadForPack(ctx, inv, client, approvals);
   } catch (err) {
     return { outcome: "error", message: safeMessage(err) };
   }
@@ -374,6 +389,30 @@ export async function refreshHoldedInvoiceAction(formData: FormData): Promise<vo
   const { data: inv } = await ctx.supabase.from("show_invoices").select("id,holded_document_id").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
   if (!inv?.holded_document_id) throw new Error("This invoice has not been sent to Holded yet.");
   return refreshInvoiceFromHolded(ctx, inv.id, inv.holded_document_id);
+}
+
+/**
+ * The linked Holded draft differs from the pack (for example it was made before a fix):
+ * write the pack's lines over it. Drafts only; Holded refuses anything Solvio did not make for this pack.
+ */
+export async function replaceHoldedDraftAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("finance", "invoices");
+  const id = String(formData.get("invoice_id") ?? "").trim();
+  const { data: inv } = await ctx.supabase.from("show_invoices").select("*").eq("id", id).eq("business_id", ctx.business.id).maybeSingle();
+  if (!inv) throw new Error("Invoice not found.");
+  if (inv.voided || inv.status !== "issued") throw new Error("Only issued invoices go to Holded.");
+  if (!inv.holded_document_id || inv.holded_status !== "draft") throw new Error("Only a Holded draft can be replaced. After approval, use a credit note.");
+  let message: string | null = null;
+  try {
+    const { client, approvals } = await loadIntegration(ctx);
+    const payload = await holdedPayloadForPack(ctx, inv as InvoiceRow, client, approvals);
+    const summary = await client.replaceInvoiceDraft(inv.holded_document_id, payload, { reference: operationReference(inv.id) });
+    await syncFromSummary(ctx.business.id, inv.id, summary);
+  } catch (err) {
+    message = safeMessage(err);
+  }
+  revalidate(inv.id);
+  redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${message ? "error" : "replaced"}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
 }
 
 /**
@@ -667,4 +706,100 @@ export async function reconcileHoldedCreditNoteAction(formData: FormData): Promi
   }
   revalidate(inv.id);
   redirect(`/dashboard/show-ops/invoices/${inv.id}?holded=${result}${message ? `&holded_msg=${encodeURIComponent(message)}` : ""}`);
+}
+
+/* ── A partner's own Holded contact, picked by a person ─────────────────────── */
+
+export type HoldedPartnerLinkResult =
+  | { ok: true; linkedId: string | null; linked: HoldedContactCandidate | null; linkedMissing?: boolean; candidates?: RankedHoldedContact[]; note?: string }
+  | { ok: false; message: string };
+
+type LinkPartner = { id: string; name: string; tax_id: string | null; island: string | null; holded_contact_id: string | null };
+
+async function linkPartner(ctx: ShowOpsContext, supplierId: string): Promise<LinkPartner | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(supplierId)) return null;
+  const { data } = await ctx.supabase
+    .from("show_suppliers")
+    .select("id,name,tax_id,island,holded_contact_id")
+    .eq("id", supplierId)
+    .eq("business_id", ctx.business.id)
+    .maybeSingle();
+  return (data as LinkPartner | null) ?? null;
+}
+
+function nifNote(partner: LinkPartner, contact: HoldedContactCandidate): string | undefined {
+  const ours = taxIdKey(partner.tax_id);
+  const held = taxIdKey(contact.nif);
+  if (!ours || !held || ours === held) return undefined;
+  return `Holded has NIF ${contact.nif} on this contact, the Hub has ${partner.tax_id}. Sends to Holded stop until one of them is fixed.`;
+}
+
+/** The partner's linked contact (if any) and the Holded contacts that could be it. Read-only. */
+export async function findHoldedContactsForPartnerAction(supplierId: string, query: string): Promise<HoldedPartnerLinkResult> {
+  const ctx = await requireShowOpsAction("admin", "partners");
+  const partner = await linkPartner(ctx, supplierId);
+  if (!partner) return { ok: false, message: "Partner not found." };
+  try {
+    const { client } = await loadIntegration(ctx);
+    const [all, linked] = await Promise.all([
+      client.listContacts(),
+      partner.holded_contact_id ? client.getContactCandidate(partner.holded_contact_id) : Promise.resolve(null),
+    ]);
+    return {
+      ok: true,
+      linkedId: partner.holded_contact_id,
+      linked,
+      linkedMissing: Boolean(partner.holded_contact_id && !linked),
+      candidates: rankHoldedContacts(all, { query: String(query ?? "").slice(0, 100), partner: { name: partner.name, island: partner.island, taxId: partner.tax_id } }),
+      note: linked ? nifNote(partner, linked) : undefined,
+    };
+  } catch (err) {
+    return { ok: false, message: safeMessage(err) };
+  }
+}
+
+/** Every invoice for this partner goes to this Holded contact. The contact must exist in the connected Holded company. */
+export async function linkHoldedContactAction(supplierId: string, contactId: string): Promise<HoldedPartnerLinkResult> {
+  const ctx = await requireShowOpsAction("admin", "partners");
+  const partner = await linkPartner(ctx, supplierId);
+  if (!partner) return { ok: false, message: "Partner not found." };
+  let contact: HoldedContactCandidate | null;
+  try {
+    contact = await (await loadIntegration(ctx)).client.getContactCandidate(String(contactId ?? ""));
+  } catch (err) {
+    return { ok: false, message: safeMessage(err) };
+  }
+  if (!contact) return { ok: false, message: "That contact is not in the connected Holded company." };
+  const { error } = await ctx.supabase
+    .from("show_suppliers")
+    .update({ holded_contact_id: contact.id, updated_at: new Date().toISOString() })
+    .eq("id", partner.id)
+    .eq("business_id", ctx.business.id);
+  if (error) return { ok: false, message: error.message };
+  const { data: others } = await ctx.supabase
+    .from("show_suppliers")
+    .select("name")
+    .eq("business_id", ctx.business.id)
+    .eq("holded_contact_id", contact.id)
+    .neq("id", partner.id)
+    .limit(5);
+  const shared = (others ?? []).map((o) => o.name).filter(Boolean);
+  const note = [nifNote(partner, contact), shared.length ? `Also linked to: ${shared.join(", ")}.` : ""].filter(Boolean).join(" ") || undefined;
+  // No revalidatePath: refreshing the Partners page remounted the card and wiped the confirmation and NIF warning.
+  // The page is dynamic, so the next visit reads the new link anyway.
+  return { ok: true, linkedId: contact.id, linked: contact, note };
+}
+
+/** Back to automatic: the next send looks the contact up by NIF, then exact name, and stops if more than one could fit. */
+export async function unlinkHoldedContactAction(supplierId: string): Promise<HoldedPartnerLinkResult> {
+  const ctx = await requireShowOpsAction("admin", "partners");
+  const partner = await linkPartner(ctx, supplierId);
+  if (!partner) return { ok: false, message: "Partner not found." };
+  const { error } = await ctx.supabase
+    .from("show_suppliers")
+    .update({ holded_contact_id: null, updated_at: new Date().toISOString() })
+    .eq("id", partner.id)
+    .eq("business_id", ctx.business.id);
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, linkedId: null, linked: null };
 }

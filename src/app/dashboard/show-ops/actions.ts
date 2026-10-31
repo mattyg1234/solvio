@@ -6,7 +6,7 @@ import { bookingRefSeries, isPartnerLinkToken, isUniqueViolation, nextBookingRef
 import { sendShowOpsPartnerLinkEmail } from "@/lib/notifications/show-ops-emails";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { pushInvoiceToHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { redirect } from "next/navigation";
@@ -58,7 +58,7 @@ import { parseStopRunsOn, stopRunsOnDate } from "@/lib/show-ops/bus";
 import { showRunsOnDate } from "@/lib/show-ops/nights";
 import { showOpsDayName } from "@/lib/show-ops/calc";
 import { isReceptionPartner } from "@/lib/show-ops/partners";
-import { closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
+import { CLOSE_SALE_EMAILS_ON, closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
 import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSnapshot, type ShowExtra } from "@/lib/show-ops/extras";
@@ -547,6 +547,10 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
       defaultVatRate: (() => {
         const v = Number(formData.get("invoice_vat_rate"));
         return Number.isFinite(v) && v >= 0 ? v : ctx.config.invoice.defaultVatRate;
+      })(),
+      pricesIncludeTax: (() => {
+        const v = String(formData.get("invoice_prices_include_tax") ?? "");
+        return v === "1" ? true : v === "0" ? false : ctx.config.invoice.pricesIncludeTax;
       })(),
       issuerName: String(formData.get("invoice_issuer_name") ?? "").trim(),
       issuerTaxId: String(formData.get("invoice_issuer_tax_id") ?? "").trim(),
@@ -3277,8 +3281,10 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
   const packIslands = new Set(priced.map((b) => (b.island ? String(b.island) : "")).filter(Boolean));
   const packIsland = packIslands.size === 1 ? [...packIslands][0] : island || null;
   // The partner's agreed payment days win over the run's default (Joel's per-partner invoice days).
-  const partnerTerms = Number((supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days);
-  const termsDays = Number.isInteger(partnerTerms) && partnerTerms >= 0 ? partnerTerms : terms;
+  // A partner with no days set (null) falls back to the run's default; Number(null) would be 0, which invoices reject.
+  const rawPartnerTerms = (supplierRow as { payment_terms_days?: number | null } | null)?.payment_terms_days;
+  const partnerTerms = rawPartnerTerms == null ? NaN : Number(rawPartnerTerms);
+  const termsDays = Number.isInteger(partnerTerms) && partnerTerms > 0 ? partnerTerms : terms;
   const due_date = addDaysIso(invoice_date, termsDays);
   const invoiceCfg = ctx.config.invoice;
   const vatRate = invoiceCfg.defaultVatRate;
@@ -3363,6 +3369,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
       adultUnit: adults > 0 ? round2(billed.billedAdultNett / adults) : 0,
       childUnit: children > 0 ? round2(billed.billedChildNett / children) : 0,
       vatRate,
+      pricesIncludeTax: invoiceCfg.pricesIncludeTax,
     });
     return {
       business_id: ctx.business.id,
@@ -3392,6 +3399,7 @@ async function generateInvoicePackCore(ctx: ShowOpsFinanceCtx, opts: InvoicePack
     extras: b.extras_snapshot, infantNett: Number(b.infant_nett_total || 0), infants: Number(b.infants),
     booked: paxTotal(Number(b.adults), Number(b.children), Number(b.infants)),
     missing: billed.missing, writeOff: billed.charge === "write_off", vatRate,
+    pricesIncludeTax: invoiceCfg.pricesIncludeTax,
   }).map(({ description, money }) => ({
     business_id: ctx.business.id, invoice_id: inv.id, booking_id: null, source_booking_id: b.id,
     booking_ref: b.booking_ref, guest_name: b.guest_name, supplier_ticket_number: b.supplier_ticket_number,
@@ -3459,6 +3467,15 @@ export async function generateInvoicePackAction(formData: FormData): Promise<voi
     throw new Error("No uninvoiced reservations for that filter — they may have just been invoiced elsewhere.");
   }
 
+  if (formData.get("send_to_holded") === "1") {
+    // Made in the Hub, made in Holded: issue straight away and create the Holded draft in the same press.
+    await issueSavedInvoice(ctx, invoiceId, invoice_date);
+    revalidateShowOps();
+    const next = new FormData();
+    next.set("invoice_id", invoiceId);
+    return pushInvoiceToHoldedAction(next);
+  }
+
   revalidateShowOps();
   redirect(`/dashboard/show-ops/invoices/${invoiceId}`);
 }
@@ -3496,6 +3513,7 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
   if (!supplierIds.length) throw new Error("No uninvoiced reservations in that period.");
 
   let generated = 0;
+  const created: string[] = [];
   for (const supplier_id of supplierIds) {
     const invoiceId = await generateInvoicePackCore(ctx, {
       supplier_id,
@@ -3505,7 +3523,17 @@ export async function generateAllInvoicePacksAction(formData: FormData): Promise
       terms,
       invoice_date,
     });
-    if (invoiceId) generated += 1;
+    if (invoiceId) {
+      generated += 1;
+      created.push(invoiceId);
+    }
+  }
+
+  if (formData.get("send_to_holded") === "1" && created.length) {
+    // Issue every new pack, then the sync creates each one in Holded (and pulls back the rest).
+    for (const id of created) await issueSavedInvoice(ctx, id, invoice_date);
+    revalidateShowOps();
+    return syncHoldedInvoicesAction();
   }
 
   revalidateShowOps();
@@ -3612,7 +3640,7 @@ type ParsedInvoiceLine = {
   money: ReturnType<typeof recalcInvoiceLine>;
 };
 
-function parseInvoiceEditorForm(formData: FormData): {
+function parseInvoiceEditorForm(formData: FormData, pricesIncludeTax: boolean): {
   invoiceId: string;
   invoice_date: string;
   terms: number;
@@ -3635,6 +3663,7 @@ function parseInvoiceEditorForm(formData: FormData): {
             quantity: Number(formData.get(`quantity_${id}`) ?? 0),
             unitPrice: Number(formData.get(`unit_price_${id}`) ?? 0),
             vatRate: Number(formData.get(`vat_rate_${id}`) ?? 0),
+            pricesIncludeTax,
           })
         : recalcInvoiceLine({
             adults: Number(formData.get(`adults_${id}`) ?? 0),
@@ -3642,6 +3671,7 @@ function parseInvoiceEditorForm(formData: FormData): {
             adultUnit: Number(formData.get(`adult_unit_${id}`) ?? 0),
             childUnit: Number(formData.get(`child_unit_${id}`) ?? 0),
             vatRate: Number(formData.get(`vat_rate_${id}`) ?? 0),
+            pricesIncludeTax,
           });
     const description = String(formData.get(`description_${id}`) ?? "").trim();
     const guest = String(formData.get(`guest_name_${id}`) ?? "").trim() || description || "Line";
@@ -3676,7 +3706,7 @@ async function persistInvoiceDraft(
   ctx: Awaited<ReturnType<typeof requireShowOpsRole>>,
   formData: FormData,
 ) {
-  const parsed = parseInvoiceEditorForm(formData);
+  const parsed = parseInvoiceEditorForm(formData, ctx.config.invoice.pricesIncludeTax);
   if (!parsed.invoiceId) throw new Error("Invoice required.");
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
@@ -3807,13 +3837,20 @@ export async function issueInvoiceAndSendToHoldedAction(formData: FormData): Pro
 
 async function issueInvoiceDraft(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, formData: FormData): Promise<string> {
   const saved = await persistInvoiceDraft(ctx, formData);
+  return issueSavedInvoice(ctx, saved.inv.id, saved.invoice_date);
+}
+
+/** Numbers and locks a saved draft (lines already stored), e.g. one just generated from bookings. */
+async function issueSavedInvoice(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, invoiceId: string, fallbackDate: string): Promise<string> {
+  const saved = { invoice_date: fallbackDate };
   const { data: inv } = await ctx.supabase
     .from("show_invoices")
     .select("*")
-    .eq("id", saved.inv.id)
+    .eq("id", invoiceId)
     .eq("business_id", ctx.business.id)
     .maybeSingle();
   if (!inv) throw new Error("Invoice not found.");
+  if (inv.status !== "draft") return inv.id;
 
   const { data: lineRows } = await ctx.supabase
     .from("show_invoice_lines")
@@ -4127,10 +4164,9 @@ export async function closeSaleAction(formData: FormData): Promise<void> {
     redirect(`${next}${next.includes("?") ? "&" : "?"}error=${encodeURIComponent(insErr.message.slice(0, 180))}`);
   }
 
-  const { data: partners } = await ctx.supabase
-    .from("show_suppliers")
-    .select("name,email,island,active")
-    .eq("business_id", ctx.business.id);
+  const { data: partners } = CLOSE_SALE_EMAILS_ON
+    ? await ctx.supabase.from("show_suppliers").select("name,email,island,active").eq("business_id", ctx.business.id)
+    : { data: [] };
   const rec = closeSaleRecipients(partners ?? [], island);
   const copy = closeSaleCopy({
     kind: close_kind,

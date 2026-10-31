@@ -7,7 +7,7 @@ import {
   sendShowOpsInvoiceEmailAction,
   voidInvoiceAction,
 } from "@/app/dashboard/show-ops/actions";
-import { pushInvoiceToHoldedAction, reconcileHoldedCreditNoteAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction, requestHoldedCreditNoteAction } from "@/app/dashboard/show-ops/actions-holded";
+import { pushInvoiceToHoldedAction, reconcileHoldedCreditNoteAction, reconcileHoldedInvoiceAction, refreshHoldedInvoiceAction, replaceHoldedDraftAction, requestHoldedCreditNoteAction } from "@/app/dashboard/show-ops/actions-holded";
 import { InvoiceEditor } from "@/components/show-ops/invoice-editor";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
@@ -20,6 +20,9 @@ import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { holdedInvoiceUrl, holdedInvoiceView } from "@/lib/show-ops/holded";
 import { holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
+
+// Holded errors fixed on the partner (its Holded contact, NIF or invoicing details), not on the invoice.
+const PARTNER_FIX = /contacts that could be|Holded has NIF|is missing:|refused the update to/;
 
 // "Issue and send to Holded" runs the Holded write in the same request.
 export const maxDuration = 60;
@@ -102,6 +105,7 @@ export default async function InvoicePrintPage({
   const holdedView = holdedInvoiceView(inv, holded.connected);
   const stage = invoiceStage(inv, today);
   const holdedLabel = holdedView.label;
+  const partnerHref = inv.supplier_id ? `/dashboard/show-ops/master?tab=partners&open=${inv.supplier_id}` : "/dashboard/show-ops/master?tab=partners";
   // What Holded still needs before this can go as a full invoice (same check the send runs).
   const holdedMissing =
     holded.connected && (holdedView.canSend || inv.status === "draft") && inv.supplier_id
@@ -213,6 +217,8 @@ export default async function InvoicePrintPage({
         </p>
       ) : sp.holded === "refreshed" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Updated from Holded. {holdedLabel}.</p>
+      ) : sp.holded === "replaced" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">Holded draft replaced with Solvio&apos;s lines. {holdedLabel}.</p>
       ) : sp.holded === "credit_sent" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
           Credit note drafted in Holded. The accountant links it to the invoice and approves it there.
@@ -227,7 +233,17 @@ export default async function InvoicePrintPage({
           {sp.holded_msg ? ` ${sp.holded_msg}` : ""}
         </p>
       ) : sp.holded === "error" ? (
-        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">{sp.holded_msg || holdedLabel}</p>
+        <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800 print:hidden">
+          {sp.holded_msg || holdedLabel}
+          {inv.supplier_id && PARTNER_FIX.test(sp.holded_msg ?? "") ? (
+            <>
+              {" "}
+              <Link href={partnerHref} className="font-semibold underline">
+                Open {inv.supplier_name}
+              </Link>
+            </>
+          ) : null}
+        </p>
       ) : null}
       {sp.emailed === "1" ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 print:hidden">
@@ -256,6 +272,7 @@ export default async function InvoicePrintPage({
           recipientTaxId={inv.recipient_tax_id || supplier?.tax_id || ""}
           recipientAddress={inv.recipient_address || supplier?.invoice_address || ""}
           defaultVatRate={ctx.config.invoice.defaultVatRate}
+          pricesIncludeTax={ctx.config.invoice.pricesIncludeTax}
           currency={invCurrency}
           lines={(lines ?? []).map((l) => ({
             id: l.id,
@@ -319,7 +336,7 @@ export default async function InvoicePrintPage({
               <tr>
                 <th className="py-2 pr-3">Concept</th>
                 <th className="py-2 pr-3 text-right">Units</th>
-                <th className="py-2 pr-3 text-right">Price</th>
+                <th className="py-2 pr-3 text-right">Net</th>
                 <th className="py-2 pr-3 text-right">{ctx.config.invoice.taxLabel}</th>
                 <th className="py-2 text-right">Total</th>
               </tr>
@@ -438,7 +455,7 @@ export default async function InvoicePrintPage({
                       <li key={m}>{m}</li>
                     ))}
                   </ul>
-                  <Link href="/dashboard/show-ops/master?tab=partners" className="mt-1 inline-block font-semibold underline">
+                  <Link href={partnerHref} className="mt-1 inline-block font-semibold underline">
                     Edit partner
                   </Link>
                 </div>
@@ -450,9 +467,18 @@ export default async function InvoicePrintPage({
               ) : null}
             </div>
             {inv.holded_expected_total != null && inv.holded_actual_total != null && inv.holded_amounts_match === false ? (
-              <p className="text-xs text-rose-800">
-                Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}. Fix the draft in Holded, then Refresh.
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-rose-800">
+                  Solvio total {money(Number(inv.holded_expected_total))} · Holded total {money(Number(inv.holded_actual_total))}.{" "}
+                  {inv.holded_status === "draft" ? "Replace the draft with Solvio's lines, or fix it in Holded and Refresh." : "Fix it in Holded, then Refresh."}
+                </p>
+                {inv.holded_status === "draft" && holded.connected ? (
+                  <form action={replaceHoldedDraftAction}>
+                    <input type="hidden" name="invoice_id" value={inv.id} />
+                    <SubmitOnce className="rounded-xl bg-rose-700 px-3 py-1.5 text-sm font-semibold text-white">Replace the Holded draft</SubmitOnce>
+                  </form>
+                ) : null}
+              </div>
             ) : null}
             {["approved", "paid", "corrected"].includes(String(inv.holded_status)) && holded.connected ? (
               <div className="rounded-lg border border-slate-200 p-3">
@@ -565,7 +591,7 @@ export default async function InvoicePrintPage({
                 <li key={m}>{m}</li>
               ))}
             </ul>
-            <Link href={inv.supplier_id ? `/dashboard/show-ops/master/partners/${inv.supplier_id}` : "/dashboard/show-ops/master?tab=partners"} className="mt-2 inline-block font-semibold underline">
+            <Link href={partnerHref} className="mt-2 inline-block font-semibold underline">
               Edit partner
             </Link>
           </div>

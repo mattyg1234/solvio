@@ -17,3 +17,7 @@ test('no-show write-off applies the existing proportional rule to extras',()=>{
 test('invalid extra evidence blocks invoicing instead of silently dropping the charge',()=>{
  assert.throws(()=>invoiceSupplements({extras:[{name:'Meal',quantity:1,nett_total:'invalid'}],infantNett:0,infants:0,booked:1,missing:0,writeOff:false,vatRate:0}));
 });
+test('extras with prices including IGIC keep their agreed total',()=>{
+ const lines=invoiceSupplements({extras:[{name:'Meal',quantity:2,nett_total:30}],infantNett:0,infants:0,booked:2,missing:0,writeOff:false,vatRate:7,pricesIncludeTax:true});
+ assert.equal(lines[0].money.netTotal,28.04);assert.equal(lines[0].money.lineTotal,30);
+});

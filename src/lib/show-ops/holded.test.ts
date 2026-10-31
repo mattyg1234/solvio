@@ -10,6 +10,7 @@ import {
   holdedTag,
   pickHoldedTaxKey,
   requireHoldedIgicTaxKey,
+  approvalMatches,
   summariseHoldedDocument,
   unixDay,
 } from "./holded";
@@ -39,6 +40,16 @@ test("explicit IGIC mapping fails closed when absent, wrong-scope, wrong-rate, o
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...IGIC_7, id: "pigic7", key: "p_igic_7" }), /does not match/);
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...IGIC_7, id: "iva7", key: "s_iva_7" }), /does not match/);
   assert.throws(() => requireHoldedIgicTaxKey(TAXES, 21, IGIC_7), /does not match/);
+});
+
+test("an approval survives Holded re-issuing the tax id (same key), but not a different key", () => {
+  // MHT's approval was saved as id "s_igic_7"; Holded later listed the same tax under an ObjectId.
+  const stale = { ...IGIC_7, id: "s_igic_7" };
+  assert.equal(requireHoldedIgicTaxKey(TAXES, 7, stale), "s_igic_7");
+  assert.throws(() => requireHoldedIgicTaxKey(TAXES, 7, { ...stale, key: "s_igic_bu_7" }), /does not match/);
+  assert.equal(approvalMatches(stale, { id: "igic7", key: "s_igic_7" }), true);
+  assert.equal(approvalMatches(stale, { id: "other", key: "s_igic_art_7" }), false);
+  assert.equal(approvalMatches(null, { id: "igic7", key: "s_igic_7" }), false);
 });
 
 test("tags survive Holded's punctuation stripping", () => {
@@ -75,6 +86,40 @@ test("booking line is one Holded item named like MHT's own invoices", () => {
   assert.equal(plain[0].subtotal, 0.1);
 });
 
+test("prices include IGIC: Holded gets the net, so it adds the IGIC back to the price", () => {
+  const booking = { description: "Smith A · MHT-319378", booking_ref: "MHT-319378", guest_name: "Smith A", adults: 2, adult_unit_price: 34.3, vat_rate: 7, net_total: 64.11 };
+  const manual = { description: "Bus supplement", quantity: 2, unit_price: 15, vat_rate: 7, notes: "Sept", net_total: "28.04" };
+  const items = holdedItemsFromLines([booking, manual], () => IGIC_7, TAXES, "MHT Tenerife", true);
+  assert.deepEqual(items, [
+    { name: "MHT Tenerife", desc: "Smith A MHT-319378 · 2 adults", units: 1, subtotal: 64.11, taxes: ["s_igic_7"] },
+    { name: "Bus supplement", desc: "2 × 15.00 · Sept", units: 1, subtotal: 28.04, taxes: ["s_igic_7"] },
+  ]);
+  // 64.11 + 4.49 and 28.04 + 1.96: the IGIC Holded adds brings each line back to its price.
+  assert.equal(Math.round((64.11 + Math.round(64.11 * 7) / 100) * 100) / 100, 68.6);
+  // Off by default: the price is sent as it is.
+  assert.equal(holdedItemsFromLines([booking], () => IGIC_7, TAXES)[0].subtotal, 68.6);
+});
+
+test("prices include IGIC: a line still saved with IGIC on top is refused, not sent", () => {
+  const stale = { description: "Smith", guest_name: "Smith", adults: 1, adult_unit_price: 34.3, vat_rate: 7, net_total: 34.3 };
+  assert.throws(() => holdedItemsFromLines([stale], () => IGIC_7, TAXES, undefined, true), /Recalculate it/);
+  const pack = { id: "p1", supplier_name: "Sunny", period_start: "2026-10-01", period_end: "2026-10-31", island: "Tenerife" };
+  assert.throws(() => holdedInvoiceFromPack(pack, [stale], "c1", () => IGIC_7, TAXES, { pricesIncludeTax: true }), /Recalculate it/);
+  assert.equal(holdedInvoiceFromPack(pack, [{ ...stale, net_total: 32.06 }], "c1", () => IGIC_7, TAXES, { pricesIncludeTax: true }).items[0].subtotal, 32.06);
+});
+
+test("a booking with nobody left to bill (0 pax, €0) is left off the Holded invoice", () => {
+  const zero = { description: "cummings · MHT-317002", guest_name: "cummings", adults: 0, children: 0, quantity: 0, unit_price: 0, vat_rate: 7, net_total: 0 };
+  const paid = { description: "Baker · MHT-317583", guest_name: "Baker", adults: 2, adult_unit_price: 34.3, vat_rate: 7, net_total: 64.11 };
+  const items = holdedItemsFromLines([zero, paid, zero], () => IGIC_7, TAXES, "MHT Lanzarote", true);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].subtotal, 64.11);
+  // Lines without a quantity still default to one unit, and free tickets still go over at €0.
+  assert.equal(holdedItemsFromLines([{ description: "Extra", unit_price: 5, vat_rate: 7 }], () => IGIC_7, TAXES)[0].units, 1);
+  assert.equal(holdedItemsFromLines([{ description: "Comp", adults: 2, quantity: 2, unit_price: 0, vat_rate: 7 }], () => IGIC_7, TAXES)[0].units, 2);
+  assert.throws(() => holdedItemsFromLines([zero], () => IGIC_7, TAXES), /charges nothing/);
+});
+
 test("holdedItemsFromLines puts the partner ticket number on the Holded line", () => {
   const items = holdedItemsFromLines(
     [{ description: "Smith · MHT-319001", booking_ref: "MHT-319001", supplier_ticket_number: " 4471 ", quantity: 1, unit_price: 40, vat_rate: 7, notes: "No show" }],
@@ -89,7 +134,8 @@ test("manual line requires a configured and validated IGIC sales tax key", () =>
   const items = holdedItemsFromLines(line, () => IGIC_7, TAXES);
   assert.deepEqual(items, [{ name: "Bus supplement", desc: "Sept", units: 3, subtotal: 4.5, taxes: ["s_igic_7"] }]);
   assert.throws(() => holdedItemsFromLines(line, () => null, TAXES), /No approved Canary\/IGIC/);
-  assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "missing" }), TAXES), /does not match/);
+  // A stale id with the same key is the same tax (Holded re-issues ids); the key decides.
+  assert.deepEqual(holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "missing" }), TAXES), items);
   assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "iva7", key: "s_iva_7" }), TAXES), /does not match/);
   assert.throws(() => holdedItemsFromLines(line, () => ({ ...IGIC_7, id: "pigic7", key: "p_igic_7" }), TAXES), /does not match/);
   assert.throws(() => holdedItemsFromLines(line, () => IGIC_7), /does not match/);

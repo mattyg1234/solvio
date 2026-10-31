@@ -84,8 +84,9 @@ function parseInvoiceConfig(
   raw: unknown,
   mhtLegacy: boolean,
 ): ShowOpsConfig["invoice"] {
+  // MHT's partner prices include IGIC (Joel, 29 Oct 2026).
   const fallback = mhtLegacy
-    ? { ...DEFAULT_SHOW_OPS_CONFIG.invoice, series: "MHT" }
+    ? { ...DEFAULT_SHOW_OPS_CONFIG.invoice, series: "MHT", pricesIncludeTax: true }
     : DEFAULT_SHOW_OPS_CONFIG.invoice;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...fallback };
   const o = raw as Record<string, unknown>;
@@ -97,6 +98,7 @@ function parseInvoiceConfig(
   return {
     series: series || fallback.series,
     defaultVatRate: Number.isFinite(vat) && vat >= 0 ? vat : fallback.defaultVatRate,
+    pricesIncludeTax: typeof o.pricesIncludeTax === "boolean" ? o.pricesIncludeTax : fallback.pricesIncludeTax,
     issuerName: typeof o.issuerName === "string" ? o.issuerName.trim() : fallback.issuerName,
     issuerTaxId: typeof o.issuerTaxId === "string" ? o.issuerTaxId.trim() : fallback.issuerTaxId,
     issuerAddress: typeof o.issuerAddress === "string" ? o.issuerAddress.trim() : fallback.issuerAddress,
@@ -275,6 +277,7 @@ export function mhtSeedConfig(): ShowOpsConfig {
       ...DEFAULT_SHOW_OPS_CONFIG.invoice,
       series: "MHT",
       defaultVatRate: 7,
+      pricesIncludeTax: true,
     },
   };
 }

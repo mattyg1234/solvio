@@ -5,7 +5,7 @@
  */
 
 import type { ShowOpsContext } from "@/lib/show-ops/access";
-import { HoldedClient, holdedContactFromSupplier, holdedErrorMessage } from "@/lib/show-ops/holded";
+import { HoldedClient, holdedContactFromSupplier, holdedErrorMessage, pickHoldedContact } from "@/lib/show-ops/holded";
 import { holdedContactRecord, holdedDetailsFor } from "@/lib/show-ops/holded-partner-import";
 import { checkTaxId, holdedReadiness, normaliseCountry, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 import { decryptSecret } from "@/lib/show-ops/secrets";
@@ -51,8 +51,8 @@ async function rememberContact(ctx: ShowOpsContext, partnerId: string, contactId
 /**
  * Create or update the partner's Holded contact from the Hub's details. A linked
  * contact is updated in place (what the office added in Holded, like IBAN or phones,
- * stays). An unlinked partner is matched by NIF or exact name first, unless the caller
- * already knows Holded has no such contact.
+ * stays). An unlinked partner is matched by NIF or exact name first (its own island's
+ * contact when Holded has one per island), unless the caller already knows Holded has no such contact.
  */
 export async function sendPartnerToHolded(
   ctx: ShowOpsContext,
@@ -72,7 +72,10 @@ export async function sendPartnerToHolded(
     await rememberContact(ctx, partner.id, null);
   }
   if (!opts.knownMissing) {
-    const existing = (input.code ? await client.findContactByCode(input.code) : null) ?? (await client.findContactByName(input.name));
+    // One business can have a Holded contact per island (or per agent): pick the partner's own, or stop rather than guess.
+    const existing =
+      (input.code ? pickHoldedContact(await client.contactsByCode(input.code), partner) : null) ??
+      pickHoldedContact(await client.contactsByName(input.name), partner);
     if (existing) {
       await client.syncContact(existing.id, input);
       await rememberContact(ctx, partner.id, existing.id);

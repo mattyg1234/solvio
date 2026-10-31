@@ -18,7 +18,9 @@ import {
   loadTwilioConnection,
   phoneOutboundAllowed,
   statusWebhookUrl,
+  templateRef,
   type TwilioConnection,
+  usesMetaWhatsApp,
 } from "@/lib/show-ops/inbox/connection";
 import {
   canUseShowOpsInbox,
@@ -37,7 +39,7 @@ import {
   twilioErrorText,
   type InboundTwilioMessage,
 } from "@/lib/show-ops/inbox/logic";
-import { templateSpec } from "@/lib/show-ops/inbox/templates";
+import { metaErrorText, sendMetaMessage, type MetaStatusUpdate } from "@/lib/show-ops/inbox/meta";
 import { sendTwilioMessage } from "@/lib/show-ops/inbox/twilio";
 import type {
   InboxBookingSummary,
@@ -47,6 +49,7 @@ import type {
   InboxMessage,
   InboxMessageStatus,
   InboxSyncResponse,
+  TwilioIntegrationMeta,
 } from "@/lib/show-ops/inbox/types";
 import { canSeeShowOpsPage } from "@/lib/show-ops/nav";
 import { SHOW_OPS_OUTBOUND_HELD } from "@/lib/show-ops/outbound";
@@ -371,7 +374,12 @@ function nameIn(people: ChatPerson[], id: string | null | undefined): string {
 async function deliver(
   conn: TwilioConnection,
   conversation: ConversationRow,
-  input: { body: string; authorId: string | null; source: "inbox" | "ticket" | "template"; template?: { sid: string; variables?: Record<string, string> } },
+  input: {
+    body: string;
+    authorId: string | null;
+    source: "inbox" | "ticket" | "template";
+    template?: { ref: NonNullable<ReturnType<typeof templateRef>>; variables?: Record<string, string> };
+  },
 ): Promise<MessageRow> {
   const from = conversation.channel === "whatsapp" ? conn.meta.whatsapp_from : conn.meta.sms_from;
   if (!from) throw new InboxAccessError(conversation.channel === "whatsapp" ? "No WhatsApp sender is set up." : "No SMS number is set up.");
@@ -387,15 +395,22 @@ async function deliver(
   });
   if (!saved) throw new Error("Could not save the message.");
 
-  const res = await sendTwilioMessage(conn.creds, {
-    channel: conversation.channel,
-    from,
-    to: conversation.customer_phone,
-    body: input.template ? undefined : input.body,
-    contentSid: input.template?.sid,
-    contentVariables: input.template?.variables,
-    statusCallback: conn.meta.webhook_token ? statusWebhookUrl(conn.meta.webhook_token) : undefined,
-  });
+  const ref = input.template?.ref;
+  const res =
+    conversation.channel === "whatsapp" && usesMetaWhatsApp(conn)
+      ? await sendMetaMessage(conn.metaCreds!, conversation.customer_phone, {
+          body: ref ? undefined : input.body,
+          template: ref && "name" in ref ? { name: ref.name, language: ref.language, variables: input.template?.variables } : undefined,
+        })
+      : await sendTwilioMessage(conn.creds, {
+          channel: conversation.channel,
+          from,
+          to: conversation.customer_phone,
+          body: ref ? undefined : input.body,
+          contentSid: ref && "sid" in ref ? ref.sid : undefined,
+          contentVariables: input.template?.variables,
+          statusCallback: conn.meta.webhook_token ? statusWebhookUrl(conn.meta.webhook_token) : undefined,
+        });
   const db = admin();
   const now = new Date().toISOString();
   if (res.ok) {
@@ -458,11 +473,9 @@ export async function addInboxNote(viewer: InboxViewer, input: { conversationId:
 }
 
 function templateFor(conn: TwilioConnection, customerName: string) {
-  if (!conn.meta.reopen_content_sid) return null;
-  return {
-    sid: conn.meta.reopen_content_sid,
-    variables: conn.meta.reopen_uses_name ? { "1": firstName(customerName) } : undefined,
-  };
+  const ref = templateRef(conn, "reopen");
+  if (!ref) return null;
+  return { ref, variables: conn.meta.reopen_uses_name ? { "1": firstName(customerName) } : undefined };
 }
 
 /** WhatsApp after 24 hours: the approved template is the only thing allowed. */
@@ -820,6 +833,22 @@ export async function applyStatusCallback(conn: TwilioConnection, params: Record
   await db.from("show_ops_inbox_messages").update(patch).eq("id", row.id).eq("status", row.status);
 }
 
+/** A delivery update from Meta's webhook (sent → delivered → read, or failed with a reason). */
+export async function applyMetaStatus(conn: TwilioConnection, update: MetaStatusUpdate): Promise<void> {
+  const db = admin();
+  const { data } = await db
+    .from("show_ops_inbox_messages")
+    .select("id,status")
+    .eq("business_id", conn.businessId)
+    .eq("provider_sid", update.id)
+    .maybeSingle();
+  const row = data as { id: string; status: string } | null;
+  if (!row || !shouldApplyStatus(row.status, update.status)) return;
+  const patch: Record<string, unknown> = { status: update.status, updated_at: new Date().toISOString() };
+  if (update.status === "failed") patch.error = metaErrorText(update.code, update.message || undefined);
+  await db.from("show_ops_inbox_messages").update(patch).eq("id", row.id).eq("status", row.status);
+}
+
 /* ------------------------------------------------------------------ *
  * Messages the Hub sends on its own (pick-up tickets)
  * ------------------------------------------------------------------ */
@@ -830,7 +859,8 @@ export type BusinessTextResult = { ok: true } | { ok: false; reason: "not_config
  * A ticket or pick-up text from the Hub, through the workspace's own Twilio and
  * logged in its inbox so replies land next to it. WhatsApp free text when the guest
  * wrote in the last 24 hours, else that kind's approved WhatsApp template, else SMS
- * (WhatsApp refuses free text after 24 hours).
+ * (WhatsApp refuses free text after 24 hours). `template` picks the kind and its
+ * blanks from the connection's settings (e.g. the island's venue); null = none fits.
  * Returns not_configured when the workspace has no Twilio, so the caller can fall back.
  */
 export async function sendBusinessTextToGuest(
@@ -840,7 +870,7 @@ export async function sendBusinessTextToGuest(
     body: string;
     bookingId?: string | null;
     guestName?: string | null;
-    template?: { kind: "ticket" | "pickup"; variables: Record<string, string> } | null;
+    template?: ((meta: TwilioIntegrationMeta) => { kind: "booking" | "booking_transport" | "pickup"; variables: Record<string, string> } | null) | null;
   },
 ): Promise<BusinessTextResult> {
   const conn = await loadTwilioConnection(businessId).catch(() => null);
@@ -852,7 +882,7 @@ export async function sendBusinessTextToGuest(
 
   const db = admin();
   let channel: InboxChannel | null = null;
-  let template: { sid: string; variables: Record<string, string> } | undefined;
+  let template: { ref: NonNullable<ReturnType<typeof templateRef>>; variables: Record<string, string> } | undefined;
   if (conn.meta.whatsapp_from) {
     const { data } = await db
       .from("show_ops_inbox_conversations")
@@ -863,11 +893,12 @@ export async function sendBusinessTextToGuest(
       .maybeSingle();
     const last = (data as { last_inbound_at?: string | null } | null)?.last_inbound_at;
     if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
-    else if (input.template) {
-      const sid = conn.meta[templateSpec(input.template.kind).metaKey];
-      if (sid) {
+    else {
+      const chosen = input.template?.(conn.meta) ?? null;
+      const ref = chosen ? templateRef(conn, chosen.kind) : null;
+      if (chosen && ref) {
         channel = "whatsapp";
-        template = { sid, variables: input.template.variables };
+        template = { ref, variables: chosen.variables };
       }
     }
   }

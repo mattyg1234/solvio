@@ -496,12 +496,20 @@ export default async function InvoicesPage({
                     ))}
                   </select>
                 </label>
+                {holded.connected ? (
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-3">
+                    <input type="checkbox" name="send_to_holded" value="1" defaultChecked className="h-4 w-4" />
+                    Create in Holded at the same time (issued and sent as a Holded draft, ready to approve there)
+                  </label>
+                ) : null}
                 <SubmitOnce className="self-end rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
                   {`Generate all ${previewBySupplier.size} supplier packs`}
                 </SubmitOnce>
               </form>
               <p className="mt-2 text-xs text-slate-500">
-                One draft per supplier for this period — nothing is issued until you review each pack.
+                {holded.connected
+                  ? "One invoice per supplier for this period. With Holded ticked, each is issued and created in Holded straight away; untick it to review drafts in the Hub first."
+                  : "One draft per supplier for this period — nothing is issued until you review each pack."}
               </p>
             </div>
           ) : null}
@@ -572,8 +580,14 @@ export default async function InvoicesPage({
                             ))}
                           </select>
                         </label>
+                        {holded.connected ? (
+                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+                            <input type="checkbox" name="send_to_holded" value="1" defaultChecked className="h-4 w-4" />
+                            Create in Holded at the same time (issued and sent as a Holded draft, ready to approve there)
+                          </label>
+                        ) : null}
                         <SubmitOnce className="self-end rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:col-span-2">
-                          Generate draft invoice
+                          {holded.connected ? "Create invoice" : "Generate draft invoice"}
                         </SubmitOnce>
                       </form>
                     ) : (

@@ -142,7 +142,11 @@ export default async function ShowOpsSettingsPage({
   ]);
   const messaging: MessagingSettingsState = twilioRow
     ? {
-        meta: { ...parseTwilioMeta(twilioRow.meta), account_name: String((twilioRow.meta as { account_name?: string } | null)?.account_name ?? "") },
+        meta: {
+          ...parseTwilioMeta(twilioRow.meta),
+          account_name: String((twilioRow.meta as { account_name?: string } | null)?.account_name ?? ""),
+          meta_number_name: String((twilioRow.meta as { meta_number_name?: string } | null)?.meta_number_name ?? ""),
+        },
         status: twilioRow.status as string,
         lastError: (twilioRow.last_error as string | null) ?? null,
         lastCheckedAt: (twilioRow.last_checked_at as string | null) ?? null,
@@ -992,6 +996,20 @@ export default async function ShowOpsSettingsPage({
                 />
               </label>
               <label className="text-sm">
+                Partner prices
+                <select
+                  name="invoice_prices_include_tax"
+                  defaultValue={ctx.config.invoice.pricesIncludeTax ? "1" : "0"}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                >
+                  <option value="1">Already include the tax</option>
+                  <option value="0">Tax is added on top</option>
+                </select>
+                <span className="mt-1 block text-xs text-slate-500">
+                  Included: a €34.30 ticket at 7% invoices as €32.06 + €2.24 tax = €34.30.
+                </span>
+              </label>
+              <label className="text-sm">
                 Tax name on invoices
                 <input
                   name="invoice_tax_label"
@@ -1196,7 +1214,7 @@ export default async function ShowOpsSettingsPage({
         </form>
       </section>
 
-      <MessagingSettings state={messaging} businessName={ctx.branding.displayName} flash={sp.twilio} flashError={sp.twilio_error} />
+      <MessagingSettings state={messaging} islands={ctx.config.islands} flash={sp.twilio} flashError={sp.twilio_error} />
 
       <section id="channels" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">GetYourGuide products</h2>

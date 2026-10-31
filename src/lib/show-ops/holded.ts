@@ -10,6 +10,8 @@
  * the token and keeps one interface, so callers never care which one is in use.
  */
 
+import { taxBaseFromGross } from "./invoice";
+
 export const HOLDED_BASE = "https://api.holded.com/api";
 
 export type HoldedTax = { id?: string; key: string; name: string; amount: number; scope?: string; legalTreatment?: string; category?: string };
@@ -122,6 +124,11 @@ export function approvalForRate(approvals: Record<string, HoldedIgicTaxApproval>
   return approvals[rateKey(rate)] ?? null;
 }
 
+/** Whether a stored approval is this Holded tax: same id, or same key after Holded re-issued the id. */
+export function approvalMatches(approval: HoldedIgicTaxApproval | null | undefined, tax: Pick<HoldedTax, "id" | "key">): boolean {
+  return Boolean(approval) && (approval!.id === tax.id || approval!.key === tax.key);
+}
+
 /** Turn an approved Holded tax into the stored approval shape; refuses anything that is not IGIC on sales. */
 export function approvalFromTax(tax: HoldedTax): HoldedIgicTaxApproval | null {
   if (!tax.id || tax.legalTreatment !== "igic" || (tax.scope ?? "sales") !== "sales") return null;
@@ -186,6 +193,8 @@ type PackLine = {
   quantity?: number | null;
   unit_price?: number | null;
   vat_rate?: number | null;
+  /** The net the Hub saved for the line; checked against the tax-included maths before sending. */
+  net_total?: number | string | null;
   notes?: string | null;
 };
 
@@ -240,7 +249,9 @@ export function requireHoldedIgicTaxKey(taxes: HoldedTax[], rate: number, approv
   const id = requiredString(approval.id, "approved Holded tax id");
   const key = requiredString(approval.key, "approved Holded tax key");
   const wanted = moneyCents(rate, "tax rate");
-  const match = taxes.find((tax) => tax.id === id && tax.key === key);
+  // Holded can give an account's tax a new id (MHT's IGIC 7% went from "s_igic_7" to an ObjectId on 27 Oct 2026);
+  // the key is stable, so an approval still holds for the same key. Rate and treatment are checked below either way.
+  const match = taxes.find((tax) => tax.id === id && tax.key === key) ?? taxes.find((tax) => tax.key === key);
   if (approval.legalTreatment !== "igic" || approval.category !== "sales" || !match || match.legalTreatment !== "igic" || match.category !== "sales" || match.scope !== "sales" || moneyCents(match.amount, "Holded tax rate") !== wanted || moneyCents(approval.rate, "approved tax rate") !== wanted) {
     throw new Error(`Approved Holded tax ${key} does not match the required IGIC sales treatment at ${strictMoney(rate, "tax rate")}%`);
   }
@@ -304,9 +315,23 @@ export function unixDay(iso: string | null | undefined, fallback = new Date()): 
 }
 
 /**
+ * Holded always adds the tax on top of the price it is sent, so a tax-included
+ * line goes over as its net. A line the Hub saved before prices included the tax
+ * still holds the old net; sending it would put the tax on top again, so it stops here.
+ */
+function includedNet(l: PackLine, gross: number, rate: number): number {
+  const net = taxBaseFromGross(gross, rate);
+  if (l.net_total != null && moneyCents(l.net_total, "line net") !== Math.round(net * 100)) {
+    throw new Error("This invoice was worked out with the tax added on top of the prices. Recalculate it before sending it to Holded.");
+  }
+  return net;
+}
+
+/**
  * One Solvio pack → one Holded invoice. Booking lines become up to two items
  * (adults, children) so Holded's maths matches Solvio's to the cent; manual
- * lines pass through as quantity × unit price.
+ * lines pass through as quantity × unit price. When prices include the tax,
+ * every line goes over as one item at its net.
  */
 export function holdedItemsFromLines(
   lines: PackLine[],
@@ -314,9 +339,12 @@ export function holdedItemsFromLines(
   taxes: HoldedTax[] = [],
   /** Item name for booking lines, as MHT names them in Holded ("MHT Tenerife"). Defaults to the line description. */
   bookingItemName?: string,
+  pricesIncludeTax = false,
 ): HoldedItem[] {
   const out: HoldedItem[] = [];
   for (const l of lines) {
+    // A booking with nobody left to bill (0 pax, 0 units) charges nothing, and Holded refuses a line with no units.
+    if (Math.trunc(n(l.adults)) <= 0 && Math.trunc(n(l.children)) <= 0 && l.quantity != null && n(l.quantity) === 0) continue;
     const rate = strictMoney(l.vat_rate ?? 0, "line tax rate");
     if (rate < 0) throw new Error("Line tax rate cannot be negative.");
     const key = requireHoldedIgicTaxKey(taxes, rate, taxForRate(rate));
@@ -337,11 +365,12 @@ export function holdedItemsFromLines(
         .filter(Boolean)
         .join(", ");
       const who = [String(l.guest_name || "").trim(), ref, ticket].filter(Boolean).join(" ");
+      const gross = Math.round((adults * adultUnit + children * childUnit) * 100) / 100;
       out.push({
         name: bookingItemName || base,
         desc: [who, pax, String(l.notes || "").trim()].filter(Boolean).join(" · "),
         units: 1,
-        subtotal: Math.round((adults * adultUnit + children * childUnit) * 100) / 100,
+        subtotal: pricesIncludeTax ? includedNet(l, gross, rate) : gross,
         ...tax,
       });
       continue;
@@ -349,8 +378,14 @@ export function holdedItemsFromLines(
     const units = strictMoney(l.quantity ?? 1, "line quantity");
     if (units <= 0) throw new Error("Line quantity must be greater than zero.");
     const unit = strictMoney(l.unit_price, "unit price");
+    if (pricesIncludeTax) {
+      const gross = Math.round(units * unit * 100) / 100;
+      out.push({ name: base, desc: [units !== 1 ? `${units} × ${unit.toFixed(2)}` : "", desc].filter(Boolean).join(" · ") || undefined, units: 1, subtotal: includedNet(l, gross, rate), ...tax });
+      continue;
+    }
     out.push({ name: base, desc, units, subtotal: unit, ...tax });
   }
+  if (lines.length && !out.length) throw new Error("This invoice charges nothing, so there is nothing to send to Holded.");
   return out;
 }
 
@@ -362,6 +397,7 @@ export function holdedInvoiceFromPack(
   contactId: string,
   taxForRate: (rate: number) => HoldedIgicTaxApproval | null,
   taxes: HoldedTax[] = [],
+  opts: { pricesIncludeTax?: boolean } = {},
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
   const tags = ["solvio"];
@@ -374,7 +410,7 @@ export function holdedInvoiceFromPack(
     contactId,
     desc: `${pack.island ? `MHT ${pack.island} · ` : ""}${pack.supplier_name} · ${pack.period_start} → ${pack.period_end}${ref}`,
     date: unixDay(pack.invoice_date),
-    items: holdedItemsFromLines(lines, taxForRate, taxes, pack.island ? `MHT ${pack.island}` : undefined),
+    items: holdedItemsFromLines(lines, taxForRate, taxes, pack.island ? `MHT ${pack.island}` : undefined, opts.pricesIncludeTax),
     notes,
     tags,
     approveDoc: false,
@@ -454,6 +490,47 @@ function strictMoney(value: unknown, label: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error(`Holded returned non-finite ${label}.`);
   return parsed;
+}
+
+/** A value's type and, for short strings, the value itself: enough to see a format change, never a name. */
+function shapeOf(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "string") return `string "${value.slice(0, 24)}"`;
+  if (typeof value === "object") return `object {${Object.keys(value as object).slice(0, 6).join(",")}}`;
+  return typeof value;
+}
+
+/**
+ * v2 amounts are documented as decimal strings ("100.00"). Also take a number, a
+ * decimal comma ("3938,96"), grouped thousands ("3,938.96" / "3.938,96") and an
+ * { amount } / { value } wrapper, so a formatting change never blocks the read-back.
+ */
+function v2Money(value: unknown, label: string): number {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    if (o.amount != null) return v2Money(o.amount, label);
+    if (o.value != null) return v2Money(o.value, label);
+  }
+  if (typeof value === "string") {
+    let s = value.trim().replace(/[\s€]/g, "");
+    const comma = s.lastIndexOf(",");
+    const dot = s.lastIndexOf(".");
+    if (comma > dot) s = s.replace(/\./g, "").replace(",", ".");
+    else if (comma !== -1) s = s.replace(/,/g, "");
+    if (/^-?\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  } else if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw new Error(`Holded returned malformed ${label} (${shapeOf(value)}).`);
+}
+
+function v2MoneyOrNull(value: unknown): number | null {
+  try {
+    return value == null ? null : v2Money(value, "amount");
+  } catch {
+    return null;
+  }
 }
 
 function moneyCents(value: unknown, label: string): number {
@@ -579,13 +656,144 @@ function holdedV2BillAddress(c: HoldedContactInput): Record<string, unknown> | n
  * overwrite the fields the Hub owns (name, NIF, email, billing address, type).
  * Whatever the office added in Holded (IBAN, phones, notes, accounts) stays.
  */
+export type HoldedContactCandidate = { id: string; name: string; tradeName: string | null; tags: string[]; nif?: string | null; city?: string | null };
+
+function contactCandidate(raw: unknown): HoldedContactCandidate | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.id !== "string" || !c.id) return null;
+  const trade = c.trade_name ?? c.tradeName ?? c.tradename;
+  const nif = c.vat_number ?? c.vatnumber ?? c.code;
+  const bill = (c.bill_address ?? c.billAddress) as Record<string, unknown> | undefined;
+  const city = bill && typeof bill === "object" ? bill.city : c.city;
+  return {
+    id: c.id,
+    name: String(c.name ?? ""),
+    tradeName: trade ? String(trade) : null,
+    tags: Array.isArray(c.tags) ? c.tags.map((t) => String(t ?? "")).filter(Boolean) : [],
+    nif: nif ? String(nif) : null,
+    city: city ? String(city) : null,
+  };
+}
+
+/** A NIF compared by letters and digits only; Spanish ids may carry an "ES" prefix. Placeholders like "Online" count as none. */
+export function taxIdKey(value: unknown): string {
+  let v = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/\d/.test(v)) return "";
+  if (/^ES[0-9A-Z]{9}$/.test(v)) v = v.slice(2);
+  return v;
+}
+
+/** MHT's offices, as Joel tags Holded contacts and prefixes Hub partners. */
+const OFFICE_TAGS: Record<string, string[]> = {
+  ace: ["ace", "islandlanzarote", "lanzarote"],
+  tfs: ["tfs", "islandtenerife", "tenerife"],
+  lpa: ["lpa", "islandgrancanaria", "grancanaria"],
+};
+const ISLAND_OFFICE: Record<string, string> = { lanzarote: "ace", tenerife: "tfs", grancanaria: "lpa" };
+
+function words(value: string): string[] {
+  return value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function partnerOffice(p: { name?: string | null; island?: string | null }): string | null {
+  const island = ISLAND_OFFICE[words(p.island ?? "").join("")];
+  if (island) return island;
+  const first = words(p.name ?? "")[0];
+  return first && OFFICE_TAGS[first] ? first : null;
+}
+
+/** "TFS First Excursions -FB - INVOICE" and "First Excursions - FB" → "firstexcursionsfb". */
+function tradeCore(value: string): string {
+  const w = words(value);
+  if (w.length && OFFICE_TAGS[w[0]]) w.shift();
+  while (w.length && /^(invoice|deposit|dep|\d+)$/.test(w[w.length - 1])) w.pop();
+  return w.join("");
+}
+
+/**
+ * Several Holded contacts can share one NIF or name (Joel keeps one per island, and one per agent for First Excursions).
+ * Keep the one tagged for the partner's office, then the one whose trade name is the partner's; never guess between the rest.
+ */
+export function pickHoldedContact(candidates: HoldedContactCandidate[], partner: { name?: string | null; island?: string | null }): HoldedContactCandidate | null {
+  let pool = [...new Map(candidates.map((c) => [c.id, c])).values()];
+  if (pool.length <= 1) return pool[0] ?? null;
+  const office = partnerOffice(partner);
+  if (office) {
+    const tagged = pool.filter((c) => c.tags.some((t) => OFFICE_TAGS[office].includes(words(t).join(""))));
+    if (tagged.length) pool = tagged;
+  }
+  if (pool.length > 1 && partner.name) {
+    const want = tradeCore(partner.name);
+    const named = pool.filter((c) => c.tradeName && tradeCore(c.tradeName) === want);
+    if (named.length) pool = named;
+  }
+  if (pool.length === 1) return pool[0];
+  const who = partner.name || "this partner";
+  throw new Error(`Holded has ${pool.length} contacts that could be ${who} (${pool.map((c) => [c.tradeName || c.name, ...c.tags.map((t) => `#${t}`)].join(" ")).join("; ")}). Solvio will not guess: open ${who} in Partners and pick its Holded contact.`);
+}
+
+export type RankedHoldedContact = HoldedContactCandidate & { suggested: boolean; nifMatches: boolean };
+
+const SEARCH_NOISE = new Set(["invoice", "deposit", "dep", "sl", "slu", "sa", "ltd", "limited", "the", "y", "and", "de"]);
+
+/**
+ * Holded contacts that could be this partner, for a person to pick from. `suggested` is the one a send would
+ * use today (same NIF-then-exact-name rule as the send), so the office sees what will happen before it happens.
+ * A typed query must match every word (name, trade name, tag, NIF or city); with no query, the partner's own
+ * NIF and name words are used and any hit counts.
+ */
+export function rankHoldedContacts(
+  raw: unknown[],
+  opts: { query?: string | null; partner: { name?: string | null; island?: string | null; taxId?: string | null } },
+  limit = 8,
+): RankedHoldedContact[] {
+  const all = raw.map(contactCandidate).filter((c): c is HoldedContactCandidate => c !== null);
+  const partnerNif = taxIdKey(opts.partner.taxId);
+  const typed = String(opts.query ?? "").trim();
+  const queryNif = taxIdKey(typed).length >= 8 ? taxIdKey(typed) : "";
+  let want = words(typed);
+  if (!typed) {
+    want = words(opts.partner.name ?? "");
+    if (want.length && OFFICE_TAGS[want[0]]) want.shift();
+    want = want.filter((w) => !SEARCH_NOISE.has(w) && !/^\d+$/.test(w) && w.length > 1);
+  }
+  const office = partnerOffice(opts.partner);
+
+  let suggestedId: string | null = null;
+  const byNif = partnerNif ? all.filter((c) => taxIdKey(c.nif) === partnerNif) : [];
+  const exactName = String(opts.partner.name ?? "").trim().toLowerCase();
+  const byName = all.filter((c) => exactName && c.name.trim().toLowerCase() === exactName);
+  try {
+    suggestedId = pickHoldedContact(byNif.length ? byNif : byName, opts.partner)?.id ?? null;
+  } catch {
+    suggestedId = null;
+  }
+
+  const scored = all.map((c) => {
+    const hay = words([c.name, c.tradeName ?? "", c.nif ?? "", c.city ?? "", ...c.tags].join(" "));
+    const hits = want.filter((w) => hay.some((h) => h.startsWith(w))).length;
+    const nifMatches = Boolean((partnerNif && taxIdKey(c.nif) === partnerNif) || (queryNif && taxIdKey(c.nif) === queryNif));
+    const onOffice = Boolean(office && c.tags.some((t) => OFFICE_TAGS[office].includes(words(t).join(""))));
+    const matched = typed ? nifMatches || (want.length > 0 && hits === want.length) : nifMatches || hits > 0;
+    const score = (c.id === suggestedId ? 1000 : 0) + (nifMatches ? 100 : 0) + hits * 10 + (onOffice ? 3 : 0);
+    return { c, matched: matched || c.id === suggestedId, score, nifMatches };
+  });
+  return scored
+    .filter((x) => x.matched)
+    .sort((a, b) => b.score - a.score || a.c.name.localeCompare(b.c.name))
+    .slice(0, limit)
+    .map((x) => ({ ...x.c, suggested: x.c.id === suggestedId, nifMatches: x.nifMatches }));
+}
+
 export function mergeHoldedV2Contact(current: Record<string, unknown>, c: HoldedContactInput): Record<string, unknown> {
   const editable = [
     "name", "code", "vat_number", "trade_name", "is_person", "email", "phone", "mobile", "website", "type",
     "client_record", "supplier_record", "iban", "swift", "sepa_ref", "sepa_date", "bill_address", "tags", "custom_fields", "defaults",
   ];
   const out: Record<string, unknown> = {};
-  for (const k of editable) if (current[k] !== undefined && current[k] !== null) out[k] = current[k];
+  // Holded returns blanks as "" but refuses some of them back (an update whose email has no valid address is a 400).
+  for (const k of editable) if (current[k] !== undefined && current[k] !== null && current[k] !== "") out[k] = current[k];
   // Accounting records come back as objects; the update takes the account number only.
   for (const k of ["client_record", "supplier_record"]) {
     const v = out[k];
@@ -601,7 +809,8 @@ export function mergeHoldedV2Contact(current: Record<string, unknown>, c: Holded
     out.code = c.code;
   }
   if (c.email) out.email = c.email;
-  if (c.tradeName) out.trade_name = c.tradeName;
+  // A trade name the office set in Holded stays; the Hub's partner name only fills a blank one.
+  if (c.tradeName && !out.trade_name) out.trade_name = c.tradeName;
   if (c.isPerson != null) out.is_person = c.isPerson;
   if (!out.type) out.type = c.type ?? "client";
   const bill = holdedV2BillAddress(c);
@@ -629,14 +838,27 @@ export function summariseHoldedV2Document(raw: unknown): HoldedDocumentSummary {
   }
   if (draft && approvedAt !== null) throw new Error("Holded returned an approved timestamp for a draft document.");
   if (!draft && docNumber === null) throw new Error("Holded returned an approved document without a document number.");
-  const net = strictMoney(d.subtotal, "document net");
-  const tax = strictMoney(d.tax, "document tax");
-  const total = strictMoney(d.total, "document total");
-  const pending = d.payments_pending == null ? total : strictMoney(d.payments_pending, "document pending total");
+  let net: number, tax: number, total: number, pending: number;
+  try {
+    tax = v2Money(d.tax, "document tax");
+    total = v2Money(d.total, "document total");
+    // subtotal is "before tax and discounts"; the Hub never sends discounts, so a missing one is total minus tax.
+    net = d.subtotal == null && !Number(v2MoneyOrNull(d.discount)) ? Math.round((total - tax) * 100) / 100 : v2Money(d.subtotal, "document net");
+    pending = d.payments_pending == null ? total : v2Money(d.payments_pending, "document pending total");
+  } catch (err) {
+    // The only window on what Holded actually sent: field names and value types, no names or contact data.
+    console.error("[holded] unexpected v2 document amounts", JSON.stringify({ keys: Object.keys(d), subtotal: shapeOf(d.subtotal), tax: shapeOf(d.tax), total: shapeOf(d.total), discount: shapeOf(d.discount), payments_pending: shapeOf(d.payments_pending) }));
+    throw err;
+  }
   if (d.status != null && !["failed", "completed", "pending", "partial", "cancelled", "overdue", "outstanding"].includes(String(d.status))) {
     throw new Error("Holded returned a malformed document status.");
   }
   const status: HoldedDocumentSummary["status"] = draft ? "draft" : moneyCents(pending, "document pending total") === 0 ? "paid" : "approved";
+  if (draft && Array.isArray(d.lines)) {
+    // Which tax Holded actually put on the lines (rates and tax ids only), so a dropped IGIC shows up in the logs.
+    const seen = new Set(d.lines.map((l) => (l && typeof l === "object" ? `${String((l as Record<string, unknown>).tax ?? "")}%[${String((l as Record<string, unknown>).taxes ?? "")}]` : "?")));
+    console.info(`[holded] draft ${id} tax ${tax} on ${d.lines.length} lines: ${[...seen].slice(0, 5).join(" ")}`);
+  }
   return { id, docNumber, draft, status, net, tax, total, paymentsPending: pending, approvedAt };
 }
 
@@ -653,6 +875,10 @@ export function holdedV2Page(raw: unknown): { items: Record<string, unknown>[]; 
 /** Where a sales invoice opens in Holded's web app. */
 export function holdedInvoiceUrl(id: string): string {
   return `https://app.holded.com/sales/revenue#open:invoice-${encodeURIComponent(id)}`;
+}
+
+export function holdedContactUrl(id: string): string {
+  return `https://app.holded.com/contacts/${encodeURIComponent(id)}`;
 }
 
 /** One sales invoice as Holded's invoice list shows it. Read-only, for the Hub's Holded-style list. */
@@ -767,13 +993,17 @@ export class HoldedClient {
     throw new Error(`Holded list ${path} has more than ${maxPages * 100} entries; narrow it before retrying.`);
   }
 
-  /** v2 line items reference a tax by its id; the Hub stores keys (s_igic7). */
+  /**
+   * v2 line taxes: the docs say "id", but Holded's documents store and price taxes by key ("s_igic_7").
+   * Once MHT's IGIC 7% got its own id (27 Oct 2026), lines sent with that id kept it yet showed "No taxes" and 0%.
+   * Looking the tax up still proves it exists in this Holded company.
+   */
   private async v2TaxRef(): Promise<(key: string) => string> {
     const taxes = this.taxCache ?? (await this.listTaxes());
     return (key: string) => {
-      const hit = taxes.find((t) => t.key === key || t.id === key);
+      const hit = taxes.find((t) => t.key === key) ?? taxes.find((t) => t.id === key);
       if (!hit) throw new Error(`Holded has no tax ${key}. Check the taxes in Holded and the approvals in Settings.`);
-      return hit.id ?? hit.key;
+      return hit.key || (hit.id as string);
     };
   }
 
@@ -789,7 +1019,11 @@ export class HoldedClient {
       cache: "no-store",
     });
     const text = await res.text();
-    if (!res.ok) throw new HoldedApiError(res.status, text, path);
+    if (!res.ok) {
+      // Holded's refusal reason, so a rejected write is never silent. The token is in the headers, never in the path or body.
+      console.error(`[holded] ${method} ${path.split("?")[0]} → ${res.status}: ${text.slice(0, 500)}`);
+      throw new HoldedApiError(res.status, text, path);
+    }
     if (!text) return undefined as T;
     try {
       return JSON.parse(text) as T;
@@ -819,17 +1053,20 @@ export class HoldedClient {
   }
 
   async findContactByCode(code: string): Promise<{ id: string } | null> {
-    const wanted = String(code || "").trim().toUpperCase();
-    if (!wanted) return null;
-    if (this.v2) {
-      const all = await this.listV2("/v2/contacts");
-      const hit = all.find((c) => String(c.code ?? "").trim().toUpperCase() === wanted || String(c.vat_number ?? "").trim().toUpperCase() === wanted);
-      return hit?.id ? { id: String(hit.id) } : null;
-    }
-    const list = await this.request<Array<Record<string, unknown>>>("GET", "/invoicing/v1/contacts");
-    if (!Array.isArray(list)) return null;
-    const hit = list.find((c) => String(c.code ?? "").trim().toUpperCase() === wanted || String(c.vatnumber ?? "").trim().toUpperCase() === wanted);
-    return hit?.id ? { id: String(hit.id) } : null;
+    const hit = (await this.contactsByCode(code))[0];
+    return hit ? { id: hit.id } : null;
+  }
+
+  /** Every contact carrying this NIF ("B-07844764" and "B07844764" are the same). One business can have several, e.g. one per island. */
+  async contactsByCode(code: string): Promise<HoldedContactCandidate[]> {
+    const wanted = taxIdKey(code);
+    if (!wanted) return [];
+    const list = this.v2 ? await this.listV2("/v2/contacts") : await this.request<unknown>("GET", "/invoicing/v1/contacts");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((c) => c && typeof c === "object" && (taxIdKey(c.code) === wanted || taxIdKey(c.vat_number ?? c.vatnumber) === wanted))
+      .map(contactCandidate)
+      .filter((c): c is HoldedContactCandidate => c !== null);
   }
 
   /** Every contact in the company (read-only), raw, for the partner details import. */
@@ -851,20 +1088,37 @@ export class HoldedClient {
     }
   }
 
+  /** One contact as a pickable summary, or null when this Holded company has no such contact. */
+  async getContactCandidate(id: string): Promise<HoldedContactCandidate | null> {
+    if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return null;
+    try {
+      const raw = await this.request<unknown>("GET", this.v2 ? `/v2/contacts/${encodeURIComponent(id)}` : `/invoicing/v1/contacts/${encodeURIComponent(id)}`);
+      return contactCandidate(raw);
+    } catch (e) {
+      if (e instanceof HoldedApiError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
   /** Exact, case-insensitive name match — used for suppliers we pay, who rarely have a tax id on the receipt. */
   async findContactByName(name: string): Promise<{ id: string } | null> {
+    const hit = (await this.contactsByName(name))[0];
+    return hit ? { id: hit.id } : null;
+  }
+
+  /** Every contact whose name is exactly this (case-insensitive). */
+  async contactsByName(name: string): Promise<HoldedContactCandidate[]> {
     const wanted = String(name || "").trim().toLowerCase();
-    if (!wanted) return null;
-    if (this.v2) {
-      // Prefix search on name; keep only the exact (case-insensitive) match.
-      const hits = await this.listV2("/v2/contacts/search", { name: String(name).trim().slice(0, 100) }, 5);
-      const hit = hits.find((c) => String(c.name ?? "").trim().toLowerCase() === wanted);
-      return hit?.id ? { id: String(hit.id) } : null;
-    }
-    const list = await this.request<Array<Record<string, unknown>>>("GET", "/invoicing/v1/contacts");
-    if (!Array.isArray(list)) return null;
-    const hit = list.find((c) => String(c.name ?? "").trim().toLowerCase() === wanted);
-    return hit?.id ? { id: String(hit.id) } : null;
+    if (!wanted) return [];
+    // v2: prefix search on name; keep only exact matches.
+    const list = this.v2
+      ? await this.listV2("/v2/contacts/search", { name: String(name).trim().slice(0, 100) }, 5)
+      : await this.request<unknown>("GET", "/invoicing/v1/contacts");
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((c) => c && typeof c === "object" && String(c.name ?? "").trim().toLowerCase() === wanted)
+      .map(contactCandidate)
+      .filter((c): c is HoldedContactCandidate => c !== null);
   }
 
   /** Draft purchase (a cost we owe/paid). Drafts only — approval stays with the accountant in Holded. */
@@ -920,13 +1174,21 @@ export class HoldedClient {
     try {
       if (this.v2) {
         const current = await this.request<Record<string, unknown>>("GET", `/v2/contacts/${encodeURIComponent(id)}`);
+        // The office keeps the NIF in Holded; a different one in the Hub is a typo on one side, and a send must not overwrite it.
+        const held = taxIdKey(current?.vat_number) || taxIdKey(current?.code);
+        const ours = taxIdKey(input.code);
+        if (held && ours && held !== ours) {
+          throw new Error(`Holded has NIF ${String(current?.vat_number || current?.code)} for ${input.name}, the Hub has ${input.code}. Fix whichever is wrong, then send again.`);
+        }
         await this.request("PUT", `/v2/contacts/${encodeURIComponent(id)}`, mergeHoldedV2Contact(current ?? {}, input));
       } else {
         await this.request("PUT", `/invoicing/v1/contacts/${encodeURIComponent(id)}`, holdedContactBody(input));
       }
       return true;
     } catch (e) {
-      if (e instanceof HoldedApiError && (e.status === 404 || e.status === 400)) return false;
+      if (e instanceof HoldedApiError && e.status === 404) return false;
+      // A refused update used to read as "contact gone", so the invoice went out with Holded's stale address. Say why instead.
+      if (e instanceof HoldedApiError && e.status === 400) throw new Error(`Holded refused the update to ${input.name}'s contact: ${e.body.slice(0, 300)}`);
       throw e;
     }
   }
@@ -959,6 +1221,24 @@ export class HoldedClient {
 
   async createInvoiceDraft(input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
     return this.createDraft("invoice", input, operation);
+  }
+
+  /**
+   * v2: overwrite a draft Solvio made for this pack with the pack's lines (PUT replaces the whole document).
+   * Only an unapproved draft carrying this pack's operation marker is touched; after approval, use a credit note.
+   */
+  async replaceInvoiceDraft(id: string, input: HoldedInvoiceInput, operation: HoldedDraftOperation): Promise<HoldedDocumentSummary> {
+    if (!this.v2) throw new Error("Replacing a Holded draft needs a Holded v2 token.");
+    if (input.approveDoc !== false) throw new Error("Solvio may only write Holded invoice drafts.");
+    const reference = validOperationReference(operation.reference);
+    const path = `/v2/invoices/${encodeURIComponent(requiredString(id, "invoice id"))}`;
+    const current = await this.request<unknown>("GET", path);
+    if (!current || typeof current !== "object" || Array.isArray(current)) throw new Error("Holded returned a malformed document.");
+    const doc = current as Record<string, unknown>;
+    if (doc.draft !== true) throw new Error("Holded has already approved this invoice. Correct it with a credit note instead.");
+    if (!String(doc.notes ?? "").includes(operationMarker(reference))) throw new Error("This Holded draft was not made by Solvio for this pack, so Solvio will not overwrite it.");
+    await this.request("PUT", path, holdedV2DocumentBody(withOperationReference(input, reference), await this.v2TaxRef()));
+    return this.getInvoice(id);
   }
 
   async getInvoice(id: string): Promise<HoldedDocumentSummary> {

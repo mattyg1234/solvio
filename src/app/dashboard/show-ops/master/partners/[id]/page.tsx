@@ -111,7 +111,7 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
               Open in Holded ↗
             </a>
           ) : null}
-          <Link href={`/dashboard/show-ops/master?tab=partners&edit=${s.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
+          <Link href={`/dashboard/show-ops/master?tab=partners&open=${s.id}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
             Edit partner
           </Link>
           {isInvoice ? (
