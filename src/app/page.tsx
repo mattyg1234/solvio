@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { MarketingHomePage } from "@/components/marketing/marketing-home-page";
 import { getMarketingCopy } from "@/lib/marketing-copy";
+import { isMhtHubHost } from "@/lib/show-ops/hub-brand";
 
 const copy = getMarketingCopy("en");
 
@@ -31,7 +32,8 @@ export const metadata: Metadata = {
 
 /**
  * solviosystems.com: the Solvio Systems front page. The Show Ops hub signs in here at /login;
- * on its old address (mht.solviosystems.com) the front door goes straight to that sign in.
+ * on its own addresses (mht.solviosystems.com, later mhtshowshub.com) the front door goes straight
+ * to that sign in, which wears MHT Shows' branding there.
  */
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
@@ -40,6 +42,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
     redirect(`/auth/callback?${new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string"))}`);
   }
   const host = (await headers()).get("host") ?? "";
-  if (host.startsWith("mht.")) redirect("/login");
+  if (isMhtHubHost(host)) redirect("/login");
   return <MarketingHomePage locale="en" />;
 }

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { MarketingHomePage, marketingLoadingDemoLabel } from "@/components/marketing/marketing-home-page";
 import { getMarketingCopy } from "@/lib/marketing-copy";
+import { isMhtHubHost } from "@/lib/show-ops/hub-brand";
 
 const copy = getMarketingCopy("es");
 
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
 /** Spanish front page; on the Show Ops address the front door is its sign in (see ../page.tsx). */
 export default async function SpanishHomePage() {
   const host = (await headers()).get("host") ?? "";
-  if (host.startsWith("mht.")) redirect("/login");
+  if (isMhtHubHost(host)) redirect("/login");
   return <MarketingHomePage locale="es" />;
 }
 
