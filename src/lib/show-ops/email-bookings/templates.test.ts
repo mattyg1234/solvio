@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { coerceExtracted, coerceRead } from "./extract";
+import { isFailedPayment } from "./sellers";
 import { GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT } from "./test-fixtures";
 import { cleanEmailText, findDate, findTime, readEmailByPattern, readGetYourGuide, readKnownTemplate, readWooOrder } from "./templates";
 
@@ -117,4 +118,10 @@ test("AI answers and browser edits are coerced: bad fields dropped, pax totalled
   assert.deepEqual(e, { name: "Sam", time: "07:30", adults: 2, infants: 1, amount: 1196.5, quantity: 3 });
   assert.equal(coerceRead({ kind: "maybe" }), null);
   assert.equal(coerceRead({ kind: "cancel", confidence: 3, extracted: {} })?.confidence, 1);
+});
+
+test("a failed website payment is told apart from a cancellation", () => {
+  assert.equal(isFailedPayment("[MHT- Music Hall Tavern]: Order #ACE/22147 has failed"), true);
+  assert.equal(isFailedPayment("[MHT- Music Hall Tavern]: Order #ACE/22147 has been cancelled"), false);
+  assert.equal(isFailedPayment("Re: [MHT- Music Hall Tavern]: Order #ACE/22147 has failed"), false);
 });

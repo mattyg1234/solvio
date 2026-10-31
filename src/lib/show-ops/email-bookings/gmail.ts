@@ -122,17 +122,30 @@ function limiter(n: number) {
 }
 
 const gmailSlot = limiter(3);
-const RETRY_WAITS_MS = [1000, 2000, 4000];
+/**
+ * And no more than one new request every 80ms (about 12 a second, ~60 of Gmail's 250 quota units a
+ * second), so a Refresh, a Senders recount and the background check side by side still stay under it.
+ */
+const MIN_GAP_MS = 80;
+let nextStart = 0;
+async function paced<T>(fn: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const at = Math.max(now, nextStart);
+  nextStart = at + MIN_GAP_MS;
+  if (at > now) await new Promise((r) => setTimeout(r, at - now));
+  return fn();
+}
+const RETRY_WAITS_MS = [2000, 5000, 10000];
 
 async function apiJson<T>(url: string, accessToken: string, who: string): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    const res = await gmailSlot(() => fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, cache: "no-store" }));
+    const res = await gmailSlot(() => paced(() => fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, cache: "no-store" })));
     if (res.ok) return (await res.json()) as T;
     const body = (await res.json().catch(() => ({}))) as GoogleError;
     const reason = googleErrorReason(body);
     if (isRateLimited(res.status, reason) && attempt < RETRY_WAITS_MS.length) {
       const asked = Number(res.headers.get("retry-after")) * 1000;
-      await new Promise((r) => setTimeout(r, Math.min(8000, asked || RETRY_WAITS_MS[attempt] + Math.random() * 500)));
+      await new Promise((r) => setTimeout(r, Math.min(12000, asked || RETRY_WAITS_MS[attempt] + Math.random() * 500)));
       continue;
     }
     throw new MailProviderError(`${who} request failed (${res.status} ${body.error?.status ?? body.error?.code ?? ""} ${reason})`.replace(/\s+\)/, ")").trim(), res.status);

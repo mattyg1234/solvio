@@ -10,6 +10,10 @@
     {
       "path": "/api/cron/show-ops-backup",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/show-ops-mail",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
