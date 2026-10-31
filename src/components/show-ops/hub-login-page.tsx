@@ -80,9 +80,7 @@ export function HubLoginPage({
           />
         </section>
 
-        <p className="text-center text-sm text-white/60">
-          MHT team only. Accounts are set up by your manager — no sign-ups here.
-        </p>
+        <p className="text-center text-sm font-semibold uppercase tracking-[0.18em] text-white/60">MHT Team Only</p>
       </main>
 
       <footer className="relative border-t border-white/10 px-4 py-5 text-center text-xs text-white/45">
