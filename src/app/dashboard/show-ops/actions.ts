@@ -897,8 +897,25 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
       .eq("business_id", ctx.business.id);
     if (error) throw new Error(error.message);
   }
+  // A partner linked to Holded keeps its Holded contact in step: best effort, the Hub save already stands.
+  let holdedNote = "";
+  if (one) {
+    const { data: linked } = await ctx.supabase.from("show_suppliers").select("holded_contact_id").eq("id", one).eq("business_id", ctx.business.id).maybeSingle();
+    if (linked?.holded_contact_id) {
+      const { holdedClientFor, safeHoldedMessage, sendPartnerToHolded } = await import("@/lib/show-ops/holded-partner-sync");
+      try {
+        const client = await holdedClientFor(ctx);
+        if (client) {
+          const res = await sendPartnerToHolded(ctx, client, one);
+          holdedNote = res.ok ? "ok" : res.message;
+        }
+      } catch (err) {
+        holdedNote = safeHoldedMessage(err);
+      }
+    }
+  }
   revalidateShowOps();
-  redirect(`/dashboard/show-ops/master?tab=${encodeURIComponent(tab)}&saved=1`);
+  redirect(`/dashboard/show-ops/master?tab=${encodeURIComponent(tab)}&saved=1${holdedNote ? `&holded=${encodeURIComponent(holdedNote)}` : ""}`);
 }
 
 export type ShowOpsNightLoad = {

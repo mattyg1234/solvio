@@ -11,6 +11,7 @@ import {
   saveMasterSupplierOneAction,
   sendPartnerLinkAction,
 } from "@/app/dashboard/show-ops/actions";
+import { sendPartnerToHoldedAction, updatePartnerFromHoldedAction } from "@/app/dashboard/show-ops/actions-holded-partners";
 import { isPartnerLinkToken, partnerLinkPath } from "@/lib/show-ops/partner-link";
 import { partnerIslands, partnerSearchHaystack, partnerSellsOnIsland } from "@/lib/show-ops/partners";
 import { PartnerBillingFields } from "@/components/show-ops/partner-billing-fields";
@@ -131,6 +132,27 @@ export function MasterSuppliersForm({
   const [loginNotice, setLoginNotice] = useState<{ id: string; ok: boolean; message: string } | null>(null);
   const [sendingLogin, setSendingLogin] = useState<string | null>(null);
   const [, startLoginSend] = useTransition();
+
+  const [holdedBusy, setHoldedBusy] = useState<string | null>(null);
+  const [holdedNotice, setHoldedNotice] = useState<{ id: string; ok: boolean; message: string } | null>(null);
+  const [linkedIds, setLinkedIds] = useState<Set<string>>(() => new Set(suppliers.filter((s) => s.holded_contact_id).map((s) => s.id)));
+
+  /** Send the partner to Holded, or pull Holded's details into the Hub. Saved changes only: the form isn't submitted. */
+  function holdedSync(id: string, direction: "send" | "pull") {
+    setHoldedBusy(id);
+    setHoldedNotice(null);
+    const fd = new FormData();
+    fd.set("supplier_id", id);
+    startLoginSend(() => {
+      void (direction === "send" ? sendPartnerToHoldedAction(fd) : updatePartnerFromHoldedAction(fd))
+        .then((res) => {
+          setHoldedNotice({ id, ok: res.ok, message: direction === "pull" && res.ok ? `${res.message} Reopen the partner to see the new details.` : res.message });
+          if (res.ok) setLinkedIds((cur) => new Set(cur).add(id));
+        })
+        .catch(() => setHoldedNotice({ id, ok: false, message: "Holded didn't answer. Please retry." }))
+        .finally(() => setHoldedBusy(null));
+    });
+  }
 
   function sendLogin(id: string) {
     setSendingLogin(id);
@@ -359,7 +381,9 @@ export function MasterSuppliersForm({
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-slate-900">
-                  {s.name}
+                  <a href={`/dashboard/show-ops/master/partners/${s.id}`} className="hover:underline" title="Open the partner page: details, Holded link and the year's invoices">
+                    {s.name}
+                  </a>
                   {highlightId === s.id ? (
                     <span className="ml-2 rounded-full bg-[var(--show-ops-primary,#7c3aed)]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--show-ops-primary,#7c3aed)]">
                       Just added
@@ -388,6 +412,12 @@ export function MasterSuppliersForm({
                 <span className="block text-[11px] text-slate-400">
                   {stats[s.id]?.bookings ?? 0} bookings · {stats[s.id]?.pax ?? 0} pax {statsLabel}
                 </span>
+              </span>
+              <span
+                title={linkedIds.has(s.id) ? "Linked to its Holded contact: invoices go to that contact" : "Not linked to Holded yet: open the partner and use Send to Holded"}
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${linkedIds.has(s.id) ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+              >
+                {linkedIds.has(s.id) ? "In Holded" : "Not in Holded"}
               </span>
               <button
                 type="button"
@@ -428,9 +458,44 @@ export function MasterSuppliersForm({
                 {loginNotice.message}
               </p>
             ) : null}
+            {holdedNotice?.id === s.id ? (
+              <p className={`px-3 pb-2 text-xs ${holdedNotice.ok ? "text-emerald-700" : "text-rose-700"}`} role="status">
+                {holdedNotice.message}
+              </p>
+            ) : null}
             {open ? (
             <div className="grid gap-2 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-3">
               <input type="hidden" name="supplier_id" value={s.id} />
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:col-span-3">
+                <span className="text-xs font-semibold text-slate-700">Holded</span>
+                <span className="text-xs text-slate-500">
+                  {linkedIds.has(s.id)
+                    ? "Linked. Saving this partner also updates its Holded contact."
+                    : "Not linked. Send it to Holded to link it, or create it there."}
+                </span>
+                <span className="ml-auto flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => holdedSync(s.id, "send")}
+                    disabled={holdedBusy === s.id}
+                    title="Make the Holded contact match this partner's saved details (creates it if Holded doesn't have it)"
+                    className="rounded-lg bg-[var(--show-ops-primary,#7c3aed)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {holdedBusy === s.id ? "Working…" : "Send to Holded"}
+                  </button>
+                  {linkedIds.has(s.id) ? (
+                    <button
+                      type="button"
+                      onClick={() => holdedSync(s.id, "pull")}
+                      disabled={holdedBusy === s.id}
+                      title="Replace this partner's legal name, NIF, email and address with its Holded contact's"
+                      className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 disabled:opacity-60"
+                    >
+                      Update from Holded
+                    </button>
+                  ) : null}
+                </span>
+              </div>
               <label className="text-xs font-medium text-slate-600">
                 Name
                 <input name={`${prefix}name`} required defaultValue={s.name} className="mt-1 w-full rounded-lg border px-2 py-1.5 text-sm" />

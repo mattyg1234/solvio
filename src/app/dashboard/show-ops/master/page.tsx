@@ -81,6 +81,7 @@ export default async function MasterDataPage({
   searchParams: Promise<{
     tab?: string;
     saved?: string;
+    holded?: string;
     created?: string;
     open?: string;
     error?: string;
@@ -297,6 +298,11 @@ export default async function MasterDataPage({
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Saved. The new row is at the top of the list.
         </p>
+      ) : null}
+      {sp.holded === "ok" ? (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Holded contact updated to match.</p>
+      ) : sp.holded ? (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Saved in the Hub, but Holded wasn&apos;t updated: {sp.holded}</p>
       ) : null}
       <ScrollToCreated id={created} />
 

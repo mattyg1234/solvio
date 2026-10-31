@@ -1,11 +1,17 @@
 import Link from "next/link";
 
-import { applyHoldedPartnerImportAction } from "@/app/dashboard/show-ops/actions-holded-partners";
+import {
+  applyHoldedPartnerImportAction,
+  createHoldedContactsAction,
+  linkHoldedPartnersAction,
+  applyHoldedDetailsAction,
+} from "@/app/dashboard/show-ops/actions-holded-partners";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { FIELD_LABELS, FILLABLE_FIELDS, type ImportRow } from "@/lib/show-ops/holded-partner-import";
 import { loadPartnerImportPlan } from "@/lib/show-ops/holded-partner-import-data";
 import { isGlobalShowOpsAdmin } from "@/lib/show-ops/island-access";
+import { holdedReadiness } from "@/lib/show-ops/partner-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +23,7 @@ function fillText(row: FillRow): string {
     .join(" · ");
 }
 
-export default async function HoldedPartnersPage({ searchParams }: { searchParams: Promise<{ filled?: string; error?: string }> }) {
+export default async function HoldedPartnersPage({ searchParams }: { searchParams: Promise<{ filled?: string; linked?: string; replaced?: string; created?: string; error?: string }> }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("settings");
   if (!isGlobalShowOpsAdmin(ctx.role, ctx.allowedIslands)) {
@@ -27,15 +33,17 @@ export default async function HoldedPartnersPage({ searchParams }: { searchParam
   const fills = plan.rows.filter((r): r is FillRow => r.kind === "fill");
   const conflicts = plan.rows.filter((r): r is Extract<ImportRow, { kind: "conflict" }> => r.kind === "conflict");
   const ambiguous = plan.rows.filter((r): r is Extract<ImportRow, { kind: "ambiguous" }> => r.kind === "ambiguous");
-  const unmatched = plan.rows.filter((r) => r.kind === "unmatched");
+  const unmatched = plan.rows.filter((r): r is Extract<ImportRow, { kind: "unmatched" }> => r.kind === "unmatched");
+  const creatable = unmatched.filter((r) => holdedReadiness(r.partner).length === 0);
+  const incomplete = unmatched.filter((r) => holdedReadiness(r.partner).length > 0);
   const complete = plan.rows.filter((r) => r.kind === "complete").length;
 
   return (
     <div className="space-y-4">
       <ShowOpsPageHeader
         eyebrow="Settings · Holded"
-        title="Fill partner details from Holded"
-        subtitle="Matches each partner to a Holded contact by its Holded link, NIF, or name, and copies only what the partner is missing. Nothing already in the Hub is changed."
+        title="Partners ↔ Holded"
+        subtitle="Matches each partner to a Holded contact by its Holded link, NIF, or name. Fill copies only what the partner is missing; the other steps are only done for the partners you tick."
         actions={
           <Link href="/dashboard/show-ops/settings#holded" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200">
             Back to Settings
@@ -46,6 +54,9 @@ export default async function HoldedPartnersPage({ searchParams }: { searchParam
       {sp.filled ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Filled details on {sp.filled} partner{sp.filled === "1" ? "" : "s"}.</p>
       ) : null}
+      {sp.linked ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Linked {sp.linked} partner{sp.linked === "1" ? "" : "s"} to Holded.</p> : null}
+      {sp.replaced ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{sp.replaced} partner{sp.replaced === "1" ? " now uses" : "s now use"} Holded&apos;s details.</p> : null}
+      {sp.created ? <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Created {sp.created} contact{sp.created === "1" ? "" : "s"} in Holded and linked them.</p> : null}
       {sp.error || plan.error ? <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{sp.error ?? plan.error}</p> : null}
 
       {!plan.error ? (
@@ -98,28 +109,94 @@ export default async function HoldedPartnersPage({ searchParams }: { searchParam
         </form>
       ) : null}
 
-      {conflicts.length || ambiguous.length ? (
-        <section className="rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
-          <h2 className="font-semibold">Needs a person to check</h2>
-          <ul className="mt-2 space-y-1">
-            {conflicts.map((r) => (
-              <li key={r.partner.id}>
-                <span className="font-medium">{r.partner.name}</span> ↔ {r.contact.name}: {r.reason}
-              </li>
-            ))}
+      {ambiguous.length ? (
+        <form action={linkHoldedPartnersAction} className="rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Unclear: pick the right Holded contact ({ambiguous.length})</h2>
+            <button type="submit" className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
+              Link picked contacts
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-600">More than one Holded contact has this name. Linking fills only the partner&apos;s empty fields.</p>
+          <ul className="mt-3 space-y-3">
             {ambiguous.map((r) => (
               <li key={r.partner.id}>
-                <span className="font-medium">{r.partner.name}</span> could be: {r.contacts.map((c) => c.name).join(" / ")}
+                <p className="font-medium">{r.partner.name}</p>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                  <label className="flex items-center gap-1.5 text-slate-500">
+                    <input type="radio" name={`link:${r.partner.id}`} value="" defaultChecked /> Leave for now
+                  </label>
+                  {r.contacts.map((c) => (
+                    <label key={c.id} className="flex items-center gap-1.5">
+                      <input type="radio" name={`link:${r.partner.id}`} value={c.id} />
+                      {c.name}
+                      <span className="text-xs text-slate-500">{[c.taxId, c.city, c.tags.join(", ")].filter(Boolean).join(" · ")}</span>
+                    </label>
+                  ))}
+                </div>
               </li>
             ))}
           </ul>
-        </section>
+        </form>
       ) : null}
 
-      {unmatched.length ? (
+      {conflicts.length ? (
+        <form action={applyHoldedDetailsAction} className="rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Hub and Holded disagree ({conflicts.length})</h2>
+            <button type="submit" className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
+              Use Holded&apos;s details for ticked
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-600">Ticked partners take the Holded contact&apos;s legal name, NIF, email and address, and link to it. Leave unticked to keep the Hub&apos;s.</p>
+          <ul className="mt-3 space-y-1">
+            {conflicts.map((r) => (
+              <li key={r.partner.id} className="flex items-start gap-2">
+                <input type="checkbox" name="partner" value={r.partner.id} aria-label={`Use Holded details for ${r.partner.name}`} className="mt-1" />
+                <span>
+                  <span className="font-medium">{r.partner.name}</span> ↔ {r.contact.name}: {r.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </form>
+      ) : null}
+
+      {creatable.length ? (
+        <form action={createHoldedContactsAction} className="rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Not in Holded yet, ready to create ({creatable.length})</h2>
+            <button type="submit" className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white">
+              Create ticked in Holded
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-600">These partners have a legal name, NIF and full address in the Hub. Creating adds them to Holded as clients and links them.</p>
+          <ul className="mt-3 space-y-1">
+            {creatable.map((r) => (
+              <li key={r.partner.id} className="flex items-start gap-2">
+                <input type="checkbox" name="partner" value={r.partner.id} aria-label={`Create ${r.partner.name} in Holded`} className="mt-1" />
+                <span>
+                  <span className="font-medium">{r.partner.name}</span>
+                  <span className="text-slate-500"> · {r.partner.legal_name} · {r.partner.tax_id}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </form>
+      ) : null}
+
+      {incomplete.length ? (
         <details className="rounded-2xl bg-white p-5 text-sm ring-1 ring-slate-200">
-          <summary className="cursor-pointer font-semibold">Not found in Holded ({unmatched.length})</summary>
-          <p className="mt-2 text-slate-600">{unmatched.map((r) => r.partner.name).join(" · ")}</p>
+          <summary className="cursor-pointer font-semibold">Not in Holded and missing details ({incomplete.length})</summary>
+          <p className="mt-2 text-xs text-slate-600">Add these in Holded (they&apos;ll match next time) or fill them on the partner in the Hub and use Send to Holded.</p>
+          <ul className="mt-2 space-y-1">
+            {incomplete.map((r) => (
+              <li key={r.partner.id}>
+                <span className="font-medium">{r.partner.name}</span>
+                <span className="text-slate-500">: missing {holdedReadiness(r.partner).join(", ")}</span>
+              </li>
+            ))}
+          </ul>
         </details>
       ) : null}
     </div>
