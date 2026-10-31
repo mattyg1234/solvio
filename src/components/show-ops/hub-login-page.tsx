@@ -79,6 +79,8 @@ export function HubLoginPage({
             hub={{ primaryColor: pink, contactEmail: brand.contactEmail }}
           />
         </section>
+
+        <p className="text-center text-sm font-semibold uppercase tracking-[0.18em] text-white/60">MHT Team Only</p>
       </main>
 
       <footer className="relative border-t border-white/10 px-4 py-5 text-center text-xs text-white/45">
