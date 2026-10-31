@@ -143,3 +143,9 @@ export function suggestionSender(fromEmail: string, inboxAddress: string): strin
   if (!domain || address === own) return null;
   return address;
 }
+
+
+/** WooCommerce's "[MHT- Music Hall Tavern]: Order #ACE/22147 has failed". */
+export function isFailedPayment(subject: string): boolean {
+  return /\border\b.*\bfailed\b/i.test(subject) && !/^\s*(re|fwd?)\s*:/i.test(subject);
+}
