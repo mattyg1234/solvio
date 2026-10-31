@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
     // Stripe calls Connect's billing webhook on this address; pass it straight through.
     return [{ source: "/api/billing/:path*", destination: `${CONNECT}/api/billing/:path*` }];
   },
+  // The MHT Hub sign in page shows MHT's own show photos from their website, served through
+  // Vercel's image optimizer so they load from the Hub's domain.
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "musichalltavern.com", pathname: "/wp-content/uploads/**" }],
+  },
   experimental: { serverActions: { bodySizeLimit: "4mb" } },
   // GetYourGuide calls /api/gyg/v1/1/<endpoint>/ with a trailing slash and treats any non-200 (incl. a 308) as failure.
   skipTrailingSlashRedirect: true,

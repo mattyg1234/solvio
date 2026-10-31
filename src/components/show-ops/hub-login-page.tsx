@@ -18,11 +18,12 @@ export function HubLoginPage({
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#12041a] text-white">
+      <HubBackdrop photos={brand.backgroundPhotos} />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
-          background: `radial-gradient(ellipse at 15% -10%, ${pink}55, transparent 50%), radial-gradient(ellipse at 95% 105%, ${yellow}26, transparent 45%), radial-gradient(ellipse at 50% 120%, ${pink}22, transparent 60%)`,
+          background: `radial-gradient(ellipse at 15% -10%, ${pink}55, transparent 50%), radial-gradient(ellipse at 95% 105%, ${yellow}26, transparent 45%), radial-gradient(ellipse at 50% 120%, ${pink}22, transparent 60%), linear-gradient(180deg, rgba(18,4,26,0.78), rgba(18,4,26,0.9))`,
         }}
       />
       <div
@@ -100,6 +101,44 @@ export function HubLoginPage({
         <span className="mx-2">·</span>
         <span>Powered by Solvio</span>
       </footer>
+    </div>
+  );
+}
+
+const SLIDE_SECONDS = 8;
+
+/** MHT's show photos, blurred and slowly crossfading behind everything; the overlay above keeps the card readable. */
+function HubBackdrop({ photos }: { photos: string[] }) {
+  if (!photos.length) return null;
+  const cycle = SLIDE_SECONDS * photos.length;
+  const visible = 100 / photos.length;
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0">
+      <style>{`
+        @keyframes hub-slide {
+          0% { opacity: 0; transform: scale(1.08); }
+          ${(visible * 0.2).toFixed(2)}% { opacity: 1; }
+          ${visible.toFixed(2)}% { opacity: 1; }
+          ${(visible * 1.2).toFixed(2)}% { opacity: 0; transform: scale(1.16); }
+          100% { opacity: 0; transform: scale(1.16); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hub-slide { animation: none !important; opacity: 0; }
+          .hub-slide:first-child { opacity: 1; }
+        }
+      `}</style>
+      {photos.map((src, i) => (
+        <div
+          key={src}
+          className="hub-slide absolute inset-0 opacity-0"
+          style={{
+            animation: photos.length > 1 ? `hub-slide ${cycle}s linear ${i * SLIDE_SECONDS}s infinite` : undefined,
+            opacity: photos.length > 1 ? undefined : 1,
+          }}
+        >
+          <Image src={src} alt="" fill priority={i === 0} sizes="100vw" className="object-cover blur-[3px] saturate-125" />
+        </div>
+      ))}
     </div>
   );
 }
