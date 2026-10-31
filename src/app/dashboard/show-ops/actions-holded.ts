@@ -328,7 +328,14 @@ async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client:
   // 3. External write, then record the outcome — created, failed, or unknown.
   // The client first looks for a draft carrying this pack's reference, so a pack that already reached Holded is linked, not duplicated.
   try {
-    const summary = await client.createInvoiceDraft(payload, { reference: operationReference(inv.id) });
+    let summary = await client.createInvoiceDraft(payload, { reference: operationReference(inv.id) });
+    // A just-created document can read back before Holded has finished its totals; re-read before calling it a mismatch.
+    const expected = Math.round(Number(inv.total_amount ?? 0) * 100);
+    for (const wait of [1500, 3000]) {
+      if (Math.round(summary.total * 100) === expected) break;
+      await new Promise((r) => setTimeout(r, wait));
+      summary = await client.getInvoice(summary.id).catch(() => summary);
+    }
     await completeClaim(ctx.business.id, inv.id, claimToken, "created", summary, null);
     return { outcome: "sent", message: null };
   } catch (err) {

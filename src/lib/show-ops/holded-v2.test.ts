@@ -188,9 +188,9 @@ test("v2 POST ok then read fails: the id is kept and the next call reconciles in
     if (init?.method === "POST") { posts += 1; return json({ id: "507f1f77bcf86cd799439011" }, 201); }
     if (url.includes("/v2/invoices?")) return json({ items: [], has_more: false });
     reads += 1;
-    return reads === 1 ? json({ error: "busy" }, 503) : json(v2Draft());
+    return reads <= 2 ? json({ error: "busy" }, 503) : json(v2Draft());
   };
-  const client = new HoldedClient(TOKEN);
+  const client = new HoldedClient(TOKEN, { readBackDelaysMs: [0, 0] });
   await assert.rejects(() => client.createInvoiceDraft(invoice, { reference: "invoice:pack-0001" }), (e: unknown) => e instanceof HoldedReconciliationRequiredError);
   const again = await client.createInvoiceDraft(invoice, { reference: "invoice:pack-0001" });
   assert.equal(again.id, "507f1f77bcf86cd799439011");

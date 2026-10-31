@@ -34,9 +34,9 @@ test("POST success then GET failure exposes id and retry reconciles without POST
     if (init?.method === "POST") { posts += 1; return json({ id: "invoice-1" }); }
     if (url.endsWith("/invoice")) return json([]);
     detailReads += 1;
-    return detailReads === 1 ? json({ error: "busy" }, 503) : json(draft());
+    return detailReads <= 2 ? json({ error: "busy" }, 503) : json(draft());
   };
-  const client = new HoldedClient("test-token");
+  const client = new HoldedClient("test-token", { readBackDelaysMs: [0, 0] });
   await assert.rejects(() => client.createInvoiceDraft(invoice, operation), (error: unknown) => error instanceof HoldedReconciliationRequiredError && error.documentId === "invoice-1");
   assert.equal((await client.createInvoiceDraft(invoice, operation)).id, "invoice-1");
   assert.equal(posts, 1);
@@ -95,4 +95,20 @@ test("rate limiting fails during reconciliation before any write", async () => {
   };
   await assert.rejects(() => new HoldedClient("test-token").createInvoiceDraft(invoice, operation), /Holded 429/);
   assert.equal(posts, 0);
+});
+
+test("a read-back that fails once is retried before asking for reconciliation", async () => {
+  let posts = 0;
+  let detailReads = 0;
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST") { posts += 1; return json({ id: "invoice-1" }); }
+    if (url.endsWith("/invoice")) return json([]);
+    detailReads += 1;
+    return detailReads === 1 ? json({ error: "not found" }, 404) : json(draft());
+  };
+  const result = await new HoldedClient("test-token", { readBackDelaysMs: [0, 0] }).createInvoiceDraft(invoice, operation);
+  assert.equal(result.id, "invoice-1");
+  assert.equal(posts, 1);
+  assert.equal(detailReads, 2);
 });
