@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { guestTicketTemplate, type GuestTicketInput } from "../../notifications/show-ops-guest-ticket";
-import { TEMPLATE_SPECS, templateSpec, templateValue, templateVariables } from "./templates";
+import { approvedMetaTemplate, TEMPLATE_SPECS, templateSpec, templateValue, templateVariables } from "./templates";
 
 const base: GuestTicketInput = {
   merchantName: "Magic Hub Tenerife",
@@ -74,4 +74,11 @@ test("pick-up change uses the transport confirmation template", () => {
   assert.equal(t.kind, "pickup");
   assert.deepEqual(t.variables, { "1": "Sarah", "2": "Tenerife", "3": "18:30", "4": "Hotel Bahia" });
   assert.equal(guestTicketTemplate({ ...base, updated: true, transportRequired: false, pickupKind: "own_way" }), null);
+});
+
+test("Meta templates match under Vince's names too", () => {
+  const approved = { template_1__booking_without_transport: "en", mht_transport_confirmation: "en_GB" };
+  assert.deepEqual(approvedMetaTemplate(templateSpec("booking"), approved), { name: "template_1__booking_without_transport", language: "en" });
+  assert.deepEqual(approvedMetaTemplate(templateSpec("pickup"), approved), { name: "mht_transport_confirmation", language: "en_GB" });
+  assert.equal(approvedMetaTemplate(templateSpec("booking_transport"), approved), null);
 });
