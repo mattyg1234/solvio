@@ -230,6 +230,7 @@ export async function saveMetaAction(formData: FormData): Promise<void> {
     meta_token_hint: secretHint(accessToken),
     meta_number_name: number.name,
     meta_templates: templates.templates,
+    meta_template_bodies: templates.bodies,
     whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
   };
   if (number.phone) meta.whatsapp_from = number.phone;
@@ -260,6 +261,7 @@ export async function refreshMetaAction(formData: FormData): Promise<void> {
   await saveRow(ctx, {
     ...existing,
     meta_templates: templates.templates,
+    meta_template_bodies: templates.bodies,
     whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
   });
   revalidatePath(BACK);
@@ -270,7 +272,7 @@ export async function disconnectMetaAction(): Promise<void> {
   const ctx = await requireGlobalShowOpsAdmin();
   const existing = await loadRow(ctx);
   const meta: Record<string, unknown> = { ...existing, whatsapp_provider: "twilio" };
-  for (const k of ["meta_phone_number_id", "meta_waba_id", "meta_token_ct", "meta_app_secret_ct", "meta_token_hint", "meta_number_name", "meta_templates"]) {
+  for (const k of ["meta_phone_number_id", "meta_waba_id", "meta_token_ct", "meta_app_secret_ct", "meta_token_hint", "meta_number_name", "meta_templates", "meta_template_bodies"]) {
     delete meta[k];
   }
   await saveRow(ctx, meta);
