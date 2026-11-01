@@ -7,7 +7,7 @@
 import { decryptSecret } from "@/lib/show-ops/secrets";
 import { showOpsMessagesLive } from "@/lib/show-ops/outbound";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
-import { templateSpec, type TemplateKind } from "@/lib/show-ops/inbox/templates";
+import { approvedMetaTemplate, templateSpec, type TemplateKind } from "@/lib/show-ops/inbox/templates";
 import type { InboxConnectionSummary, TwilioIntegrationMeta, TwilioVenue } from "@/lib/show-ops/inbox/types";
 import type { MetaCreds } from "@/lib/show-ops/inbox/meta";
 import type { TwilioCreds } from "@/lib/show-ops/inbox/twilio";
@@ -185,8 +185,7 @@ export function templateRef(
 ): { sid: string } | { name: string; language: string } | null {
   const spec = templateSpec(kind);
   if (usesMetaWhatsApp(c)) {
-    const language = c.meta.meta_templates[spec.name];
-    return language ? { name: spec.name, language } : null;
+    return approvedMetaTemplate(spec, c.meta.meta_templates);
   }
   const sid = c.meta[spec.metaKey];
   return sid ? { sid } : null;

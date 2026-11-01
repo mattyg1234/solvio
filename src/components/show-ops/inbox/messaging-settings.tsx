@@ -9,7 +9,7 @@ import {
 } from "@/app/dashboard/show-ops/actions-twilio";
 import { PhoneInput } from "@/components/show-ops/phone-input";
 import { inboundWebhookUrl, metaWebhookUrl } from "@/lib/show-ops/inbox/connection";
-import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
+import { approvedMetaTemplate, TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import type { TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
 
 export type MessagingSettingsState = {
@@ -313,11 +313,14 @@ function MetaSettings({ meta }: { meta: TwilioIntegrationMeta & { meta_number_na
           <div>
             <dt className="text-slate-500">Hub templates approved in Meta</dt>
             <dd>
-              {TEMPLATE_SPECS.map((spec) => (
-                <span key={spec.kind} className={`mr-2 inline-block ${meta.meta_templates[spec.name] ? "text-emerald-700" : "text-slate-400"}`}>
-                  {meta.meta_templates[spec.name] ? "✓" : "–"} {spec.name}
-                </span>
-              ))}
+              {TEMPLATE_SPECS.map((spec) => {
+                const approved = approvedMetaTemplate(spec, meta.meta_templates);
+                return (
+                  <span key={spec.kind} className={`mr-2 inline-block ${approved ? "text-emerald-700" : "text-slate-400"}`}>
+                    {approved ? "✓" : "–"} {approved?.name ?? spec.name}
+                  </span>
+                );
+              })}
             </dd>
           </div>
         </dl>
