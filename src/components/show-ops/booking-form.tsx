@@ -352,6 +352,9 @@ export function ShowOpsBookingForm({
   const [privateZone, setPrivateZone] = useState(defaults.private_zone ?? "");
   const [noEmail, setNoEmail] = useState(false);
   const [amountPaid, setAmountPaid] = useState("");
+  const [roundUpDeposit, setRoundUpDeposit] = useState(() =>
+    Boolean(defaults.pricing_snapshot?.deposit_round_up),
+  );
   const [paymentMethod, setPaymentMethod] = useState(
     defaults.payment_method ?? "",
   );
@@ -781,6 +784,7 @@ export function ShowOpsBookingForm({
         extras: extraLines,
         rateCard,
         frozen,
+        roundUpDeposit,
       }),
     [
       adults,
@@ -794,6 +798,7 @@ export function ShowOpsBookingForm({
       extraLines,
       rateCard,
       frozen,
+      roundUpDeposit,
     ],
   );
   /** MHT's own reception desks take whatever the guest pays; the balance is total − paid. */
@@ -852,18 +857,35 @@ export function ShowOpsBookingForm({
   return (
     <form
       className="mt-6 space-y-4"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         if (extrasPreview.error) {
           setMsg(extrasPreview.error);
           return;
         }
-        if (adults + children + infants < 1) {
-          setMsg("Add at least one guest — a booking can't be for 0 people.");
+        // Required fields, in the order they sit on the form. The first one
+        // missing stops the save and takes the desk straight back to it.
+        const guestName = String(
+          new FormData(e.currentTarget).get("guest_name") ?? "",
+        ).trim();
+        const missing: Array<[boolean, string, string]> = [
+          [islands.length > 1 && !island && !product?.island, "bf-island", `Choose the ${config.location_label.toLowerCase()}.`],
+          [!showDate, "bf-date", "Choose the date."],
+          [!productId, "bf-show", "Choose the show."],
+          [adults + children + infants < 1, "bf-pax", "Add at least one guest — a booking can't be for 0 people."],
+          [!sellerMode && !supplierId, "bf-partner", "Choose the partner / supplier."],
+          [!guestName, "bf-name", "Type the lead booking name."],
+          [!hotelId, "bf-hotel", "Choose the guest's hotel, or Private if they're not at a listed hotel."],
+        ];
+        const firstMissing = missing.find(([isMissing]) => isMissing);
+        if (firstMissing) {
+          setMsg(firstMissing[2]);
+          jumpToField(firstMissing[1]);
           return;
         }
-        if (!hotelId) {
-          setMsg("Choose the guest's hotel, or Private if they're not at a listed hotel.");
+        if (!e.currentTarget.checkValidity()) {
+          e.currentTarget.reportValidity();
           return;
         }
         if (noShowOnDate) {
@@ -987,12 +1009,12 @@ export function ShowOpsBookingForm({
         </p>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3 xl:items-start">
         {/* ── 1 · The show ─────────────────────────────── */}
         <StepColumn step={1} label={`${config.location_label}, date, ticket`}>
           {islands.length > 1 ? (
             <>
-              <FieldLabel>{config.location_label}</FieldLabel>
+              <FieldLabel id="bf-island" required>{config.location_label}</FieldLabel>
               <select
                 value={island}
                 onChange={(e) => {
@@ -1023,7 +1045,7 @@ export function ShowOpsBookingForm({
             </>
           ) : null}
 
-          <FieldLabel className={islands.length > 1 ? "mt-4" : ""}>
+          <FieldLabel id="bf-date" required className={islands.length > 1 ? "mt-4" : ""}>
             Date
           </FieldLabel>
           {!nights.length && !customDate ? (
@@ -1111,7 +1133,7 @@ export function ShowOpsBookingForm({
             </div>
           ) : null}
 
-          <FieldLabel className="mt-4">Show</FieldLabel>
+          <FieldLabel id="bf-show" required className="mt-4">Show</FieldLabel>
           <select
             name="product_id"
             required
@@ -1188,7 +1210,7 @@ export function ShowOpsBookingForm({
             </label>
           ) : null}
 
-          <FieldLabel className="mt-4">Adults</FieldLabel>
+          <FieldLabel id="bf-pax" required className="mt-4">Adults</FieldLabel>
           <Stepper
             name="adults"
             value={adults}
@@ -1356,7 +1378,7 @@ export function ShowOpsBookingForm({
             </>
           ) : (
             <>
-              <FieldLabel className="mt-4">Partner / supplier</FieldLabel>
+              <FieldLabel id="bf-partner" required className="mt-4">Partner / supplier</FieldLabel>
               <SearchableSelect
                 name="supplier_id"
                 value={supplierId}
@@ -1455,6 +1477,28 @@ export function ShowOpsBookingForm({
                 )}
               </span>
             </div>
+            {!sellerMode && !reception && money.billing_mode === "deposit" ? (
+              <label className="mt-1 flex items-start gap-2 text-sm text-slate-700">
+                {moneyLocked ? null : (
+                  <input type="hidden" name="deposit_round_up_field" value="1" />
+                )}
+                <input
+                  type="checkbox"
+                  name="deposit_round_up"
+                  value="1"
+                  checked={roundUpDeposit}
+                  disabled={moneyLocked}
+                  onChange={(e) => setRoundUpDeposit(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Round up deposit
+                  <span className="block text-xs text-slate-500">
+                    Rounds the deposit up to the next whole euro (e.g. 29.40 becomes 30.00).
+                  </span>
+                </span>
+              </label>
+            ) : null}
             {reception && money.billing_mode !== "invoice" && mode === "create" ? (
               <div className="mt-2">
                 <FieldLabel>Amount paid by guest (€)</FieldLabel>
@@ -1525,13 +1569,16 @@ export function ShowOpsBookingForm({
           ) : null}
         </StepColumn>
 
+        {/* Columns 2 + 3, with the summary and price breakdown stacked in the
+            space under them so the page does not need a long scroll. */}
+        <div className="grid gap-4 xl:col-span-2 xl:grid-cols-2 xl:items-start">
         {/* ── 2 · Attendees ────────────────────────────── */}
         <StepColumn
           step={2}
           label="Attendees"
           note={paxSlots ? `${paxSlots} of ${paxSlots}` : undefined}
         >
-          <FieldLabel>Lead booking name</FieldLabel>
+          <FieldLabel id="bf-name" required>Lead booking name</FieldLabel>
           <input
             name="guest_name"
             required
@@ -1701,7 +1748,7 @@ export function ShowOpsBookingForm({
 
         {/* ── 3 · Pick-up ──────────────────────────────── */}
         <StepColumn step={3} label="Pick-up">
-          <FieldLabel>Hotel</FieldLabel>
+          <FieldLabel id="bf-hotel" required>Hotel</FieldLabel>
           <SearchableSelect
             name="hotel_id"
             value={hotelId}
@@ -1926,10 +1973,9 @@ export function ShowOpsBookingForm({
             </>
           )}
         </StepColumn>
-      </div>
 
       {/* ── Summary + price breakdown ─────────────────── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:col-span-2 xl:grid-cols-1">
         <div className="rounded-2xl bg-slate-900 p-5 text-sm text-white">
           <h3 className="font-semibold">Booking summary</h3>
           <dl className="mt-3 space-y-2">
@@ -2088,6 +2134,8 @@ export function ShowOpsBookingForm({
           </p>
         </div>
       </div>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
         <button
@@ -2122,17 +2170,45 @@ const ACCENT = "var(--show-ops-primary,#7c3aed)";
 function FieldLabel({
   children,
   className = "",
+  id,
+  required = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  /** Lets the save check scroll back to this field when it is missing. */
+  id?: string;
+  /** Shows a red asterisk: the booking cannot be saved without this field. */
+  required?: boolean;
 }) {
   return (
     <p
-      className={`mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
+      id={id}
+      className={`mb-1 scroll-mt-24 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
     >
       {children}
+      {required ? (
+        <span className="ml-0.5 text-rose-600" aria-hidden="true">
+          *
+        </span>
+      ) : null}
     </p>
   );
+}
+
+/** Scroll to a field's label and put the cursor in the field under it. */
+function jumpToField(id: string) {
+  if (typeof document === "undefined") return;
+  const label = document.getElementById(id);
+  if (!label) return;
+  label.scrollIntoView({ behavior: "smooth", block: "center" });
+  const next = label.nextElementSibling as HTMLElement | null;
+  const target =
+    next && next.matches("input,select,textarea,button")
+      ? next
+      : (next?.querySelector<HTMLElement>(
+          "input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea,button:not([disabled])",
+        ) ?? null);
+  target?.focus({ preventScroll: true });
 }
 
 function StepColumn({
@@ -2148,14 +2224,14 @@ function StepColumn({
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-3">
         <span
-          className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
           style={{ backgroundColor: ACCENT }}
         >
           {step}
         </span>
-        <span className="text-sm font-semibold text-slate-900">{label}</span>
+        <span className="text-2xl font-bold text-slate-900">{label}</span>
       </div>
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
         <div className="mb-3 flex items-center justify-between gap-2 border-b border-slate-100 pb-3">

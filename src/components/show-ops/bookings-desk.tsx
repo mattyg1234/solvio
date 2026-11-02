@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { AddPaymentButton } from "@/components/show-ops/add-payment-button";
 import { cn } from "@/lib/utils";
 import type { ShowOpsArrivalMark } from "@/lib/show-ops/calc";
+import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type BookingsDeskRow = {
   id: string;
@@ -46,6 +48,8 @@ export type BookingsDeskRow = {
   pickupKind?: string | null;
   /** The partner asked to cancel and the office has not answered yet. */
   cancelRequested?: boolean;
+  /** Live deposit booking with money still owed: the "Add payment" window can take a payment. */
+  payment?: { outstanding: number; currency: ShowOpsCurrency } | null;
 };
 
 function CancelRequestedBadge() {
@@ -256,6 +260,15 @@ function DoorCard({ row, open, onToggle }: { row: BookingsDeskRow; open: boolean
                 Call guest
               </a>
             ) : null}
+            {row.payment ? (
+              <AddPaymentButton
+                bookingId={row.id}
+                bookingRef={row.bookingRef}
+                outstanding={row.payment.outstanding}
+                currency={row.payment.currency}
+                className="min-h-[44px] flex-1 rounded-lg"
+              />
+            ) : null}
             <Link
               href={`/dashboard/show-ops/bookings/${row.id}`}
               className="flex min-h-[44px] flex-1 items-center justify-center rounded-lg px-3 text-sm font-semibold text-white"
@@ -420,13 +433,21 @@ function BookingRows({
               <Detail label="Showed up" value={row.arrival.status === "pending" ? "Not marked yet" : row.arrival.doorLabel + (row.arrival.status === "partial" && row.arrival.missing ? ` · ${row.arrival.missing} missing` : "")} />
               <Detail label="Office notes" value={row.comments} className="sm:col-span-2" />
             </div>
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Link
                 href={`/dashboard/show-ops/bookings/${row.id}`}
                 className="inline-flex rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-3 py-1.5 text-sm font-semibold text-white"
               >
                 Edit booking
               </Link>
+              {row.payment ? (
+                <AddPaymentButton
+                  bookingId={row.id}
+                  bookingRef={row.bookingRef}
+                  outstanding={row.payment.outstanding}
+                  currency={row.payment.currency}
+                />
+              ) : null}
             </div>
           </td>
         </tr>
