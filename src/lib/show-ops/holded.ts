@@ -963,7 +963,11 @@ export class HoldedClient {
   /** v2 API token (pat_…): Bearer auth and /v2 endpoints. Otherwise a v1 API key. */
   readonly v2: boolean;
   private taxCache: HoldedTax[] | null = null;
-  constructor(token: string) {
+  /** Waits between read-backs of a just-created document. Tests pass zeros. */
+  private readBackDelaysMs: number[];
+
+  constructor(token: string, options: { readBackDelaysMs?: number[] } = {}) {
+    this.readBackDelaysMs = options.readBackDelaysMs ?? [0, 1000, 2000, 3000];
     this.token = token.trim();
     if (!this.token) throw new Error("Holded token is empty.");
     this.v2 = isHoldedV2Token(this.token);
@@ -1275,8 +1279,13 @@ export class HoldedClient {
     try { id = requiredString((raw as Record<string, unknown>).id, `${kind} id`); }
     catch { this.ambiguousOperations.add(reference); throw new HoldedWriteAmbiguousError(kind, reference); }
     this.knownOperations.set(reference, { kind, id });
-    try { return await this.readDraft(kind, id); }
-    catch { throw new HoldedReconciliationRequiredError(kind, reference, id); }
+    // Holded can take a moment before a new document reads back (seen live: a 404, or totals still settling).
+    for (const wait of this.readBackDelaysMs) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      try { return await this.readDraft(kind, id); }
+      catch { /* try again */ }
+    }
+    throw new HoldedReconciliationRequiredError(kind, reference, id);
   }
 
   private async reconcileDraft(kind: "invoice" | "creditnote", operation: HoldedDraftOperation): Promise<HoldedDocumentSummary | null> {

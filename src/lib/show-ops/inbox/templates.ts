@@ -18,6 +18,8 @@ export type TemplateSpec = {
   when: string;
   /** Name in Twilio / Meta. Meta sends approved templates by this name. */
   name: string;
+  /** Other names the same wording was approved under in Meta (Vince's, 1 Nov). */
+  aliases?: string[];
   /** What each numbered blank holds, with the sample Meta asks for. */
   blanks: Array<{ label: string; sample: string }>;
   /** The wording as approved. */
@@ -33,6 +35,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Booking confirmed, making own way",
     when: "Sent when a booking without transport is made. Needs the venue address and Maps link for the island (below).",
     name: "mht_booking_no_transport",
+    aliases: ["template_1__booking_without_transport"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -66,6 +69,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Booking confirmed, with transport",
     when: "Sent when a booking with a bus or private pick-up is made.",
     name: "mht_booking_with_transport",
+    aliases: ["template_2__booking_with_transport"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -101,6 +105,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Transport confirmed / changed",
     when: "Sent from the bus list when a guest's pick-up time or stop is confirmed or changes.",
     name: "mht_transport_confirmation",
+    aliases: ["template_3__final_transport_confirmation__change"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -142,6 +147,17 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
 
 export function templateSpec(kind: TemplateKind): TemplateSpec {
   return TEMPLATE_SPECS.find((s) => s.kind === kind)!;
+}
+
+/** The approved Meta template for a spec, under its own name or an alias. */
+export function approvedMetaTemplate(
+  spec: TemplateSpec,
+  approved: Record<string, string>,
+): { name: string; language: string } | null {
+  for (const name of [spec.name, ...(spec.aliases ?? [])]) {
+    if (approved[name]) return { name, language: approved[name] };
+  }
+  return null;
 }
 
 /**

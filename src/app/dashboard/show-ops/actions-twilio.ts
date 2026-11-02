@@ -9,7 +9,7 @@ import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
-import { checkMetaNumber, isMetaId, listApprovedTemplates, subscribeMetaApp } from "@/lib/show-ops/inbox/meta";
+import { checkMetaNumber, isMetaId, listApprovedTemplates, sendMetaMessage, subscribeMetaApp } from "@/lib/show-ops/inbox/meta";
 import { checkTwilioAccount, isAccountSid, isContentSid } from "@/lib/show-ops/inbox/twilio";
 import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
 import { decryptSecret, encryptSecret, secretHint, secretsKeyConfigured } from "@/lib/show-ops/secrets";
@@ -230,6 +230,7 @@ export async function saveMetaAction(formData: FormData): Promise<void> {
     meta_token_hint: secretHint(accessToken),
     meta_number_name: number.name,
     meta_templates: templates.templates,
+    meta_template_bodies: templates.bodies,
     whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
   };
   if (number.phone) meta.whatsapp_from = number.phone;
@@ -260,17 +261,59 @@ export async function refreshMetaAction(formData: FormData): Promise<void> {
   await saveRow(ctx, {
     ...existing,
     meta_templates: templates.templates,
+    meta_template_bodies: templates.bodies,
     whatsapp_provider: formData.get("whatsapp_provider") === "meta" ? "meta" : "twilio",
   });
   revalidatePath(BACK);
   redirect(`${BACK}?twilio=meta_saved#messaging`);
 }
 
+/**
+ * One WhatsApp to a staff phone through Meta, to prove the number, token and billing work
+ * end to end. Uses a test template with plain blanks (or Meta's hello_world), never a guest one.
+ */
+export async function sendMetaTestAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const existing = await loadRow(ctx);
+  const meta = parseTwilioMeta(existing);
+  const to = normalisePhone(String(formData.get("test_phone") ?? ""));
+  if (!to) fail("Type the phone to test with, with its country code (e.g. +44…).");
+  if (typeof existing.meta_token_ct !== "string" || typeof existing.meta_app_secret_ct !== "string") fail("Save the Meta details first.");
+  let creds;
+  try {
+    creds = {
+      accessToken: decryptSecret(existing.meta_token_ct),
+      appSecret: decryptSecret(existing.meta_app_secret_ct),
+      phoneNumberId: meta.meta_phone_number_id,
+      wabaId: meta.meta_waba_id,
+    };
+  } catch {
+    fail("The saved Meta token cannot be read (the server key changed). Paste it again.");
+  }
+  const approved = meta.meta_templates;
+  const now = new Date();
+  const day = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Atlantic/Canary" });
+  const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary" });
+  const template = approved.test_for_confrimation
+    ? {
+        name: "test_for_confrimation",
+        language: approved.test_for_confrimation,
+        variables: { "1": "there", "2": "MHT", "3": "a Hub WhatsApp test", "4": day, "5": time },
+      }
+    : approved.hello_world
+      ? { name: "hello_world", language: approved.hello_world }
+      : null;
+  if (!template) fail("Meta has no test template approved (test_for_confrimation or hello_world).");
+  const sent = await sendMetaMessage(creds, to, { template });
+  if (!sent.ok) fail(`Meta did not send the test: ${sent.message}`);
+  redirect(`${BACK}?twilio=meta_test_sent#messaging`);
+}
+
 export async function disconnectMetaAction(): Promise<void> {
   const ctx = await requireGlobalShowOpsAdmin();
   const existing = await loadRow(ctx);
   const meta: Record<string, unknown> = { ...existing, whatsapp_provider: "twilio" };
-  for (const k of ["meta_phone_number_id", "meta_waba_id", "meta_token_ct", "meta_app_secret_ct", "meta_token_hint", "meta_number_name", "meta_templates"]) {
+  for (const k of ["meta_phone_number_id", "meta_waba_id", "meta_token_ct", "meta_app_secret_ct", "meta_token_hint", "meta_number_name", "meta_templates", "meta_template_bodies"]) {
     delete meta[k];
   }
   await saveRow(ctx, meta);
