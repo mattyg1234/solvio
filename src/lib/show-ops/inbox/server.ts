@@ -40,6 +40,7 @@ import {
   type InboundTwilioMessage,
 } from "@/lib/show-ops/inbox/logic";
 import { metaErrorText, sendMetaMessage, type MetaStatusUpdate } from "@/lib/show-ops/inbox/meta";
+import type { TemplateKind } from "@/lib/show-ops/inbox/templates";
 import { sendTwilioMessage } from "@/lib/show-ops/inbox/twilio";
 import type {
   InboxBookingSummary,
@@ -870,7 +871,11 @@ export async function sendBusinessTextToGuest(
     body: string;
     bookingId?: string | null;
     guestName?: string | null;
-    template?: ((meta: TwilioIntegrationMeta) => { kind: "booking" | "booking_transport" | "pickup"; variables: Record<string, string> } | null) | null;
+    template?: ((meta: TwilioIntegrationMeta) => { kind: TemplateKind; variables: Record<string, string> } | null) | null;
+    /** WhatsApp only: never fall back to SMS (after-show feedback, marketing). */
+    whatsappOnly?: boolean;
+    /** How the message shows in the inbox and Sent page. Default: ticket. */
+    source?: "ticket" | "template";
   },
 ): Promise<BusinessTextResult> {
   const conn = await loadTwilioConnection(businessId).catch(() => null);
@@ -902,7 +907,7 @@ export async function sendBusinessTextToGuest(
       }
     }
   }
-  if (!channel) channel = conn.meta.sms_from ? "sms" : null;
+  if (!channel && !input.whatsappOnly) channel = conn.meta.sms_from ? "sms" : null;
   if (!channel) return { ok: false, reason: "not_configured", message: "No WhatsApp template or SMS number is set up for this message." };
 
   try {
@@ -913,7 +918,7 @@ export async function sendBusinessTextToGuest(
       name: input.guestName ?? "",
       bookingId: input.bookingId && isUuid(input.bookingId) ? input.bookingId : null,
     });
-    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: "ticket", template });
+    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: input.source ?? "ticket", template });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: "provider_error", message: e instanceof Error ? e.message : "Send failed." };

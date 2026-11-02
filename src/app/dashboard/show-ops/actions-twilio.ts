@@ -35,7 +35,7 @@ function numbersFrom(formData: FormData) {
   if (whatsappFrom === null) fail("The WhatsApp sender must be a full number with country code, e.g. +34 928 000 000.");
   if (smsFrom === null) fail("The SMS number must be a full number with country code, e.g. +34 928 000 000.");
   if (!whatsappFrom && !smsFrom) fail("Add the WhatsApp sender, the SMS number, or both.");
-  const templates = { reopen_content_sid: "", booking_content_sid: "", booking_transport_content_sid: "", pickup_content_sid: "" };
+  const templates = { reopen_content_sid: "", booking_content_sid: "", booking_transport_content_sid: "", pickup_content_sid: "", feedback_content_sid: "", marketing_content_sid: "" };
   for (const spec of TEMPLATE_SPECS) {
     const sid = raw(spec.metaKey);
     if (sid && !isContentSid(sid)) fail(`The "${spec.title}" template SID starts with HX and has 34 characters.`);
