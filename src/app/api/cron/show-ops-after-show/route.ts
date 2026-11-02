@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { runShowOpsAfterShowFeedback } from "@/lib/show-ops/after-show";
+import { runShowOpsAfterShowFeedback, runShowOpsMarketingAsk } from "@/lib/show-ops/after-show";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,8 +13,13 @@ function authorized(req: NextRequest): boolean {
   return req.nextUrl.searchParams.get("secret") === secret;
 }
 
-/** 10:00 Canary time: WhatsApp last night's guests the after-show feedback message. */
+/**
+ * 10:00 Canary time: last night's guests get the after-show feedback message;
+ * the night before's guests get the marketing-permission question.
+ */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(await runShowOpsAfterShowFeedback());
+  const feedback = await runShowOpsAfterShowFeedback();
+  const marketing = await runShowOpsMarketingAsk();
+  return NextResponse.json({ feedback, marketing });
 }

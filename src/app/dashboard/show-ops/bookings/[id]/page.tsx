@@ -1,4 +1,5 @@
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
+import { consentSummary } from "@/lib/show-ops/consent";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -499,6 +500,21 @@ export default async function EditBookingPage({
                       : "No email or mobile on this booking."}
               </span>
             </form>
+            {booking.guest_mobile ? (
+              <p className="text-xs font-medium text-slate-700">
+                WhatsApp updates:{" "}
+                {consentSummary(
+                  {
+                    marketing_asked_at: booking.marketing_asked_at ?? null,
+                    marketing_opt_in_at: booking.marketing_opt_in_at ?? null,
+                    marketing_opt_in_source: booking.marketing_opt_in_source ?? null,
+                    whatsapp_opted_out_at: booking.whatsapp_opted_out_at ?? null,
+                  },
+                  (iso) =>
+                    new Intl.DateTimeFormat("en-GB", { timeZone: "Atlantic/Canary", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)),
+                )}
+              </p>
+            ) : null}
           </div>
         )}
         {booking.cancelled_at || booking.invoice_id ? null : (
