@@ -4,12 +4,11 @@ import { notFound } from "next/navigation";
 import { PartnerHoldedButtons } from "@/components/show-ops/partner-holded-buttons";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
+import { holdedOfficeTag } from "@/lib/show-ops/holded";
 import { countryName, holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
-import { partnerIslands } from "@/lib/show-ops/partners";
 
 export const dynamic = "force-dynamic";
 
-const ISLAND_TAGS: Record<string, string> = { tenerife: "TFS", lanzarote: "ACE", "gran canaria": "LPA", "uk tour": "UK" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type Supplier = PartnerBilling & {
@@ -82,8 +81,8 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
   );
   const peak = Math.max(...byMonth, 1);
 
-  const islands = partnerIslands(s.island);
-  const tags = [...new Set(islands.map((i) => ISLAND_TAGS[i.toLowerCase()] ?? i.toUpperCase()))];
+  // The same office tag the Holded contact gets (name prefix first, then island).
+  const office = holdedOfficeTag({ island: s.island, name: s.name }, "name");
   const legal = String(s.legal_name || "").trim();
   const title = legal && legal.toLowerCase() !== s.name.toLowerCase() ? `${s.name} (${legal})` : s.name;
   const missing = holdedReadiness(s);
@@ -139,7 +138,7 @@ export default async function PartnerPage({ params, searchParams }: { params: Pr
             <div>
               <p className={lbl}>Tags</p>
               <p className="text-sm text-[var(--show-ops-primary,#7c3aed)]">
-                {tags.length ? tags.map((t) => `#${t}`).join(" ") : <span className="text-slate-400">All islands</span>}
+                {office ? `#${office}` : <span className="text-slate-400">No office tag</span>}
                 {s.partner_type ? <span className="ml-2 text-slate-500">· {s.partner_type}</span> : null}
               </p>
             </div>
