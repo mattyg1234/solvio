@@ -3118,7 +3118,7 @@ export async function addBookingPaymentAction(
   if (method !== "cash" && method !== "card" && method !== "direct") {
     return { ok: false, message: "Choose cash, card or direct." };
   }
-  // "Direct" (PayPal or Stripe, paid straight to MHT) is stored in the ledger
+  // "Direct" (paid straight to MHT, e.g. PayPal or Stripe) is stored in the ledger
   // as 'transfer', which the payments table already allows; the Hub shows it as Direct.
   if (method === "direct") formData.set("method", "transfer");
   try {
