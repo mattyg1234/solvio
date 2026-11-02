@@ -142,3 +142,42 @@
   color: #c0139f;
   text-shadow: 0 2px 0 #fffb00;
 }
+
+/* MHT Hub readability (Matty, 2 Nov): bigger bold headings and labels, no pale grey text.
+   Scoped to the Show Ops page content, so the dark sidebar and other workspaces are untouched. */
+[data-hub="mht"] .show-ops-readable :is(.text-slate-500, .text-slate-600, .text-\[\#64748b\], .text-muted-foreground):not(:disabled):not([aria-disabled="true"]) {
+  color: #1e293b;
+}
+[data-hub="mht"] .show-ops-readable :is(.text-slate-300, .text-slate-400, .text-\[\#94a3b8\]):not(:disabled):not([aria-disabled="true"]) {
+  color: #334155;
+}
+/* Small uppercase field labels and section captions. */
+[data-hub="mht"] .show-ops-readable :is(p, label, h3, h4, dt, legend).uppercase:is(.text-\[10px\], .text-\[11px\], .text-xs) {
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #0f172a !important;
+}
+[data-hub="mht"] .show-ops-readable th {
+  font-weight: 800;
+  color: #0f172a !important;
+}
+[data-hub="mht"] .show-ops-readable label:not(:has(input, select, textarea)) {
+  font-weight: 700;
+  font-size: max(0.9375rem, 1em);
+  color: #0f172a !important;
+}
+/* Section subheadings. */
+[data-hub="mht"] .show-ops-readable :is(h2, h3):not(.show-ops-title):not(.text-white) {
+  font-weight: 800;
+  color: #0f172a;
+}
+[data-hub="mht"] .show-ops-readable h2:not(.show-ops-title):not(.text-white):not(.text-3xl):not(.text-2xl):not(.text-xl) {
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+}
+[data-hub="mht"] .show-ops-readable h3:not(.text-white):not(.text-3xl):not(.text-2xl):not(.text-xl):not(.uppercase) {
+  font-size: 1.125rem;
+  line-height: 1.6rem;
+}

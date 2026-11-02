@@ -28,7 +28,7 @@ export default async function ShowOpsLayout({
 
   return (
     <div
-      className="space-y-2"
+      className="show-ops-readable space-y-2"
       style={
         {
           ["--show-ops-primary" as string]: branding.primaryColor,
