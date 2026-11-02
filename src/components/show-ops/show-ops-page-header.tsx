@@ -37,7 +37,7 @@ export function ShowOpsPageHeader({
             {eyebrow}
           </p>
         ) : null}
-        <h2 className="text-3xl font-semibold tracking-tight text-slate-900">{title}</h2>
+        <h2 className="show-ops-title text-3xl font-semibold tracking-tight text-slate-900">{title}</h2>
         {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}

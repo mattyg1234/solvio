@@ -13,6 +13,7 @@ import {
   approvalForRate,
   approvalFromTax,
   holdedContactFromSupplier,
+  holdedOfficeTag,
   holdedErrorMessage,
   holdedInvoiceFromPack,
   parseIgicApprovals,
@@ -135,6 +136,46 @@ export async function testHoldedAction(): Promise<void> {
   }
   revalidate();
   redirect("/dashboard/show-ops/settings?holded=ok");
+}
+
+/**
+ * Tag every partner already linked to a Holded contact with its office (ACE, TFS or LPA), so Holded filters
+ * by office match the Hub. Only the tags change; names, NIFs and addresses in Holded are left alone.
+ */
+export async function tagHoldedPartnersAction(): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  let tagged = 0;
+  let already = 0;
+  let untagged = 0;
+  const failed: string[] = [];
+  try {
+    const { client } = await loadIntegration(ctx);
+    const { data } = await ctx.supabase
+      .from("show_suppliers")
+      .select("id,name,island,holded_contact_id")
+      .eq("business_id", ctx.business.id)
+      .eq("active", true)
+      .not("holded_contact_id", "is", null)
+      .order("name");
+    for (const p of (data ?? []) as Array<{ id: string; name: string; island: string | null; holded_contact_id: string }>) {
+      const office = holdedOfficeTag({ island: p.island, name: p.name }, "name");
+      if (!office) { untagged += 1; continue; }
+      try {
+        const r = await client.tagContact(p.holded_contact_id, office);
+        if (r === "tagged") tagged += 1;
+        else if (r === "already") already += 1;
+        else failed.push(`${p.name} (not in Holded)`);
+      } catch (err) {
+        failed.push(`${p.name}: ${safeMessage(err)}`);
+      }
+    }
+  } catch (err) {
+    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(safeMessage(err)) + "#holded");
+  }
+  const parts = [`${tagged} partners tagged in Holded`, `${already} already had their tag`];
+  if (untagged) parts.push(`${untagged} have no ACE/TFS/LPA prefix or island`);
+  if (failed.length) parts.push(`${failed.length} failed: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "…" : ""}`);
+  redirect("/dashboard/show-ops/settings?holded=tagged&holded_msg=" + encodeURIComponent(parts.join(" · ")) + "#holded");
 }
 
 export async function disconnectHoldedAction(): Promise<void> {
@@ -328,7 +369,14 @@ async function sendInvoiceToHolded(ctx: ShowOpsContext, inv: InvoiceRow, client:
   // 3. External write, then record the outcome — created, failed, or unknown.
   // The client first looks for a draft carrying this pack's reference, so a pack that already reached Holded is linked, not duplicated.
   try {
-    const summary = await client.createInvoiceDraft(payload, { reference: operationReference(inv.id) });
+    let summary = await client.createInvoiceDraft(payload, { reference: operationReference(inv.id) });
+    // A just-created document can read back before Holded has finished its totals; re-read before calling it a mismatch.
+    const expected = Math.round(Number(inv.total_amount ?? 0) * 100);
+    for (const wait of [1500, 3000]) {
+      if (Math.round(summary.total * 100) === expected) break;
+      await new Promise((r) => setTimeout(r, wait));
+      summary = await client.getInvoice(summary.id).catch(() => summary);
+    }
     await completeClaim(ctx.business.id, inv.id, claimToken, "created", summary, null);
     return { outcome: "sent", message: null };
   } catch (err) {

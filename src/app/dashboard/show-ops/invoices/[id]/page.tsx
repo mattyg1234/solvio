@@ -18,7 +18,7 @@ import { hasShowOpsModule } from "@/lib/show-ops/config";
 import { loadInvoiceDelivery } from "@/lib/show-ops/invoice-delivery";
 import { invoiceIsLocked } from "@/lib/show-ops/invoice";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
-import { holdedInvoiceUrl, holdedInvoiceView } from "@/lib/show-ops/holded";
+import { holdedInvoiceUrl, holdedInvoiceView, holdedOfficeTag } from "@/lib/show-ops/holded";
 import { holdedReadiness, type PartnerBilling } from "@/lib/show-ops/partner-billing";
 
 // Holded errors fixed on the partner (its Holded contact, NIF or invoicing details), not on the invoice.
@@ -601,7 +601,7 @@ export default async function InvoicePrintPage({
             <p className="font-semibold text-slate-900">How this invoice reaches Holded</p>
             <p className="mt-1">
               Check the lines and prices, then press <span className="font-semibold">Issue and send to Holded</span>. It goes to Holded as a
-              draft on {inv.supplier_name}&apos;s contact with the same lines, IGIC and #{holdedTagFor(inv.island)} tag.
+              draft on {inv.supplier_name}&apos;s contact with the same lines, IGIC and #{holdedOfficeTag({ island: inv.island, name: inv.supplier_name }) ?? "office"} tag.
               Approving it in Holded gives the legal number and sends it to Verifactu; Sync brings the number and payment back here.
             </p>
           </div>
@@ -631,10 +631,6 @@ function dmy(iso: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 }
 
-function holdedTagFor(island: string | null | undefined): string {
-  const key = String(island || "").toLowerCase();
-  return key === "tenerife" ? "tfs" : key === "lanzarote" ? "ace" : key === "gran canaria" ? "lpa" : key === "uk tour" ? "uk" : "island";
-}
 
 type Step = { label: string; note: string; state: "done" | "now" | "todo" };
 

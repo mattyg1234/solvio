@@ -43,6 +43,7 @@ export async function sendMealsListAction(form: FormData): Promise<{ ok: boolean
       html: `<p>Special meals for <strong>${label}</strong> are attached (${req.bookingIds.length} booking${req.bookingIds.length === 1 ? "" : "s"}). Every dietary requirement is written out in full on the sheet.</p>`,
       text: `Special meals for ${label} are attached (${req.bookingIds.length} bookings). Every dietary requirement is written out in full on the sheet.`,
       attachments: [{ filename: `special-meals-${req.date}.pdf`, content: Buffer.from(bytes).toString("base64") }],
+      log: { businessId: ctx.business.id, kind: "meals_list" },
     });
     if (!result.ok) throw new Error(`Not sent: ${result.message || "email delivery failed."}`);
     return { ok: true, message: `Special meals list sent to ${recipients.join(", ")}.` };

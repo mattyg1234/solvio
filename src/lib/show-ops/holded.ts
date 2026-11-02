@@ -227,6 +227,32 @@ export function holdedTag(raw: string): string {
 }
 
 /**
+ * MHT's offices. Each one is billed separately, so every Holded invoice and contact carries exactly one of these
+ * tags: ACE, TFS or LPA, plus UK for the UK tour (Joel's partner sheet tags "UK TOUR GBP/EURO" as UK).
+ */
+export type HoldedOfficeTag = "ACE" | "TFS" | "LPA" | "UK";
+const ISLAND_OFFICE_TAG: Record<string, HoldedOfficeTag> = { lanzarote: "ACE", tenerife: "TFS", grancanaria: "LPA", uktour: "UK" };
+const OFFICE_PREFIX: Record<string, HoldedOfficeTag> = { ace: "ACE", tfs: "TFS", lpa: "LPA", uk: "UK" };
+
+/**
+ * The office (airport code) a document or partner belongs to: the island when it names one, otherwise the
+ * partner's name prefix ("LPA Get Your Guide"). Gran Canaria partners are stored with island "ALL", so the
+ * prefix is what places them. Null when neither says.
+ */
+export function holdedOfficeTag(where: { island?: string | null; name?: string | null }, prefer: "island" | "name" = "island"): HoldedOfficeTag | null {
+  const fromIsland = ISLAND_OFFICE_TAG[holdedTag(where.island ?? "")] ?? null;
+  const first = String(where.name ?? "").trim().toLowerCase().split(/[^a-z0-9]+/)[0] ?? "";
+  const fromName = OFFICE_PREFIX[first] ?? null;
+  return prefer === "name" ? fromName ?? fromIsland : fromIsland ?? fromName;
+}
+
+/** Tags the Hub used to add before MHT settled on ACE/TFS/LPA only; dropped when a contact is updated. */
+function isLegacyHubTag(tag: string): boolean {
+  const t = holdedTag(tag);
+  return t === "solvio" || /^island[a-z]+$/.test(t);
+}
+
+/**
  * Pick the Holded tax key for a rate. Prefers a Canary IGIC sales key when the
  * company is on the Canary regime; falls back to any sales-scope key with the
  * same rate; null means "send the bare percentage" and let Holded map it.
@@ -271,8 +297,9 @@ export function holdedContactFromSupplier(s: {
   is_person?: boolean | null;
   island?: string | null;
 }): HoldedContactInput {
-  const tags = ["solvio"];
-  if (s.island) tags.push(holdedTag(`island ${s.island}`));
+  // A partner's office comes from its name prefix first (TFS/ACE/LPA is how Joel files them), then its island.
+  const office = holdedOfficeTag({ island: s.island, name: s.name }, "name");
+  const tags: string[] = office ? [office] : [];
   const legal = String(s.legal_name || s.name).trim();
   const trade = String(s.name || "").trim();
   const clean = (v: unknown) => String(v ?? "").trim() || null;
@@ -389,8 +416,6 @@ export function holdedItemsFromLines(
   return out;
 }
 
-const HOLDED_ISLAND_CODES: Record<string, string> = { tenerife: "tfs", lanzarote: "ace", "gran canaria": "lpa", "uk tour": "uk" };
-
 export function holdedInvoiceFromPack(
   pack: Pack,
   lines: PackLine[],
@@ -400,11 +425,9 @@ export function holdedInvoiceFromPack(
   opts: { pricesIncludeTax?: boolean } = {},
 ): HoldedInvoiceInput {
   const ref = pack.invoice_number ? ` · Solvio ${pack.invoice_number}` : "";
-  const tags = ["solvio"];
-  const islandCode = pack.island ? HOLDED_ISLAND_CODES[pack.island.toLowerCase()] : undefined;
-  if (pack.island) tags.push(holdedTag(`island ${pack.island}`));
-  // MHT tags its own Holded invoices by island code (#tfs, #ace, #lpa); match it so filters catch both.
-  if (islandCode) tags.push(islandCode);
+  // The only tag MHT uses on invoices is the office it bills from: ACE, TFS or LPA.
+  const office = holdedOfficeTag({ island: pack.island, name: pack.supplier_name });
+  const tags: string[] = office ? [office] : [];
   const notes = [pack.notes?.trim(), `Solvio pack ${pack.id}`].filter(Boolean).join("\n");
   const input: HoldedInvoiceInput = {
     contactId,
@@ -786,6 +809,14 @@ export function rankHoldedContacts(
     .map((x) => ({ ...x.c, suggested: x.c.id === suggestedId, nifMatches: x.nifMatches }));
 }
 
+/** Keep the office's own tags, drop the Hub's old ones, add ours; one copy per tag whatever its case. */
+export function mergeContactTags(current: string[], ours: string[]): string[] {
+  const out = new Map<string, string>();
+  for (const t of current) if (t.trim() && !isLegacyHubTag(t)) out.set(t.trim().toLowerCase(), t.trim());
+  for (const t of ours) if (t.trim() && !out.has(t.trim().toLowerCase())) out.set(t.trim().toLowerCase(), t.trim());
+  return [...out.values()];
+}
+
 export function mergeHoldedV2Contact(current: Record<string, unknown>, c: HoldedContactInput): Record<string, unknown> {
   const editable = [
     "name", "code", "vat_number", "trade_name", "is_person", "email", "phone", "mobile", "website", "type",
@@ -815,8 +846,7 @@ export function mergeHoldedV2Contact(current: Record<string, unknown>, c: Holded
   if (!out.type) out.type = c.type ?? "client";
   const bill = holdedV2BillAddress(c);
   if (bill) out.bill_address = { ...((out.bill_address as Record<string, unknown>) ?? {}), ...bill };
-  const tags = new Set([...(Array.isArray(out.tags) ? (out.tags as string[]) : []), ...(c.tags ?? [])]);
-  out.tags = [...tags];
+  out.tags = mergeContactTags(Array.isArray(out.tags) ? (out.tags as unknown[]).map((t) => String(t ?? "")) : [], c.tags ?? []);
   return out;
 }
 
@@ -963,7 +993,11 @@ export class HoldedClient {
   /** v2 API token (pat_…): Bearer auth and /v2 endpoints. Otherwise a v1 API key. */
   readonly v2: boolean;
   private taxCache: HoldedTax[] | null = null;
-  constructor(token: string) {
+  /** Waits between read-backs of a just-created document. Tests pass zeros. */
+  private readBackDelaysMs: number[];
+
+  constructor(token: string, options: { readBackDelaysMs?: number[] } = {}) {
+    this.readBackDelaysMs = options.readBackDelaysMs ?? [0, 1000, 2000, 3000];
     this.token = token.trim();
     if (!this.token) throw new Error("Holded token is empty.");
     this.v2 = isHoldedV2Token(this.token);
@@ -1193,6 +1227,31 @@ export class HoldedClient {
     }
   }
 
+  /**
+   * Make sure a contact carries an office tag (ACE/TFS/LPA) without touching anything else on it.
+   * Returns "tagged", "already" (nothing to change) or "missing" (contact gone from Holded).
+   */
+  async tagContact(id: string, tag: string): Promise<"tagged" | "already" | "missing"> {
+    if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return "missing";
+    try {
+      const path = this.v2 ? `/v2/contacts/${encodeURIComponent(id)}` : `/invoicing/v1/contacts/${encodeURIComponent(id)}`;
+      const current = (await this.request<Record<string, unknown>>("GET", path)) ?? {};
+      const had = Array.isArray(current.tags) ? (current.tags as unknown[]).map((t) => String(t ?? "")) : [];
+      const tags = mergeContactTags(had, [tag]);
+      if (tags.length === had.length && tags.every((t, i) => t === had[i])) return "already";
+      if (this.v2) {
+        const name = String(current.name ?? "").trim();
+        await this.request("PUT", path, { ...mergeHoldedV2Contact(current, { name, type: "client" }), tags });
+      } else {
+        await this.request("PUT", path, { tags });
+      }
+      return "tagged";
+    } catch (e) {
+      if (e instanceof HoldedApiError && e.status === 404) return "missing";
+      throw e;
+    }
+  }
+
   async createContact(input: HoldedContactInput): Promise<{ id: string }> {
     const res = this.v2
       ? await this.request<unknown>("POST", "/v2/contacts", holdedV2ContactBody(input))
@@ -1287,8 +1346,13 @@ export class HoldedClient {
     try { id = requiredString((raw as Record<string, unknown>).id, `${kind} id`); }
     catch { this.ambiguousOperations.add(reference); throw new HoldedWriteAmbiguousError(kind, reference); }
     this.knownOperations.set(reference, { kind, id });
-    try { return await this.readDraft(kind, id); }
-    catch { throw new HoldedReconciliationRequiredError(kind, reference, id); }
+    // Holded can take a moment before a new document reads back (seen live: a 404, or totals still settling).
+    for (const wait of this.readBackDelaysMs) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      try { return await this.readDraft(kind, id); }
+      catch { /* try again */ }
+    }
+    throw new HoldedReconciliationRequiredError(kind, reference, id);
   }
 
   private async reconcileDraft(kind: "invoice" | "creditnote", operation: HoldedDraftOperation): Promise<HoldedDocumentSummary | null> {

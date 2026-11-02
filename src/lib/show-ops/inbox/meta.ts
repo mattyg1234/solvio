@@ -80,27 +80,40 @@ export async function checkMetaNumber(creds: MetaCreds): Promise<{ ok: true; nam
 }
 
 /** Approved templates in the WhatsApp Business Account: name → language code (English first). */
-export async function listApprovedTemplates(creds: MetaCreds): Promise<{ ok: true; templates: Record<string, string> } | { ok: false; message: string }> {
+/** An approved template's body as Meta holds it, so a blank mismatch can be read from the row. */
+export type MetaTemplateBody = { language: string; format: string; body: string };
+
+export async function listApprovedTemplates(
+  creds: MetaCreds,
+): Promise<{ ok: true; templates: Record<string, string>; bodies: Record<string, MetaTemplateBody> } | { ok: false; message: string }> {
   if (!isMetaId(creds.wabaId)) return { ok: false, message: "The WhatsApp Business Account ID is the long number Meta shows under API Setup." };
   const out: Record<string, string> = {};
-  let path = `${creds.wabaId}/message_templates?fields=name,language,status&limit=200`;
+  const bodies: Record<string, MetaTemplateBody> = {};
+  let path = `${creds.wabaId}/message_templates?fields=name,language,status,parameter_format,components&limit=200`;
   for (let page = 0; page < 5 && path; page++) {
     const r = await graph(creds, path);
     if (!r.ok) {
       const e = graphError(r.body);
       return { ok: false, message: metaErrorText(e.code, e.message) };
     }
-    const rows = Array.isArray(r.body.data) ? (r.body.data as Array<{ name?: unknown; language?: unknown; status?: unknown }>) : [];
+    const rows = Array.isArray(r.body.data)
+      ? (r.body.data as Array<{ name?: unknown; language?: unknown; status?: unknown; parameter_format?: unknown; components?: unknown }>)
+      : [];
     for (const t of rows) {
       const name = String(t.name ?? "");
       const lang = String(t.language ?? "");
       if (String(t.status ?? "").toUpperCase() !== "APPROVED" || !name || !lang) continue;
-      if (!out[name] || (/^en/i.test(lang) && !/^en/i.test(out[name]))) out[name] = lang;
+      if (!out[name] || (/^en/i.test(lang) && !/^en/i.test(out[name]))) {
+        out[name] = lang;
+        const parts = Array.isArray(t.components) ? (t.components as Array<{ type?: unknown; text?: unknown }>) : [];
+        const body = parts.find((c) => String(c.type ?? "").toUpperCase() === "BODY");
+        bodies[name] = { language: lang, format: String(t.parameter_format ?? "POSITIONAL"), body: String(body?.text ?? "").slice(0, 2000) };
+      }
     }
     const next = ((r.body.paging ?? {}) as { next?: unknown }).next;
     path = typeof next === "string" && next.startsWith(`${GRAPH}/`) ? next.slice(GRAPH.length + 1) : "";
   }
-  return { ok: true, templates: out };
+  return { ok: true, templates: out, bodies };
 }
 
 /**

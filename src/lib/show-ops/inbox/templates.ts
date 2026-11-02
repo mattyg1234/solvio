@@ -7,17 +7,25 @@
  * wording is MHT's own (Joel's handover, 27 Oct). Nothing here touches the database.
  */
 
-export type TemplateKind = "booking" | "booking_transport" | "pickup" | "reopen";
+export type TemplateKind = "booking" | "booking_transport" | "pickup" | "reopen" | "feedback" | "marketing";
 
 export type TemplateSpec = {
   kind: TemplateKind;
   /** Where the HX… SID lives in show_ops_integrations.meta. */
-  metaKey: "booking_content_sid" | "booking_transport_content_sid" | "pickup_content_sid" | "reopen_content_sid";
+  metaKey:
+    | "booking_content_sid"
+    | "booking_transport_content_sid"
+    | "pickup_content_sid"
+    | "reopen_content_sid"
+    | "feedback_content_sid"
+    | "marketing_content_sid";
   title: string;
   /** When the Hub sends it. */
   when: string;
   /** Name in Twilio / Meta. Meta sends approved templates by this name. */
   name: string;
+  /** Other names the same wording was approved under in Meta (Vince's, 1 Nov). */
+  aliases?: string[];
   /** What each numbered blank holds, with the sample Meta asks for. */
   blanks: Array<{ label: string; sample: string }>;
   /** The wording as approved. */
@@ -33,6 +41,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Booking confirmed, making own way",
     when: "Sent when a booking without transport is made. Needs the venue address and Maps link for the island (below).",
     name: "mht_booking_no_transport",
+    aliases: ["template_1__booking_without_transport"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -66,6 +75,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Booking confirmed, with transport",
     when: "Sent when a booking with a bus or private pick-up is made.",
     name: "mht_booking_with_transport",
+    aliases: ["template_2__booking_with_transport"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -101,6 +111,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     title: "Transport confirmed / changed",
     when: "Sent from the bus list when a guest's pick-up time or stop is confirmed or changes.",
     name: "mht_transport_confirmation",
+    aliases: ["template_3__final_transport_confirmation__change"],
     blanks: [
       { label: "First name", sample: "Sarah" },
       { label: "Island", sample: "Tenerife" },
@@ -138,10 +149,69 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     wording:
       "Hi {{1}}, this is MHT with an update about your booking. Please reply to this message so we can continue the chat.",
   },
+  {
+    kind: "feedback",
+    metaKey: "feedback_content_sid",
+    title: "After-show feedback",
+    when: "Sent the morning after the show to guests who came (not no-shows or cancellations). Add a Visit website button with the feedback or review link in Meta.",
+    name: "mht_after_show_feedback",
+    aliases: ["template_4__aftershow_feedback__reviews"],
+    blanks: [
+      { label: "First name", sample: "Sarah" },
+      { label: "Island", sample: "Tenerife" },
+      { label: "Show date", sample: "Friday 6 November" },
+    ],
+    wording: [
+      "Hi {{1}},",
+      "",
+      "We hope you had a fabulous time at the MHT Show in {{2}} on {{3}}.",
+      "",
+      "We'd love to hear what you thought of your evening. Your feedback means so much to our team and helps us continue spreading the MHT magic!",
+      "",
+      "You can complete our Guest Satisfaction Form or leave us a review on Tripadvisor or Google by tapping the button below.",
+      "",
+      "We hope to welcome you back again soon. Until then, keep laughing and being fabulous!",
+      "",
+      SIGN_OFF,
+    ].join("\n"),
+  },
+  {
+    kind: "marketing",
+    metaKey: "marketing_content_sid",
+    title: "Marketing permission",
+    when: "Asks guests whether they'd like MHT news on WhatsApp. YES records consent; STOP opts out.",
+    name: "mht_marketing_permission",
+    aliases: ["template_5_marketing_permision"],
+    blanks: [{ label: "First name", sample: "Sarah" }],
+    wording: [
+      "Hi {{1}},",
+      "",
+      "Would you like to hear from MHT now and again about new shows, special announcements and ticket releases?",
+      "",
+      "We promise to keep it occasional, and you can opt out at any time.",
+      "",
+      "If you'd like to receive MHT WhatsApp updates, please reply YES. If not, no problem at all - you don't need to do anything.",
+      "",
+      "Keep laughing and being fabulous!",
+      "",
+      SIGN_OFF,
+    ].join("\n"),
+  },
 ];
 
 export function templateSpec(kind: TemplateKind): TemplateSpec {
   return TEMPLATE_SPECS.find((s) => s.kind === kind)!;
+}
+
+/** The approved Meta template for a spec, under its own name or an alias. */
+export function approvedMetaTemplate(
+  spec: TemplateSpec,
+  approved: Record<string, string>,
+): { name: string; language: string } | null {
+  for (const name of [spec.name, ...(spec.aliases ?? [])]) {
+    if (approved[name]) return { name, language: approved[name] };
+  }
+  return null;
 }
 
 /**
@@ -162,4 +232,9 @@ export function templateVariables(values: readonly unknown[]): Record<string, st
     out[String(i + 1)] = templateValue(v);
   });
   return out;
+}
+
+/** A template's wording with its numbered blanks filled, as the guest reads it. */
+export function fillTemplateWording(spec: TemplateSpec, values: readonly unknown[]): string {
+  return spec.wording.replace(/\{\{(\d+)\}\}/g, (_, n: string) => templateValue(values[Number(n) - 1]));
 }

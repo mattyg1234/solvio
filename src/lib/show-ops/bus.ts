@@ -40,10 +40,25 @@ export function stopRunsOnDate(runsOn: string | null | undefined, showDate: stri
   return days.includes(isoWeekday(showDate));
 }
 
+/**
+ * Resorts the coach never picks up from. Puerto del Carmen is where the venue
+ * is, so PDC guests walk in (Joel, 2 Nov 2026: "get rid of PDC completely for
+ * the buses"). Their stops stay in the database but never show on a bus.
+ */
+export const NO_BUS_ZONES = new Set(["PDC"]);
+
+export function isNoBusStop(stop: { zone?: string | null; resort?: string | null } | null | undefined): boolean {
+  if (!stop) return false;
+  if (stop.zone && NO_BUS_ZONES.has(stop.zone.trim().toUpperCase())) return true;
+  return /^\s*puerto del carmen\b/i.test(stop.resort ?? "");
+}
+
 type PickupFilterStop = {
   id: string;
   island?: string | null;
   runs_on?: string | null;
+  zone?: string | null;
+  resort?: string | null;
 };
 
 /** Booking / list dropdown: same island, runs that night, always keep the already-chosen stop. */
@@ -52,6 +67,7 @@ export function pickupStopOffered(
   opts: { island?: string | null; showDate?: string | null; selectedId?: string | null },
 ): boolean {
   if (opts.selectedId && stop.id === opts.selectedId) return true;
+  if (isNoBusStop(stop)) return false;
   if (opts.island && stop.island && stop.island !== opts.island) return false;
   return stopRunsOnDate(stop.runs_on, opts.showDate);
 }

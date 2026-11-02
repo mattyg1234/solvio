@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseStopRunsOn, pickupStopOffered, stopRunsOnDate } from "./bus";
+import { isNoBusStop, parseStopRunsOn, pickupStopOffered, stopRunsOnDate } from "./bus";
 
 test("parses printed weekday labels from the TFS sheet", () => {
   assert.deepEqual(parseStopRunsOn("Tue,Fri"), [2, 5]);
@@ -30,4 +30,13 @@ test("pickup dropdown keeps the selected stop and hides other islands / off-days
   assert.equal(pickupStopOffered(golf, { island: "Tenerife", showDate: "2026-08-18", selectedId: "g" }), true);
   assert.equal(pickupStopOffered(pb, { island: "Tenerife", showDate: "2026-08-18" }), false);
   assert.equal(pickupStopOffered(pb, { island: "Lanzarote", showDate: "2026-08-18" }), true);
+});
+
+test("Puerto del Carmen is never a bus stop, unless the booking already has it", () => {
+  assert.equal(isNoBusStop({ zone: "PDC", resort: "Puerto del Carmen" }), true);
+  assert.equal(isNoBusStop({ zone: null, resort: "Puerto del Carmen · Old Town" }), true);
+  assert.equal(isNoBusStop({ zone: "CT", resort: "Costa Teguise" }), false);
+  const pdc = { id: "p", island: "Lanzarote", zone: "PDC", resort: "Puerto del Carmen" };
+  assert.equal(pickupStopOffered(pdc, { island: "Lanzarote" }), false);
+  assert.equal(pickupStopOffered(pdc, { island: "Lanzarote", selectedId: "p" }), true);
 });

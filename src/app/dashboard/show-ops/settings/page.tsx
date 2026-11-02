@@ -15,7 +15,7 @@ import {
   updateShowOpsOpsConfigAction,
 } from "@/app/dashboard/show-ops/actions";
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
-import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
+import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, tagHoldedPartnersAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { MessagingSettings, type MessagingSettingsState } from "@/components/show-ops/inbox/messaging-settings";
 import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
@@ -35,6 +35,9 @@ import {
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 
+// Tagging every linked partner in Holded is one read and one write per contact.
+export const maxDuration = 300;
+
 export default async function ShowOpsSettingsPage({
   searchParams,
 }: {
@@ -45,6 +48,7 @@ export default async function ShowOpsSettingsPage({
     sample_error?: string;
     holded?: string;
     holded_error?: string;
+    holded_msg?: string;
     twilio?: string;
     twilio_error?: string;
     channel?: string;
@@ -1101,6 +1105,8 @@ export default async function ShowOpsSettingsPage({
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Connection test passed.</p>
         ) : sp.holded === "taxes_saved" ? (
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Approved IGIC taxes saved.</p>
+        ) : sp.holded === "tagged" ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{sp.holded_msg || "Partners tagged in Holded."}</p>
         ) : sp.holded === "disconnected" ? (
           <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Holded disconnected. Packs already sent keep their Holded numbers.</p>
         ) : null}
@@ -1145,6 +1151,17 @@ export default async function ShowOpsSettingsPage({
                 >
                   Fill partner details from Holded
                 </Link>
+              ) : null}
+              {holded.connected ? (
+                <form action={tagHoldedPartnersAction}>
+                  <button
+                    type="submit"
+                    title="Adds ACE, TFS or LPA to every linked partner's Holded contact. Nothing else in Holded changes."
+                    className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200"
+                  >
+                    Tag partners ACE / TFS / LPA in Holded
+                  </button>
+                </form>
               ) : null}
               <form action={disconnectHoldedAction}>
                 <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200">

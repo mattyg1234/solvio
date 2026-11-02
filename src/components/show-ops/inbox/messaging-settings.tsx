@@ -3,13 +3,14 @@ import {
   disconnectMetaAction,
   disconnectTwilioAction,
   refreshMetaAction,
+  sendMetaTestAction,
   saveMetaAction,
   saveTwilioNumbersAction,
   testTwilioAction,
 } from "@/app/dashboard/show-ops/actions-twilio";
 import { PhoneInput } from "@/components/show-ops/phone-input";
 import { inboundWebhookUrl, metaWebhookUrl } from "@/lib/show-ops/inbox/connection";
-import { TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
+import { approvedMetaTemplate, TEMPLATE_SPECS } from "@/lib/show-ops/inbox/templates";
 import type { TwilioIntegrationMeta } from "@/lib/show-ops/inbox/types";
 
 export type MessagingSettingsState = {
@@ -62,6 +63,8 @@ export function MessagingSettings({
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Numbers and templates saved.</p>
       ) : flash === "meta_saved" ? (
         <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Meta answered: the details work and the approved templates were read.</p>
+      ) : flash === "meta_test_sent" ? (
+        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Meta accepted the test WhatsApp. It should arrive in a few seconds.</p>
       ) : flash === "meta_removed" ? (
         <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">Meta removed. WhatsApp goes through Twilio again.</p>
       ) : flash === "disconnected" ? (
@@ -313,11 +316,14 @@ function MetaSettings({ meta }: { meta: TwilioIntegrationMeta & { meta_number_na
           <div>
             <dt className="text-slate-500">Hub templates approved in Meta</dt>
             <dd>
-              {TEMPLATE_SPECS.map((spec) => (
-                <span key={spec.kind} className={`mr-2 inline-block ${meta.meta_templates[spec.name] ? "text-emerald-700" : "text-slate-400"}`}>
-                  {meta.meta_templates[spec.name] ? "✓" : "–"} {spec.name}
-                </span>
-              ))}
+              {TEMPLATE_SPECS.map((spec) => {
+                const approved = approvedMetaTemplate(spec, meta.meta_templates);
+                return (
+                  <span key={spec.kind} className={`mr-2 inline-block ${approved ? "text-emerald-700" : "text-slate-400"}`}>
+                    {approved ? "✓" : "–"} {approved?.name ?? spec.name}
+                  </span>
+                );
+              })}
             </dd>
           </div>
         </dl>
@@ -366,6 +372,12 @@ function MetaSettings({ meta }: { meta: TwilioIntegrationMeta & { meta_number_na
             <input type="hidden" name="whatsapp_provider" value={meta.whatsapp_provider} />
             <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
               Re-check approved templates
+            </button>
+          </form>
+          <form action={sendMetaTestAction} className="flex flex-wrap gap-2">
+            <input name="test_phone" type="tel" required placeholder="+44 7…" className={`${input} w-40`} />
+            <button type="submit" className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+              Send test WhatsApp
             </button>
           </form>
           <form action={disconnectMetaAction}>

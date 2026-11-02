@@ -9,8 +9,8 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { stopRunsOnDate } from "@/lib/show-ops/bus";
-import { busLoads, seatsPerBus } from "@/lib/show-ops/bus-seats";
+import { isNoBusStop, stopRunsOnDate } from "@/lib/show-ops/bus";
+import { busCount, busLoads, seatsPerBus } from "@/lib/show-ops/bus-seats";
 import { formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 
@@ -30,10 +30,11 @@ export default async function BusBoardPage({
     return d.toISOString().slice(0, 10);
   };
   const island = sp.island || "";
-  const tonightOnly = sp.view === "tonight";
+  // A picked night shows only the buses running that night; "All buses" opens the full timetable.
+  const tonightOnly = sp.view !== "all";
   const showUntimed = sp.stops === "all";
 
-  const [{ data: stops }, { data: bookings }, { data: orders }, { data: hotels }] = await Promise.all([
+  const [{ data: allStops }, { data: bookings }, { data: orders }, { data: hotels }] = await Promise.all([
     loadDirectoryStops(ctx.supabase, ctx.business.id, true),
     collectPartnerPages<{island:string;adults:number;children:number;infants:number;transport_required:boolean;pickup_stop_id:string|null;show_name:string}>(async (offset, limit) => {
       const { data, error } = await ctx.supabase.from("show_bookings").select("island,adults,children,infants,transport_required,pickup_stop_id,show_name")
@@ -46,11 +47,14 @@ export default async function BusBoardPage({
     loadDirectoryHotels(ctx.supabase, ctx.business.id, true),
   ]);
 
-  const money = (n: number) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
+  // Puerto del Carmen never has a coach (the venue is there): its stops and guests stay off the bus board.
+  const noBusStopIds = new Set((allStops ?? []).filter((s) => isNoBusStop(s)).map((s) => s.id));
+  const stops = (allStops ?? []).filter((s) => !noBusStopIds.has(s.id));
   const paxByStop = new Map<string, number>();
   const paxByIsland = new Map<string, number>();
   let unassignedPax = 0;
   for (const b of bookings ?? []) {
+    if (b.pickup_stop_id && noBusStopIds.has(b.pickup_stop_id)) continue;
     const pax = paxTotal(b.adults, b.children, b.infants);
     paxByIsland.set(b.island, (paxByIsland.get(b.island) ?? 0) + pax);
     if (b.pickup_stop_id) paxByStop.set(b.pickup_stop_id, (paxByStop.get(b.pickup_stop_id) ?? 0) + pax);
@@ -68,7 +72,7 @@ export default async function BusBoardPage({
         .filter(Boolean)
         .filter((isl) => {
           // Joel: only bring up buses where there are bookings on the date.
-          if (tonightOnly) return paxByIsland.has(isl);
+          if (tonightOnly) return paxByIsland.has(isl) || orderByIsland.has(isl);
           if (showUntimed) return true;
           const hasTimed = (stops ?? []).some((s) => s.island === isl && s.pickup_time);
           return hasTimed || paxByIsland.has(isl);
@@ -79,7 +83,7 @@ export default async function BusBoardPage({
     const p = new URLSearchParams();
     if (date !== today) p.set("date", date);
     if (island) p.set("island", island);
-    if (tonightOnly) p.set("view", "tonight");
+    if (!tonightOnly) p.set("view", "all");
     if (showUntimed) p.set("stops", "all");
     for (const [k, v] of Object.entries(extra)) {
       if (v) p.set(k, v);
@@ -119,11 +123,11 @@ export default async function BusBoardPage({
           </ShowOpsPill>
         ))}
         <span className="mx-1 hidden h-6 w-px bg-slate-200 sm:inline-block" />
-        <ShowOpsPill href={qs({ view: "" })} on={!tonightOnly}>
-          Full timetable
+        <ShowOpsPill href={qs({ view: "" })} on={tonightOnly}>
+          Running this night
         </ShowOpsPill>
-        <ShowOpsPill href={qs({ view: "tonight" })} on={tonightOnly}>
-          Tonight only
+        <ShowOpsPill href={qs({ view: "all" })} on={!tonightOnly}>
+          All buses (full timetable)
         </ShowOpsPill>
       </div>
 
@@ -150,7 +154,7 @@ export default async function BusBoardPage({
         const order = orderByIsland.get(isl);
         const busPax = paxByIsland.get(isl) ?? 0;
         const seats = order ? Number(order.seats_ordered) : null;
-        const buses = order ? Math.max(1, Number(order.bus_count) || 1) : null;
+        const buses = order ? busCount(order) : null;
         const cost = order ? Number(order.cost_total) : null;
         const twoBuses = (buses ?? 1) > 1 || allForIsland.some((s) => (s.bus_no ?? 1) > 1);
         const loads = twoBuses
@@ -197,7 +201,8 @@ export default async function BusBoardPage({
                 ) : null}
                 {cost != null && cost > 0 && busPax > 0 ? (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
-                    {money(cost)} · {money(round2(cost / busPax))}/head
+                    {formatShowOpsMoney(cost, showOpsCurrencyFor(ctx.config, isl))} ·{" "}
+                    {formatShowOpsMoney(round2(cost / busPax), showOpsCurrencyFor(ctx.config, isl))}/head
                   </span>
                 ) : null}
               </div>
@@ -211,6 +216,7 @@ export default async function BusBoardPage({
                 Buses
                 <NumberInput
                   min={1}
+                  max={4}
                   name="bus_count"
                   defaultValue={buses ?? 1}
                   className="mt-1 block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
@@ -245,7 +251,8 @@ export default async function BusBoardPage({
                 <NumberInput
                   min={0}
                   name="cost_total"
-                  defaultValue={cost ?? ""}
+                  placeholder="0.00"
+                  defaultValue={cost != null && cost > 0 ? cost.toFixed(2) : ""}
                   className="mt-1 block w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
                 />
               </label>
@@ -286,7 +293,8 @@ export default async function BusBoardPage({
                 key={`${date}-${isl}`}
                 date={date}
                 island={isl}
-                buses={twoBuses ? Math.max(buses ?? 1, ...allForIsland.map((s) => s.bus_no ?? 1)) : 1}
+                // Only the coaches running this night: the order's count, else the buses guests are booked onto.
+                buses={buses ?? Math.max(1, ...allForIsland.filter((s) => hasPax(s.id)).map((s) => s.bus_no ?? 1))}
                 stops={islStops.map((s) => ({
                   id: s.id,
                   label: `${s.resort} · ${s.stop_name}`,

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { SiteAuthFooter } from "@/components/site/site-auth-footer";
 import { SiteHeader } from "@/components/site/site-header";
+import { HubLoginPage } from "@/components/show-ops/hub-login-page";
 import {
   Card,
   CardContent,
@@ -11,11 +13,28 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { hubBrandFor } from "@/lib/show-ops/hub-brand";
 
-export const metadata: Metadata = {
-  title: "Log in · Solvio",
-  description: "Sign in to your Solvio workspace.",
-};
+type LoginSearchParams = { error?: string | string[]; next?: string | string[]; hub?: string | string[] };
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<LoginSearchParams>;
+}): Promise<Metadata> {
+  const brand = hubBrandFor((await headers()).get("host"), (await searchParams).hub);
+  if (brand) {
+    return {
+      title: `Log in · ${brand.name}`,
+      description: `Sign in to ${brand.name}: MHT Shows bookings for ${brand.islands.join(", ")}.`,
+      robots: { index: false, follow: false },
+    };
+  }
+  return {
+    title: "Log in · Solvio",
+    description: "Sign in to your Solvio workspace.",
+  };
+}
 
 function decodeAuthError(raw: string | string[] | undefined): string | undefined {
   if (!raw) return undefined;
@@ -38,11 +57,16 @@ function safeLoginRedirect(raw: string | string[] | undefined): string {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[]; next?: string | string[] }>;
+  searchParams: Promise<LoginSearchParams>;
 }) {
   const params = await searchParams;
   const authCallbackError = decodeAuthError(params.error);
   const redirectTo = safeLoginRedirect(params.next);
+
+  const brand = hubBrandFor((await headers()).get("host"), params.hub);
+  if (brand) {
+    return <HubLoginPage brand={brand} authCallbackError={authCallbackError} redirectTo={redirectTo} />;
+  }
 
   return (
     <>

@@ -13,6 +13,8 @@ import { PasswordInput } from "@/components/ui/password-input";
 type LoginFormProps = {
   authCallbackError?: string | null;
   redirectTo?: string;
+  /** A white-label hub's sign in: its own colours, no Solvio signup link, its own help address. */
+  hub?: { primaryColor: string; contactEmail: string };
 };
 
 function safeDashboardRedirect(raw: string | undefined): string {
@@ -21,7 +23,7 @@ function safeDashboardRedirect(raw: string | undefined): string {
   return "/dashboard";
 }
 
-export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: LoginFormProps) {
+export function LoginForm({ authCallbackError, redirectTo = "/dashboard", hub }: LoginFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,7 @@ export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: Logi
       router.push(safeDashboardRedirect(redirectTo));
       router.refresh();
     } catch {
-      setError("Something went wrong — please try again or email hello@solviosystems.com.");
+      setError(`Something went wrong — please try again or email ${hub?.contactEmail ?? "hello@solviosystems.com"}.`);
     } finally {
       setLoading(false);
     }
@@ -111,6 +113,7 @@ export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: Logi
             disabled={resetLoading}
             onClick={() => void onForgotPassword()}
             className="text-sm font-semibold text-[#7c3aed] hover:underline disabled:opacity-50"
+            style={hub ? { color: "#b0129f" } : undefined}
           >
             {resetLoading ? "Sending…" : "Forgot password?"}
           </button>
@@ -133,17 +136,24 @@ export function LoginForm({ authCallbackError, redirectTo = "/dashboard" }: Logi
       <Button
         type="submit"
         disabled={loading}
-        className="h-11 w-full rounded-full text-base font-semibold shadow-lg shadow-[#7c3aed]/25 disabled:opacity-60"
+        className={
+          hub
+            ? "h-11 w-full rounded-full text-base font-semibold text-[#14051a] shadow-lg hover:brightness-110 disabled:opacity-60"
+            : "h-11 w-full rounded-full text-base font-semibold shadow-lg shadow-[#7c3aed]/25 disabled:opacity-60"
+        }
+        style={hub ? { backgroundColor: hub.primaryColor, boxShadow: `0 14px 34px -14px ${hub.primaryColor}` } : undefined}
       >
         {loading ? "Signing in…" : "Log in"}
       </Button>
 
-      <p className="text-center text-sm text-[#64748b]">
-        New to Solvio?{" "}
-        <Link href="/signup" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
-          Create an account
-        </Link>
-      </p>
+      {hub ? null : (
+        <p className="text-center text-sm text-[#64748b]">
+          New to Solvio?{" "}
+          <Link href="/signup" className="font-semibold text-[#7c3aed] underline-offset-4 hover:underline">
+            Create an account
+          </Link>
+        </p>
+      )}
     </form>
   );
 }

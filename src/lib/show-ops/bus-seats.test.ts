@@ -44,3 +44,10 @@ test("the order form's per-bus seats parse only when every bus has a number", ()
   form.delete("seats_bus_2");
   assert.equal(parseSeatsByBus((k) => form.get(k), 2), null);
 });
+
+test("an ordered one-bus night keeps every guest on Bus 1, even from a Bus 2 stop", () => {
+  const loads = busLoads({ seats_ordered: 50, bus_count: 1 }, [{ id: "a", bus_no: 1 }, { id: "b", bus_no: 2 }], { a: 10, b: 7 });
+  assert.equal(loads.length, 1);
+  assert.equal(loads[0].pax, 17);
+  assert.equal(loads[0].free, 33);
+});

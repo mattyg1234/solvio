@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { isNoBusStop } from "@/lib/show-ops/bus";
 import { productRunsOnDate } from "@/lib/show-ops/calendar";
+import { busLoads, type BusLoad } from "@/lib/show-ops/bus-seats";
 import { addDaysIso, paxTotal } from "@/lib/show-ops/calc";
 import { todayIsoUtc } from "@/lib/show-ops/nights";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
@@ -10,6 +12,11 @@ import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-p
  * Weekly outlook, organised the way the operation actually flies:
  * one section per airport code, resorts as columns, bus/direct split,
  * hotels + rates behind each night.
+ *
+ * Money stays off this page (Matty, 2 Nov 2026): booking values and bus costs
+ * are still stored on the bookings and bus orders and shown on Bookings,
+ * Reports and the bus board. The Bus column lists the coaches by number
+ * (Bus 1, Bus 2, Bus 3) with pax on each against its seats.
  */
 
 type ResortCol = { key: string; label: string };
@@ -62,7 +69,7 @@ const SECTIONS: Section[] = [
 
 const DIRECT_KEY = "__direct__";
 
-type HotelRow = { pax: number; value: number; stops: Set<string>; resort: string };
+type HotelRow = { pax: number; stops: Set<string>; resort: string };
 /** Adult / child price for a show running that night — the rates the phone asks for. */
 type RateRow = { show: string; adult: number; child: number };
 type Night = {
@@ -73,7 +80,6 @@ type Night = {
   rates: Map<string, RateRow>;
   bookings: number;
   pax: number;
-  value: number;
   busPax: number;
 };
 
@@ -85,13 +91,12 @@ function fmtDate(iso: string) {
 /** Roll the night's hotels up into their resorts — the other half of "sort by resort AND hotel". */
 function groupHotelsByResort(
   hotels: Map<string, HotelRow>,
-): Map<string, { pax: number; value: number; hotels: number }> {
-  const out = new Map<string, { pax: number; value: number; hotels: number }>();
+): Map<string, { pax: number; hotels: number }> {
+  const out = new Map<string, { pax: number; hotels: number }>();
   for (const h of hotels.values()) {
     const key = h.resort || "Other";
-    const row = out.get(key) ?? { pax: 0, value: 0, hotels: 0 };
+    const row = out.get(key) ?? { pax: 0, hotels: 0 };
     row.pax += h.pax;
-    row.value += h.value;
     row.hotels += 1;
     out.set(key, row);
   }
@@ -136,7 +141,7 @@ export default async function WeeklyOutlookPage({
     ctx.supabase
       .from("show_bookings")
       .select(
-        "show_date,hotel_name,adults,children,infants,transport_required,show_name,pickup_stop_id,pickup_stop_name,pickup_time,island,total_cost",
+        "show_date,hotel_name,adults,children,infants,transport_required,show_name,pickup_stop_id,pickup_stop_name,pickup_time,island",
       )
       .eq("business_id", ctx.business.id)
       .gte("show_date", today)
@@ -145,13 +150,13 @@ export default async function WeeklyOutlookPage({
       .order("show_date"),
     ctx.supabase
       .from("show_bus_orders")
-      .select("show_date,island,seats_ordered,bus_count,cost_total")
+      .select("show_date,island,seats_ordered,bus_count,seats_by_bus")
       .eq("business_id", ctx.business.id)
       .gte("show_date", today)
       .lte("show_date", endIso),
     ctx.supabase
       .from("show_bus_stops")
-      .select("id,island,zone,resort,stop_name")
+      .select("id,island,zone,resort,stop_name,bus_no")
       .eq("business_id", ctx.business.id),
   ]);
 
@@ -159,19 +164,36 @@ export default async function WeeklyOutlookPage({
     (stops ?? []).map((s) => [s.id, { zone: (s.zone as string | null) ?? "", island: s.island as string, name: s.stop_name as string }]),
   );
 
-  // date -> island -> bus order
-  const busOrderByDateIsland = new Map<string, { seats: number; buses: number }>();
+  // date|island -> bus order (one row per night and island)
+  type OutlookBusOrder = { seats_ordered: number; bus_count: number; seats_by_bus: number[] | null };
+  const busOrderByDateIsland = new Map<string, OutlookBusOrder>();
   for (const o of busOrders ?? []) {
-    const key = `${o.show_date}|${o.island}`;
-    const prev = busOrderByDateIsland.get(key) ?? { seats: 0, buses: 0 };
-    // Sum rather than overwrite, so a second order row for the same night adds up.
-    busOrderByDateIsland.set(key, {
-      seats: prev.seats + (Number(o.seats_ordered) || 0),
-      buses: prev.buses + Math.max(1, Number((o as { bus_count?: number }).bus_count) || 1),
+    busOrderByDateIsland.set(`${o.show_date}|${o.island}`, {
+      seats_ordered: Number(o.seats_ordered) || 0,
+      bus_count: Math.max(1, Number(o.bus_count) || 1),
+      seats_by_bus: Array.isArray(o.seats_by_bus) ? (o.seats_by_bus as number[]) : null,
     });
   }
   // island bus pax across ALL sections of that island (bus orders are per island, not per zone)
   const islandBusPax = new Map<string, number>();
+  // date|island -> pax per pick-up stop, and bus pax with no stop yet (they count on Bus 1)
+  const busPaxByStop = new Map<string, Record<string, number>>();
+  const busPaxNoStop = new Map<string, number>();
+  const stopsByIsland = new Map<string, Array<{ id: string; bus_no: number }>>();
+  for (const s of stops ?? []) {
+    const list = stopsByIsland.get(s.island as string) ?? [];
+    list.push({ id: s.id as string, bus_no: Math.max(1, Number((s as { bus_no?: number | null }).bus_no) || 1) });
+    stopsByIsland.set(s.island as string, list);
+  }
+  const loadsFor = (date: string, island: string): BusLoad[] => {
+    const key = `${date}|${island}`;
+    const order = busOrderByDateIsland.get(key) ?? null;
+    const islandStops = stopsByIsland.get(island) ?? [];
+    const byStop = busPaxByStop.get(key) ?? {};
+    // Only stops someone is booked on tonight, so an unused Bus 2 stop does not invent a coach.
+    const used = islandStops.filter((s) => (byStop[s.id] ?? 0) > 0);
+    return busLoads(order, used, byStop, busPaxNoStop.get(key) ?? 0);
+  };
 
   const sectionFor = (islandName: string, zone: string | null): Section | undefined => {
     const candidates = SECTIONS.filter((s) => s.island === islandName);
@@ -198,7 +220,6 @@ export default async function WeeklyOutlookPage({
         rates: new Map(),
         bookings: 0,
         pax: 0,
-        value: 0,
         busPax: 0,
       };
       m.set(date, n);
@@ -236,18 +257,26 @@ export default async function WeeklyOutlookPage({
     if (!section) continue;
     const night = nightFor(section, b.show_date as string);
     const pax = paxTotal(b.adults, b.children, b.infants);
-    const value = Number(b.total_cost) || 0;
     if (b.show_name) night.shows.add(b.show_name);
     night.bookings += 1;
     night.pax += pax;
-    night.value += value;
 
     const cellKey = section.resorts.some((r) => r.key === zone) ? (zone as string) : DIRECT_KEY;
     const cell = night.cells.get(cellKey) ?? { bus: 0, direct: 0 };
-    if (b.transport_required) {
+    // Puerto del Carmen never has a coach (the venue is there), so PDC guests count as direct.
+    if (b.transport_required && !isNoBusStop(stop ? { zone: stop.zone } : null)) {
       cell.bus += pax;
       night.busPax += pax;
-      islandBusPax.set(`${b.show_date}|${b.island}`, (islandBusPax.get(`${b.show_date}|${b.island}`) ?? 0) + pax);
+      const key = `${b.show_date}|${b.island}`;
+      islandBusPax.set(key, (islandBusPax.get(key) ?? 0) + pax);
+      const onStop = b.pickup_stop_id && stop?.island === b.island ? (b.pickup_stop_id as string) : null;
+      if (onStop) {
+        const byStop = busPaxByStop.get(key) ?? {};
+        byStop[onStop] = (byStop[onStop] ?? 0) + pax;
+        busPaxByStop.set(key, byStop);
+      } else {
+        busPaxNoStop.set(key, (busPaxNoStop.get(key) ?? 0) + pax);
+      }
     } else {
       cell.direct += pax;
     }
@@ -255,10 +284,9 @@ export default async function WeeklyOutlookPage({
 
     const hotelName = (b.hotel_name as string) || "No hotel given";
     const hotel =
-      night.hotels.get(hotelName) ?? { pax: 0, value: 0, stops: new Set<string>(), resort: "" };
+      night.hotels.get(hotelName) ?? { pax: 0, stops: new Set<string>(), resort: "" };
     if (!hotel.resort) hotel.resort = section.resorts.find((r) => r.key === zone)?.label || "Other";
     hotel.pax += pax;
-    hotel.value += value;
     if (stop?.name) hotel.stops.add(`${stop.name}${b.pickup_time ? ` · ${String(b.pickup_time).slice(0, 5)}` : ""}`);
     else if (b.pickup_stop_name) hotel.stops.add(b.pickup_stop_name);
     night.hotels.set(hotelName, hotel);
@@ -269,7 +297,7 @@ export default async function WeeklyOutlookPage({
       <ShowOpsPageHeader
         eyebrow="Overview"
         title="Weekly outlook"
-        subtitle={`Next ${days} nights by airport — resorts, bus vs direct, hotels, rates and buses. Order buses on the show calendar.`}
+        subtitle={`Next ${days} nights by airport — resorts, bus vs direct, hotels, rates and which buses run. Order buses on the show calendar.`}
         actions={
           <Link href="/dashboard/show-ops/calendar" className="text-sm font-semibold text-[var(--show-ops-primary,#7c3aed)]">
             Open calendar
@@ -307,8 +335,8 @@ export default async function WeeklyOutlookPage({
           .sort((a, b) => a.date.localeCompare(b.date));
         const isUk = section.island === "UK";
         const totals = nights.reduce(
-          (acc, n) => ({ pax: acc.pax + n.pax, bookings: acc.bookings + n.bookings, value: acc.value + n.value }),
-          { pax: 0, bookings: 0, value: 0 },
+          (acc, n) => ({ pax: acc.pax + n.pax, bookings: acc.bookings + n.bookings }),
+          { pax: 0, bookings: 0 },
         );
 
         return (
@@ -321,7 +349,7 @@ export default async function WeeklyOutlookPage({
                 {section.title}
               </h2>
               <p className="text-sm text-slate-500">
-                {totals.pax} pax · {totals.bookings} bookings · {euro(totals.value)} in the next {days} nights
+                {totals.pax} pax · {totals.bookings} bookings in the next {days} nights
               </p>
             </div>
 
@@ -340,7 +368,6 @@ export default async function WeeklyOutlookPage({
                       ))}
                       <th className="border-l border-slate-200 px-3 py-3 text-center">{isUk ? "Pax" : "Other"}</th>
                       <th className="border-l-2 border-slate-200 px-4 py-3 text-center">Total</th>
-                      <th className="px-3 py-3 text-right font-medium text-slate-400">€</th>
                       {!isUk ? <th className="px-3 py-3 text-right font-medium text-slate-400">Bus</th> : null}
                     </tr>
                     {section.resorts.length ? (
@@ -354,7 +381,6 @@ export default async function WeeklyOutlookPage({
                         ))}
                         <th />
                         <th className="border-l-2 border-slate-200" />
-                        <th />
                         {!isUk ? <th /> : null}
                       </tr>
                     ) : null}
@@ -362,8 +388,7 @@ export default async function WeeklyOutlookPage({
                   <tbody>
                     {nights.map((n) => {
                       const order = busOrderByDateIsland.get(`${n.date}|${section.island}`);
-                      const allIslandBusPax = islandBusPax.get(`${n.date}|${section.island}`) ?? 0;
-                      const seatsLeft = order ? order.seats - allIslandBusPax : null;
+                      const loads = order || n.busPax ? loadsFor(n.date, section.island) : [];
                       const other = n.cells.get(DIRECT_KEY);
                       return (
                         <tr key={n.date} className="border-t border-slate-100">
@@ -392,8 +417,7 @@ export default async function WeeklyOutlookPage({
                                         .sort((a, b) => b[1].pax - a[1].pax)
                                         .map(([resort, r]) => (
                                           <p key={resort} className="text-slate-500">
-                                            <span className="font-medium text-slate-700">{resort}</span> · {r.pax} pax ·{" "}
-                                            {euro(r.value)}
+                                            <span className="font-medium text-slate-700">{resort}</span> · {r.pax} pax
                                             <span className="text-slate-400"> · {r.hotels} hotels</span>
                                           </p>
                                         ))
@@ -401,8 +425,7 @@ export default async function WeeklyOutlookPage({
                                         .sort((a, b) => b[1].pax - a[1].pax)
                                         .map(([hotel, h]) => (
                                           <p key={hotel} className="text-slate-500">
-                                            <span className="font-medium text-slate-700">{hotel}</span> · {h.pax} pax ·{" "}
-                                            {euro(h.value)}
+                                            <span className="font-medium text-slate-700">{hotel}</span> · {h.pax} pax
                                             {h.stops.size ? (
                                               <span className="text-slate-400"> · {[...h.stops].join(" · ")}</span>
                                             ) : null}
@@ -437,15 +460,19 @@ export default async function WeeklyOutlookPage({
                           <td className="border-l-2 border-slate-200 px-4 py-4 text-center text-[15px] font-bold tabular-nums text-slate-900">
                             {n.pax}
                           </td>
-                          <td className="px-3 py-4 text-right tabular-nums text-slate-500">{n.value ? euro(n.value) : "—"}</td>
                           {!isUk ? (
                             <td className="px-3 py-4 text-right text-xs">
                               {order ? (
-                                <span className={seatsLeft != null && seatsLeft < 0 ? "font-semibold text-rose-600" : "text-slate-500"}>
-                                  <span className="block font-medium text-slate-700">
-                                    {order.buses} bus{order.buses === 1 ? "" : "es"}
-                                  </span>
-                                  {allIslandBusPax}/{order.seats}
+                                <span className="inline-flex flex-col items-end gap-0.5">
+                                  {loads.map((l) => (
+                                    <span
+                                      key={l.bus}
+                                      className={`whitespace-nowrap ${l.free != null && l.free < 0 ? "font-semibold text-rose-600" : "text-slate-500"}`}
+                                    >
+                                      <span className="font-medium text-slate-700">Bus {l.bus}</span> · {l.pax}
+                                      {l.seats != null ? `/${l.seats}` : ""}
+                                    </span>
+                                  ))}
                                 </span>
                               ) : n.busPax ? (
                                 <span className="font-medium text-amber-600">no bus</span>

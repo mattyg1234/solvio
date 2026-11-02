@@ -4,6 +4,9 @@
  * night's order carries how many seats each coach has.
  */
 
+/** Coaches a night can run. show_bus_stops.bus_no is checked 1–4 in the database. */
+export const MAX_BUSES = 4;
+
 export type BusOrderSeats = {
   seats_ordered: number | null | undefined;
   bus_count?: number | null;
@@ -19,7 +22,7 @@ export type BusLoad = {
 };
 
 export function busCount(order: BusOrderSeats | null | undefined): number {
-  return Math.max(1, Math.trunc(Number(order?.bus_count) || 1));
+  return Math.min(MAX_BUSES, Math.max(1, Math.trunc(Number(order?.bus_count) || 1)));
 }
 
 /** Capacity per coach, in bus order. Explicit split wins; otherwise the total is shared evenly, remainder on bus 1. */
@@ -41,7 +44,11 @@ export function busLoads(
   unassignedPax = 0,
 ): BusLoad[] {
   const seats = seatsPerBus(order);
-  const n = Math.max(busCount(order), ...stops.map((s) => Math.trunc(Number(s.bus_no) || 1)), 1);
+  // An ordered night runs exactly its coaches (a Bus 2 stop rides Bus 1 on a one-bus night);
+  // with no order yet, the stops say how many coaches are needed.
+  const n = order
+    ? busCount(order)
+    : Math.min(MAX_BUSES, Math.max(1, ...stops.map((s) => Math.trunc(Number(s.bus_no) || 1))));
   const loads: BusLoad[] = Array.from({ length: n }, (_, i) => ({ bus: i + 1, seats: seats?.[i] ?? null, pax: 0, free: null, stops: 0 }));
   for (const s of stops) {
     const b = Math.min(n, Math.max(1, Math.trunc(Number(s.bus_no) || 1)));
