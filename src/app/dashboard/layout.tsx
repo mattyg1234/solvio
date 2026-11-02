@@ -116,7 +116,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // requireShowOpsPage server-side.
   let showOpsNavSections: ShowOpsNavSection[] | undefined;
   let showOpsMemberEnabled = false;
+  let showOpsIsOwner = false;
   if (showOpsEnabled && (primaryBiz as { owner_id?: string } | null)?.owner_id === user.id) {
+    showOpsIsOwner = true;
     showOpsNavSections = visibleShowOpsNav("owner", null);
   } else {
     const { data: membership } = await supabase
@@ -213,6 +215,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             businessCreatedAt={businessCreatedAt}
             showOpsEnabled={showOpsEnabled || showOpsMemberEnabled}
             hubAccent={hub ? "#c0139f" : null}
+            showTipsi={showOpsIsOwner}
           />
         </div>
       </div>
