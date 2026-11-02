@@ -179,7 +179,7 @@ export default async function EditBookingPage({
   const outstanding = isDeposit ? round2(Math.max(0, totalCost - paidSoFar)) : 0;
   const canTakePayment = isDeposit && !booking.cancelled_at && outstanding > 0 && roleAtLeast(ctx.role, "office");
   const methodLabel = (m: string) =>
-    m === "import" ? "Paid before the Hub" : m === "stripe" ? "Online (card)" : m === "transfer" ? "Direct (PayPal / Stripe)" : (SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[m] ?? m;
+    m === "import" ? "Paid before the Hub" : m === "stripe" ? "Online (card)" : m === "transfer" ? "Direct" : (SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[m] ?? m;
 
   const requestPending = booking.cancel_request_status === "pending" && !booking.cancelled_at;
   let partnerPolicy: string | null = null;

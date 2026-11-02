@@ -147,7 +147,7 @@ export function AddPaymentButton({
                     onChange={() => setMethod(m)}
                     className="sr-only"
                   />
-                  {m === "cash" ? "Cash" : m === "card" ? "Card" : "Direct (PayPal / Stripe)"}
+                  {m === "cash" ? "Cash" : m === "card" ? "Card" : "Direct"}
                 </label>
               ))}
             </div>
