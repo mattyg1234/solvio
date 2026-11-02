@@ -127,6 +127,8 @@ export type DashboardMobileNavProps = {
   showOpsEnabled?: boolean;
   /** A white-label hub's own look (MHT) for the Show Ops bottom bar. */
   hubAccent?: string | null;
+  /** Owner (Director) only: the Tipsi stats link in the Show Ops "more" menu. */
+  showTipsi?: boolean;
 };
 
 export function DashboardMobileNav({
@@ -136,6 +138,7 @@ export function DashboardMobileNav({
   businessCreatedAt = null,
   showOpsEnabled = false,
   hubAccent = null,
+  showTipsi = false,
 }: DashboardMobileNavProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -146,7 +149,7 @@ export function DashboardMobileNav({
     capabilities.ai_receptionist ||
     capabilities.lead_generation;
   if (showOpsEnabled && (pathname.startsWith("/dashboard/show-ops") || !venueProduct)) {
-    return <ShowOpsMobileNav accent={hubAccent} />;
+    return <ShowOpsMobileNav accent={hubAccent} showTipsi={showTipsi} />;
   }
   const plansBadge =
     subscriptionTier === "trial" && businessCreatedAt
