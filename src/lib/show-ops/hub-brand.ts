@@ -13,6 +13,8 @@ export type HubBrand = {
   islands: string[];
   contactEmail: string;
   website: string;
+  /** Show photos from their own site, shown slowly crossfading behind the sign in card. */
+  backgroundPhotos: string[];
 };
 
 export const MHT_HUB_BRAND: HubBrand = {
@@ -25,6 +27,11 @@ export const MHT_HUB_BRAND: HubBrand = {
   islands: ["Lanzarote", "Tenerife", "Gran Canaria"],
   contactEmail: "reservations@musichalltavern.com",
   website: "https://musichalltavern.com",
+  backgroundPhotos: [
+    "https://musichalltavern.com/wp-content/uploads/2026/09/Show-Sep-1.png",
+    "https://musichalltavern.com/wp-content/uploads/2026/10/Show-4.png",
+    "https://musichalltavern.com/wp-content/uploads/2025/10/Facebook-Page-Cover-2-1536x551.jpg",
+  ],
 };
 
 /** True for the hosts the MHT Hub is served on. */
