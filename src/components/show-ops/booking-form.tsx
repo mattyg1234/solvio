@@ -2133,11 +2133,8 @@ export function ShowOpsBookingForm({
               : " and on the bus board."}
           </p>
         </div>
-      </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+      {/* Cancel + Confirm sit in the space under the price breakdown. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2 xl:col-span-1">
         <button
           type="button"
           onClick={() => router.back()}
@@ -2148,7 +2145,7 @@ export function ShowOpsBookingForm({
         <button
           type="submit"
           disabled={pending || Boolean(extrasPreview.error)}
-          className="flex items-center gap-3 rounded-2xl px-12 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60"
+          className="flex flex-1 items-center justify-center gap-3 rounded-2xl px-12 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60 sm:flex-none"
           style={{ backgroundColor: ACCENT }}
         >
           <Check className="h-7 w-7" aria-hidden />
@@ -2159,6 +2156,10 @@ export function ShowOpsBookingForm({
               : "Confirm booking"}
         </button>
       </div>
+      </div>
+        </div>
+      </div>
+
     </form>
   );
 }
