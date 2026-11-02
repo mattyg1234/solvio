@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { NewBookingFab } from "@/components/show-ops/new-booking-fab";
+import { hubBrandForWorkspace } from "@/lib/show-ops/hub-brand";
 import { PrintStamp } from "@/components/show-ops/print-stamp";
-import { showOpsRoleLabel } from "@/lib/show-ops/nav";
+import { canSeeShowOpsPage, showOpsRoleLabel } from "@/lib/show-ops/nav";
 
 import { ShowOpsWorkspaceSwitcher } from "@/components/show-ops/workspace-switcher";
 import { getShowOpsRenderContext } from "@/lib/show-ops/access";
@@ -25,6 +28,8 @@ export default async function ShowOpsLayout({
 }) {
   const ctx = await getShowOpsRenderContext();
   const { branding } = ctx;
+  const hub = hubBrandForWorkspace((await headers()).get("host"), ctx.business.id);
+  const canBook = canSeeShowOpsPage(ctx.role, ctx.allowedPages, "bookings");
 
   return (
     <div
@@ -61,6 +66,7 @@ export default async function ShowOpsLayout({
         </p>
       ) : null}
       {children}
+      {canBook ? <NewBookingFab color={hub?.primaryColor ?? branding.primaryColor} /> : null}
     </div>
   );
 }
