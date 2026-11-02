@@ -178,6 +178,26 @@ export function fillFor(partner: HubPartner, contact: HoldedContactRecord): Part
   return out;
 }
 
+/**
+ * Every value Holded has for the partner's invoicing details, for an explicit
+ * "use Holded's details": unlike fillFor it replaces what the Hub has. Values
+ * Holded doesn't have (or an invalid NIF) leave the Hub's field alone.
+ */
+export function holdedDetailsFor(contact: HoldedContactRecord): PartnerFill {
+  const country = contact.countryCode ? normaliseCountry(contact.countryCode) : null;
+  const tax = contact.taxId ? checkTaxId(contact.taxId, country ?? "ES") : null;
+  const out: PartnerFill = { legal_name: contact.name, holded_contact_id: contact.id };
+  if (tax?.ok) out.tax_id = tax.value;
+  if (contact.email && contact.email.includes("@")) out.email = contact.email;
+  if (contact.address) out.invoice_address = contact.address;
+  if (contact.postalCode) out.invoice_postal_code = contact.postalCode;
+  if (contact.city) out.invoice_city = contact.city;
+  if (contact.province) out.invoice_province = contact.province;
+  if (country) out.invoice_country_code = country;
+  if (contact.isPerson !== null) out.is_person = contact.isPerson;
+  return out;
+}
+
 function sameTaxId(a: string | null, b: string | null): boolean {
   if (!a || !b) return false;
   return cleanTaxId(a) === cleanTaxId(b);
