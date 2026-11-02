@@ -130,7 +130,7 @@ export default async function PaymentsPage({
                       <select name="method" className="mt-1 block rounded border px-2 py-1">
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
-                        <option value="transfer">Transfer</option>
+                        <option value="transfer">Direct</option>
                       </select>
                     </label>
                     <button type="submit" className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white">
@@ -180,7 +180,7 @@ export default async function PaymentsPage({
                     <td className="py-2 pr-3 text-slate-600">{new Date(p.created_at).toLocaleString()}</td>
                     <td className="py-2 pr-3 font-mono text-xs">{b?.booking_ref ?? "—"}</td>
                     <td className="py-2 pr-3">{b?.guest_name ?? "—"}</td>
-                    <td className="py-2 pr-3 capitalize">{p.method}</td>
+                    <td className="py-2 pr-3 capitalize">{p.method === "transfer" ? "direct" : p.method}</td>
                     <td className="py-2 font-medium">{money(Number(p.amount))}</td>
                   </tr>
                 );

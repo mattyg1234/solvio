@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * "Add payment" button + window. The amount is typed in the booking's own
- * currency (€ or £, from its island); the guest paid by cash or card. Saving
+ * currency (€ or £, from its island); the guest paid by cash, card or direct. Saving
  * records one payment and the outstanding balance drops by that amount.
  */
 export function AddPaymentButton({
@@ -29,7 +29,7 @@ export function AddPaymentButton({
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<"cash" | "card" | "">("");
+  const [method, setMethod] = useState<"cash" | "card" | "direct" | "">("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const symbol = showOpsCurrencySymbol(currency);
@@ -81,7 +81,7 @@ export function AddPaymentButton({
               return;
             }
             if (!method) {
-              setError("Choose cash or card.");
+              setError("Choose cash, card or direct.");
               return;
             }
             const fd = new FormData();
@@ -130,8 +130,8 @@ export function AddPaymentButton({
           </label>
           <fieldset>
             <legend className="text-sm font-medium text-slate-700">Paid by</legend>
-            <div className="mt-1 grid grid-cols-2 gap-2">
-              {(["cash", "card"] as const).map((m) => (
+            <div className="mt-1 grid grid-cols-3 gap-2">
+              {(["cash", "card", "direct"] as const).map((m) => (
                 <label
                   key={m}
                   className={cn(
@@ -147,7 +147,7 @@ export function AddPaymentButton({
                     onChange={() => setMethod(m)}
                     className="sr-only"
                   />
-                  {m === "cash" ? "Cash" : "Card"}
+                  {m === "cash" ? "Cash" : m === "card" ? "Card" : "Direct"}
                 </label>
               ))}
             </div>
