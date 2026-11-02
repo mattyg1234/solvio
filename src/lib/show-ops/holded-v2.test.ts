@@ -370,3 +370,20 @@ test("v2 one contact for the picker: summary with NIF and city; a missing one is
   assert.equal(await new HoldedClient(TOKEN).getContactCandidate("6adf857e2cfc69eec2002a84"), null);
   assert.equal(await new HoldedClient(TOKEN).getContactCandidate("../contacts"), null);
 });
+
+test("v2 tagContact adds the office tag, drops the Hub's old tags and changes nothing when already tagged", async () => {
+  const puts: Array<Record<string, unknown>> = [];
+  let tags = ["TFS", "solvio", "islandtenerife"];
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === "PUT") { const body = JSON.parse(String(init.body)); puts.push(body); tags = body.tags; return json({ id: "6adf857e2cfc69eec2002a84" }); }
+    return json({ id: "6adf857e2cfc69eec2002a84", name: "MTS Incoming SL", vat_number: "B-07844764", email: "", tags, bill_address: { city: "Adeje" } });
+  };
+  const client = new HoldedClient(TOKEN);
+  assert.equal(await client.tagContact("6adf857e2cfc69eec2002a84", "TFS"), "tagged");
+  assert.deepEqual(puts[0].tags, ["TFS"]);
+  assert.equal(puts[0].name, "MTS Incoming SL");
+  assert.equal(puts[0].vat_number, "B-07844764");
+  assert.equal("email" in puts[0], false);
+  assert.equal(await client.tagContact("6adf857e2cfc69eec2002a84", "TFS"), "already");
+  assert.equal(puts.length, 1);
+});

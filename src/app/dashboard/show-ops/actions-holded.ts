@@ -13,6 +13,7 @@ import {
   approvalForRate,
   approvalFromTax,
   holdedContactFromSupplier,
+  holdedOfficeTag,
   holdedErrorMessage,
   holdedInvoiceFromPack,
   parseIgicApprovals,
@@ -135,6 +136,46 @@ export async function testHoldedAction(): Promise<void> {
   }
   revalidate();
   redirect("/dashboard/show-ops/settings?holded=ok");
+}
+
+/**
+ * Tag every partner already linked to a Holded contact with its office (ACE, TFS or LPA), so Holded filters
+ * by office match the Hub. Only the tags change; names, NIFs and addresses in Holded are left alone.
+ */
+export async function tagHoldedPartnersAction(): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  let tagged = 0;
+  let already = 0;
+  let untagged = 0;
+  const failed: string[] = [];
+  try {
+    const { client } = await loadIntegration(ctx);
+    const { data } = await ctx.supabase
+      .from("show_suppliers")
+      .select("id,name,island,holded_contact_id")
+      .eq("business_id", ctx.business.id)
+      .eq("active", true)
+      .not("holded_contact_id", "is", null)
+      .order("name");
+    for (const p of (data ?? []) as Array<{ id: string; name: string; island: string | null; holded_contact_id: string }>) {
+      const office = holdedOfficeTag({ island: p.island, name: p.name }, "name");
+      if (!office) { untagged += 1; continue; }
+      try {
+        const r = await client.tagContact(p.holded_contact_id, office);
+        if (r === "tagged") tagged += 1;
+        else if (r === "already") already += 1;
+        else failed.push(`${p.name} (not in Holded)`);
+      } catch (err) {
+        failed.push(`${p.name}: ${safeMessage(err)}`);
+      }
+    }
+  } catch (err) {
+    redirect("/dashboard/show-ops/settings?holded_error=" + encodeURIComponent(safeMessage(err)) + "#holded");
+  }
+  const parts = [`${tagged} partners tagged in Holded`, `${already} already had their tag`];
+  if (untagged) parts.push(`${untagged} have no ACE/TFS/LPA prefix or island`);
+  if (failed.length) parts.push(`${failed.length} failed: ${failed.slice(0, 5).join("; ")}${failed.length > 5 ? "…" : ""}`);
+  redirect("/dashboard/show-ops/settings?holded=tagged&holded_msg=" + encodeURIComponent(parts.join(" · ")) + "#holded");
 }
 
 export async function disconnectHoldedAction(): Promise<void> {
