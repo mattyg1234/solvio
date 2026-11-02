@@ -21,7 +21,7 @@ export const SHOW_OPS_PAYMENT_METHOD_CHOICES: ShowOpsPaymentMethod[] = ["cash", 
 export const SHOW_OPS_PAYMENT_METHOD_LABELS: Record<ShowOpsPaymentMethod, string> = {
   cash: "Cash",
   card: "Card",
-  direct: "Direct",
+  direct: "Direct (PayPal / Stripe)",
   transfer: "Transfer",
 };
 

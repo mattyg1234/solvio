@@ -360,7 +360,11 @@ export function ShowOpsBookingForm({
   const [paymentMethod, setPaymentMethod] = useState(
     defaults.payment_method ?? "",
   );
-  const [dietary, setDietary] = useState(Boolean(defaults.dietary_required));
+  // Dietary is a required Yes / No. A new booking starts unanswered; an edit
+  // starts on whatever was saved.
+  const [dietary, setDietary] = useState<boolean | null>(() =>
+    mode === "edit" ? Boolean(defaults.dietary_required) : null,
+  );
   const [adults, setAdults] = useState(defaults.adults ?? 2);
   const [children, setChildren] = useState(defaults.children ?? 0);
   const [infants, setInfants] = useState(defaults.infants ?? 0);
@@ -803,15 +807,22 @@ export function ShowOpsBookingForm({
       roundUpDeposit,
     ],
   );
-  /** MHT's own reception desks take whatever the guest pays; the balance is total − paid. */
+  /*
+   * MHT's own direct sales (MHT Reception / MHT Direct): no % deposit, the guest
+   * pays what they pay and the balance is total − paid. On an edit, "paid" is
+   * every payment taken so far; more go on top with Add payment.
+   */
   const reception = isReceptionPartner(supplier?.partner_type);
-  const receptionPaid = Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
-  const receptionBalance = Math.max(0, money.total_cost - receptionPaid);
+  const paidSoFar = mode === "edit" ? Math.max(0, Number(defaults.paid_so_far) || 0) : 0;
+  const receptionPaid =
+    mode === "edit"
+      ? paidSoFar
+      : Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
+  const receptionBalance = round2(Math.max(0, money.total_cost - receptionPaid));
   /*
    * "Total pending": what the guest still owes after the deposit. On an edit
    * where payments were already taken, it is the total minus what was paid.
    */
-  const paidSoFar = mode === "edit" ? Math.max(0, Number(defaults.paid_so_far) || 0) : 0;
   const showPending = money.billing_mode === "deposit" && !reception;
   const totalPending = round2(
     Math.max(0, money.total_cost - (paidSoFar > 0 ? paidSoFar : money.deposit_amount)),
@@ -869,6 +880,7 @@ export function ShowOpsBookingForm({
     <form
       className="mt-6 space-y-4"
       noValidate
+      onKeyDown={enterToNextField}
       onSubmit={(e) => {
         e.preventDefault();
         if (extrasPreview.error) {
@@ -877,9 +889,14 @@ export function ShowOpsBookingForm({
         }
         // Required fields, in the order they sit on the form. The first one
         // missing stops the save and takes the desk straight back to it.
-        const guestName = String(
-          new FormData(e.currentTarget).get("guest_name") ?? "",
-        ).trim();
+        const fdCheck = new FormData(e.currentTarget);
+        const guestName = String(fdCheck.get("guest_name") ?? "").trim();
+        const dietaryText = [
+          ...fdCheck.getAll("dietary_option").map(String),
+          String(fdCheck.get("dietary_notes") ?? ""),
+        ]
+          .join(" ")
+          .trim();
         const missing: Array<[boolean, string, string]> = [
           [islands.length > 1 && !island && !product?.island, "bf-island", `Choose the ${config.location_label.toLowerCase()}.`],
           [!showDate, "bf-date", "Choose the date."],
@@ -888,6 +905,8 @@ export function ShowOpsBookingForm({
           [!sellerMode && !supplierId, "bf-partner", "Choose the partner / supplier."],
           [!guestName, "bf-name", "Type the lead booking name."],
           [!hotelId, "bf-hotel", "Choose the guest's hotel, or Private if they're not at a listed hotel."],
+          [dietary === null, "bf-dietary", "Answer Yes or No for dietary requirements."],
+          [dietary === true && !dietaryText, "bf-dietary-notes", "Type the dietary requirements (or choose No)."],
         ];
         const firstMissing = missing.find(([isMissing]) => isMissing);
         if (firstMissing) {
@@ -961,11 +980,15 @@ export function ShowOpsBookingForm({
               dueLabel:
                 money.billing_mode === "invoice"
                   ? "Nett to invoice"
-                  : "Deposit to collect",
+                  : reception
+                    ? "Total pending"
+                    : "Deposit to collect",
               dueAmount: moneyFmt(
                 money.billing_mode === "invoice"
                   ? money.nett_total
-                  : money.deposit_amount,
+                  : reception
+                    ? receptionBalance
+                    : money.deposit_amount,
               ),
             });
             router.refresh();
@@ -1467,12 +1490,18 @@ export function ShowOpsBookingForm({
                 </span>
               </div>
             ) : null}
+            {reception && money.billing_mode !== "invoice" && receptionPaid > 0 ? (
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-slate-600">{mode === "edit" ? "Paid so far" : "Paid now"}</span>
+                <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(receptionPaid)}</span>
+              </div>
+            ) : null}
             <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-1.5">
               <span className="font-semibold text-slate-900">
                 {money.billing_mode === "invoice"
                   ? "Nett to invoice"
                   : reception
-                    ? "Balance due"
+                    ? "Total pending"
                     : "Deposit to collect"}
               </span>
               <span
@@ -1526,7 +1555,7 @@ export function ShowOpsBookingForm({
             ) : null}
             {reception && money.billing_mode !== "invoice" && mode === "create" ? (
               <div className="mt-2">
-                <FieldLabel>Amount paid by guest (€)</FieldLabel>
+                <FieldLabel>Amount paid by guest ({moneyFmt(0).replace(/[\d.,\s]/g, "") || "€"})</FieldLabel>
                 <input
                   type="number"
                   name="amount_paid"
@@ -1539,7 +1568,7 @@ export function ShowOpsBookingForm({
                   className={INPUT}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Reception booking: type what the guest actually paid, not a % deposit. The balance goes on the night list.
+                  Direct booking: no deposit. Type what the guest actually paid; the rest shows as pending on the booking and the night list. More payments can be added later.
                 </p>
               </div>
             ) : null}
@@ -1619,7 +1648,7 @@ export function ShowOpsBookingForm({
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div>
               <FieldLabel>Mobile</FieldLabel>
-              <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} className={INPUT} />
+              <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} defaultCode="44" placeholder="7700 900123" className={INPUT} />
             </div>
             <div>
               <FieldLabel>Email</FieldLabel>
@@ -1720,16 +1749,36 @@ export function ShowOpsBookingForm({
             </div>
           ) : null}
 
-          <label className="mt-4 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="dietary_required"
-              value="1"
-              checked={dietary}
-              onChange={(e) => setDietary(e.target.checked)}
-            />
-            Dietary restriction on this booking
-          </label>
+          <fieldset className="mt-4">
+            <FieldLabel id="bf-dietary" required>
+              Dietary requirements?
+            </FieldLabel>
+            <div className="flex gap-2">
+              {([
+                [true, "Yes"],
+                [false, "No"],
+              ] as const).map(([val, label]) => (
+                <label
+                  key={label}
+                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                    dietary === val
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 bg-white text-slate-800"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="dietary_required"
+                    value={val ? "1" : "0"}
+                    checked={dietary === val}
+                    onChange={() => setDietary(val)}
+                    className="sr-only"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {dietary &&
           config.dietary_mode === "options" &&
           config.dietary_options.length ? (
@@ -1753,6 +1802,7 @@ export function ShowOpsBookingForm({
                 ))}
               </div>
               <input
+                id="bf-dietary-notes"
                 name="dietary_notes"
                 defaultValue=""
                 placeholder="Extra notes"
@@ -1764,10 +1814,11 @@ export function ShowOpsBookingForm({
           (config.dietary_mode !== "options" ||
             !config.dietary_options.length) ? (
             <input
+              id="bf-dietary-notes"
               name="dietary_notes"
               defaultValue={defaults.dietary_notes ?? ""}
               className={`${INPUT} mt-2`}
-              placeholder="e.g. 1x gluten free, child nut allergy"
+              placeholder="Type the dietary requirements, e.g. 1x gluten free, child nut allergy"
             />
           ) : null}
           {config.booking_questions.map((q) => (
@@ -2141,7 +2192,7 @@ export function ShowOpsBookingForm({
               {money.billing_mode === "invoice"
                 ? "Nett to invoice"
                 : reception
-                  ? "Balance due"
+                  ? "Total pending"
                   : "Deposit to collect"}
             </span>
             <span
@@ -2246,12 +2297,50 @@ function FieldLabel({
   );
 }
 
+const NEXT_FIELD_SELECTOR =
+  'input:not([type=hidden]):not([disabled]):not([tabindex="-1"]),select:not([disabled]),textarea:not([disabled]),button[aria-haspopup]:not([disabled])';
+
+/**
+ * Enter in a box moves the cursor to the next field instead of saving the
+ * booking (Joel, 2 Nov). Buttons and long-text boxes keep their own Enter, and
+ * pickers that already use Enter (the search lists) stop it before it gets here.
+ */
+function enterToNextField(e: React.KeyboardEvent<HTMLFormElement>) {
+  if (e.key !== "Enter" || e.defaultPrevented || e.nativeEvent.isComposing) return;
+  if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const el = e.target as HTMLElement;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) return;
+  if (el instanceof HTMLInputElement && ["submit", "button", "reset"].includes(el.type)) return;
+  e.preventDefault();
+  const groupOf = (f: HTMLElement) =>
+    f instanceof HTMLInputElement && f.type === "radio" && f.name ? f.name : null;
+  const seenGroups = new Set<string>();
+  const fields = Array.from(
+    e.currentTarget.querySelectorAll<HTMLElement>(NEXT_FIELD_SELECTOR),
+  ).filter((f) => {
+    if (f !== el && f.getClientRects().length === 0 && !f.classList.contains("sr-only")) return false;
+    // One stop per Yes / No group: the box Enter was pressed in, or the group's first option.
+    const group = groupOf(f);
+    if (!group) return true;
+    if (group === groupOf(el)) return f === el;
+    if (seenGroups.has(group)) return false;
+    seenGroups.add(group);
+    return true;
+  });
+  const at = fields.indexOf(el);
+  if (at >= 0) fields[at + 1]?.focus();
+}
+
 /** Scroll to a field's label and put the cursor in the field under it. */
 function jumpToField(id: string) {
   if (typeof document === "undefined") return;
   const label = document.getElementById(id);
   if (!label) return;
   label.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (label.matches("input,select,textarea")) {
+    label.focus({ preventScroll: true });
+    return;
+  }
   const next = label.nextElementSibling as HTMLElement | null;
   const target =
     next && next.matches("input,select,textarea,button")

@@ -130,7 +130,7 @@ export default async function PaymentsPage({
                       <select name="method" className="mt-1 block rounded border px-2 py-1">
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
-                        <option value="transfer">Direct</option>
+                        <option value="transfer">Direct (PayPal / Stripe)</option>
                       </select>
                     </label>
                     <button type="submit" className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white">
