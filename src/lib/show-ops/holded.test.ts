@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   holdedContactBody,
   holdedContactFromSupplier,
+  holdedOfficeTag,
+  mergeContactTags,
   holdedInvoiceFromPack,
   holdedInvoiceListRow,
   holdedItemsFromLines,
@@ -52,6 +54,31 @@ test("an approval survives Holded re-issuing the tax id (same key), but not a di
   assert.equal(approvalMatches(null, { id: "igic7", key: "s_igic_7" }), false);
 });
 
+test("office tags: only ACE, TFS or LPA, from the island or the partner's name prefix", () => {
+  assert.equal(holdedOfficeTag({ island: "Lanzarote" }), "ACE");
+  assert.equal(holdedOfficeTag({ island: "Tenerife" }), "TFS");
+  assert.equal(holdedOfficeTag({ island: "Gran Canaria" }), "LPA");
+  // Gran Canaria partners are stored with island "ALL"; the prefix places them.
+  assert.equal(holdedOfficeTag({ island: "ALL", name: "LPA Get Your Guide - INVOICE" }), "LPA");
+  assert.equal(holdedOfficeTag({ island: null, name: "ACE Lanzapages - DEPOSIT" }), "ACE");
+  // An invoice follows its island; a partner follows its prefix.
+  assert.equal(holdedOfficeTag({ island: "Tenerife", name: "ACE Get Your Guide" }), "TFS");
+  assert.equal(holdedOfficeTag({ island: "Tenerife", name: "ACE Get Your Guide" }, "name"), "ACE");
+  assert.equal(holdedOfficeTag({ island: "UK Tour", name: "UK Tour Sales" }), "UK");
+  assert.equal(holdedOfficeTag({ island: "ALL", name: "UK TOUR" }), "UK");
+  assert.equal(holdedOfficeTag({ island: "ALL", name: "CI Raffle Winner" }), null);
+  assert.deepEqual(holdedContactFromSupplier({ name: "LPA Sunny Reps", island: "ALL" }).tags, ["LPA"]);
+  assert.deepEqual(holdedContactFromSupplier({ name: "Eventbrite", island: "ALL" }).tags, []);
+  const pack = { id: "p", supplier_name: "LPA Sunny", invoice_number: null, period_start: "2026-11-01", period_end: "2026-11-30", invoice_date: "2026-11-30", due_date: null, island: null, currency: "eur", notes: null };
+  assert.deepEqual(holdedInvoiceFromPack(pack, [], "c", () => null).tags, ["LPA"]);
+});
+
+test("contact update keeps the office's tags, drops the Hub's old ones, no case duplicates", () => {
+  assert.deepEqual(mergeContactTags(["TFS", "solvio", "islandtenerife", "clientes"], ["TFS"]), ["TFS", "clientes"]);
+  assert.deepEqual(mergeContactTags(["tfs"], ["TFS"]), ["tfs"]);
+  assert.deepEqual(mergeContactTags([], ["LPA"]), ["LPA"]);
+});
+
 test("tags survive Holded's punctuation stripping", () => {
   assert.equal(holdedTag("island: Gran Canaria"), "islandgrancanaria");
   assert.equal(holdedTag("Tenerife Sur — 2026"), "tenerifesur2026");
@@ -61,7 +88,7 @@ test("supplier → contact uses legal name, tax id as code, island tag", () => {
   const c = holdedContactFromSupplier({ name: "Sunny Reps", legal_name: "SUNNY REPS SL", tax_id: "b12345678", email: "a@b.com", invoice_address: "C/ Uno 1", island: "Tenerife" });
   assert.equal(c.name, "SUNNY REPS SL");
   assert.equal(c.code, "b12345678");
-  assert.deepEqual(c.tags, ["solvio", "islandtenerife"]);
+  assert.deepEqual(c.tags, ["TFS"]);
   const body = holdedContactBody(c);
   assert.equal(body.type, "client");
   assert.deepEqual(body.billAddress, { address: "C/ Uno 1" });
@@ -153,7 +180,7 @@ test("pack → Holded invoice is a draft with Solvio reference, dates as unix da
   assert.equal(inv.approveDoc, false);
   assert.equal(inv.contactId, "contact-1");
   assert.equal(inv.desc, "MHT Tenerife · Sunny Reps · 2026-09-01 → 2026-09-30 · Solvio MHT-2026-0007");
-  assert.deepEqual(inv.tags, ["solvio", "islandtenerife", "tfs"]);
+  assert.deepEqual(inv.tags, ["TFS"]);
   assert.equal(inv.date, unixDay("2026-10-01"));
   assert.equal(inv.dueDate, unixDay("2026-10-31"));
   assert.equal(inv.currency, undefined);

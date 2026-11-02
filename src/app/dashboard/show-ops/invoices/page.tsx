@@ -7,7 +7,7 @@ import {
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { pushInvoiceToHoldedAction, syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
-import { holdedInvoiceUrl } from "@/lib/show-ops/holded";
+import { holdedInvoiceUrl, holdedOfficeTag } from "@/lib/show-ops/holded";
 import { listHoldedSalesInvoices, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
 import { buildPnl } from "@/lib/show-ops/expenses";
 import { ExpensesPanel, PnlPanel, type ExpenseRow } from "@/components/show-ops/expenses-panel";
@@ -264,7 +264,7 @@ export default async function InvoicesPage({
     ...invoices.map((inv): ListRow => {
       const lines = linesByInvoice.get(inv.id) || [];
       const pax = lines.reduce((s, l) => s + Number(l.adults || 0) + Number(l.children || 0), 0);
-      const tag = islandTag(inv.island);
+      const tag = holdedOfficeTag({ island: inv.island, name: inv.supplier_name });
       const client = inv.recipient_name && inv.recipient_name !== inv.supplier_name ? `${inv.recipient_name} (${inv.supplier_name})` : inv.supplier_name;
       return {
         key: inv.id,
@@ -293,7 +293,7 @@ export default async function InvoicesPage({
         : h.status === "approved"
           ? h.dueDate && h.dueDate < today ? LIST_STATUS.overdue : LIST_STATUS.approved
           : LIST_STATUS.holded_draft;
-      const islandFromTag = ctx.config.islands.find((i) => h.tags.some((t) => t.toLowerCase() === islandTag(i))) ?? null;
+      const islandFromTag = ctx.config.islands.find((i) => h.tags.some((t) => t.toUpperCase() === holdedOfficeTag({ island: i }))) ?? null;
       return {
         key: `holded-${h.id}`,
         source: "holded",
@@ -652,7 +652,7 @@ export default async function InvoicesPage({
                 <option value="">All islands</option>
                 {ctx.config.islands.map((i) => (
                   <option key={i} value={i}>
-                    {islandTag(i) ? `#${islandTag(i)} · ${i}` : i}
+                    {holdedOfficeTag({ island: i }) ? `#${holdedOfficeTag({ island: i })} · ${i}` : i}
                   </option>
                 ))}
               </select>
@@ -820,15 +820,6 @@ function dmy(iso: string | null | undefined): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
 }
 
-/** The island tag MHT uses in Holded (#tfs, #ace, #lpa). */
-function islandTag(island: string | null | undefined): string | null {
-  const key = String(island || "").toLowerCase();
-  if (key === "tenerife") return "tfs";
-  if (key === "lanzarote") return "ace";
-  if (key === "gran canaria") return "lpa";
-  if (key === "uk tour") return "uk";
-  return null;
-}
 
 type ListStatusKey = "draft" | "to_send" | "holded_draft" | "approved" | "overdue" | "paid";
 type ListStatus = { key: ListStatusKey; label: string; tone: string };
