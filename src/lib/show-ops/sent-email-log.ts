@@ -21,6 +21,8 @@ export type SentEmailKind =
   | "meals_list"
   | "sale_closed"
   | "daily_report"
+  | "plan_b_pack"
+  | "offsite_backup"
   | "other";
 
 export const SENT_EMAIL_KIND_LABEL: Record<SentEmailKind, string> = {
@@ -34,6 +36,8 @@ export const SENT_EMAIL_KIND_LABEL: Record<SentEmailKind, string> = {
   meals_list: "Special meals",
   sale_closed: "Sale closed",
   daily_report: "Daily report",
+  plan_b_pack: "Plan B pack",
+  offsite_backup: "Off-site backup",
   other: "Email",
 };
 

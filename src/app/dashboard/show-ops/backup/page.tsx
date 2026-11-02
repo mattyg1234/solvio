@@ -4,6 +4,8 @@ import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES, snapshotTimestamp } fro
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
+import { sendPlanBPackToMeAction } from "./actions";
+
 export const dynamic = "force-dynamic";
 
 type SnapshotSummary = { tables: number; rows: number; files: number; errors: Record<string, string> };
@@ -48,8 +50,15 @@ function size(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-export default async function ShowOpsBackupPage() {
+export default async function ShowOpsBackupPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireGlobalShowOpsAdmin();
+  const sp = await searchParams;
+  const packSent = typeof sp.pack_sent === "string" ? sp.pack_sent : null;
+  const packError = typeof sp.pack_error === "string" ? sp.pack_error : null;
 
   // Snapshots are service-role only; the page reads them on the operator's behalf.
   const admin = createSupabaseServiceRoleClient();
@@ -70,8 +79,8 @@ export default async function ShowOpsBackupPage() {
         <h2 className="text-3xl font-semibold tracking-tight text-slate-900">Backups &amp; Plan B</h2>
         <p className="mt-1 max-w-2xl text-sm text-slate-600">
           A complete copy of this workspace — every booking, partner, hotel, stop, payment, invoice, expense and
-          integration, plus receipts, ticket photos and the logo — is written to private storage every six hours. If the system goes down, the mirror is at most six hours behind.
-          Copies are kept for a day, then one a day for a month.
+          integration, plus receipts, ticket photos and the logo — is written to private storage every five minutes. If the system goes down, the mirror is at most five minutes behind.
+          Every copy from the last hour is kept, then one an hour for a day, then one a day for a month.
         </p>
       </div>
 
@@ -104,7 +113,7 @@ export default async function ShowOpsBackupPage() {
           </>
         ) : (
           <p className="mt-1 text-sm text-amber-700">
-            No snapshot yet. The job runs every six hours — if this is still empty tomorrow, check that CRON_SECRET is
+            No snapshot yet. The job runs every five minutes — if this is still empty in an hour, check that CRON_SECRET is
             set on the deployment.
           </p>
         )}
@@ -135,6 +144,25 @@ export default async function ShowOpsBackupPage() {
           Tables included: {SHOW_OPS_BACKUP_TABLES.join(", ")}. Each file carries a row count per table, so a short or
           failed backup is obvious without opening it.
         </p>
+      </section>
+
+      <section id="plan-b" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h3 className="text-sm font-semibold text-slate-900">Plan B pack by email</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Every day at 06:30 and 16:30 (Canary winter time; an hour later in summer), the addresses under Settings → Daily email get the night lists for the next three
+          nights (one per island), the bus lists for tonight and tomorrow, and a spreadsheet of every upcoming booking. It
+          sits in your inbox, outside the Hub, so you can print it and keep working if the Hub is down.
+        </p>
+        <form action={sendPlanBPackToMeAction} className="mt-3">
+          <button
+            type="submit"
+            className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Email me the Plan B pack now
+          </button>
+        </form>
+        {packSent ? <p className="mt-2 text-sm text-emerald-700">Sent to {packSent}.</p> : null}
+        {packError ? <p className="mt-2 text-sm text-amber-700">{packError}</p> : null}
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 text-sm text-slate-600">
