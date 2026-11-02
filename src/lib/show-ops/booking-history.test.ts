@@ -52,11 +52,51 @@ test("history timestamps read as day month and Canary clock", () => {
 });
 
 
-test("structured audit evidence stays readable without losing nested values", () => {
+test("lists print as names, never raw JSON", () => {
   const line = formatBookingChanges({ extras_snapshot: { from: [], to: [{ name: "Meal", quantity: 2, nett_total: 18 }] } });
-  assert.ok(line.includes('"name": "Meal"'));
-  assert.ok(line.includes('"nett_total": 18'));
-  assert.ok(!line.includes("[object Object]"));
+  assert.equal(line, "");
+  assert.equal(
+    formatBookingChanges({ extras: { from: [], to: [{ name: "Meal", quantity: 2 }, { name: "Photo" }] } }),
+    "Extras: none → Meal ×2, Photo",
+  );
+  assert.ok(!formatBookingChanges({ custom: { from: null, to: { a: 1 } } }).includes("{"));
+});
+
+test("new bookings print a short summary instead of every column", () => {
+  const line = formatBookingChanges({
+    created: { from: null, to: "MHT-1014" },
+    id: { from: null, to: "255053fb-3638-4d7b-8e53-85dd356b2e02" },
+    hotel_id: { from: null, to: "17a3a6e6" },
+    guest_name: { from: null, to: "JOEL TEST" },
+    show_name: { from: null, to: "1 MHT ACE" },
+    show_date: { from: null, to: "2026-11-03" },
+    adults: { from: null, to: 3 },
+    children: { from: null, to: 0 },
+    infants: { from: null, to: 0 },
+    pickup_stop_name: { from: null, to: "Playa Blanca · Hotel Costa Calero" },
+    pickup_time: { from: null, to: "18:40:00" },
+    supplier_name: { from: null, to: "ACE Web Booking" },
+    total_cost: { from: null, to: 177 },
+    pricing_snapshot: { from: null, to: { v: 1, adult_price: 59 } },
+    seller: { from: null, to: null },
+  });
+  assert.equal(
+    line,
+    "Booking created: MHT-1014 · JOEL TEST · 1 MHT ACE on 3 Nov 2026 · 3 adults · Pick-up Playa Blanca · Hotel Costa Calero 18:40 · ACE Web Booking · Total 177",
+  );
+});
+
+test("edits hide empty fields, ids, account ids and timestamps", () => {
+  const line = formatBookingChanges({
+    hotel_id: { from: "a", to: "b" },
+    hotel_name: { from: "Sol", to: "Riu" },
+    cancelled_by: { from: null, to: "4fe55afc" },
+    cancelled_at: { from: null, to: "2026-11-02T15:36:21Z" },
+    seller: { from: null, to: "" },
+    no_show_proof_path: { from: null, to: "biz/x.jpg" },
+    legacy_status: { from: "A", to: "B" },
+  });
+  assert.equal(line, "Hotel: Sol → Riu; Ticket photo: added");
 });
 
 test("history dates include the year across the Canary new-year boundary", () => {
