@@ -64,7 +64,9 @@ test("office tags: only ACE, TFS or LPA, from the island or the partner's name p
   // An invoice follows its island; a partner follows its prefix.
   assert.equal(holdedOfficeTag({ island: "Tenerife", name: "ACE Get Your Guide" }), "TFS");
   assert.equal(holdedOfficeTag({ island: "Tenerife", name: "ACE Get Your Guide" }, "name"), "ACE");
-  assert.equal(holdedOfficeTag({ island: "UK Tour", name: "UK Tour Sales" }), null);
+  assert.equal(holdedOfficeTag({ island: "UK Tour", name: "UK Tour Sales" }), "UK");
+  assert.equal(holdedOfficeTag({ island: "ALL", name: "UK TOUR" }), "UK");
+  assert.equal(holdedOfficeTag({ island: "ALL", name: "CI Raffle Winner" }), null);
   assert.deepEqual(holdedContactFromSupplier({ name: "LPA Sunny Reps", island: "ALL" }).tags, ["LPA"]);
   assert.deepEqual(holdedContactFromSupplier({ name: "Eventbrite", island: "ALL" }).tags, []);
   const pack = { id: "p", supplier_name: "LPA Sunny", invoice_number: null, period_start: "2026-11-01", period_end: "2026-11-30", invoice_date: "2026-11-30", due_date: null, island: null, currency: "eur", notes: null };

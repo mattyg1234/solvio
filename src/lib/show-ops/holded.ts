@@ -226,10 +226,13 @@ export function holdedTag(raw: string): string {
     .slice(0, 40);
 }
 
-/** MHT's three offices. Each one is billed separately, so every Holded invoice and contact carries exactly one of these tags. */
-export type HoldedOfficeTag = "ACE" | "TFS" | "LPA";
-const ISLAND_OFFICE_TAG: Record<string, HoldedOfficeTag> = { lanzarote: "ACE", tenerife: "TFS", grancanaria: "LPA" };
-const OFFICE_PREFIX: Record<string, HoldedOfficeTag> = { ace: "ACE", tfs: "TFS", lpa: "LPA" };
+/**
+ * MHT's offices. Each one is billed separately, so every Holded invoice and contact carries exactly one of these
+ * tags: ACE, TFS or LPA, plus UK for the UK tour (Joel's partner sheet tags "UK TOUR GBP/EURO" as UK).
+ */
+export type HoldedOfficeTag = "ACE" | "TFS" | "LPA" | "UK";
+const ISLAND_OFFICE_TAG: Record<string, HoldedOfficeTag> = { lanzarote: "ACE", tenerife: "TFS", grancanaria: "LPA", uktour: "UK" };
+const OFFICE_PREFIX: Record<string, HoldedOfficeTag> = { ace: "ACE", tfs: "TFS", lpa: "LPA", uk: "UK" };
 
 /**
  * The office (airport code) a document or partner belongs to: the island when it names one, otherwise the
