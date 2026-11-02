@@ -5,11 +5,14 @@
  * from the other island's booking desk.
  */
 /**
- * MHT's own desks — partner type "MHT Reception" (TFS / LPA / ACE / MHT Reception):
- * the guest pays whatever they pay, not a % deposit. Hotel receptions are ordinary partners.
+ * MHT's own direct sales — partner types "MHT Reception" (TFS / LPA / ACE
+ * Reception) and "MHT Direct" (Residents, Family rate, Invitado general…): no %
+ * deposit, the desk types what the guest actually paid and the rest is pending.
+ * Hotel receptions are ordinary partners. (Joel, 2 Nov 2026.)
  */
+const DIRECT_PARTNER_TYPES = new Set(["mht reception", "mht direct"]);
 export function isReceptionPartner(partnerType: string | null | undefined): boolean {
-  return String(partnerType ?? "").trim().toLowerCase() === "mht reception";
+  return DIRECT_PARTNER_TYPES.has(String(partnerType ?? "").trim().toLowerCase());
 }
 
 export function partnerIslands(partnerIsland: string | null | undefined): string[] {

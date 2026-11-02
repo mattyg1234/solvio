@@ -143,3 +143,34 @@ export function suggestionSender(fromEmail: string, inboxAddress: string): strin
   if (!domain || address === own) return null;
   return address;
 }
+
+
+/** WooCommerce's "[MHT- Music Hall Tavern]: Order #ACE/22147 has failed". */
+export function isFailedPayment(subject: string): boolean {
+  return /\border\b.*\bfailed\b/i.test(subject) && !/^\s*(re|fwd?)\s*:/i.test(subject);
+}
+
+/**
+ * Emails from a tracked sender that are never bookings: sign-in codes, reports and summaries,
+ * stop-sale and availability notices, auto-replies. Everything else from a tracked sender is read.
+ */
+const NOISE = [
+  /\b(verification|login|log-in|sign-?in|security)\s+(code|link)\b|\bis your code\b|\bpassword\b/i,
+  /\bpayouts?\b|\bbank account\b|\baction required\b|\binvoice\b.*\bavailable\b/i,
+  /\breports?\b.*\b(transactions?|sales|payouts?)\b|\b(transactions?|sales|payouts?)\b.*\breports?\b/i,
+  /\byesterday'?s\b.*\borders\b|\bdaily (summary|digest|report)\b|\bweekly (summary|digest|report)\b/i,
+  /\[sales stopped\]|\bstop[- ]?sales?\b|\bavailability expires\b/i,
+  /\bwe have received your message\b|\bhemos recibido su mensaje\b|\bauto(matic)?[- ]?reply\b|\bout of office\b/i,
+  /\bnewsletter\b|\bunsubscribe\b/i,
+];
+
+export function isNoise(subject: string): boolean {
+  return NOISE.some((re) => re.test(subject));
+}
+
+/** Subject words that mean a booking is probably inside, whatever the layout. */
+const BOOKINGISH = /\b(book(ing|ed)?|reserv\w*|reserva\w*|order|pedido|tickets?|e-?ticket|entradas?|coach|pax|adults?|adultos|localizador|confirm\w*|notification)\b|\b\d{1,2}[-/.](\d{1,2}|[a-z]{3})[-/.]\d{2,4}\b/i;
+
+export function looksBookingish(subject: string): boolean {
+  return looksLikeSupplierBooking(subject) || BOOKINGISH.test(subject);
+}

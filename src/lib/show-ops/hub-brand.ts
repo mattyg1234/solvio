@@ -17,8 +17,6 @@ export type HubBrand = {
   website: string;
   /** Show photos from their own site, shown slowly crossfading behind the sign in card. */
   backgroundPhotos: string[];
-  /** Wide show banner across the top of the Hub home page. */
-  bannerPhoto: string;
 };
 
 export const MHT_HUB_BRAND: HubBrand = {
@@ -37,7 +35,6 @@ export const MHT_HUB_BRAND: HubBrand = {
     "https://musichalltavern.com/wp-content/uploads/2026/10/Show-4.png",
     "https://musichalltavern.com/wp-content/uploads/2025/10/Facebook-Page-Cover-2-1536x551.jpg",
   ],
-  bannerPhoto: "https://musichalltavern.com/wp-content/uploads/2025/10/Facebook-Page-Cover-2-1536x551.jpg",
 };
 
 /** True for the hosts the MHT Hub is served on. */

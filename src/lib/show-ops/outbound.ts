@@ -1,20 +1,27 @@
 /**
- * Outbound Show Ops email and texts. Both went live on the production site on 27 Oct (Matty).
- * SHOW_OPS_EMAILS_LIVE=0 / SHOW_OPS_MESSAGES_LIVE=0 put them back on the test lists; =1 turns
- * them on outside production (previews stay in test mode by default).
+ * Outbound Show Ops email and texts. Emails are live on the production site for good (Matty,
+ * 31 Oct go-live): the old SHOW_OPS_EMAILS_LIVE=0 no longer holds them back there, only
+ * SHOW_OPS_TEST_MODE=1 does. SHOW_OPS_MESSAGES_LIVE=0 still holds texts back on production.
+ * =1 turns either on outside production (previews stay in test mode by default).
  */
 
 const BUILTIN_ALLOWLIST = ["mattygale4@gmail.com"];
 
+function isProduction(env: NodeJS.ProcessEnv): boolean {
+  return env.VERCEL_ENV === "production" || env.VERCEL_TARGET_ENV === "production";
+}
+
 function liveSwitch(value: string | undefined, env: NodeJS.ProcessEnv): boolean {
   if (value === "1") return true;
   if (value === "0") return false;
-  return env.VERCEL_ENV === "production";
+  return isProduction(env);
 }
 
 /** Emails to guests, agents and partners (Resend); off = only the test allowlist. */
 export function showOpsOutboundLive(env: NodeJS.ProcessEnv = process.env): boolean {
-  return liveSwitch(env.SHOW_OPS_EMAILS_LIVE, env);
+  if (env.SHOW_OPS_TEST_MODE === "1") return false;
+  if (env.SHOW_OPS_EMAILS_LIVE === "1") return true;
+  return isProduction(env);
 }
 
 /** Guest texts and WhatsApp (Twilio); off = only SHOW_OPS_PHONE_ALLOWLIST. Email being forced on takes texts with it. */

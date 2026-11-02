@@ -3,6 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Martini,
   Building2,
   Bus,
   CalendarDays,
@@ -39,6 +40,7 @@ import {
   SHOW_OPS_NAV_SECTIONS,
   type ShowOpsNavSection,
   SHOW_OPS_SIDEBAR_LINKS,
+  isShowOpsOwnerOnlyKey,
   showOpsNavActive,
   type ShowOpsNavItem,
 } from "@/lib/show-ops/nav";
@@ -58,6 +60,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   rates: Percent,
   outlook: CalendarDays,
   reports: BarChart3,
+  tipsi: Martini,
   stats: PieChart,
   lists: ListChecks,
   settings: Settings2,
@@ -353,14 +356,18 @@ export function ShowOpsSidebar({
   );
 }
 
-function ShowOpsMobileInner({ accent = null }: { accent?: string | null }) {
+function ShowOpsMobileInner({ accent = null, showTipsi = false }: { accent?: string | null; showTipsi?: boolean }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
   const [moreOpen, setMoreOpen] = useState(false);
   const primary = SHOW_OPS_MOBILE_PRIMARY_KEYS.map((key) =>
     SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === key),
   ).filter((item): item is (typeof SHOW_OPS_SIDEBAR_LINKS)[number] => Boolean(item));
-  const more = SHOW_OPS_SIDEBAR_LINKS.filter((l) => !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key));
+  const more = SHOW_OPS_SIDEBAR_LINKS.filter(
+    (l) =>
+      !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key) &&
+      (showTipsi || !isShowOpsOwnerOnlyKey(l.key)),
+  );
   const moreActive = more.some((item) => showOpsNavActive(pathname, tab, item));
   const chatUnread = useChatUnread(more.some((item) => item.key === "chat"));
   const inboxUnread = useInboxUnread(more.some((item) => item.key === "inbox"));
@@ -441,10 +448,10 @@ function ShowOpsMobileInner({ accent = null }: { accent?: string | null }) {
   );
 }
 
-export function ShowOpsMobileNav({ accent = null }: { accent?: string | null }) {
+export function ShowOpsMobileNav({ accent = null, showTipsi = false }: { accent?: string | null; showTipsi?: boolean }) {
   return (
     <Suspense fallback={null}>
-      <ShowOpsMobileInner accent={accent} />
+      <ShowOpsMobileInner accent={accent} showTipsi={showTipsi} />
     </Suspense>
   );
 }

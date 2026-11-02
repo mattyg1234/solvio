@@ -2,7 +2,15 @@
 
 import { useId, useState } from "react";
 
-import { countryForCode, flagOf, joinPhoneCode, PHONE_COUNTRIES, splitPhoneCode } from "@/lib/phone-country";
+import {
+  countryForCode,
+  dropTrunkZero,
+  flagOf,
+  joinPhoneCode,
+  PHONE_COUNTRIES,
+  splitPhoneCode,
+  typedWithCountryCode,
+} from "@/lib/phone-country";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,6 +27,7 @@ export function PhoneInput({
   placeholder = "612 345 678",
   required,
   onChange,
+  defaultCode = "34",
 }: {
   name?: string;
   defaultValue?: string | null;
@@ -27,9 +36,11 @@ export function PhoneInput({
   placeholder?: string;
   required?: boolean;
   onChange?: (value: string) => void;
+  /** The code a blank field starts on ("44" on the booking form, Spain elsewhere). */
+  defaultCode?: string;
 }) {
   const listId = useId();
-  const [start] = useState(() => splitPhoneCode(defaultValue));
+  const [start] = useState(() => splitPhoneCode(defaultValue, defaultCode));
   const [code, setCode] = useState(start.code);
   const [rest, setRest] = useState(start.rest);
   const country = countryForCode(code);
@@ -85,10 +96,16 @@ export function PhoneInput({
         aria-label="Phone number"
         onChange={(e) => {
           const typed = e.target.value;
-          // "+44 7700…" typed or pasted: move the code into the code box once a digit follows it.
-          const full = /^\s*(\+|00)/.test(typed) ? splitPhoneCode(typed, code) : null;
+          // "+44 7700…" or "0044 7700…" typed or pasted: move the code into the code box once a digit follows it.
+          const full = typedWithCountryCode(typed) ? splitPhoneCode(typed, code) : null;
           if (full && full.rest && /^\d+$/.test(full.rest)) update(full.code, full.rest);
           else update(code, typed);
+        }}
+        onBlur={() => {
+          // 07… / 007… / (0) 7… after the code: show it the way it saves, without the 0.
+          if (/[a-z]/i.test(rest) || typedWithCountryCode(rest)) return;
+          const trimmed = dropTrunkZero(code, rest);
+          if (trimmed !== rest) update(code, trimmed);
         }}
         className={cn(className, "min-w-0 flex-1 tabular-nums")}
       />

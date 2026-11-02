@@ -33,7 +33,8 @@ async function postJson<T>(url: string): Promise<T> {
 
 type SyncAnswer = { added: number; stored: number; more: boolean; slowed?: boolean };
 const scanInbox = () => postJson<{ sellers: SellerFound[]; skipped: number }>("/api/show-ops/mail/scan");
-const syncInbox = () => postJson<SyncAnswer>("/api/show-ops/mail/sync");
+/** The first round looks for new emails; later rounds only read what is already queued. */
+const syncInbox = (readOnly = false) => postJson<SyncAnswer>(`/api/show-ops/mail/sync${readOnly ? "?read=1" : ""}`);
 
 /**
  * One Refresh keeps bringing emails in, a batch at a time, while more are waiting. The pause keeps
@@ -293,7 +294,7 @@ function ConnectedCard({ inbox, canManage }: { inbox: InboxSummary; canManage: b
     let read = 0;
     try {
       for (let round = 1; ; round++) {
-        const r = await syncInbox();
+        const r = await syncInbox(round > 1);
         added += r.added;
         read += r.stored;
         if (!r.more) {

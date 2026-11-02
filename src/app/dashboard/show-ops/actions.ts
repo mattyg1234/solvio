@@ -2019,6 +2019,9 @@ async function buildBookingFields(
     } else {
       dietary_notes = String(formData.get("dietary_notes") ?? "").trim() || null;
     }
+    if (!dietary_notes) {
+      return { ok: false as const, error: "Dietary requirements is Yes: type what they are (or choose No)." };
+    }
   }
 
   return {
@@ -3115,7 +3118,7 @@ export async function addBookingPaymentAction(
   if (method !== "cash" && method !== "card" && method !== "direct") {
     return { ok: false, message: "Choose cash, card or direct." };
   }
-  // "Direct" (paid straight to MHT, e.g. bank transfer) is stored in the ledger
+  // "Direct" (paid straight to MHT, e.g. PayPal or Stripe) is stored in the ledger
   // as 'transfer', which the payments table already allows; the Hub shows it as Direct.
   if (method === "direct") formData.set("method", "transfer");
   try {

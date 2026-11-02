@@ -52,7 +52,11 @@ export const SHOW_OPS_NAV_SECTIONS: ShowOpsNavSection[] = [
     id: "analytics",
     label: "Analytics",
     // Stats & insights now lives at the bottom of Reports (see SHOW_OPS_LEGACY_PAGE_KEYS).
-    items: [{ href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" }],
+    // Tipsi (bar ordering) stats: directors only, behind a second password.
+    items: [
+      { href: "/dashboard/show-ops/reports", label: "Reports", key: "reports" },
+      { href: "/dashboard/show-ops/tipsi", label: "Tipsi", key: "tipsi" },
+    ],
   },
   {
     id: "settings",
@@ -65,21 +69,16 @@ export const SHOW_OPS_SIDEBAR_LINKS: ShowOpsNavItem[] = SHOW_OPS_NAV_SECTIONS.fl
 
 export const NEW_BOOKING_PATH = "/dashboard/show-ops/bookings/new";
 
-/** Base paths of every page in the Overview and Operations groups of the left rail. */
-const NEW_BOOKING_FAB_PATHS = Array.from(
-  new Set(
-    SHOW_OPS_NAV_SECTIONS.filter((s) => s.id === "overview" || s.id === "operations").flatMap((s) =>
-      s.items.map((item) => item.href.split("?")[0] ?? item.href),
-    ),
-  ),
-);
+/**
+ * Pages that keep the floating "+" off: the booking form itself, first-time setup, and the two
+ * message screens, whose send box sits bottom right where the button would cover it.
+ */
+const NEW_BOOKING_FAB_HIDDEN = [NEW_BOOKING_PATH, "/dashboard/show-ops/setup", "/dashboard/show-ops/chat", "/dashboard/show-ops/inbox"];
 
-/** Where the floating "+" new booking button shows: Overview and Operations pages, not the booking form itself. */
+/** Where the floating "+" new booking button shows: every Show Ops page except those above. */
 export function showNewBookingFab(pathname: string): boolean {
-  if (pathname === NEW_BOOKING_PATH || pathname.startsWith(`${NEW_BOOKING_PATH}/`)) return false;
-  return NEW_BOOKING_FAB_PATHS.some((p) =>
-    p === "/dashboard/show-ops" ? pathname === p : pathname === p || pathname.startsWith(`${p}/`),
-  );
+  if (pathname !== "/dashboard/show-ops" && !pathname.startsWith("/dashboard/show-ops/")) return false;
+  return !NEW_BOOKING_FAB_HIDDEN.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 export const SHOW_OPS_MOBILE_PRIMARY_KEYS = ["dashboard", "door", "bookings"] as const;
@@ -248,6 +247,13 @@ export function canSeeShowOpsPage(
  */
 export const SHOW_OPS_TEAM_KEYS = ["chat", "inbox", "sheets", "my-inbox"] as const;
 
+/** Nav items only the account owner (Director) sees. The page checks this again server-side. */
+export const SHOW_OPS_OWNER_ONLY_KEYS = ["tipsi"] as const;
+
+export function isShowOpsOwnerOnlyKey(key: string): boolean {
+  return (SHOW_OPS_OWNER_ONLY_KEYS as readonly string[]).includes(key);
+}
+
 /** Nav items that follow another page's permission: Email bookings goes with Bookings. */
 const SHOW_OPS_NAV_FOLLOWS: Record<string, ShowOpsPageKey> = { "email-bookings": "bookings" };
 
@@ -263,6 +269,7 @@ export function visibleShowOpsNav(
   const allowed = new Set<string>(showOpsAllowedPages(role, allowedPages));
   const team = canSeeShowOpsTeamTools(role);
   const visible = (key: string) =>
+    isShowOpsOwnerOnlyKey(key) ? role === "owner" :
     allowed.has(key) ||
     (team && (SHOW_OPS_TEAM_KEYS as readonly string[]).includes(key)) ||
     (SHOW_OPS_NAV_FOLLOWS[key] !== undefined && allowed.has(SHOW_OPS_NAV_FOLLOWS[key]));
