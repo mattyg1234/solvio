@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BusConfirmTonight } from "./bus-confirm-tonight";
 import { BusGuestSend } from "./bus-guest-send";
 import { BusSendForm } from "./bus-send-form";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -358,6 +359,13 @@ export function BusRunSheet({
           </p>
         ) : null}
         {canManageOrders ? <BusSendForm date={date} bookingIds={ordered.flatMap(group => group.rows.map(row => row.id))} disabled={dirty || pending || !sheet || !ordered.length} /> : null}
+        {canManageOrders ? (
+          <BusConfirmTonight
+            date={date}
+            bookingIds={ordered.flatMap((group) => group.rows.map((row) => row.id))}
+            disabled={dirty || pending || !sheet}
+          />
+        ) : null}
         {canManageOrders ? (
           <BusGuestSend
             date={date}
