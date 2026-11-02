@@ -102,6 +102,9 @@ export type TwilioIntegrationMeta = {
   booking_content_sid: string;
   booking_transport_content_sid: string;
   pickup_content_sid: string;
+  /** After-show feedback (template 4) and marketing permission (template 5). */
+  feedback_content_sid: string;
+  marketing_content_sid: string;
   /** Per island: the venue the no-transport booking template points guests to. */
   venues: Record<string, TwilioVenue>;
   /** WhatsApp goes through Twilio (default) or Meta's own Cloud API. SMS is always Twilio. */

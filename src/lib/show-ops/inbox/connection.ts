@@ -79,6 +79,8 @@ export function parseTwilioMeta(raw: unknown): TwilioIntegrationMeta {
     booking_content_sid: hx("booking_content_sid"),
     booking_transport_content_sid: hx("booking_transport_content_sid"),
     pickup_content_sid: hx("pickup_content_sid"),
+    feedback_content_sid: hx("feedback_content_sid"),
+    marketing_content_sid: hx("marketing_content_sid"),
     venues: parseVenues(o.venues),
     whatsapp_provider: o.whatsapp_provider === "meta" ? "meta" : "twilio",
     meta_phone_number_id: /^\d{6,25}$/.test(s("meta_phone_number_id")) ? s("meta_phone_number_id") : "",
