@@ -211,6 +211,7 @@ export default async function BusBoardPage({
                 Buses
                 <NumberInput
                   min={1}
+                  max={4}
                   name="bus_count"
                   defaultValue={buses ?? 1}
                   className="mt-1 block w-16 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"

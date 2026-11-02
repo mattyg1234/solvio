@@ -7,6 +7,7 @@ import { PrintButton } from "@/components/show-ops/print-button";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
 import type { DirectoryPickupStop } from "@/components/show-ops/pickup-points-directory";
+import { MAX_BUSES } from "@/lib/show-ops/bus-seats";
 
 const INPUT = "mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm";
 
@@ -235,7 +236,6 @@ export function PickupTimetable({
                   islands={islands}
                   next={next}
                   showBus={showBus}
-                  buses={Math.max(buses, 2)}
                 />
               );
             })}
@@ -301,7 +301,6 @@ function RowGroup({
   islands,
   next,
   showBus,
-  buses,
 }: {
   stop: DirectoryPickupStop;
   index: number;
@@ -320,7 +319,6 @@ function RowGroup({
   islands: string[];
   next: string;
   showBus: boolean;
-  buses: number;
 }) {
   return (
     <>
@@ -374,7 +372,7 @@ function RowGroup({
       {open ? (
         <tr className="border-t border-slate-100 bg-slate-50 print:hidden">
           <td colSpan={showBus ? 10 : 9} className="px-3 py-3">
-            <StopForm islands={islands} initial={stop} onDone={onToggle} next={next} buses={buses} />
+            <StopForm islands={islands} initial={stop} onDone={onToggle} next={next} />
           </td>
         </tr>
       ) : null}
@@ -388,14 +386,11 @@ function StopForm({
   islands,
   onDone,
   next,
-  buses = 2,
 }: {
   initial: DirectoryPickupStop;
   islands: string[];
   onDone: () => void;
   next: string;
-  /** How many coaches the Bus select offers. */
-  buses?: number;
 }) {
   return (
     <form
@@ -431,10 +426,11 @@ function StopForm({
         Pickup time
         <input name="pickup_time" type="time" defaultValue={hhmm(initial.pickup_time)} className={INPUT} />
       </label>
-      <label className="text-xs font-medium text-slate-600" title="Gran Canaria runs two coaches: say which one does this stop">
+      <label className="text-xs font-medium text-slate-600" title="When a night runs more than one coach, say which one picks this stop up">
         Bus
         <select name="bus_no" defaultValue={String(initial.bus_no ?? 1)} className={INPUT}>
-          {Array.from({ length: Math.max(1, buses) }, (_, i) => i + 1).map((n) => (
+          {/* Always offer every coach (the database allows Bus 1 to 4), not just tonight's count, so Bus 3 can be set up ahead. */}
+          {Array.from({ length: MAX_BUSES }, (_, i) => i + 1).map((n) => (
             <option key={n} value={n}>
               Bus {n}
             </option>
