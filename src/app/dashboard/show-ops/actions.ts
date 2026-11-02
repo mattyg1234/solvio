@@ -1699,6 +1699,11 @@ export async function deleteSupplierAction(supplierId: string, formData: FormDat
   redirectMaster(tab, { saved: "1" });
 }
 
+function busCostFromForm(raw: FormDataEntryValue | null): number {
+  const n = Number(String(raw ?? "").trim().replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+}
+
 export async function upsertBusOrderAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsAction("office", "buses");
   const tab = masterTabFromForm(formData, "hotels");
@@ -1712,7 +1717,8 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     bus_count: Math.min(MAX_BUSES, Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1))),
     // Gran Canaria: seats per coach. Null = the total shared evenly.
     seats_by_bus: null as number[] | null,
-    cost_total: Number(formData.get("cost_total") ?? 0),
+    // Bus cost is money: "450,50" or "450.5" both save as 450.50.
+    cost_total: busCostFromForm(formData.get("cost_total")),
     notes: String(formData.get("notes") ?? "").trim() || null,
     updated_at: new Date().toISOString(),
     // Only the bus board sends a guide; other forms must not blank it.

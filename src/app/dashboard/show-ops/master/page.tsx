@@ -563,7 +563,7 @@ export default async function MasterDataPage({
                     >
                       {b.show_date} · {b.island} · {Number(b.bus_count ?? 1)}{" "}
                       bus{Number(b.bus_count ?? 1) === 1 ? "" : "es"} ·{" "}
-                      {b.seats_ordered} seats · €{b.cost_total}
+                      {b.seats_ordered} seats · €{Number(b.cost_total ?? 0).toFixed(2)}
                     </li>
                   ))}
                 </ul>
