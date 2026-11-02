@@ -431,6 +431,7 @@ export default async function EditBookingPage({
               private_accommodation: booking.private_accommodation,
               private_zone: booking.private_zone,
               payment_method: booking.payment_method,
+              paid_so_far: isDeposit ? paidSoFar : null,
               dietary_required: booking.dietary_required,
               dietary_notes: booking.dietary_notes,
               adults: booking.adults,

@@ -159,6 +159,8 @@ export type BookingFormDefaults = {
   office_comments?: string | null;
   office_only_comments?: string | null;
   billing_mode?: "deposit" | "invoice";
+  /** Edit only: what the guest has already paid (payments ledger), for "Total pending". */
+  paid_so_far?: number | null;
   custom_answers?: Record<string, string | boolean | number>;
   attendees?: Array<{
     name?: string | null;
@@ -805,6 +807,15 @@ export function ShowOpsBookingForm({
   const reception = isReceptionPartner(supplier?.partner_type);
   const receptionPaid = Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
   const receptionBalance = Math.max(0, money.total_cost - receptionPaid);
+  /*
+   * "Total pending": what the guest still owes after the deposit. On an edit
+   * where payments were already taken, it is the total minus what was paid.
+   */
+  const paidSoFar = mode === "edit" ? Math.max(0, Number(defaults.paid_so_far) || 0) : 0;
+  const showPending = money.billing_mode === "deposit" && !reception;
+  const totalPending = round2(
+    Math.max(0, money.total_cost - (paidSoFar > 0 ? paidSoFar : money.deposit_amount)),
+  );
   // What the money above was actually priced at — card, master or the frozen original.
   const unit = money.pricing_snapshot;
   // The bus supplement only exists as a separate line when the price came from the master list.
@@ -1499,6 +1510,20 @@ export function ShowOpsBookingForm({
                 </span>
               </label>
             ) : null}
+            {showPending ? (
+              <>
+                {paidSoFar > 0 ? (
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-slate-600">Paid so far</span>
+                    <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(paidSoFar)}</span>
+                  </div>
+                ) : null}
+                <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-1.5">
+                  <span className="font-semibold text-slate-900">Total pending</span>
+                  <span className="text-lg font-semibold tabular-nums text-rose-700">{moneyFmt(totalPending)}</span>
+                </div>
+              </>
+            ) : null}
             {reception && money.billing_mode !== "invoice" && mode === "create" ? (
               <div className="mt-2">
                 <FieldLabel>Amount paid by guest (€)</FieldLabel>
@@ -2126,6 +2151,25 @@ export function ShowOpsBookingForm({
               )}
             </span>
           </div>
+          {showPending ? (
+            <div className="mt-2 space-y-1 px-3">
+              {paidSoFar > 0 ? (
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="text-slate-600">Paid so far</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(paidSoFar)}</span>
+                </div>
+              ) : null}
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-slate-900">
+                  Total pending
+                  <span className="block text-xs font-normal text-slate-500">
+                    {paidSoFar > 0 ? "Total minus what has been paid" : "Total minus the deposit"}
+                  </span>
+                </span>
+                <span className="text-lg font-semibold tabular-nums text-rose-700">{moneyFmt(totalPending)}</span>
+              </div>
+            </div>
+          ) : null}
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
             Once confirmed, the booking appears in that night&apos;s lists
             {money.billing_mode === "invoice"
@@ -2134,18 +2178,18 @@ export function ShowOpsBookingForm({
           </p>
         </div>
       {/* Cancel + Confirm sit in the space under the price breakdown. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2 xl:col-span-1">
+      <div className="grid grid-cols-2 gap-3 lg:col-span-2 xl:col-span-1">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+          className="flex items-center justify-center rounded-2xl bg-white px-4 py-5 text-xl font-bold text-slate-700 shadow-md ring-1 ring-slate-200 hover:bg-slate-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={pending || Boolean(extrasPreview.error)}
-          className="flex flex-1 items-center justify-center gap-3 rounded-2xl px-12 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60 sm:flex-none"
+          className="flex items-center justify-center gap-3 rounded-2xl px-4 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
           <Check className="h-7 w-7" aria-hidden />
