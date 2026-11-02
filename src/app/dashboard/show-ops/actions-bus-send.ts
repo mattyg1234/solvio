@@ -110,6 +110,7 @@ export async function sendBusListAction(
             html: "<p>The bus list is attached, including the saved pickup order and guide notes.</p>",
             text: "The bus list is attached, including the saved pickup order and guide notes.",
             attachments: [attachment],
+            log: { businessId: ctx.business.id, kind: "bus_list" },
           }),
       },
     );

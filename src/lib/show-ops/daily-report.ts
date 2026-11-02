@@ -150,6 +150,7 @@ export async function runShowOpsDailyDigests(now = new Date()): Promise<{ sent: 
         subject: built.digest.subject,
         html: built.digest.html,
         text: built.digest.text,
+        log: { businessId: b.id, kind: "daily_report" },
       });
       if (result.ok) sent += 1;
       else errors.push(`${built.displayName}: ${result.message}`);
