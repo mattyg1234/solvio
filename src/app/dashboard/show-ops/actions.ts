@@ -39,7 +39,7 @@ import {
   round2,
   showOpsAmountDue,
 } from "@/lib/show-ops/calc";
-import { parseSeatsByBus } from "@/lib/show-ops/bus-seats";
+import { MAX_BUSES, parseSeatsByBus } from "@/lib/show-ops/bus-seats";
 import { cancellationRequestWindow, cancelledChargeNote, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { normalisePartnerIslands } from "@/lib/show-ops/partners";
 import { createShowOpsDepositCheckoutSession } from "@/lib/show-ops/deposit-checkout";
@@ -1709,7 +1709,7 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     island: String(formData.get("island") ?? "").trim(),
     seats_ordered: Number(formData.get("seats_ordered") ?? 0),
     // How many coaches, not just seats — LPA runs two on a busy night.
-    bus_count: Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1)),
+    bus_count: Math.min(MAX_BUSES, Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1))),
     // Gran Canaria: seats per coach. Null = the total shared evenly.
     seats_by_bus: null as number[] | null,
     cost_total: Number(formData.get("cost_total") ?? 0),

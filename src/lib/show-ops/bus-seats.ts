@@ -4,6 +4,9 @@
  * night's order carries how many seats each coach has.
  */
 
+/** Coaches a night can run. show_bus_stops.bus_no is checked 1–4 in the database. */
+export const MAX_BUSES = 4;
+
 export type BusOrderSeats = {
   seats_ordered: number | null | undefined;
   bus_count?: number | null;
@@ -19,7 +22,7 @@ export type BusLoad = {
 };
 
 export function busCount(order: BusOrderSeats | null | undefined): number {
-  return Math.max(1, Math.trunc(Number(order?.bus_count) || 1));
+  return Math.min(MAX_BUSES, Math.max(1, Math.trunc(Number(order?.bus_count) || 1)));
 }
 
 /** Capacity per coach, in bus order. Explicit split wins; otherwise the total is shared evenly, remainder on bus 1. */
