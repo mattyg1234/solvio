@@ -221,7 +221,8 @@ export function ShowCalendarNight({
                   <NumberInput
                     min={0}
                     name="cost_total"
-                    defaultValue={order ? Number(order.cost_total) : ""}
+                    placeholder="0.00"
+                    defaultValue={order && Number(order.cost_total) > 0 ? Number(order.cost_total).toFixed(2) : ""}
                     className="mt-1 block w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
                   />
                 </label>

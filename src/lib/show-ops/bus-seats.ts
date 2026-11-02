@@ -44,7 +44,11 @@ export function busLoads(
   unassignedPax = 0,
 ): BusLoad[] {
   const seats = seatsPerBus(order);
-  const n = Math.max(busCount(order), ...stops.map((s) => Math.trunc(Number(s.bus_no) || 1)), 1);
+  // An ordered night runs exactly its coaches (a Bus 2 stop rides Bus 1 on a one-bus night);
+  // with no order yet, the stops say how many coaches are needed.
+  const n = order
+    ? busCount(order)
+    : Math.min(MAX_BUSES, Math.max(1, ...stops.map((s) => Math.trunc(Number(s.bus_no) || 1))));
   const loads: BusLoad[] = Array.from({ length: n }, (_, i) => ({ bus: i + 1, seats: seats?.[i] ?? null, pax: 0, free: null, stops: 0 }));
   for (const s of stops) {
     const b = Math.min(n, Math.max(1, Math.trunc(Number(s.bus_no) || 1)));

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { isNoBusStop } from "@/lib/show-ops/bus";
 import { productRunsOnDate } from "@/lib/show-ops/calendar";
 import { busLoads, type BusLoad } from "@/lib/show-ops/bus-seats";
 import { addDaysIso, paxTotal } from "@/lib/show-ops/calc";
@@ -262,7 +263,8 @@ export default async function WeeklyOutlookPage({
 
     const cellKey = section.resorts.some((r) => r.key === zone) ? (zone as string) : DIRECT_KEY;
     const cell = night.cells.get(cellKey) ?? { bus: 0, direct: 0 };
-    if (b.transport_required) {
+    // Puerto del Carmen never has a coach (the venue is there), so PDC guests count as direct.
+    if (b.transport_required && !isNoBusStop(stop ? { zone: stop.zone } : null)) {
       cell.bus += pax;
       night.busPax += pax;
       const key = `${b.show_date}|${b.island}`;

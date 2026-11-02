@@ -58,7 +58,8 @@ export function PickupTimetable({
     [stops],
   );
   const [ids, setIds] = useState(() => sorted.map((s) => s.id));
-  const [sort, setSort] = useState<TableSort>("order");
+  // Joel / Matty (2 Nov 2026): the bus board opens sorted by resort.
+  const [sort, setSort] = useState<TableSort>("resort");
   const [dragId, setDragId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -66,17 +67,44 @@ export function PickupTimetable({
   const byId = useMemo(() => new Map(sorted.map((s) => [s.id, s])), [sorted]);
   const runOrder = ids.map((id) => byId.get(id)).filter((s): s is DirectoryPickupStop => Boolean(s));
   // Viewing sorts only; the permanent run order is only editable in "Run order" view.
+  const showBus = buses > 1 || runOrder.some((s) => (s.bus_no ?? 1) > 1);
   const rows = useMemo(() => {
+    const busOf = (s: DirectoryPickupStop) => (showBus ? s.bus_no ?? 1 : 1);
+    const byBus = (a: DirectoryPickupStop, b: DirectoryPickupStop) => busOf(a) - busOf(b);
     const byName = (a: DirectoryPickupStop, b: DirectoryPickupStop) => a.stop_name.localeCompare(b.stop_name, "en", { sensitivity: "base" });
-    const byResort = (a: DirectoryPickupStop, b: DirectoryPickupStop) => a.resort.localeCompare(b.resort, "en", { sensitivity: "base" }) || byName(a, b);
-    const byTime = (a: DirectoryPickupStop, b: DirectoryPickupStop) => (hhmm(a.pickup_time) || "99:99").localeCompare(hhmm(b.pickup_time) || "99:99") || byName(a, b);
-    if (sort === "resort") return [...runOrder].sort(byResort);
-    if (sort === "name") return [...runOrder].sort(byName);
-    if (sort === "time") return [...runOrder].sort(byTime);
+    const timeKey = (s: DirectoryPickupStop) => hhmm(s.pickup_time) || "99:99";
+    const byTime = (a: DirectoryPickupStop, b: DirectoryPickupStop) => timeKey(a).localeCompare(timeKey(b)) || byName(a, b);
+    // Resorts run in the order the coach reaches them (earliest pick-up first), stops inside a resort by run time.
+    const firstTime = new Map<string, string>();
+    for (const s of runOrder) {
+      const k = `${busOf(s)}|${s.resort}`;
+      const t = timeKey(s);
+      if (!firstTime.has(k) || t < (firstTime.get(k) as string)) firstTime.set(k, t);
+    }
+    const byResort = (a: DirectoryPickupStop, b: DirectoryPickupStop) =>
+      (firstTime.get(`${busOf(a)}|${a.resort}`) as string).localeCompare(firstTime.get(`${busOf(b)}|${b.resort}`) as string) ||
+      a.resort.localeCompare(b.resort, "en", { sensitivity: "base" }) ||
+      byTime(a, b);
+    if (sort === "resort") return [...runOrder].sort((a, b) => byBus(a, b) || byResort(a, b));
+    if (sort === "name") return [...runOrder].sort((a, b) => byBus(a, b) || byName(a, b));
+    if (sort === "time") return [...runOrder].sort((a, b) => byBus(a, b) || byTime(a, b));
+    // Run order stays exactly as saved so drag and the arrows move the real permanent order.
     return runOrder;
-  }, [runOrder, sort]);
+  }, [runOrder, sort, showBus]);
+  /**
+   * The # column: every bus counts its stops 1 to N. Sorted by resort, the count
+   * starts again at 1 for each resort (Costa Teguise 1–18, then Playa Blanca 1, 2 …).
+   */
+  const numbers = useMemo(() => {
+    const seen = new Map<string, number>();
+    return rows.map((s) => {
+      const k = `${showBus ? s.bus_no ?? 1 : 1}|${sort === "resort" ? s.resort : ""}`;
+      const n = (seen.get(k) ?? 0) + 1;
+      seen.set(k, n);
+      return n;
+    });
+  }, [rows, showBus, sort]);
   const canReorder = canManage && sort === "order";
-  const showBus = buses > 1 || rows.some((s) => (s.bus_no ?? 1) > 1);
 
   function onDrop(targetId: string) {
     if (!dragId || dragId === targetId) return;
@@ -113,7 +141,7 @@ export function PickupTimetable({
     const lines = [
       ["Order", "Island", "Bus", "Resort", "Stop", "Pick-up time", "Runs", "Hotels", "Guide notes", "Map link"].map(cell).join(","),
       ...rows.map((s, i) =>
-        [i + 1, s.island, s.bus_no ?? 1, s.resort, s.stop_name, hhmm(s.pickup_time), s.runs_on || "every night", hotelsByStop[s.id] ?? 0, s.guide_notes ?? "", s.map_url ?? ""]
+        [numbers[i], s.island, s.bus_no ?? 1, s.resort, s.stop_name, hhmm(s.pickup_time), s.runs_on || "every night", hotelsByStop[s.id] ?? 0, s.guide_notes ?? "", s.map_url ?? ""]
           .map(cell)
           .join(","),
       ),
@@ -221,6 +249,7 @@ export function PickupTimetable({
                   key={s.id}
                   stop={s}
                   index={i}
+                  number={numbers[i]}
                   last={i === rows.length - 1}
                   running={running}
                   pax={paxByStop[s.id] ?? 0}
@@ -286,6 +315,7 @@ export function PickupTimetable({
 function RowGroup({
   stop,
   index,
+  number,
   last,
   running,
   pax,
@@ -304,6 +334,8 @@ function RowGroup({
 }: {
   stop: DirectoryPickupStop;
   index: number;
+  /** Stop number on its bus (and resort, when sorted by resort). */
+  number: number;
   last: boolean;
   running: boolean;
   pax: number;
@@ -331,7 +363,7 @@ function RowGroup({
       >
         <td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">
           {canReorder ? <span className="mr-1 select-none text-slate-300" aria-hidden>⋮⋮</span> : null}
-          {index + 1}
+          {number}
         </td>
         {showBus ? (
           <td className="px-3 py-2">
