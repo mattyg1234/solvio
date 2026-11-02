@@ -51,6 +51,7 @@ export async function sendDigestSampleAction(): Promise<void> {
       subject: `[Sample] ${built.digest.subject}`,
       html: built.digest.html,
       text: built.digest.text,
+      log: { businessId: ctx.business.id, kind: "daily_report" },
     });
   } catch (e) {
     sent = { ok: false, message: e instanceof Error ? e.message : String(e) };

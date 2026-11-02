@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ShowOpsInboxApp } from "@/components/show-ops/inbox/inbox-app";
-import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
+import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { getShowOpsRenderContext } from "@/lib/show-ops/access";
 import { isUuid } from "@/lib/show-ops/inbox/logic";
 import { inboxViewerFromContext } from "@/lib/show-ops/inbox/server";
@@ -33,6 +34,13 @@ export default async function ShowOpsInboxPage({
           viewer.seesAll
             ? "Every WhatsApp and text with guests: what the Hub sent and what they replied. Take a chat, or send it to someone on the team."
             : "Your WhatsApp and text chats with guests, and the ones a teammate has sent you to accept."
+        }
+        actions={
+          viewer.seesAll ? (
+            <Link href="/dashboard/show-ops/inbox/sent" className={SHOW_OPS_GHOST_BTN}>
+              Sent emails &amp; messages
+            </Link>
+          ) : null
         }
       />
       <ShowOpsInboxApp

@@ -2509,6 +2509,7 @@ async function provisionAndEmailSeller(opts: {
     send: (loginUrl) => sendShowOpsSellerInviteEmail({
       to: opts.email, sellerName: opts.supplierName, merchantName: opts.merchantName,
       loginUrl, email: opts.email, invitedBy: opts.invitedBy,
+      log: { businessId: opts.businessId, kind: "seller_invite" },
     }),
   });
 }
@@ -2572,6 +2573,7 @@ export async function sendPartnerLinkAction(
     const sent = await sendShowOpsPartnerLinkEmail({
       to: email, partnerName: supplier.name, merchantName: ctx.branding.displayName,
       linkUrl: partnerLinkUrl(await getSiteUrl(), supplier.booking_token),
+      log: { businessId: ctx.business.id, kind: "partner_link" },
     });
     if (!sent.ok) return { ok: false, message: `Not sent: ${sent.message || "email delivery failed."}` };
     return { ok: true, message: `Booking link emailed to ${email}.` };
@@ -3159,6 +3161,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
     amount: dueInfo.amount,
     currency: showOpsCurrencyFor(ctx.config, (booking as { island?: string | null }).island ?? null),
     payUrl: url,
+    log: { businessId: ctx.business.id, kind: "payment_link", bookingId },
   });
   if (!sent.ok) throw new Error(sent.message);
 
@@ -3987,6 +3990,7 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
   const currency = inv.currency;
   if (currency !== "eur" && currency !== "gbp" && currency !== "usd") throw new Error("Invoice currency is missing or unsupported.");
   const sent = await sendShowOpsInvoiceEmail({
+    log: { businessId: ctx.business.id, kind: "invoice" },
     to,
     cc: ctx.user.email,
     replyTo: ctx.user.email,
@@ -4166,6 +4170,7 @@ export async function closeSaleAction(formData: FormData): Promise<void> {
           subject: copy.subject,
           html: copy.html,
           text: copy.text,
+          log: { businessId: ctx.business.id, kind: "sale_closed" },
         })
       : { ok: false as const };
   const emailed = sent.ok ? rec.filter((r) => filterShowOpsOutboundTo(r.email).length).length : 0;
