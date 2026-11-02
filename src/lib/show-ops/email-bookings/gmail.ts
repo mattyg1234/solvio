@@ -123,10 +123,10 @@ function limiter(n: number) {
 
 const gmailSlot = limiter(3);
 /**
- * And no more than one new request every 80ms (about 12 a second, ~60 of Gmail's 250 quota units a
+ * And no more than one new request every 150ms (under 7 a second, ~35 of Gmail's 250 quota units a
  * second), so a Refresh, a Senders recount and the background check side by side still stay under it.
  */
-const MIN_GAP_MS = 80;
+const MIN_GAP_MS = 150;
 let nextStart = 0;
 async function paced<T>(fn: () => Promise<T>): Promise<T> {
   const now = Date.now();

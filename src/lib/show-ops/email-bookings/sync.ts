@@ -152,7 +152,11 @@ async function readOne(m: MailMessage, conn: EmailBookingConnection, tracked: Se
   if (isNoise(m.subject)) return aside("A code, report or notice, not a booking. Move it to To check if it is one.");
 
   const r = await extractBooking(m, sellerName);
-  if (r.kind === "not-booking") {
+  // Mail sent from this inbox itself (the office's own confirmations to guests) is only kept when
+  // an exact reader knows it (the website's "New order" emails).
+  if (m.fromEmail.trim().toLowerCase() === own && r.reader !== "template") return aside("Sent from this inbox, not a new booking.");
+  // The pattern reader calls anything with a "?" in it a question; that's not worth a look on its own.
+  if (r.kind === "not-booking" || (r.kind === "question" && r.reader === "pattern")) {
     // From a sender the office tracks and the subject sounds like a booking: let the office decide.
     if (looksBookingish(m.subject)) {
       return {
@@ -243,7 +247,7 @@ async function readQueued(admin: Admin, conn: EmailBookingConnection, mail: Mail
 
   let slowed = false;
   const failures: { q: QueueRow; why: string }[] = [];
-  const read = await mapLimit(batch, 3, async (q): Promise<{ q: QueueRow; row: Row } | null> => {
+  const read = await mapLimit(batch, 2, async (q): Promise<{ q: QueueRow; row: Row } | null> => {
     if (slowed) return null; // Gmail said slow down: leave the rest queued for the next run.
     try {
       return { q, row: await readOne(await mail.message(q.provider_message_id), conn, tracked) };
@@ -267,7 +271,7 @@ async function readQueued(admin: Admin, conn: EmailBookingConnection, mail: Mail
     if (saveError) throw new Error(`emails not saved: ${saveError.message}`);
     added += (saved ?? []).filter((r) => r.status === "review").length;
   }
-  // Re-reads replace an email that was set aside wrongly, unless someone has dealt with it since.
+  // Re-reads replace an email that was filed wrongly, unless someone has dealt with it since.
   for (const { row } of ok.filter((x) => x.q.reread)) {
     const { data: updated } = await admin
       .from("show_email_bookings")
@@ -275,7 +279,7 @@ async function readQueued(admin: Admin, conn: EmailBookingConnection, mail: Mail
       .eq("business_id", conn.business_id)
       .eq("provider", conn.provider)
       .eq("provider_message_id", row.provider_message_id)
-      .eq("status", "ignored")
+      .in("status", ["ignored", "review"])
       .is("handled_by", null)
       .select("status");
     added += (updated ?? []).filter((r) => r.status === "review").length;
