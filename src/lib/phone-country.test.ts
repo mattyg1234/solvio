@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { flagOf, joinPhone, splitPhone } from "./phone-country";
+import { countryForCode, flagOf, joinPhone, joinPhoneCode, splitPhone, splitPhoneCode } from "./phone-country";
 
 test("splits stored numbers into country + rest", () => {
   assert.deepEqual(splitPhone("+34604189230"), { iso: "ES", rest: "604189230" });
@@ -36,4 +36,20 @@ test("round-trips", () => {
 test("flags", () => {
   assert.equal(flagOf("ES"), "🇪🇸");
   assert.equal(flagOf("gb"), "🇬🇧");
+});
+
+test("typed country code: known codes pick the country, unknown ones still save", () => {
+  assert.equal(countryForCode("34")?.iso, "ES");
+  assert.equal(countryForCode("371")?.name, "Latvia");
+  assert.equal(countryForCode("999"), null);
+  assert.equal(joinPhoneCode("34", "612 345 678"), "+34612345678");
+  assert.equal(joinPhoneCode("44", "07700 900123"), "+447700900123");
+  assert.equal(joinPhoneCode("999", "0123 456"), "+9990123456");
+  assert.equal(joinPhoneCode("999", ""), "");
+  assert.deepEqual(splitPhoneCode("+447700900123"), { code: "44", rest: "7700900123" });
+  assert.deepEqual(splitPhoneCode("+99912345678"), { code: "999", rest: "12345678" });
+  assert.deepEqual(splitPhoneCode(""), { code: "34", rest: "" });
+  // Round-trip of an unknown code is lossless.
+  const split = splitPhoneCode("+99912345678");
+  assert.equal(joinPhoneCode(split.code, split.rest), "+99912345678");
 });
