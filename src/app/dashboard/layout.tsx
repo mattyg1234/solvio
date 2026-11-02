@@ -16,6 +16,7 @@ import {
 } from "@/lib/stripe-connect-status";
 import { businessNeedsOnboarding, resolvePlatformCapabilities } from "@/lib/platform-capabilities";
 import { hubBrandForWorkspace } from "@/lib/show-ops/hub-brand";
+import { getRequestUser } from "@/lib/supabase/request-user";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 /** The chunky marquee lettering MHT Shows use on musichalltavern.com, for Hub headings. */
@@ -28,47 +29,57 @@ export const metadata: Metadata = {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getRequestUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  const { data: ownedBiz } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("owner_id", user.id)
-    .limit(1)
-    .maybeSingle();
-  if (!ownedBiz) {
-    const { data: sellerMem } = await supabase
-      .from("show_ops_members")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("role", "seller")
-      .limit(1)
-      .maybeSingle();
-    if (sellerMem) redirect("/partner");
-  }
+  const bizCols =
+    "id,owner_id,platform_capabilities,onboarding_completed_at,campaigns_enabled,show_ops_enabled,show_ops_display_name,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due,subscription_tier,created_at,booking_flow_completed_at,booking_slug";
 
-  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
+  // Independent lookups run side by side: every dashboard page waits on this shell,
+  // so one-after-another round trips here slowed every click in the app.
+  const [{ data: ownedBiz }, { data: profile }, { data: stripeBusinesses }, { data: staffMem }, { data: sellerMem }] =
+    await Promise.all([
+      supabase
+        .from("businesses")
+        .select(bizCols)
+        .eq("owner_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+      supabase
+        .from("businesses")
+        .select(
+          "id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due",
+        )
+        .eq("owner_id", user.id),
+      supabase
+        .from("show_ops_members")
+        .select("business_id,role,allowed_pages")
+        .eq("user_id", user.id)
+        .neq("role", "seller")
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("show_ops_members")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("role", "seller")
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  if (!ownedBiz && sellerMem) redirect("/partner");
 
   const greetingName =
     typeof profile?.full_name === "string" && profile.full_name.trim().length > 0
       ? profile.full_name.trim()
       : null;
 
-  const bizCols =
-    "id,owner_id,platform_capabilities,onboarding_completed_at,campaigns_enabled,show_ops_enabled,show_ops_display_name,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due,subscription_tier,created_at,booking_flow_completed_at,booking_slug";
-  let { data: primaryBiz } = await supabase
-    .from("businesses")
-    .select(bizCols)
-    .eq("owner_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  let primaryBiz = ownedBiz;
   if (!primaryBiz) {
     const admin = createSupabaseServiceRoleClient();
     const adminBiz = await admin
@@ -83,26 +94,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!primaryBiz) {
     // Staff logins own no business: dress the shell in the workspace they work in,
     // not the empty new-signup Solvio chrome.
-    const { data: staffMem } = await supabase
-      .from("show_ops_members")
-      .select("business_id")
-      .eq("user_id", user.id)
-      .neq("role", "seller")
-      .limit(1)
-      .maybeSingle();
     if (staffMem?.business_id) {
       const admin = createSupabaseServiceRoleClient();
       const memberBiz = await admin.from("businesses").select(bizCols).eq("id", staffMem.business_id).maybeSingle();
       primaryBiz = memberBiz.data;
     }
   }
-
-  const { data: stripeBusinesses } = await supabase
-    .from("businesses")
-    .select(
-      "id,name,stripe_connect_account_id,stripe_connect_charges_enabled,stripe_connect_details_submitted,stripe_connect_payouts_enabled,stripe_connect_disabled_reason,stripe_connect_requirements_due",
-    )
-    .eq("owner_id", user.id);
 
   const capabilities = resolvePlatformCapabilities(primaryBiz?.platform_capabilities);
   const needsOnboarding = businessNeedsOnboarding(primaryBiz ?? null);
@@ -119,13 +116,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (showOpsEnabled && (primaryBiz as { owner_id?: string } | null)?.owner_id === user.id) {
     showOpsNavSections = visibleShowOpsNav("owner", null);
   } else {
-    const { data: membership } = await supabase
-      .from("show_ops_members")
-      .select("role,allowed_pages")
-      .eq("user_id", user.id)
-      .neq("role", "seller")
-      .limit(1)
-      .maybeSingle();
+    const membership = staffMem;
     if (membership) {
       showOpsMemberEnabled = true;
       showOpsNavSections = visibleShowOpsNav(

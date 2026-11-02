@@ -12,6 +12,7 @@ import type {
   ShowOpsWorkspace,
   ShowSupplier,
 } from "@/lib/show-ops/types";
+import { getRequestUser } from "@/lib/supabase/request-user";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 import {
   canSeeShowOpsPage,
@@ -84,11 +85,16 @@ async function loadWorkspaces(
   const seen = new Set<string>();
 
   const ownedSelect = "id,name,show_ops_display_name,show_ops_enabled";
-  let { data: ownedList } = await supabase
-    .from("businesses")
-    .select(ownedSelect)
-    .eq("owner_id", userId)
-    .order("created_at", { ascending: true });
+  // Owned businesses and memberships don't depend on each other: fetch both at once.
+  const [ownedRes, membershipsRes] = await Promise.all([
+    supabase.from("businesses").select(ownedSelect).eq("owner_id", userId).order("created_at", { ascending: true }),
+    supabase
+      .from("show_ops_members")
+      .select("business_id,role,supplier_id,allowed_pages,allowed_islands")
+      .eq("user_id", userId),
+  ]);
+  let ownedList = ownedRes.data;
+  const memberships = membershipsRes.data;
   if (!ownedList?.length) {
     const admin = createSupabaseServiceRoleClient();
     const adminOwned = await admin
@@ -113,11 +119,6 @@ async function loadWorkspaces(
       supplierId: null,
     });
   }
-
-  const { data: memberships } = await supabase
-    .from("show_ops_members")
-    .select("business_id,role,supplier_id,allowed_pages,allowed_islands")
-    .eq("user_id", userId);
 
   const memberBizIds = (memberships ?? []).map((m) => m.business_id).filter((id) => !seen.has(id));
   if (memberBizIds.length) {
@@ -216,9 +217,8 @@ export async function requireShowOpsSellerContext(): Promise<ShowOpsSellerContex
 
 export async function requireShowOpsContext(): Promise<ShowOpsContext> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Shared with the dashboard layout in the same request: one Auth round trip, not two.
+  const user = await getRequestUser();
   if (!user) redirect("/login");
 
   const workspaces = await loadWorkspaces(supabase, user.id);
