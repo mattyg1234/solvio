@@ -2,6 +2,7 @@ import { Resend } from "resend";
 
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
+import { type SentEmailLog, withSentEmailLog } from "@/lib/show-ops/sent-email-log";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type NotificationSendResult =
@@ -33,7 +34,7 @@ function gatedTo(raw: string | string[]): string[] | ReturnType<typeof showOpsOu
   return to;
 }
 
-export async function sendShowOpsPaymentLinkEmail(opts: {
+async function sendShowOpsPaymentLinkEmailInner(opts: {
   guestEmail: string;
   guestName: string;
   merchantName: string;
@@ -90,7 +91,7 @@ export async function sendShowOpsPaymentLinkEmail(opts: {
 }
 
 /** The partner's private booking link. No password: the link itself identifies them. */
-export async function sendShowOpsPartnerLinkEmail(opts: {
+async function sendShowOpsPartnerLinkEmailInner(opts: {
   to: string;
   partnerName: string;
   merchantName: string;
@@ -139,7 +140,7 @@ export async function sendShowOpsPartnerLinkEmail(opts: {
   return { ok: true, id: data?.id };
 }
 
-export async function sendShowOpsSellerInviteEmail(opts: {
+async function sendShowOpsSellerInviteEmailInner(opts: {
   to: string;
   sellerName: string;
   merchantName: string;
@@ -192,7 +193,7 @@ export async function sendShowOpsSellerInviteEmail(opts: {
   return { ok: true, id: data?.id };
 }
 
-export async function sendShowOpsInvoiceEmail(opts: {
+async function sendShowOpsInvoiceEmailInner(opts: {
   to: string;
   cc?: string | null;
   replyTo?: string | null;
@@ -304,7 +305,7 @@ export async function sendShowOpsInvoiceEmail(opts: {
   return { ok: true, id: data?.id };
 }
 
-export async function sendShowOpsHtmlEmail(opts: {
+async function sendShowOpsHtmlEmailInner(opts: {
   to: string | string[];
   subject: string;
   html: string;
@@ -334,4 +335,39 @@ export async function sendShowOpsHtmlEmail(opts: {
     return { ok: false, reason: "provider_error", message: error.message };
   }
   return { ok: true, id: data?.id };
+}
+
+/** Sends, then records the email in the workspace's Sent log when `log` is given. */
+export async function sendShowOpsPaymentLinkEmail(
+  opts: Parameters<typeof sendShowOpsPaymentLinkEmailInner>[0] & { log?: SentEmailLog | null },
+): Promise<NotificationSendResult> {
+  return withSentEmailLog(opts.log, { to: opts.guestEmail, subject: `Payment for ${opts.showName} · ${opts.bookingRef}` }, () => sendShowOpsPaymentLinkEmailInner(opts));
+}
+
+/** Sends, then records the email in the workspace's Sent log when `log` is given. */
+export async function sendShowOpsPartnerLinkEmail(
+  opts: Parameters<typeof sendShowOpsPartnerLinkEmailInner>[0] & { log?: SentEmailLog | null },
+): Promise<NotificationSendResult> {
+  return withSentEmailLog(opts.log, { to: opts.to, subject: `${opts.merchantName} — your booking link for ${opts.partnerName}` }, () => sendShowOpsPartnerLinkEmailInner(opts));
+}
+
+/** Sends, then records the email in the workspace's Sent log when `log` is given. */
+export async function sendShowOpsSellerInviteEmail(
+  opts: Parameters<typeof sendShowOpsSellerInviteEmailInner>[0] & { log?: SentEmailLog | null },
+): Promise<NotificationSendResult> {
+  return withSentEmailLog(opts.log, { to: opts.to, subject: `${opts.merchantName} — your booking login` }, () => sendShowOpsSellerInviteEmailInner(opts));
+}
+
+/** Sends, then records the email in the workspace's Sent log when `log` is given. */
+export async function sendShowOpsInvoiceEmail(
+  opts: Parameters<typeof sendShowOpsInvoiceEmailInner>[0] & { log?: SentEmailLog | null },
+): Promise<NotificationSendResult> {
+  return withSentEmailLog(opts.log, { to: opts.to, subject: `Invoice ${opts.verifactuNumber} · ${opts.supplierName} · ${formatShowOpsMoney(opts.totalAmount, opts.currency)}` }, () => sendShowOpsInvoiceEmailInner(opts));
+}
+
+/** Sends, then records the email in the workspace's Sent log when `log` is given. */
+export async function sendShowOpsHtmlEmail(
+  opts: Parameters<typeof sendShowOpsHtmlEmailInner>[0] & { log?: SentEmailLog | null },
+): Promise<NotificationSendResult> {
+  return withSentEmailLog(opts.log, { to: opts.to, subject: opts.subject }, () => sendShowOpsHtmlEmailInner(opts));
 }

@@ -25,8 +25,13 @@ export type ShowOpsPricingSnapshot = {
   child_nett_unit: number;
   infant_nett_unit?: number;
   invoice_nett_percent: number;
-  /** Partner's commission rounded up to the whole unit (Joel's "round up" tick) when the units were priced. */
+  /**
+   * Old partner "round up commission" tick, kept only so bookings priced with it
+   * keep their frozen nett. New pricing never sets it (removed 2 Nov 2026).
+   */
   round_up?: boolean;
+  /** The desk ticked "Round up deposit": the deposit was rounded UP to the whole euro/pound. */
+  deposit_round_up?: boolean;
   deposit_percent: number;
   transport_required: boolean;
   transport_supplement: number;
@@ -76,6 +81,13 @@ export function unitNettRoundedUp(gross: number, invoiceNettPercent: number, rou
   return round2(Math.max(0, num(gross) - commissionUp));
 }
 
+/** Deposit for a total: the partner's % of it, rounded up to the whole unit when ticked, never more than the total. */
+export function depositAmountFor(total: number, depositPercent: number, roundUp: boolean | null | undefined): number {
+  const exact = round2(num(total) * (num(depositPercent) / 100));
+  if (!roundUp) return exact;
+  return round2(Math.min(Math.max(0, num(total)), Math.ceil(exact - 1e-9)));
+}
+
 export function computeBookingMoney(input: {
   adults: number;
   children: number;
@@ -99,6 +111,11 @@ export function computeBookingMoney(input: {
    * never silently reprice it at today's master price.
    */
   frozen?: ShowOpsPricingSnapshot | null;
+  /**
+   * The desk's "Round up deposit" tick: the deposit rounds UP to the next whole
+   * euro/pound (8.10 → 9). Left out, an edit keeps what the frozen snapshot had.
+   */
+  roundUpDeposit?: boolean;
 }) {
   const adults = Math.max(0, input.adults);
   const children = Math.max(0, input.children);
@@ -128,7 +145,10 @@ export function computeBookingMoney(input: {
   const mode = input.billingMode ?? input.supplier?.billing_mode ?? "deposit";
   const depositPct = frozen ? num(frozen.deposit_percent, 30) : num(input.supplier?.deposit_percent, 30);
   const nettPct = frozen ? num(frozen.invoice_nett_percent, 100) : num(input.supplier?.invoice_nett_percent, 100);
-  const roundUp = frozen ? Boolean(frozen.round_up) : Boolean(input.supplier?.round_up);
+  // The partner commission round-up was removed (2 Nov 2026: it was meant for the
+  // deposit). Only a booking already priced with it keeps it, through its snapshot.
+  const roundUp = frozen ? Boolean(frozen.round_up) : false;
+  const depositRoundUp = input.roundUpDeposit ?? Boolean(frozen?.deposit_round_up);
 
   const adultNettUnit = frozen ? round2(num(frozen.adult_nett_unit)) : unitNettRoundedUp(adultPrice, nettPct, roundUp);
   const childNettUnit = frozen ? round2(num(frozen.child_nett_unit)) : unitNettRoundedUp(childPrice, nettPct, roundUp);
@@ -156,6 +176,7 @@ export function computeBookingMoney(input: {
     invoice_nett_percent: nettPct,
     ...(roundUp ? { round_up: true } : {}),
     deposit_percent: depositPct,
+    ...(depositRoundUp && mode !== "invoice" ? { deposit_round_up: true } : {}),
     transport_required: transport,
     // A card price already includes the bus; nothing was added on top.
     transport_supplement: frozen ? num(frozen.transport_supplement) : card ? 0 : transport ? supplement : 0,
@@ -183,7 +204,7 @@ export function computeBookingMoney(input: {
     };
   }
 
-  const deposit_amount = round2(total * (depositPct / 100));
+  const deposit_amount = depositAmountFor(total, depositPct, depositRoundUp);
   return {
     billing_mode: "deposit" as const,
     total_cost: total,

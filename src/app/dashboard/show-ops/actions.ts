@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { pushInvoiceToHoldedAction, syncHoldedInvoicesAction } from "@/app/dashboard/show-ops/actions-holded";
 import { bookingExtrasSummary, invoiceSupplements } from "@/lib/show-ops/invoice-supplements";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 import { cookies } from "next/headers";
 
@@ -39,7 +39,7 @@ import {
   round2,
   showOpsAmountDue,
 } from "@/lib/show-ops/calc";
-import { parseSeatsByBus } from "@/lib/show-ops/bus-seats";
+import { MAX_BUSES, parseSeatsByBus } from "@/lib/show-ops/bus-seats";
 import { cancellationRequestWindow, cancelledChargeNote, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { normalisePartnerIslands } from "@/lib/show-ops/partners";
 import { createShowOpsDepositCheckoutSession } from "@/lib/show-ops/deposit-checkout";
@@ -608,7 +608,6 @@ export async function upsertSupplierAction(formData: FormData): Promise<void> {
     email: emailRaw || null,
     ...(billing.ok ? billing.patch : {}),
     no_show_policy: resolveNoShowCharge(String(formData.get("no_show_policy") ?? ""), null),
-    round_up: String(formData.get("round_up") ?? "") === "1",
     active: String(formData.get("active") ?? "1") === "1",
     updated_at: new Date().toISOString(),
   };
@@ -820,8 +819,6 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
     if (nett) patch.invoice_nett_percent = Number(nett);
     const noShow = String(formData.get("bulk_no_show_policy") ?? "").trim();
     if (noShow === "charge" || noShow === "write_off") patch.no_show_policy = noShow;
-    const roundUp = String(formData.get("bulk_round_up") ?? "");
-    if (roundUp === "1" || roundUp === "0") patch.round_up = roundUp === "1";
     const active = String(formData.get("bulk_active") ?? "");
     if (active === "1" || active === "0") patch.active = active === "1";
     const addIsland = String(formData.get("bulk_add_island") ?? "").trim();
@@ -872,7 +869,6 @@ export async function saveMasterSuppliersAction(formData: FormData): Promise<voi
       deposit_percent: Number(formData.get(p + "deposit_percent") ?? 30),
       invoice_nett_percent: Number(formData.get(p + "invoice_nett_percent") ?? 100),
       no_show_policy: resolveNoShowCharge(String(formData.get(p + "no_show_policy") ?? ""), null),
-      round_up: String(formData.get(p + "round_up") ?? "") === "1",
       sale_rate_id: String(formData.get(p + "sale_rate_id") ?? "").trim() || null,
       invoice_rate_id: String(formData.get(p + "invoice_rate_id") ?? "").trim() || null,
       email: (() => {
@@ -1024,7 +1020,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
   const { data: bookings } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,legacy_id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at,total_cost,balance_remaining",
+      "id,legacy_id,ticket_type_id,extras_snapshot,adults,children,infants,supplier_id,transport_required,billing_mode,invoice_id,cancelled_at,total_cost,balance_remaining,pricing_snapshot",
     )
     .eq("business_id", ctx.business.id)
     .eq("product_id", productId)
@@ -1070,6 +1066,7 @@ export async function repriceUninvoicedForProductAction(formData: FormData): Pro
       transportRequired: Boolean(b.transport_required),
       transportSupplement: ctx.config.transport_supplement,
       rateCard: saleCard ? pickRatePrice(saleCard.rows, productId, Boolean(b.transport_required), saleCard.card) : null,
+      roundUpDeposit: Boolean((b.pricing_snapshot as ShowOpsPricingSnapshot | null)?.deposit_round_up),
     });
     const patch: Record<string, unknown> = {
       show_name: pricedProduct.name,
@@ -1712,7 +1709,7 @@ export async function upsertBusOrderAction(formData: FormData): Promise<void> {
     island: String(formData.get("island") ?? "").trim(),
     seats_ordered: Number(formData.get("seats_ordered") ?? 0),
     // How many coaches, not just seats — LPA runs two on a busy night.
-    bus_count: Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1)),
+    bus_count: Math.min(MAX_BUSES, Math.max(1, Math.trunc(Number(formData.get("bus_count") ?? 1) || 1))),
     // Gran Canaria: seats per coach. Null = the total shared evenly.
     seats_by_bus: null as number[] | null,
     cost_total: Number(formData.get("cost_total") ?? 0),
@@ -1939,6 +1936,15 @@ async function buildBookingFields(
     return { ok: false as const, error: error instanceof Error ? error.message : "Invalid extras." };
   }
 
+  /*
+   * "Round up deposit" tick on the booking form. The form sends a marker with the
+   * tick so a form without it (locked money, partner portal) keeps what the
+   * booking already had instead of silently clearing it.
+   */
+  const roundUpDeposit = formData.get("deposit_round_up_field") === "1"
+    ? formData.get("deposit_round_up") === "1"
+    : undefined;
+
   const priced = computeBookingMoney({
     adults,
     children,
@@ -1951,6 +1957,7 @@ async function buildBookingFields(
     transportSupplement: ctx.config.transport_supplement,
     rateCard,
     frozen,
+    roundUpDeposit,
   });
   // Widened so a reception "amount paid" can overwrite the deposit/balance/status below.
   const money = priced as Omit<typeof priced, "payment_status"> & {
@@ -2011,6 +2018,9 @@ async function buildBookingFields(
       dietary_notes = [...picked, extra].filter(Boolean).join("; ") || null;
     } else {
       dietary_notes = String(formData.get("dietary_notes") ?? "").trim() || null;
+    }
+    if (!dietary_notes) {
+      return { ok: false as const, error: "Dietary requirements is Yes: type what they are (or choose No)." };
     }
   }
 
@@ -2509,6 +2519,7 @@ async function provisionAndEmailSeller(opts: {
     send: (loginUrl) => sendShowOpsSellerInviteEmail({
       to: opts.email, sellerName: opts.supplierName, merchantName: opts.merchantName,
       loginUrl, email: opts.email, invitedBy: opts.invitedBy,
+      log: { businessId: opts.businessId, kind: "seller_invite" },
     }),
   });
 }
@@ -2572,6 +2583,7 @@ export async function sendPartnerLinkAction(
     const sent = await sendShowOpsPartnerLinkEmail({
       to: email, partnerName: supplier.name, merchantName: ctx.branding.displayName,
       linkUrl: partnerLinkUrl(await getSiteUrl(), supplier.booking_token),
+      log: { businessId: ctx.business.id, kind: "partner_link" },
     });
     if (!sent.ok) return { ok: false, message: `Not sent: ${sent.message || "email delivery failed."}` };
     return { ok: true, message: `Booking link emailed to ${email}.` };
@@ -3094,6 +3106,36 @@ export async function recordPaymentAction(formData: FormData): Promise<void> {
   return;
 }
 
+/**
+ * "Add payment" window on the bookings list and the booking page: an amount in
+ * the booking's own currency, paid by cash or card. Each payment is its own row
+ * in the payments ledger; the database takes it off the booking's outstanding.
+ */
+export async function addBookingPaymentAction(
+  formData: FormData,
+): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  const method = String(formData.get("method") ?? "");
+  if (method !== "cash" && method !== "card" && method !== "direct") {
+    return { ok: false, message: "Choose cash, card or direct." };
+  }
+  // "Direct" (paid straight to MHT, e.g. PayPal or Stripe) is stored in the ledger
+  // as 'transfer', which the payments table already allows; the Hub shows it as Direct.
+  if (method === "direct") formData.set("method", "transfer");
+  try {
+    await recordPaymentAction(formData);
+    return { ok: true, message: "Payment added." };
+  } catch (error) {
+    unstable_rethrow(error);
+    const raw = error instanceof Error ? error.message : "";
+    const message = /EXCEEDS_OUTSTANDING/.test(raw)
+      ? "That is more than the outstanding balance."
+      : /NOT_COLLECTIBLE/.test(raw)
+        ? "Payments can only be added to live deposit bookings."
+        : raw || "Could not add the payment.";
+    return { ok: false, message };
+  }
+}
+
 export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<void> {
   const ctx = await requireShowOpsAction("office", "bookings");
   if (!ctx.config.guest_stripe_enabled) {
@@ -3159,6 +3201,7 @@ export async function sendShowOpsPaymentLinkAction(formData: FormData): Promise<
     amount: dueInfo.amount,
     currency: showOpsCurrencyFor(ctx.config, (booking as { island?: string | null }).island ?? null),
     payUrl: url,
+    log: { businessId: ctx.business.id, kind: "payment_link", bookingId },
   });
   if (!sent.ok) throw new Error(sent.message);
 
@@ -3987,6 +4030,7 @@ export async function sendShowOpsInvoiceEmailAction(formData: FormData): Promise
   const currency = inv.currency;
   if (currency !== "eur" && currency !== "gbp" && currency !== "usd") throw new Error("Invoice currency is missing or unsupported.");
   const sent = await sendShowOpsInvoiceEmail({
+    log: { businessId: ctx.business.id, kind: "invoice" },
     to,
     cc: ctx.user.email,
     replyTo: ctx.user.email,
@@ -4166,6 +4210,7 @@ export async function closeSaleAction(formData: FormData): Promise<void> {
           subject: copy.subject,
           html: copy.html,
           text: copy.text,
+          log: { businessId: ctx.business.id, kind: "sale_closed" },
         })
       : { ok: false as const };
   const emailed = sent.ok ? rec.filter((r) => filterShowOpsOutboundTo(r.email).length).length : 0;

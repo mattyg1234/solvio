@@ -40,6 +40,8 @@ import {
   type InboundTwilioMessage,
 } from "@/lib/show-ops/inbox/logic";
 import { metaErrorText, sendMetaMessage, type MetaStatusUpdate } from "@/lib/show-ops/inbox/meta";
+import { consentIntent } from "@/lib/show-ops/consent";
+import type { TemplateKind } from "@/lib/show-ops/inbox/templates";
 import { sendTwilioMessage } from "@/lib/show-ops/inbox/twilio";
 import type {
   InboxBookingSummary,
@@ -812,6 +814,51 @@ export async function recordInboundMessage(conn: TwilioConnection, msg: InboundT
     inbound: true,
     extra: conv.status === "closed" ? { status: "open" } : undefined,
   });
+  await applyConsentReply(conv, msg.from, msg.body).catch((e) => console.error("[show-ops inbox] consent:", e));
+}
+
+/**
+ * YES after the marketing question → record consent (when, and that it was a
+ * WhatsApp reply). STOP at any time → no more feedback or marketing WhatsApps
+ * to this number. Both leave a note in the chat so the team sees it.
+ */
+async function applyConsentReply(conv: ConversationRow, from: string, body: string): Promise<void> {
+  const intent = consentIntent(body);
+  if (!intent) return;
+  const tail = phoneTail(from);
+  if (tail.length < 9) return;
+  const db = admin();
+  const { data, error } = await db
+    .from("show_bookings")
+    .select("id,guest_mobile,marketing_asked_at,marketing_opt_in_at,whatsapp_opted_out_at")
+    .eq("business_id", conv.business_id)
+    .not("guest_mobile", "is", null)
+    .ilike("guest_mobile", `%${tail.slice(-3)}%`)
+    .limit(500);
+  if (error) throw new Error(error.message);
+  type Row = { id: string; guest_mobile: string | null; marketing_asked_at: string | null; marketing_opt_in_at: string | null; whatsapp_opted_out_at: string | null };
+  const rows = ((data ?? []) as Row[]).filter((b) => phoneTail(String(b.guest_mobile ?? "")) === tail);
+  if (!rows.length) return;
+  const now = new Date().toISOString();
+  let note = "";
+  if (intent === "stop") {
+    const ids = rows.filter((b) => !b.whatsapp_opted_out_at).map((b) => b.id);
+    if (!ids.length) return;
+    await db.from("show_bookings").update({ whatsapp_opted_out_at: now }).eq("business_id", conv.business_id).in("id", ids);
+    note = "Guest replied STOP: no more feedback or marketing WhatsApps to this number.";
+  } else {
+    // YES only counts as consent once we've asked.
+    if (!rows.some((b) => b.marketing_asked_at)) return;
+    const ids = rows.filter((b) => !b.marketing_opt_in_at).map((b) => b.id);
+    if (!ids.length) return;
+    await db
+      .from("show_bookings")
+      .update({ marketing_opt_in_at: now, marketing_opt_in_source: "whatsapp_reply_yes", whatsapp_opted_out_at: null })
+      .eq("business_id", conv.business_id)
+      .in("id", ids);
+    note = "Guest replied YES: opted in to MHT WhatsApp updates.";
+  }
+  await insertMessage({ conversation: conv, direction: "event", body: note, authorId: null, source: "system", status: "note" });
 }
 
 export async function applyStatusCallback(conn: TwilioConnection, params: Record<string, string>): Promise<void> {
@@ -870,7 +917,11 @@ export async function sendBusinessTextToGuest(
     body: string;
     bookingId?: string | null;
     guestName?: string | null;
-    template?: ((meta: TwilioIntegrationMeta) => { kind: "booking" | "booking_transport" | "pickup"; variables: Record<string, string> } | null) | null;
+    template?: ((meta: TwilioIntegrationMeta) => { kind: TemplateKind; variables: Record<string, string> } | null) | null;
+    /** WhatsApp only: never fall back to SMS (after-show feedback, marketing). */
+    whatsappOnly?: boolean;
+    /** How the message shows in the inbox and Sent page. Default: ticket. */
+    source?: "ticket" | "template";
   },
 ): Promise<BusinessTextResult> {
   const conn = await loadTwilioConnection(businessId).catch(() => null);
@@ -902,7 +953,7 @@ export async function sendBusinessTextToGuest(
       }
     }
   }
-  if (!channel) channel = conn.meta.sms_from ? "sms" : null;
+  if (!channel && !input.whatsappOnly) channel = conn.meta.sms_from ? "sms" : null;
   if (!channel) return { ok: false, reason: "not_configured", message: "No WhatsApp template or SMS number is set up for this message." };
 
   try {
@@ -913,7 +964,7 @@ export async function sendBusinessTextToGuest(
       name: input.guestName ?? "",
       bookingId: input.bookingId && isUuid(input.bookingId) ? input.bookingId : null,
     });
-    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: "ticket", template });
+    await deliver(conn, conv, { body: input.body.slice(0, 1600), authorId: null, source: input.source ?? "ticket", template });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: "provider_error", message: e instanceof Error ? e.message : "Send failed." };

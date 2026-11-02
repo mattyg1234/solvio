@@ -11,6 +11,7 @@ import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { templateVariables } from "@/lib/show-ops/inbox/templates";
 import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
 import { filterShowOpsOutboundTo, showOpsMessagesLive, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
+import { type SentEmailLog, withSentEmailLog } from "@/lib/show-ops/sent-email-log";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
@@ -324,7 +325,17 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
   return { subject, html, rows };
 }
 
+/** Emails the ticket and records it in the workspace's Sent log. */
 export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<NotificationSendResult> {
+  const log: SentEmailLog | null = input.businessId
+    ? { businessId: input.businessId, bookingId: input.bookingId ?? null, kind: input.updated ? "ticket_update" : "ticket" }
+    : null;
+  return withSentEmailLog(log, { to: input.guestEmail, subject: buildGuestTicketEmail(input, false).subject }, () =>
+    sendGuestTicketEmailInner(input),
+  );
+}
+
+async function sendGuestTicketEmailInner(input: GuestTicketInput): Promise<NotificationSendResult> {
   const client = resendClient();
   const to = filterShowOpsOutboundTo(input.guestEmail?.trim() ?? "")[0] ?? "";
   if (!to) return showOpsOutboundHeldResult();

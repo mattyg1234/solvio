@@ -12,10 +12,13 @@ import {
   SHOW_OPS_PRIMARY,
 } from "@/components/show-ops/ops-home-widgets";
 import { ShowOpsNewBookingButton, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
+import { HubBanner } from "@/components/show-ops/hub-banner";
 import { requireShowOpsContext } from "@/lib/show-ops/access";
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { effectiveModules } from "@/lib/show-ops/config";
 import { buildShowOpsDashboard } from "@/lib/show-ops/dashboard";
+import { hubBrandForWorkspace } from "@/lib/show-ops/hub-brand";
+import { headers } from "next/headers";
 
 function isoOffset(days: number): string {
   const d = new Date();
@@ -245,9 +248,11 @@ export default async function ShowOpsHomePage({
   const paxSeries = analyticsMonths.map((x) => x.pax);
   const netSeries = analyticsMonths.map((x) => x.net);
   const grossSeries = analyticsMonths.map((x) => x.gross);
+  const hub = hubBrandForWorkspace((await headers()).get("host"), ctx.business.id);
 
   return (
     <div className="space-y-6">
+      {hub ? <HubBanner hub={hub} /> : null}
       <ShowOpsPageHeader
         eyebrow={`Welcome back${firstName ? `, ${firstName}` : ""} 👋`}
         title={ctx.branding.displayName}

@@ -3,6 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Martini,
   Building2,
   Bus,
   CalendarDays,
@@ -39,9 +40,11 @@ import {
   SHOW_OPS_NAV_SECTIONS,
   type ShowOpsNavSection,
   SHOW_OPS_SIDEBAR_LINKS,
+  isShowOpsOwnerOnlyKey,
   showOpsNavActive,
   type ShowOpsNavItem,
 } from "@/lib/show-ops/nav";
+import type { HubBrand } from "@/lib/show-ops/hub-brand";
 import { cn } from "@/lib/utils";
 
 const NAV_ICONS: Record<string, LucideIcon> = {
@@ -57,6 +60,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   rates: Percent,
   outlook: CalendarDays,
   reports: BarChart3,
+  tipsi: Martini,
   stats: PieChart,
   lists: ListChecks,
   settings: Settings2,
@@ -83,14 +87,47 @@ function NavLink({
   on,
   onClick,
   badge = 0,
+  hub = null,
 }: {
   item: ShowOpsNavItem;
   on: boolean;
   onClick?: () => void;
   /** Unread count shown on the right (Chat, Customer inbox). */
   badge?: number;
+  /** Dark MHT sidebar styling. */
+  hub?: HubBrand | null;
 }) {
   const Icon = NAV_ICONS[item.key] ?? LayoutDashboard;
+  if (hub) {
+    return (
+      <Link
+        href={item.href}
+        onClick={onClick}
+        aria-label={badge > 0 ? `${item.label}, ${badge} unread` : undefined}
+        className={cn(
+          "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold transition-colors",
+          on ? "text-white" : "text-white/65 hover:bg-white/10 hover:text-white",
+        )}
+        style={on ? { background: `linear-gradient(90deg, ${hub.primaryColor}55, ${hub.primaryColor}22)`, boxShadow: `inset 3px 0 0 ${hub.accentColor}` } : undefined}
+      >
+        <Icon
+          className="h-[18px] w-[18px] shrink-0"
+          style={{ color: on ? hub.accentColor : "rgba(255,255,255,0.45)" }}
+          aria-hidden
+        />
+        <span className="truncate">{item.label}</span>
+        {badge > 0 ? (
+          <span
+            aria-hidden
+            className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums text-[#14051a]"
+            style={{ backgroundColor: hub.accentColor }}
+          >
+            {formatUnreadBadge(badge)}
+          </span>
+        ) : null}
+      </Link>
+    );
+  }
   return (
     <Link
       href={item.href}
@@ -146,10 +183,12 @@ function ShowOpsSidebarInner({
   displayName,
   userName,
   sections,
+  hub = null,
 }: {
   displayName?: string;
   userName?: string;
   sections?: ShowOpsNavSection[];
+  hub?: HubBrand | null;
 }) {
   const navSections = sections ?? SHOW_OPS_NAV_SECTIONS;
   const pathname = usePathname();
@@ -159,6 +198,87 @@ function ShowOpsSidebarInner({
   const admin = userName?.trim() || "Admin";
   const chatUnread = useChatUnread(navSections.some((section) => section.items.some((item) => item.key === "chat")));
   const inboxUnread = useInboxUnread(navSections.some((section) => section.items.some((item) => item.key === "inbox")));
+
+  if (hub) {
+    return (
+      <div
+        className="relative flex h-full flex-col overflow-hidden text-white"
+        style={{ background: `linear-gradient(180deg, #3a0b47 0%, #1d0626 55%, #12041a 100%)` }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-1"
+          style={{ background: `linear-gradient(90deg, ${hub.primaryColor}, ${hub.accentColor}, ${hub.primaryColor})` }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full blur-3xl"
+          style={{ backgroundColor: `${hub.primaryColor}40` }}
+        />
+        <Link
+          href="/dashboard/show-ops"
+          className="relative flex items-center gap-3 border-b border-white/10 px-5 py-5 outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        >
+          <span
+            className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-1"
+            style={{ boxShadow: `0 0 0 2px ${hub.primaryColor}, 0 0 22px -4px ${hub.primaryColor}` }}
+          >
+            <Image src={hub.logoUrl} alt="" width={96} height={96} unoptimized className="h-full w-full object-contain" />
+          </span>
+          <span className="min-w-0">
+            <span className="hub-display block truncate text-xl leading-tight" style={{ color: hub.accentColor }}>
+              {hub.name}
+            </span>
+            <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">
+              {hub.islands.join(" · ")}
+            </span>
+          </span>
+        </Link>
+
+        <nav className="relative flex flex-1 flex-col overflow-y-auto px-3 py-5" aria-label="Show Ops">
+          {navSections.map((section, i) => (
+            <div key={section.id} className={i > 0 ? "mt-5 border-t border-white/10 pt-5" : undefined}>
+              <p
+                className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.2em]"
+                style={{ color: `${hub.primaryColor}cc` }}
+              >
+                {section.label}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.key}
+                    item={item}
+                    on={showOpsNavActive(pathname, tab, item)}
+                    badge={item.key === "chat" ? chatUnread : item.key === "inbox" ? inboxUnread : 0}
+                    hub={hub}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="relative px-3 py-4">
+          <div className="rounded-2xl bg-white/[0.06] p-3 ring-1 ring-white/10">
+            <div className="flex items-center gap-3">
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-[#14051a]"
+                style={{ backgroundColor: hub.primaryColor }}
+              >
+                {initials(admin, org)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-white">{admin}</span>
+                <span className="block truncate text-xs text-white/50">Powered by Solvio</span>
+              </span>
+            </div>
+            <ShowOpsSignOut />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col border-r border-[#ebe7f7]/90 bg-white">
@@ -222,26 +342,32 @@ export function ShowOpsSidebar({
   displayName,
   userName,
   sections,
+  hub = null,
 }: {
   displayName?: string;
   userName?: string;
   sections?: ShowOpsNavSection[];
+  hub?: HubBrand | null;
 }) {
   return (
-    <Suspense fallback={<div className="h-full bg-white" />}>
-      <ShowOpsSidebarInner displayName={displayName} userName={userName} sections={sections} />
+    <Suspense fallback={<div className={hub ? "h-full bg-[#1d0626]" : "h-full bg-white"} />}>
+      <ShowOpsSidebarInner displayName={displayName} userName={userName} sections={sections} hub={hub} />
     </Suspense>
   );
 }
 
-function ShowOpsMobileInner() {
+function ShowOpsMobileInner({ accent = null, showTipsi = false }: { accent?: string | null; showTipsi?: boolean }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
   const [moreOpen, setMoreOpen] = useState(false);
   const primary = SHOW_OPS_MOBILE_PRIMARY_KEYS.map((key) =>
     SHOW_OPS_SIDEBAR_LINKS.find((l) => l.key === key),
   ).filter((item): item is (typeof SHOW_OPS_SIDEBAR_LINKS)[number] => Boolean(item));
-  const more = SHOW_OPS_SIDEBAR_LINKS.filter((l) => !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key));
+  const more = SHOW_OPS_SIDEBAR_LINKS.filter(
+    (l) =>
+      !(SHOW_OPS_MOBILE_PRIMARY_KEYS as readonly string[]).includes(l.key) &&
+      (showTipsi || !isShowOpsOwnerOnlyKey(l.key)),
+  );
   const moreActive = more.some((item) => showOpsNavActive(pathname, tab, item));
   const chatUnread = useChatUnread(more.some((item) => item.key === "chat"));
   const inboxUnread = useInboxUnread(more.some((item) => item.key === "inbox"));
@@ -287,6 +413,7 @@ function ShowOpsMobileInner() {
                 "flex min-w-[3rem] flex-col items-center gap-1 rounded-xl px-2 py-1 text-[10px] font-semibold",
                 on ? "text-[#7c3aed]" : "text-slate-400",
               )}
+              style={on && accent ? { color: accent } : undefined}
             >
               <Icon className="h-5 w-5" aria-hidden />
               {item.label}
@@ -321,10 +448,10 @@ function ShowOpsMobileInner() {
   );
 }
 
-export function ShowOpsMobileNav() {
+export function ShowOpsMobileNav({ accent = null, showTipsi = false }: { accent?: string | null; showTipsi?: boolean }) {
   return (
     <Suspense fallback={null}>
-      <ShowOpsMobileInner />
+      <ShowOpsMobileInner accent={accent} showTipsi={showTipsi} />
     </Suspense>
   );
 }

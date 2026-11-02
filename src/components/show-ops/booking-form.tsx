@@ -57,7 +57,7 @@ import {
   showOpsRunNights,
 } from "@/lib/show-ops/nights";
 import {
-  SHOW_OPS_PAYMENT_METHODS,
+  SHOW_OPS_PAYMENT_METHOD_CHOICES,
   SHOW_OPS_PAYMENT_METHOD_LABELS,
   type ShowOpsBookingQuestion,
   type ShowOpsConfig,
@@ -159,6 +159,8 @@ export type BookingFormDefaults = {
   office_comments?: string | null;
   office_only_comments?: string | null;
   billing_mode?: "deposit" | "invoice";
+  /** Edit only: what the guest has already paid (payments ledger), for "Total pending". */
+  paid_so_far?: number | null;
   custom_answers?: Record<string, string | boolean | number>;
   attendees?: Array<{
     name?: string | null;
@@ -352,10 +354,17 @@ export function ShowOpsBookingForm({
   const [privateZone, setPrivateZone] = useState(defaults.private_zone ?? "");
   const [noEmail, setNoEmail] = useState(false);
   const [amountPaid, setAmountPaid] = useState("");
+  const [roundUpDeposit, setRoundUpDeposit] = useState(() =>
+    Boolean(defaults.pricing_snapshot?.deposit_round_up),
+  );
   const [paymentMethod, setPaymentMethod] = useState(
     defaults.payment_method ?? "",
   );
-  const [dietary, setDietary] = useState(Boolean(defaults.dietary_required));
+  // Dietary is a required Yes / No. A new booking starts unanswered; an edit
+  // starts on whatever was saved.
+  const [dietary, setDietary] = useState<boolean | null>(() =>
+    mode === "edit" ? Boolean(defaults.dietary_required) : null,
+  );
   const [adults, setAdults] = useState(defaults.adults ?? 2);
   const [children, setChildren] = useState(defaults.children ?? 0);
   const [infants, setInfants] = useState(defaults.infants ?? 0);
@@ -781,6 +790,7 @@ export function ShowOpsBookingForm({
         extras: extraLines,
         rateCard,
         frozen,
+        roundUpDeposit,
       }),
     [
       adults,
@@ -794,12 +804,29 @@ export function ShowOpsBookingForm({
       extraLines,
       rateCard,
       frozen,
+      roundUpDeposit,
     ],
   );
-  /** MHT's own reception desks take whatever the guest pays; the balance is total − paid. */
+  /*
+   * MHT's own direct sales (MHT Reception / MHT Direct): no % deposit, the guest
+   * pays what they pay and the balance is total − paid. On an edit, "paid" is
+   * every payment taken so far; more go on top with Add payment.
+   */
   const reception = isReceptionPartner(supplier?.partner_type);
-  const receptionPaid = Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
-  const receptionBalance = Math.max(0, money.total_cost - receptionPaid);
+  const paidSoFar = mode === "edit" ? Math.max(0, Number(defaults.paid_so_far) || 0) : 0;
+  const receptionPaid =
+    mode === "edit"
+      ? paidSoFar
+      : Math.min(Math.max(0, Number(amountPaid) || 0), money.total_cost);
+  const receptionBalance = round2(Math.max(0, money.total_cost - receptionPaid));
+  /*
+   * "Total pending": what the guest still owes after the deposit. On an edit
+   * where payments were already taken, it is the total minus what was paid.
+   */
+  const showPending = money.billing_mode === "deposit" && !reception;
+  const totalPending = round2(
+    Math.max(0, money.total_cost - (paidSoFar > 0 ? paidSoFar : money.deposit_amount)),
+  );
   // What the money above was actually priced at — card, master or the frozen original.
   const unit = money.pricing_snapshot;
   // The bus supplement only exists as a separate line when the price came from the master list.
@@ -852,18 +879,43 @@ export function ShowOpsBookingForm({
   return (
     <form
       className="mt-6 space-y-4"
+      noValidate
+      onKeyDown={enterToNextField}
       onSubmit={(e) => {
         e.preventDefault();
         if (extrasPreview.error) {
           setMsg(extrasPreview.error);
           return;
         }
-        if (adults + children + infants < 1) {
-          setMsg("Add at least one guest — a booking can't be for 0 people.");
+        // Required fields, in the order they sit on the form. The first one
+        // missing stops the save and takes the desk straight back to it.
+        const fdCheck = new FormData(e.currentTarget);
+        const guestName = String(fdCheck.get("guest_name") ?? "").trim();
+        const dietaryText = [
+          ...fdCheck.getAll("dietary_option").map(String),
+          String(fdCheck.get("dietary_notes") ?? ""),
+        ]
+          .join(" ")
+          .trim();
+        const missing: Array<[boolean, string, string]> = [
+          [islands.length > 1 && !island && !product?.island, "bf-island", `Choose the ${config.location_label.toLowerCase()}.`],
+          [!showDate, "bf-date", "Choose the date."],
+          [!productId, "bf-show", "Choose the show."],
+          [adults + children + infants < 1, "bf-pax", "Add at least one guest — a booking can't be for 0 people."],
+          [!sellerMode && !supplierId, "bf-partner", "Choose the partner / supplier."],
+          [!guestName, "bf-name", "Type the lead booking name."],
+          [!hotelId, "bf-hotel", "Choose the guest's hotel, or Private if they're not at a listed hotel."],
+          [dietary === null, "bf-dietary", "Answer Yes or No for dietary requirements."],
+          [dietary === true && !dietaryText, "bf-dietary-notes", "Type the dietary requirements (or choose No)."],
+        ];
+        const firstMissing = missing.find(([isMissing]) => isMissing);
+        if (firstMissing) {
+          setMsg(firstMissing[2]);
+          jumpToField(firstMissing[1]);
           return;
         }
-        if (!hotelId) {
-          setMsg("Choose the guest's hotel, or Private if they're not at a listed hotel.");
+        if (!e.currentTarget.checkValidity()) {
+          e.currentTarget.reportValidity();
           return;
         }
         if (noShowOnDate) {
@@ -928,11 +980,15 @@ export function ShowOpsBookingForm({
               dueLabel:
                 money.billing_mode === "invoice"
                   ? "Nett to invoice"
-                  : "Deposit to collect",
+                  : reception
+                    ? "Total pending"
+                    : "Deposit to collect",
               dueAmount: moneyFmt(
                 money.billing_mode === "invoice"
                   ? money.nett_total
-                  : money.deposit_amount,
+                  : reception
+                    ? receptionBalance
+                    : money.deposit_amount,
               ),
             });
             router.refresh();
@@ -987,12 +1043,12 @@ export function ShowOpsBookingForm({
         </p>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-3 xl:items-start">
         {/* ── 1 · The show ─────────────────────────────── */}
         <StepColumn step={1} label={`${config.location_label}, date, ticket`}>
           {islands.length > 1 ? (
             <>
-              <FieldLabel>{config.location_label}</FieldLabel>
+              <FieldLabel id="bf-island" required>{config.location_label}</FieldLabel>
               <select
                 value={island}
                 onChange={(e) => {
@@ -1023,7 +1079,7 @@ export function ShowOpsBookingForm({
             </>
           ) : null}
 
-          <FieldLabel className={islands.length > 1 ? "mt-4" : ""}>
+          <FieldLabel id="bf-date" required className={islands.length > 1 ? "mt-4" : ""}>
             Date
           </FieldLabel>
           {!nights.length && !customDate ? (
@@ -1111,7 +1167,7 @@ export function ShowOpsBookingForm({
             </div>
           ) : null}
 
-          <FieldLabel className="mt-4">Show</FieldLabel>
+          <FieldLabel id="bf-show" required className="mt-4">Show</FieldLabel>
           <select
             name="product_id"
             required
@@ -1188,7 +1244,7 @@ export function ShowOpsBookingForm({
             </label>
           ) : null}
 
-          <FieldLabel className="mt-4">Adults</FieldLabel>
+          <FieldLabel id="bf-pax" required className="mt-4">Adults</FieldLabel>
           <Stepper
             name="adults"
             value={adults}
@@ -1356,7 +1412,7 @@ export function ShowOpsBookingForm({
             </>
           ) : (
             <>
-              <FieldLabel className="mt-4">Partner / supplier</FieldLabel>
+              <FieldLabel id="bf-partner" required className="mt-4">Partner / supplier</FieldLabel>
               <SearchableSelect
                 name="supplier_id"
                 value={supplierId}
@@ -1434,12 +1490,18 @@ export function ShowOpsBookingForm({
                 </span>
               </div>
             ) : null}
+            {reception && money.billing_mode !== "invoice" && receptionPaid > 0 ? (
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-slate-600">{mode === "edit" ? "Paid so far" : "Paid now"}</span>
+                <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(receptionPaid)}</span>
+              </div>
+            ) : null}
             <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-1.5">
               <span className="font-semibold text-slate-900">
                 {money.billing_mode === "invoice"
                   ? "Nett to invoice"
                   : reception
-                    ? "Balance due"
+                    ? "Total pending"
                     : "Deposit to collect"}
               </span>
               <span
@@ -1455,9 +1517,45 @@ export function ShowOpsBookingForm({
                 )}
               </span>
             </div>
+            {!sellerMode && !reception && money.billing_mode === "deposit" ? (
+              <label className="mt-1 flex items-start gap-2 text-sm text-slate-700">
+                {moneyLocked ? null : (
+                  <input type="hidden" name="deposit_round_up_field" value="1" />
+                )}
+                <input
+                  type="checkbox"
+                  name="deposit_round_up"
+                  value="1"
+                  checked={roundUpDeposit}
+                  disabled={moneyLocked}
+                  onChange={(e) => setRoundUpDeposit(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Round up deposit
+                  <span className="block text-xs text-slate-500">
+                    Rounds the deposit up to the next whole euro (e.g. 29.40 becomes 30.00).
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {showPending ? (
+              <>
+                {paidSoFar > 0 ? (
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-slate-600">Paid so far</span>
+                    <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(paidSoFar)}</span>
+                  </div>
+                ) : null}
+                <div className="flex items-baseline justify-between gap-2 border-t border-slate-200 pt-1.5">
+                  <span className="font-semibold text-slate-900">Total pending</span>
+                  <span className="text-lg font-semibold tabular-nums text-rose-700">{moneyFmt(totalPending)}</span>
+                </div>
+              </>
+            ) : null}
             {reception && money.billing_mode !== "invoice" && mode === "create" ? (
               <div className="mt-2">
-                <FieldLabel>Amount paid by guest (€)</FieldLabel>
+                <FieldLabel>Amount paid by guest ({moneyFmt(0).replace(/[\d.,\s]/g, "") || "€"})</FieldLabel>
                 <input
                   type="number"
                   name="amount_paid"
@@ -1470,7 +1568,7 @@ export function ShowOpsBookingForm({
                   className={INPUT}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Reception booking: type what the guest actually paid, not a % deposit. The balance goes on the night list.
+                  Direct booking: no deposit. Type what the guest actually paid; the rest shows as pending on the booking and the night list. More payments can be added later.
                 </p>
               </div>
             ) : null}
@@ -1487,11 +1585,17 @@ export function ShowOpsBookingForm({
                 aria-label="Paid by"
               >
                 <option value="">—</option>
-                {SHOW_OPS_PAYMENT_METHODS.map((m) => (
+                {SHOW_OPS_PAYMENT_METHOD_CHOICES.map((m) => (
                   <option key={m} value={m}>
                     {SHOW_OPS_PAYMENT_METHOD_LABELS[m]}
                   </option>
                 ))}
+                {paymentMethod &&
+                !(SHOW_OPS_PAYMENT_METHOD_CHOICES as string[]).includes(paymentMethod) ? (
+                  <option value={paymentMethod}>
+                    {(SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[paymentMethod] ?? paymentMethod}
+                  </option>
+                ) : null}
               </select>
             </>
           )}
@@ -1525,13 +1629,16 @@ export function ShowOpsBookingForm({
           ) : null}
         </StepColumn>
 
+        {/* Columns 2 + 3, with the summary and price breakdown stacked in the
+            space under them so the page does not need a long scroll. */}
+        <div className="grid gap-4 xl:col-span-2 xl:grid-cols-2 xl:items-start">
         {/* ── 2 · Attendees ────────────────────────────── */}
         <StepColumn
           step={2}
           label="Attendees"
           note={paxSlots ? `${paxSlots} of ${paxSlots}` : undefined}
         >
-          <FieldLabel>Lead booking name</FieldLabel>
+          <FieldLabel id="bf-name" required>Lead booking name</FieldLabel>
           <input
             name="guest_name"
             required
@@ -1541,7 +1648,7 @@ export function ShowOpsBookingForm({
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             <div>
               <FieldLabel>Mobile</FieldLabel>
-              <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} className={INPUT} />
+              <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} defaultCode="44" placeholder="7700 900123" className={INPUT} />
             </div>
             <div>
               <FieldLabel>Email</FieldLabel>
@@ -1642,16 +1749,36 @@ export function ShowOpsBookingForm({
             </div>
           ) : null}
 
-          <label className="mt-4 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              name="dietary_required"
-              value="1"
-              checked={dietary}
-              onChange={(e) => setDietary(e.target.checked)}
-            />
-            Dietary restriction on this booking
-          </label>
+          <fieldset className="mt-4">
+            <FieldLabel id="bf-dietary" required>
+              Dietary requirements?
+            </FieldLabel>
+            <div className="flex gap-2">
+              {([
+                [true, "Yes"],
+                [false, "No"],
+              ] as const).map(([val, label]) => (
+                <label
+                  key={label}
+                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                    dietary === val
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 bg-white text-slate-800"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="dietary_required"
+                    value={val ? "1" : "0"}
+                    checked={dietary === val}
+                    onChange={() => setDietary(val)}
+                    className="sr-only"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {dietary &&
           config.dietary_mode === "options" &&
           config.dietary_options.length ? (
@@ -1675,6 +1802,7 @@ export function ShowOpsBookingForm({
                 ))}
               </div>
               <input
+                id="bf-dietary-notes"
                 name="dietary_notes"
                 defaultValue=""
                 placeholder="Extra notes"
@@ -1686,10 +1814,11 @@ export function ShowOpsBookingForm({
           (config.dietary_mode !== "options" ||
             !config.dietary_options.length) ? (
             <input
+              id="bf-dietary-notes"
               name="dietary_notes"
               defaultValue={defaults.dietary_notes ?? ""}
               className={`${INPUT} mt-2`}
-              placeholder="e.g. 1x gluten free, child nut allergy"
+              placeholder="Type the dietary requirements, e.g. 1x gluten free, child nut allergy"
             />
           ) : null}
           {config.booking_questions.map((q) => (
@@ -1701,7 +1830,7 @@ export function ShowOpsBookingForm({
 
         {/* ── 3 · Pick-up ──────────────────────────────── */}
         <StepColumn step={3} label="Pick-up">
-          <FieldLabel>Hotel</FieldLabel>
+          <FieldLabel id="bf-hotel" required>Hotel</FieldLabel>
           <SearchableSelect
             name="hotel_id"
             value={hotelId}
@@ -1926,10 +2055,9 @@ export function ShowOpsBookingForm({
             </>
           )}
         </StepColumn>
-      </div>
 
       {/* ── Summary + price breakdown ─────────────────── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:col-span-2 xl:grid-cols-1">
         <div className="rounded-2xl bg-slate-900 p-5 text-sm text-white">
           <h3 className="font-semibold">Booking summary</h3>
           <dl className="mt-3 space-y-2">
@@ -2064,7 +2192,7 @@ export function ShowOpsBookingForm({
               {money.billing_mode === "invoice"
                 ? "Nett to invoice"
                 : reception
-                  ? "Balance due"
+                  ? "Total pending"
                   : "Deposit to collect"}
             </span>
             <span
@@ -2080,6 +2208,25 @@ export function ShowOpsBookingForm({
               )}
             </span>
           </div>
+          {showPending ? (
+            <div className="mt-2 space-y-1 px-3">
+              {paidSoFar > 0 ? (
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="text-slate-600">Paid so far</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(paidSoFar)}</span>
+                </div>
+              ) : null}
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-slate-900">
+                  Total pending
+                  <span className="block text-xs font-normal text-slate-500">
+                    {paidSoFar > 0 ? "Total minus what has been paid" : "Total minus the deposit"}
+                  </span>
+                </span>
+                <span className="text-lg font-semibold tabular-nums text-rose-700">{moneyFmt(totalPending)}</span>
+              </div>
+            </div>
+          ) : null}
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
             Once confirmed, the booking appears in that night&apos;s lists
             {money.billing_mode === "invoice"
@@ -2087,23 +2234,22 @@ export function ShowOpsBookingForm({
               : " and on the bus board."}
           </p>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+      {/* Cancel + Confirm sit in the space under the price breakdown. */}
+      <div className="grid grid-cols-2 gap-3 lg:col-span-2 xl:col-span-1">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+          className="flex items-center justify-center rounded-2xl bg-white px-4 py-5 text-xl font-bold text-slate-700 shadow-md ring-1 ring-slate-200 hover:bg-slate-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={pending || Boolean(extrasPreview.error)}
-          className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+          className="flex items-center justify-center gap-3 rounded-2xl px-4 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
-          <Check className="h-4 w-4" aria-hidden />
+          <Check className="h-7 w-7" aria-hidden />
           {pending
             ? "Saving…"
             : mode === "edit"
@@ -2111,6 +2257,10 @@ export function ShowOpsBookingForm({
               : "Confirm booking"}
         </button>
       </div>
+      </div>
+        </div>
+      </div>
+
     </form>
   );
 }
@@ -2122,17 +2272,83 @@ const ACCENT = "var(--show-ops-primary,#7c3aed)";
 function FieldLabel({
   children,
   className = "",
+  id,
+  required = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  /** Lets the save check scroll back to this field when it is missing. */
+  id?: string;
+  /** Shows a red asterisk: the booking cannot be saved without this field. */
+  required?: boolean;
 }) {
   return (
     <p
-      className={`mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
+      id={id}
+      className={`mb-1 scroll-mt-24 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
     >
       {children}
+      {required ? (
+        <span className="ml-0.5 text-rose-600" aria-hidden="true">
+          *
+        </span>
+      ) : null}
     </p>
   );
+}
+
+const NEXT_FIELD_SELECTOR =
+  'input:not([type=hidden]):not([disabled]):not([tabindex="-1"]),select:not([disabled]),textarea:not([disabled]),button[aria-haspopup]:not([disabled])';
+
+/**
+ * Enter in a box moves the cursor to the next field instead of saving the
+ * booking (Joel, 2 Nov). Buttons and long-text boxes keep their own Enter, and
+ * pickers that already use Enter (the search lists) stop it before it gets here.
+ */
+function enterToNextField(e: React.KeyboardEvent<HTMLFormElement>) {
+  if (e.key !== "Enter" || e.defaultPrevented || e.nativeEvent.isComposing) return;
+  if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  const el = e.target as HTMLElement;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement)) return;
+  if (el instanceof HTMLInputElement && ["submit", "button", "reset"].includes(el.type)) return;
+  e.preventDefault();
+  const groupOf = (f: HTMLElement) =>
+    f instanceof HTMLInputElement && f.type === "radio" && f.name ? f.name : null;
+  const seenGroups = new Set<string>();
+  const fields = Array.from(
+    e.currentTarget.querySelectorAll<HTMLElement>(NEXT_FIELD_SELECTOR),
+  ).filter((f) => {
+    if (f !== el && f.getClientRects().length === 0 && !f.classList.contains("sr-only")) return false;
+    // One stop per Yes / No group: the box Enter was pressed in, or the group's first option.
+    const group = groupOf(f);
+    if (!group) return true;
+    if (group === groupOf(el)) return f === el;
+    if (seenGroups.has(group)) return false;
+    seenGroups.add(group);
+    return true;
+  });
+  const at = fields.indexOf(el);
+  if (at >= 0) fields[at + 1]?.focus();
+}
+
+/** Scroll to a field's label and put the cursor in the field under it. */
+function jumpToField(id: string) {
+  if (typeof document === "undefined") return;
+  const label = document.getElementById(id);
+  if (!label) return;
+  label.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (label.matches("input,select,textarea")) {
+    label.focus({ preventScroll: true });
+    return;
+  }
+  const next = label.nextElementSibling as HTMLElement | null;
+  const target =
+    next && next.matches("input,select,textarea,button")
+      ? next
+      : (next?.querySelector<HTMLElement>(
+          "input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea,button:not([disabled])",
+        ) ?? null);
+  target?.focus({ preventScroll: true });
 }
 
 function StepColumn({
@@ -2148,14 +2364,14 @@ function StepColumn({
 }) {
   return (
     <div>
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-3">
         <span
-          className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-white"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
           style={{ backgroundColor: ACCENT }}
         >
           {step}
         </span>
-        <span className="text-sm font-semibold text-slate-900">{label}</span>
+        <span className="text-2xl font-bold text-slate-900">{label}</span>
       </div>
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80">
         <div className="mb-3 flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
