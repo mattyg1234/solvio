@@ -155,7 +155,8 @@ export function isFailedPayment(subject: string): boolean {
  * stop-sale and availability notices, auto-replies. Everything else from a tracked sender is read.
  */
 const NOISE = [
-  /\b(verification|login|log-in|sign-?in|security)\s+code\b|\bis your code\b|\bpassword\b/i,
+  /\b(verification|login|log-in|sign-?in|security)\s+(code|link)\b|\bis your code\b|\bpassword\b/i,
+  /\bpayouts?\b|\bbank account\b|\baction required\b|\binvoice\b.*\bavailable\b/i,
   /\breports?\b.*\b(transactions?|sales|payouts?)\b|\b(transactions?|sales|payouts?)\b.*\breports?\b/i,
   /\byesterday'?s\b.*\borders\b|\bdaily (summary|digest|report)\b|\bweekly (summary|digest|report)\b/i,
   /\[sales stopped\]|\bstop[- ]?sales?\b|\bavailability expires\b/i,

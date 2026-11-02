@@ -144,6 +144,10 @@ test("partner subjects that were wrongly set aside now count as bookings; noise 
   }
   for (const s of [
     "Your Tiqets verification code",
+    "Your Stripe verification link",
+    "Your €1,242.53 payout for MHT Shows Tenerife SL is on the way",
+    "Bank account updated for MHT Roadshow",
+    "Action required to resume payouts from your Stripe balance",
     "997867  is your code for Login",
     "Account transactions reports for Web and POS",
     "Yesterday's WooCommerce Orders",
