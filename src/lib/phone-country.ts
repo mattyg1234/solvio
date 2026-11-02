@@ -79,9 +79,34 @@ export function flagOf(iso: string): string {
 }
 
 function compact(raw: string): string {
-  let s = raw.trim().replace(/[\s().\-/]/g, "");
-  if (s.startsWith("00")) s = `+${s.slice(2)}`;
+  // "(0)" is the UK-style trunk-zero note in "+44 (0) 7778 877…": never part of the number.
+  let s = raw.trim().replace(/\(0\)/g, "").replace(/[\s().\-/]/g, "");
+  if (looksInternational00(s)) s = `+${s.slice(2)}`;
   return s;
+}
+
+/**
+ * "00" is the international prefix only when a full number (11+ digits) follows it (0044
+ * 7778 877 123). "00 7778 877" is just extra zeros typed in front of the
+ * number, which are dropped like a trunk 0.
+ */
+function looksInternational00(s: string): boolean {
+  return /^00\d{11,}$/.test(s);
+}
+
+/** True when what was typed in the number box carries its own country code (+44…, 0044…). */
+export function typedWithCountryCode(raw: string): boolean {
+  const s = raw.trim().replace(/\(0\)/g, "").replace(/[\s().\-/]/g, "");
+  return s.startsWith("+") || looksInternational00(s);
+}
+
+/**
+ * Leading zeros typed after the country code (07…, 007…, (0) 7…) are dropped,
+ * so 07778… and 7778… save the same. Italy keeps its 0: it is part of the number.
+ */
+export function dropTrunkZero(code: string, rest: string): string {
+  if (String(code ?? "").replace(/\D/g, "") === "39") return rest;
+  return rest.replace(/^\s*(\(0\)\s*)?0*\s*/, "");
 }
 
 /**
@@ -103,7 +128,7 @@ export function splitPhone(raw: string | null | undefined, fallbackIso = "ES"): 
   if (!/^\d+$/.test(digits)) return { iso: fallbackIso, rest: typed };
   const code = CODES_LONGEST_FIRST.find((c) => digits.startsWith(c));
   if (!code) return { iso: fallbackIso, rest: typed };
-  return { iso: BY_CODE.get(code)!.iso, rest: digits.slice(code.length) };
+  return { iso: BY_CODE.get(code)!.iso, rest: dropTrunkZero(code, digits.slice(code.length)) };
 }
 
 /**
@@ -117,12 +142,11 @@ export function joinPhone(iso: string, rest: string): string {
   if (!typed) return "";
   if (/[a-z]/i.test(typed)) return typed;
   const s = compact(typed);
-  if (s.startsWith("+")) return `+${s.slice(1).replace(/\D/g, "")}`;
-  let digits = s.replace(/\D/g, "");
+  if (s.startsWith("+")) return withCountryCode(s);
+  const digits = s.replace(/\D/g, "");
   if (!digits) return typed;
   const { code } = phoneCountry(iso);
-  if (code !== "39") digits = digits.replace(/^0/, "");
-  return `+${code}${digits}`;
+  return `+${code}${dropTrunkZero(code, digits)}`;
 }
 
 /**
@@ -162,9 +186,17 @@ export function joinPhoneCode(code: string, rest: string): string {
   if (country) return joinPhone(country.iso, typed);
   if (/[a-z]/i.test(typed)) return typed;
   const s = compact(typed);
-  if (s.startsWith("+")) return `+${s.slice(1).replace(/\D/g, "")}`;
-  const digits = s.replace(/\D/g, "");
+  if (s.startsWith("+")) return withCountryCode(s);
   const cc = String(code ?? "").replace(/\D/g, "");
+  const digits = dropTrunkZero(cc, s.replace(/\D/g, ""));
   if (!digits) return typed;
   return cc ? `+${cc}${digits}` : digits;
+}
+
+/** "+440777…" (compacted) → "+44777…": a known code loses the trunk 0 after it. */
+function withCountryCode(s: string): string {
+  const digits = s.slice(1).replace(/\D/g, "");
+  const code = CODES_LONGEST_FIRST.find((c) => digits.startsWith(c));
+  if (!code) return `+${digits}`;
+  return `+${code}${dropTrunkZero(code, digits.slice(code.length))}`;
 }
