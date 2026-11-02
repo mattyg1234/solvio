@@ -153,7 +153,6 @@ export function BookingsDeskTable({
               <th className="px-1.5 py-2 text-right">Paid</th>
               <SortTh col={sort.outstanding} label="Outstanding" right />
               <th className="px-1.5 py-2">Status</th>
-              <th className="px-1.5 py-2">Door</th>
               <SortTh col={sort.supplier} label="Supplier" />
               <th className="px-1.5 py-2" />
             </tr>
@@ -169,7 +168,7 @@ export function BookingsDeskTable({
             ))}
             {!rows.length ? (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
                   No bookings in this window.
                 </td>
               </tr>
@@ -295,7 +294,7 @@ function DateGroup({
   return (
     <>
       <tr className="sticky top-9 z-10 bg-slate-100/95">
-        <td colSpan={15} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+        <td colSpan={14} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
           {group.dayName ? `${group.dayName} · ` : ""}
           {group.date}
           <span className="ml-2 font-normal normal-case text-slate-500">
@@ -326,9 +325,6 @@ function BookingRows({
           "cursor-pointer border-b border-slate-100 hover:bg-slate-50",
           row.cancelled && "text-slate-400 line-through",
           open && "bg-teal-50/40 hover:bg-teal-50/40",
-          !row.cancelled && row.arrival.status === "partial" && !open && "bg-amber-50/70",
-          !row.cancelled && row.arrival.status === "all_in" && !open && "bg-emerald-50/40",
-          !row.cancelled && row.arrival.status === "absent" && !open && "bg-slate-100 text-slate-500",
         )}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("a,button,form,input,select,textarea,label")) return;
@@ -375,22 +371,8 @@ function BookingRows({
           )}
         </td>
         <td className="px-1.5 py-2 whitespace-nowrap">
+          {/* Who showed up lives on Night lists and Door only (Matty, 2 Nov 2026). */}
           <span className="font-medium text-slate-900">{row.pax}</span>
-          {row.arrival.status === "pending" ? (
-            <span className="block text-[11px] text-slate-400">not marked</span>
-          ) : (
-            <span
-              className={cn(
-                "block text-[11px] font-semibold",
-                row.arrival.status === "partial" && "text-amber-800",
-                row.arrival.status === "all_in" && "text-emerald-800",
-                row.arrival.status === "absent" && "text-rose-700",
-              )}
-            >
-              {row.arrival.shortLabel}
-              {row.arrival.status === "partial" && row.arrival.missing ? ` · ${row.arrival.missing} missing` : ""}
-            </span>
-          )}
         </td>
         <td className="px-1.5 py-2 text-right tabular-nums">{row.price}</td>
         <td className="px-1.5 py-2 text-right tabular-nums">{row.paid}</td>
@@ -406,7 +388,6 @@ function BookingRows({
           </span>
           {row.diet ? <span className="mt-1 block text-[11px] text-amber-800">{row.diet}</span> : null}
         </td>
-        <td className="px-1.5 py-2 whitespace-nowrap text-xs">{row.doorLabel}</td>
         <td className="px-1.5 py-2">{row.supplier ?? "—"}</td>
         <td className="px-1.5 py-2 text-right">
           <Link
@@ -419,7 +400,7 @@ function BookingRows({
       </tr>
       {open ? (
         <tr className="border-b border-slate-200 bg-slate-50/80">
-          <td colSpan={15} className="px-4 py-4">
+          <td colSpan={14} className="px-4 py-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Detail label="Mobile" value={row.guestMobile} />
               <Detail label="Email" value={row.guestEmail} />
@@ -430,7 +411,6 @@ function BookingRows({
               <Detail label="Billing" value={`${row.billing} · deposit ${row.deposit}`} />
               <Detail label="Paid by" value={row.paymentMethod} />
               <Detail label="Diet" value={row.diet} className="sm:col-span-2" />
-              <Detail label="Showed up" value={row.arrival.status === "pending" ? "Not marked yet" : row.arrival.doorLabel + (row.arrival.status === "partial" && row.arrival.missing ? ` · ${row.arrival.missing} missing` : "")} />
               <Detail label="Office notes" value={row.comments} className="sm:col-span-2" />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">

@@ -10,8 +10,7 @@ import {
   updateBookingAction,
 } from "@/app/dashboard/show-ops/actions";
 import { AddPaymentButton } from "@/components/show-ops/add-payment-button";
-import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
+import { TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { SendBookingToChat } from "@/components/show-ops/chat/send-booking-to-chat";
@@ -20,11 +19,8 @@ import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { recordedPaid } from "@/lib/show-ops/booking-paid";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
-  applyNoShowBilling,
   formatShowOpsMoney,
-  formatShowOpsPax,
   round2,
-  showOpsArrivalMark,
 } from "@/lib/show-ops/calc";
 import { defaultCancellationCharge, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { confirmationAvailableFor } from "@/lib/show-ops/confirmation-pdf";
@@ -159,23 +155,6 @@ export default async function EditBookingPage({
     (creator?.full_name && String(creator.full_name).trim()) ||
     creator?.email ||
     (booking.created_by ? `Account ${booking.created_by}` : "Imported / creator not recorded");
-  const arrival = showOpsArrivalMark({
-    adults: booking.adults,
-    children: booking.children,
-    infants: booking.infants,
-    arrivedPax: booking.arrived_pax,
-    arrivedAt: booking.arrived_at,
-    noShow: booking.no_show,
-  });
-  const billed = applyNoShowBilling({
-    booked: arrival.booked,
-    arrived: arrival.arrived,
-    totalCost: Number(booking.total_cost),
-    nettTotal: Number(booking.nett_total),
-    adultNettTotal: Number(booking.adult_nett_total),
-    childNettTotal: Number(booking.child_nett_total),
-    charge: booking.no_show_charge,
-  });
   /*
    * Payments box: what the guest has paid and what is still owed. The ledger is
    * the record of every payment; a booking with no ledger rows falls back to the
@@ -396,63 +375,7 @@ export default async function EditBookingPage({
             </p>
           )}
         </section>
-        {booking.cancelled_at ? null : (
-          <div
-            className={`mt-4 rounded-xl px-4 py-3 ring-1 ${
-              arrival.status === "partial"
-                ? "bg-amber-50 ring-amber-200"
-                : arrival.status === "all_in"
-                  ? "bg-emerald-50 ring-emerald-200"
-                  : arrival.status === "absent"
-                    ? "bg-slate-100 ring-slate-200"
-                    : "bg-slate-50 ring-slate-200"
-            }`}
-          >
-            <p className="text-sm font-semibold text-slate-900">
-              Who showed up
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Booked{" "}
-              {formatShowOpsPax(
-                booking.adults,
-                booking.children,
-                booking.infants,
-              )}{" "}
-              ({arrival.booked} people). This does not change show capacity — it
-              is the door count. Invoice / commission follow Charge or Write
-              off.
-            </p>
-            <p className="mt-1 text-sm font-medium text-slate-800">
-              {arrival.status === "pending"
-                ? "Not marked yet."
-                : arrival.doorLabel}
-              {arrival.status === "partial" && arrival.missing
-                ? ` · ${arrival.missing} missing`
-                : ""}
-              {billed.invoiceNote ? ` · ${billed.invoiceNote}` : ""}
-            </p>
-            <div className="mt-3">
-              <ArrivalPaxForm
-                key={`${booking.id}:${arrival.arrived}`}
-                bookingId={booking.id}
-                mark={arrival}
-              />
-            </div>
-            <NoShowDecisionForm
-              bookingId={booking.id}
-              charge={
-                booking.no_show_charge === "write_off" ||
-                booking.no_show_charge === "charge"
-                  ? booking.no_show_charge
-                  : null
-              }
-              missing={arrival.missing ?? 0}
-              booked={arrival.booked}
-              invoiced={Boolean(booking.invoice_id)}
-              proofUrl={proofUrl}
-            />
-          </div>
-        )}
+        {/* Who showed up is marked on Night lists and Door only (Matty, 2 Nov 2026). */}
         {booking.cancelled_at ? null : (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
             <span className="text-sm font-semibold text-slate-900">Ticket photo</span>

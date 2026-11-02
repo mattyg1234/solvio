@@ -2148,10 +2148,10 @@ export function ShowOpsBookingForm({
         <button
           type="submit"
           disabled={pending || Boolean(extrasPreview.error)}
-          className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+          className="flex items-center gap-3 rounded-2xl px-12 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
-          <Check className="h-4 w-4" aria-hidden />
+          <Check className="h-7 w-7" aria-hidden />
           {pending
             ? "Saving…"
             : mode === "edit"
