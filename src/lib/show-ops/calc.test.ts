@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   computeBookingMoney,
+  depositAmountFor,
   unitNettRoundedUp,
   formatShowOpsDoorTime,
   formatShowOpsMoney,
@@ -426,8 +427,7 @@ test("invoice nett follows the bus supplement through the partner percentage", (
   assert.equal(money.nett_total, 100.3); // 85% of 118
 });
 
-test("round up: the partner's commission per ticket rounds up to the whole euro, nett drops by the pennies", () => {
-  // 49 at 70% nett = 34.30 nett, 14.70 commission → commission 15, nett 34.00
+test("partner commission round-up is gone: a partner still ticked no longer changes new prices", () => {
   const money = computeBookingMoney({
     adults: 2,
     children: 0,
@@ -436,17 +436,43 @@ test("round up: the partner's commission per ticket rounds up to the whole euro,
     supplier: { billing_mode: "invoice", deposit_percent: 0, invoice_nett_percent: 70, round_up: true },
   });
   assert.equal(money.total_cost, 98);
-  assert.equal(money.nett_total, 68);
-  assert.equal(money.pricing_snapshot.adult_nett_unit, 34);
-  assert.equal(money.pricing_snapshot.round_up, true);
-  // Joel's example: a 10.99 commission becomes 11.
+  assert.equal(money.nett_total, 68.6);
+  assert.equal(money.pricing_snapshot.round_up, undefined);
+  // The helper itself still works for bookings priced with it before.
   assert.equal(unitNettRoundedUp(36.63, 70, true), 25.63);
-  // A commission already whole stays put; the tick off changes nothing.
-  assert.equal(unitNettRoundedUp(50, 70, true), 35);
   assert.equal(unitNettRoundedUp(49, 70, false), 34.3);
-  const off = computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier: { billing_mode: "invoice", deposit_percent: 0, invoice_nett_percent: 70, round_up: false } });
-  assert.equal(off.nett_total, 68.6);
-  assert.equal(off.pricing_snapshot.round_up, undefined);
+});
+
+test("a booking priced with the old commission round-up keeps its frozen nett on edit", () => {
+  const first = computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier: { billing_mode: "invoice", deposit_percent: 0, invoice_nett_percent: 70 } });
+  const frozen = { ...first.pricing_snapshot, adult_nett_unit: 34, round_up: true, priced_at: "2026-10-01T10:00:00Z" };
+  const edit = computeBookingMoney({ adults: 3, children: 0, infants: 0, product: CANARIES_SHOW, supplier: { billing_mode: "invoice", deposit_percent: 0, invoice_nett_percent: 70 }, frozen });
+  assert.equal(edit.nett_total, 102);
+  assert.equal(edit.pricing_snapshot.round_up, true);
+});
+
+test("round up deposit: the deposit rounds up to the whole euro and is remembered on the snapshot", () => {
+  // 49 + 49 = 98 at 30% = 29.40 deposit → 30
+  const supplier = { billing_mode: "deposit" as const, deposit_percent: 30, invoice_nett_percent: 100 };
+  const up = computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier, roundUpDeposit: true });
+  assert.equal(up.deposit_amount, 30);
+  assert.equal(up.total_cost, 98);
+  assert.equal(up.balance_remaining, 98);
+  assert.equal(up.pricing_snapshot.deposit_round_up, true);
+  const off = computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier });
+  assert.equal(off.deposit_amount, 29.4);
+  assert.equal(off.pricing_snapshot.deposit_round_up, undefined);
+  // An edit that does not say keeps the tick from the snapshot; unticking clears it.
+  const frozen = { ...up.pricing_snapshot, priced_at: "2026-11-02T10:00:00Z" };
+  assert.equal(computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier, frozen }).deposit_amount, 30);
+  assert.equal(computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier, frozen, roundUpDeposit: false }).deposit_amount, 29.4);
+  // Whole deposits stay put and a deposit never rounds past the total.
+  assert.equal(depositAmountFor(100, 30, true), 30);
+  assert.equal(depositAmountFor(10.5, 100, true), 10.5);
+  // Invoice bookings have no deposit to round.
+  const inv = computeBookingMoney({ adults: 2, children: 0, infants: 0, product: CANARIES_SHOW, supplier: { ...supplier, billing_mode: "invoice" }, roundUpDeposit: true });
+  assert.equal(inv.deposit_amount, 0);
+  assert.equal(inv.pricing_snapshot.deposit_round_up, undefined);
 });
 
 test("every booking priced through the desk carries a snapshot of its rates", () => {

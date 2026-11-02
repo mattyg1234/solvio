@@ -48,6 +48,20 @@ export const PHONE_COUNTRIES: readonly PhoneCountry[] = [
   { iso: "US", code: "1", name: "United States" },
   { iso: "UY", code: "598", name: "Uruguay" },
   { iso: "VE", code: "58", name: "Venezuela" },
+  { iso: "LV", code: "371", name: "Latvia" },
+  { iso: "LT", code: "370", name: "Lithuania" },
+  { iso: "EE", code: "372", name: "Estonia" },
+  { iso: "SK", code: "421", name: "Slovakia" },
+  { iso: "SI", code: "386", name: "Slovenia" },
+  { iso: "HR", code: "385", name: "Croatia" },
+  { iso: "BG", code: "359", name: "Bulgaria" },
+  { iso: "RS", code: "381", name: "Serbia" },
+  { iso: "CY", code: "357", name: "Cyprus" },
+  { iso: "MT", code: "356", name: "Malta" },
+  { iso: "TR", code: "90", name: "Turkey" },
+  { iso: "JP", code: "81", name: "Japan" },
+  { iso: "KR", code: "82", name: "South Korea" },
+  { iso: "SG", code: "65", name: "Singapore" },
 ];
 
 const BY_ISO = new Map(PHONE_COUNTRIES.map((c) => [c.iso, c]));
@@ -109,4 +123,48 @@ export function joinPhone(iso: string, rest: string): string {
   const { code } = phoneCountry(iso);
   if (code !== "39") digits = digits.replace(/^0/, "");
   return `+${code}${digits}`;
+}
+
+/**
+ * The typed country-code box (2 Nov 2026): the desk types the digits after the
+ * "+" and the flag follows. A code that is not in the list is still a valid
+ * code: it shows as "Other" and the number saves as typed.
+ */
+export function countryForCode(code: string): PhoneCountry | null {
+  const digits = String(code ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  // "+1" is shared by Canada and the US; the list's US entry wins, as before.
+  return BY_CODE.get(digits) ?? null;
+}
+
+/** A stored or pasted number → the typed code + the rest. Unknown codes guess a 3-digit code (most are). */
+export function splitPhoneCode(raw: string | null | undefined, fallbackCode = "34"): { code: string; rest: string } {
+  const typed = String(raw ?? "").trim();
+  if (!typed) return { code: fallbackCode, rest: "" };
+  const known = splitPhone(typed, "__");
+  if (known.iso !== "__") return { code: phoneCountry(known.iso).code, rest: known.rest };
+  const s = compact(typed);
+  if (s.startsWith("+") && /^\d{4,}$/.test(s.slice(1))) {
+    const digits = s.slice(1);
+    return { code: digits.slice(0, 3), rest: digits.slice(3) };
+  }
+  return { code: fallbackCode, rest: typed };
+}
+
+/**
+ * Typed code + number → "+37120000000". Known countries follow joinPhone (trunk
+ * 0 dropped except Italy); an unknown code keeps the number exactly as typed.
+ */
+export function joinPhoneCode(code: string, rest: string): string {
+  const typed = rest.trim();
+  if (!typed) return "";
+  const country = countryForCode(code);
+  if (country) return joinPhone(country.iso, typed);
+  if (/[a-z]/i.test(typed)) return typed;
+  const s = compact(typed);
+  if (s.startsWith("+")) return `+${s.slice(1).replace(/\D/g, "")}`;
+  const digits = s.replace(/\D/g, "");
+  const cc = String(code ?? "").replace(/\D/g, "");
+  if (!digits) return typed;
+  return cc ? `+${cc}${digits}` : digits;
 }

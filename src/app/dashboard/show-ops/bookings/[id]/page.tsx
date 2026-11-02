@@ -9,17 +9,18 @@ import {
   resendGuestTicketFormAction,
   updateBookingAction,
 } from "@/app/dashboard/show-ops/actions";
-import { ArrivalPaxForm } from "@/components/show-ops/arrival-pax-form";
-import { NoShowDecisionForm, TicketPhotoControl } from "@/components/show-ops/no-show-decision";
+import { AddPaymentButton } from "@/components/show-ops/add-payment-button";
+import { TicketPhotoControl } from "@/components/show-ops/no-show-decision";
 import { ShowOpsBookingForm } from "@/components/show-ops/booking-form";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { SendBookingToChat } from "@/components/show-ops/chat/send-booking-to-chat";
 import { canUseShowOpsChat } from "@/lib/show-ops/chat/logic";
-import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
+import { recordedPaid } from "@/lib/show-ops/booking-paid";
+import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
-  applyNoShowBilling,
-  formatShowOpsPax,
-  showOpsArrivalMark,
+  formatShowOpsMoney,
+  round2,
 } from "@/lib/show-ops/calc";
 import { defaultCancellationCharge, showOpsTodayIso } from "@/lib/show-ops/cancellation";
 import { confirmationAvailableFor } from "@/lib/show-ops/confirmation-pdf";
@@ -70,11 +71,12 @@ export default async function EditBookingPage({
     { data: creator },
     bookedDates,
     { data: history, error: historyError },
+    { data: paymentRows, error: paymentsError },
   ] = await Promise.all([
     ctx.supabase
       .from("show_suppliers")
       .select(
-        "id,name,billing_mode,deposit_percent,invoice_nett_percent,round_up,island,partner_type,can_choose_billing_mode,sale_rate_id",
+        "id,name,billing_mode,deposit_percent,invoice_nett_percent,island,partner_type,can_choose_billing_mode,sale_rate_id",
       )
       .eq("business_id", biz)
       .eq("active", true)
@@ -117,6 +119,12 @@ export default async function EditBookingPage({
         return { data: [], error: true };
       }
     })(),
+    ctx.supabase
+      .from("show_booking_payments")
+      .select("id,amount,method,paid_at,note,created_by")
+      .eq("business_id", biz)
+      .eq("booking_id", id)
+      .order("paid_at", { ascending: true }),
   ]);
 
   if (productsError)
@@ -147,23 +155,31 @@ export default async function EditBookingPage({
     (creator?.full_name && String(creator.full_name).trim()) ||
     creator?.email ||
     (booking.created_by ? `Account ${booking.created_by}` : "Imported / creator not recorded");
-  const arrival = showOpsArrivalMark({
-    adults: booking.adults,
-    children: booking.children,
-    infants: booking.infants,
-    arrivedPax: booking.arrived_pax,
-    arrivedAt: booking.arrived_at,
-    noShow: booking.no_show,
-  });
-  const billed = applyNoShowBilling({
-    booked: arrival.booked,
-    arrived: arrival.arrived,
-    totalCost: Number(booking.total_cost),
-    nettTotal: Number(booking.nett_total),
-    adultNettTotal: Number(booking.adult_nett_total),
-    childNettTotal: Number(booking.child_nett_total),
-    charge: booking.no_show_charge,
-  });
+  /*
+   * Payments box: what the guest has paid and what is still owed. The ledger is
+   * the record of every payment; a booking with no ledger rows falls back to the
+   * paid amount stored on the booking (imported bookings).
+   */
+  const currency = showOpsCurrencyFor(ctx.config, booking.island);
+  const fmt = (n: number) => formatShowOpsMoney(n, currency);
+  const payments = (paymentRows ?? []) as Array<{
+    id: string; amount: number | string; method: string; paid_at: string; note: string | null; created_by: string | null;
+  }>;
+  const payerIds = [...new Set(payments.map((p) => p.created_by).filter((v): v is string => Boolean(v)))];
+  const { data: payers } = payerIds.length
+    ? await ctx.supabase.from("profiles").select("id,full_name,email").in("id", payerIds)
+    : { data: [] as Array<{ id: string; full_name: string | null; email: string | null }> };
+  const payerName = new Map((payers ?? []).map((p) => [p.id, (p.full_name && p.full_name.trim()) || p.email || "Staff"]));
+  const isDeposit = booking.billing_mode === "deposit";
+  const totalCost = round2(Number(booking.total_cost) || 0);
+  const paidSoFar = payments.length
+    ? round2(payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0))
+    : recordedPaid(booking);
+  const outstanding = isDeposit ? round2(Math.max(0, totalCost - paidSoFar)) : 0;
+  const canTakePayment = isDeposit && !booking.cancelled_at && outstanding > 0 && roleAtLeast(ctx.role, "office");
+  const methodLabel = (m: string) =>
+    m === "import" ? "Paid before the Hub" : m === "stripe" ? "Online (card)" : (SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[m] ?? m;
+
   const requestPending = booking.cancel_request_status === "pending" && !booking.cancelled_at;
   let partnerPolicy: string | null = null;
   if (requestPending && booking.supplier_id) {
@@ -299,63 +315,67 @@ export default async function EditBookingPage({
             Saved.
           </p>
         ) : null}
-        {booking.cancelled_at ? null : (
-          <div
-            className={`mt-4 rounded-xl px-4 py-3 ring-1 ${
-              arrival.status === "partial"
-                ? "bg-amber-50 ring-amber-200"
-                : arrival.status === "all_in"
-                  ? "bg-emerald-50 ring-emerald-200"
-                  : arrival.status === "absent"
-                    ? "bg-slate-100 ring-slate-200"
-                    : "bg-slate-50 ring-slate-200"
-            }`}
-          >
-            <p className="text-sm font-semibold text-slate-900">
-              Who showed up
+        <section className="mt-4 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200" aria-label="Payments">
+          {isDeposit ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  <span className="text-slate-600">
+                    Total <span className="font-semibold tabular-nums text-slate-900">{fmt(totalCost)}</span>
+                  </span>
+                  <span className="text-slate-600">
+                    Deposit{" "}
+                    <span className="font-semibold tabular-nums text-slate-900">{fmt(Number(booking.deposit_amount) || 0)}</span>
+                    {booking.pricing_snapshot?.deposit_round_up ? <span className="text-xs text-slate-500"> (rounded up)</span> : null}
+                  </span>
+                  <span className="text-slate-600">
+                    Paid <span className="font-semibold tabular-nums text-slate-900">{fmt(paidSoFar)}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-right">
+                    <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Outstanding balance</span>
+                    <span className={`block text-xl font-bold tabular-nums ${outstanding > 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                      {outstanding > 0 ? fmt(outstanding) : "Paid in full"}
+                    </span>
+                  </span>
+                  {canTakePayment ? (
+                    <AddPaymentButton
+                      bookingId={booking.id}
+                      bookingRef={String(booking.booking_ref)}
+                      outstanding={outstanding}
+                      currency={currency}
+                    />
+                  ) : null}
+                </div>
+              </div>
+              {paymentsError ? (
+                <p role="alert" className="mt-2 text-sm text-rose-700">Payments could not be loaded. Refresh to try again.</p>
+              ) : payments.length ? (
+                <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100 text-sm">
+                  {payments.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                      <span className="text-slate-600">
+                        {formatBookingHistoryWhen(p.paid_at)} · {methodLabel(p.method)}
+                        {p.created_by ? ` · ${payerName.get(p.created_by) ?? "Staff"}` : ""}
+                        {p.note ? <span className="block text-xs text-slate-500">{p.note}</span> : null}
+                      </span>
+                      <span className="font-semibold tabular-nums text-slate-900">{fmt(Number(p.amount) || 0)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-slate-500">No payments recorded yet.</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-slate-700">
+              Invoice booking: billed to {booking.supplier_name || "the partner"} on their invoice (nett{" "}
+              <span className="font-semibold tabular-nums">{fmt(Number(booking.nett_total) || 0)}</span>). Nothing to collect from the guest.
             </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Booked{" "}
-              {formatShowOpsPax(
-                booking.adults,
-                booking.children,
-                booking.infants,
-              )}{" "}
-              ({arrival.booked} people). This does not change show capacity — it
-              is the door count. Invoice / commission follow Charge or Write
-              off.
-            </p>
-            <p className="mt-1 text-sm font-medium text-slate-800">
-              {arrival.status === "pending"
-                ? "Not marked yet."
-                : arrival.doorLabel}
-              {arrival.status === "partial" && arrival.missing
-                ? ` · ${arrival.missing} missing`
-                : ""}
-              {billed.invoiceNote ? ` · ${billed.invoiceNote}` : ""}
-            </p>
-            <div className="mt-3">
-              <ArrivalPaxForm
-                key={`${booking.id}:${arrival.arrived}`}
-                bookingId={booking.id}
-                mark={arrival}
-              />
-            </div>
-            <NoShowDecisionForm
-              bookingId={booking.id}
-              charge={
-                booking.no_show_charge === "write_off" ||
-                booking.no_show_charge === "charge"
-                  ? booking.no_show_charge
-                  : null
-              }
-              missing={arrival.missing ?? 0}
-              booked={arrival.booked}
-              invoiced={Boolean(booking.invoice_id)}
-              proofUrl={proofUrl}
-            />
-          </div>
-        )}
+          )}
+        </section>
+        {/* Who showed up is marked on Night lists and Door only (Matty, 2 Nov 2026). */}
         {booking.cancelled_at ? null : (
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
             <span className="text-sm font-semibold text-slate-900">Ticket photo</span>

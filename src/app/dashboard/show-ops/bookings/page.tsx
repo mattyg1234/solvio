@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BookingsDeskTable, type BookingsDeskRow, type BookingsDeskSort } from "@/components/show-ops/bookings-desk";
 import { ShowOpsLiveFilterForm } from "@/components/show-ops/live-filter-form";
 import { SHOW_OPS_GHOST_BTN, ShowOpsNewBookingButton, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
-import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import {
   addDaysIso,
   formatShowOpsMoney,
@@ -80,6 +80,7 @@ export default async function AllBookingsPage({
 }) {
   const sp = await searchParams;
   const ctx = await requireShowOpsPage("bookings");
+  const canTakePayments = roleAtLeast(ctx.role, "office");
   const money = (n: number, island?: string | null) => formatShowOpsMoney(n, showOpsCurrencyFor(ctx.config, island));
   const today = new Date().toISOString().slice(0, 10);
   const weekEnd = addDaysIso(today, 6);
@@ -240,6 +241,10 @@ export default async function AllBookingsPage({
       pax: formatShowOpsPax(r.adults, r.children, r.infants),
       arrival,
       price: money(Number(r.total_cost), r.island),
+      payment:
+        canTakePayments && r.billing_mode === "deposit" && !r.cancelled_at && (payView.outstandingAmount ?? 0) > 0
+          ? { outstanding: payView.outstandingAmount ?? 0, currency: showOpsCurrencyFor(ctx.config, r.island) }
+          : null,
       paid: payView.paidAmount == null ? "—" : money(payView.paidAmount, r.island),
       outstanding: payView.outstandingAmount == null ? "—" : money(payView.outstandingAmount, r.island),
       statusLabel: payView.label,
