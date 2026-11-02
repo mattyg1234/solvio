@@ -15,6 +15,9 @@ export type ShowOpsPaymentMethod = "cash" | "card" | "direct" | "transfer";
 
 export const SHOW_OPS_PAYMENT_METHODS: ShowOpsPaymentMethod[] = ["cash", "card", "direct", "transfer"];
 
+/** What the desk can pick (Matty, 2 Nov 2026): Cash, Card or Direct. "transfer" stays valid for older bookings. */
+export const SHOW_OPS_PAYMENT_METHOD_CHOICES: ShowOpsPaymentMethod[] = ["cash", "card", "direct"];
+
 export const SHOW_OPS_PAYMENT_METHOD_LABELS: Record<ShowOpsPaymentMethod, string> = {
   cash: "Cash",
   card: "Card",

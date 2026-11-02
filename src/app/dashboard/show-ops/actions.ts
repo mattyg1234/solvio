@@ -3112,7 +3112,12 @@ export async function addBookingPaymentAction(
   formData: FormData,
 ): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
   const method = String(formData.get("method") ?? "");
-  if (method !== "cash" && method !== "card") return { ok: false, message: "Choose cash or card." };
+  if (method !== "cash" && method !== "card" && method !== "direct") {
+    return { ok: false, message: "Choose cash, card or direct." };
+  }
+  // "Direct" (paid straight to MHT, e.g. bank transfer) is stored in the ledger
+  // as 'transfer', which the payments table already allows; the Hub shows it as Direct.
+  if (method === "direct") formData.set("method", "transfer");
   try {
     await recordPaymentAction(formData);
     return { ok: true, message: "Payment added." };

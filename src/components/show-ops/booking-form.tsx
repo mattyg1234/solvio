@@ -57,7 +57,7 @@ import {
   showOpsRunNights,
 } from "@/lib/show-ops/nights";
 import {
-  SHOW_OPS_PAYMENT_METHODS,
+  SHOW_OPS_PAYMENT_METHOD_CHOICES,
   SHOW_OPS_PAYMENT_METHOD_LABELS,
   type ShowOpsBookingQuestion,
   type ShowOpsConfig,
@@ -1556,11 +1556,17 @@ export function ShowOpsBookingForm({
                 aria-label="Paid by"
               >
                 <option value="">—</option>
-                {SHOW_OPS_PAYMENT_METHODS.map((m) => (
+                {SHOW_OPS_PAYMENT_METHOD_CHOICES.map((m) => (
                   <option key={m} value={m}>
                     {SHOW_OPS_PAYMENT_METHOD_LABELS[m]}
                   </option>
                 ))}
+                {paymentMethod &&
+                !(SHOW_OPS_PAYMENT_METHOD_CHOICES as string[]).includes(paymentMethod) ? (
+                  <option value={paymentMethod}>
+                    {(SHOW_OPS_PAYMENT_METHOD_LABELS as Record<string, string>)[paymentMethod] ?? paymentMethod}
+                  </option>
+                ) : null}
               </select>
             </>
           )}
