@@ -23,6 +23,7 @@ test("feedback wording fills every blank", () => {
   assert.ok(text.includes("MHT Show in Tenerife on Friday 6 November."));
   assert.ok(!/\{\{\d+\}\}/.test(text));
 });
+<<<<<<< HEAD
 
 import { consentIntent, consentSummary } from "@/lib/show-ops/consent";
 
@@ -44,3 +45,5 @@ test("consent summary for the booking page", () => {
   assert.match(consentSummary({ ...base, marketing_opt_in_at: "2026-11-04T10:05:00Z", marketing_opt_in_source: "whatsapp_reply_yes" }, fmt), /replied YES on WhatsApp/);
   assert.match(consentSummary({ ...base, whatsapp_opted_out_at: "2026-11-05T09:00:00Z" }, fmt), /STOP/);
 });
+=======
+>>>>>>> origin/main
