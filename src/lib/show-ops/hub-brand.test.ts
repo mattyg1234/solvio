@@ -24,3 +24,11 @@ test("?hub=mht previews the Hub brand on any host", () => {
   assert.equal(hubBrandFor("solvio-abc.vercel.app", ["mht"])?.name, "The MHT Hub");
   assert.equal(hubBrandFor("solvio-abc.vercel.app", "other"), null);
 });
+
+test("signed-in MHT workspace gets the Hub brand on any host", async () => {
+  const { hubBrandForWorkspace, MHT_HUB_BRAND } = await import("./hub-brand");
+  assert.equal(hubBrandForWorkspace("solvio-abc.vercel.app", MHT_HUB_BRAND.businessId)?.name, "The MHT Hub");
+  assert.equal(hubBrandForWorkspace("mht.solviosystems.com", "other-business")?.name, "The MHT Hub");
+  assert.equal(hubBrandForWorkspace("www.solviosystems.com", "other-business"), null);
+  assert.equal(hubBrandForWorkspace("www.solviosystems.com", null), null);
+});

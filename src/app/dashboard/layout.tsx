@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Luckiest_Guy } from "next/font/google";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -13,7 +15,11 @@ import {
   snapshotFromBusinessRow,
 } from "@/lib/stripe-connect-status";
 import { businessNeedsOnboarding, resolvePlatformCapabilities } from "@/lib/platform-capabilities";
+import { hubBrandForWorkspace } from "@/lib/show-ops/hub-brand";
 import { createSupabaseServerClient, createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+
+/** The chunky marquee lettering MHT Shows use on musichalltavern.com, for Hub headings. */
+const hubDisplay = Luckiest_Guy({ weight: "400", subsets: ["latin"], variable: "--font-hub-display", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Dashboard · Solvio",
@@ -148,9 +154,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const businessCreatedAt = (primaryBiz as { created_at?: string } | null)?.created_at ?? null;
   const bookingFlowComplete = Boolean((primaryBiz as { booking_flow_completed_at?: string } | null)?.booking_flow_completed_at);
   const slugPublished = Boolean((primaryBiz as { booking_slug?: string } | null)?.booking_slug?.trim());
+  const hub = hubBrandForWorkspace((await headers()).get("host"), (primaryBiz as { id?: string } | null)?.id);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
+    <div
+      data-hub={hub ? "mht" : undefined}
+      className={hub ? `min-h-screen ${hubDisplay.variable}` : "min-h-screen bg-[#f8fafc]"}
+      style={
+        hub
+          ? {
+              background: `radial-gradient(ellipse at 100% 0%, ${hub.primaryColor}14, transparent 45%), radial-gradient(ellipse at 0% 100%, ${hub.accentColor}1a, transparent 40%), #fdf7fb`,
+            }
+          : undefined
+      }
+    >
       <OnboardingGate needsOnboarding={needsOnboarding} />
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-[17rem] shrink-0 overflow-hidden md:block">
@@ -167,6 +184,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             }
             showOpsUserName={greetingName}
             showOpsNavSections={showOpsNavSections}
+            hub={hub}
           />
         </aside>
 
@@ -194,6 +212,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             subscriptionTier={subscriptionTier}
             businessCreatedAt={businessCreatedAt}
             showOpsEnabled={showOpsEnabled || showOpsMemberEnabled}
+            hubAccent={hub ? "#c0139f" : null}
           />
         </div>
       </div>
