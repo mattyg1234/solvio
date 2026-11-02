@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { coerceExtracted, coerceRead } from "./extract";
+import { isFailedPayment } from "./sellers";
 import { GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT } from "./test-fixtures";
 import { cleanEmailText, findDate, findTime, readEmailByPattern, readGetYourGuide, readKnownTemplate, readWooOrder } from "./templates";
 
@@ -117,4 +118,37 @@ test("AI answers and browser edits are coerced: bad fields dropped, pax totalled
   assert.deepEqual(e, { name: "Sam", time: "07:30", adults: 2, infants: 1, amount: 1196.5, quantity: 3 });
   assert.equal(coerceRead({ kind: "maybe" }), null);
   assert.equal(coerceRead({ kind: "cancel", confidence: 3, extracted: {} })?.confidence, 1);
+});
+
+test("a failed website payment is told apart from a cancellation", () => {
+  assert.equal(isFailedPayment("[MHT- Music Hall Tavern]: Order #ACE/22147 has failed"), true);
+  assert.equal(isFailedPayment("[MHT- Music Hall Tavern]: Order #ACE/22147 has been cancelled"), false);
+  assert.equal(isFailedPayment("Re: [MHT- Music Hall Tavern]: Order #ACE/22147 has failed"), false);
+});
+
+test("partner subjects that were wrongly set aside now count as bookings; noise doesn't", async () => {
+  const { isNoise, looksBookingish } = await import("./sellers");
+  for (const s of [
+    "New Booking Notification 145589134 from MTSES for LESACE81AS LSJ2 ref TK67776640",
+    "03-NOV-26 coach H2 3P-CALL_2CX_MHT Direct",
+    "Booking notification from Tiqets.com (order number: 757023347)",
+    "Para 2027: sunbonoo reserva #B278310687 - 6 ticket(s) - 2027-03-09 19:15",
+    "Reservas TUI",
+    "reserva",
+    "E-ticket from TravelOnWorld",
+    "28.10.2026 7 adults LANZAROTE",
+    "Confirmed Booking – Drag Show Tenerife – 12/10/2026",
+  ]) {
+    assert.equal(isNoise(s), false, s);
+    assert.equal(looksBookingish(s), true, s);
+  }
+  for (const s of [
+    "Your Tiqets verification code",
+    "997867  is your code for Login",
+    "Account transactions reports for Web and POS",
+    "Yesterday's WooCommerce Orders",
+    "[Sales stopped] Music Hall Tavern Tenerife: Comedy Drag Show Ticket + Dinner",
+    "Your availability expires soon",
+    "🇪🇸 Hemos recibido su mensaje | 🇬🇧 We have received your message Re: Stop Sale Lanz",
+  ]) assert.equal(isNoise(s), true, s);
 });
