@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import type { ShowOpsContext } from "@/lib/show-ops/access";
 import { describeMailError } from "@/lib/show-ops/email-bookings/gate";
-import { syncMailInbox } from "@/lib/show-ops/email-bookings/sync";
-import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
+import { adminClient, syncMailInbox } from "@/lib/show-ops/email-bookings/sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,28 +19,27 @@ function authorized(req: NextRequest): boolean {
 }
 
 /**
- * Every 10 minutes: checks each connected bookings inbox for new emails, so Email bookings fills
- * up without anyone pressing Refresh. Same work as Refresh; nothing becomes a booking here.
+ * Every 5 minutes: lists new emails from the tracked senders into the queue (one search per
+ * inbox), then reads queued emails into Email bookings until the queue is empty or time runs out.
  */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const started = Date.now();
-  const admin = createSupabaseServiceRoleClient();
-  const supabase = admin as unknown as ShowOpsContext["supabase"];
-  const { data, error } = await admin.from("show_email_booking_connections").select("business_id");
+  const { data, error } = await adminClient().from("show_email_booking_connections").select("business_id");
   if (error) return NextResponse.json({ error: "Could not list inboxes." }, { status: 500 });
 
-  const results: { businessId: string; added: number; rounds: number; more: boolean; error?: string }[] = [];
-  for (const { business_id: businessId } of data ?? []) {
-    const r = { businessId: String(businessId), added: 0, rounds: 0, more: false } as (typeof results)[number];
+  const results: { businessId: string; added: number; rounds: number; more: boolean; slowed: boolean; error?: string }[] = [];
+  for (const { business_id } of data ?? []) {
+    const r = { businessId: String(business_id), added: 0, rounds: 0, more: false, slowed: false } as (typeof results)[number];
     try {
       do {
-        const out = await syncMailInbox(supabase, r.businessId);
+        const out = await syncMailInbox(r.businessId, { listFirst: r.rounds === 0 });
         r.rounds++;
         if (!out) break;
         r.added += out.added;
         r.more = out.more;
-      } while (r.more && Date.now() - started < BUDGET_MS);
+        r.slowed = out.slowed;
+      } while (r.more && !r.slowed && Date.now() - started < BUDGET_MS);
     } catch (e) {
       r.error = describeMailError(e);
       console.error(`[cron/show-ops-mail] ${r.businessId}: ${r.error}`);

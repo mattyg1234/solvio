@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { mailErrorAnswer, mailGate } from "@/lib/show-ops/email-bookings/gate";
 import { syncMailInbox } from "@/lib/show-ops/email-bookings/sync";
@@ -8,12 +8,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /** Refresh on Email bookings: one batch of new emails (the page keeps asking while more wait). */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const gate = await mailGate("booker");
   if ("error" in gate) return NextResponse.json({ error: gate.error }, { status: gate.status });
   const { ctx } = gate;
   try {
-    const result = await syncMailInbox(ctx.supabase, ctx.business.id);
+    const result = await syncMailInbox(ctx.business.id, { listFirst: req.nextUrl.searchParams.get("read") !== "1" });
     if (!result) return NextResponse.json({ error: "Connect the bookings inbox first." }, { status: 404 });
     return NextResponse.json(result);
   } catch (e) {
