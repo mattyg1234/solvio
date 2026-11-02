@@ -2134,18 +2134,18 @@ export function ShowOpsBookingForm({
           </p>
         </div>
       {/* Cancel + Confirm sit in the space under the price breakdown. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 lg:col-span-2 xl:col-span-1">
+      <div className="grid grid-cols-2 gap-3 lg:col-span-2 xl:col-span-1">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+          className="flex items-center justify-center rounded-2xl bg-white px-4 py-5 text-xl font-bold text-slate-700 shadow-md ring-1 ring-slate-200 hover:bg-slate-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={pending || Boolean(extrasPreview.error)}
-          className="flex flex-1 items-center justify-center gap-3 rounded-2xl px-12 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60 sm:flex-none"
+          className="flex items-center justify-center gap-3 rounded-2xl px-4 py-5 text-xl font-bold text-white shadow-md disabled:opacity-60"
           style={{ backgroundColor: ACCENT }}
         >
           <Check className="h-7 w-7" aria-hidden />
