@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  isReceptionPartner,
   normalisePartnerIslands,
   partnerIslands,
   partnerSearchHaystack,
@@ -63,4 +64,9 @@ test("search haystack also matches invoice email and NIF", () => {
   });
   assert.ok(hay.includes("cuentas@islandagency.es"));
   assert.ok(hay.includes("b76543210"));
+});
+
+test("MHT's own direct sales take no % deposit: Reception, Direct and Web (Joel, 3 Nov)", () => {
+  for (const t of ["MHT Reception", "MHT Direct", "mht web", " MHT Web "]) assert.equal(isReceptionPartner(t), true, t);
+  for (const t of ["Hotel Reception", "Ticket Shops", "Online Agency", "", null, undefined]) assert.equal(isReceptionPartner(t), false, String(t));
 });

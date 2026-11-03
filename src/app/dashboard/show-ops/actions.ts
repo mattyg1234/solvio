@@ -2191,7 +2191,8 @@ export async function createBookingAction(
   // later edits and top-ups (which read the ledger) keep the right balance.
   if (built.receptionPaid != null && built.receptionPaid > 0 && data?.id) {
     const pm = built.fields.payment_method;
-    const method = pm === "cash" || pm === "card" || pm === "transfer" ? pm : "other";
+    // "direct" (PayPal / Stripe) is stored in the ledger as 'transfer', like Add payment.
+    const method = pm === "cash" || pm === "card" || pm === "transfer" ? pm : pm === "direct" ? "transfer" : "other";
     const { error: payErr } = await ctx.supabase.from("show_booking_payments").insert({
       business_id: ctx.business.id,
       booking_id: data.id,
