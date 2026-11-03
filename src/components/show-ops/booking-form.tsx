@@ -921,8 +921,16 @@ export function ShowOpsBookingForm({
           jumpToField(firstMissing[1]);
           return;
         }
-        if (!e.currentTarget.checkValidity()) {
-          e.currentTarget.reportValidity();
+        // Anything else the browser says is missing or wrong (email, bus stop,
+        // a custom question…): say which field in words and take the desk to it.
+        // A browser bubble alone was easy to miss on the long form (Ruth, 3 Nov).
+        const invalid = e.currentTarget.querySelector<HTMLElement>(":invalid:not(fieldset)");
+        if (invalid) {
+          const m = `Check ${fieldNameFor(invalid)}: ${
+            (invalid as HTMLInputElement).validationMessage || "it needs filling in."
+          }${invalid.getAttribute("name") === "guest_email" ? " Or tick No email." : ""}`;
+          setMsg(m);
+          focusInvalidField(invalid);
           return;
         }
         if (noShowOnDate) {
@@ -1662,7 +1670,7 @@ export function ShowOpsBookingForm({
               <PhoneInput name="guest_mobile" defaultValue={defaults.guest_mobile} defaultCode="44" placeholder="7700 900123" className={INPUT} />
             </div>
             <div>
-              <FieldLabel>Email</FieldLabel>
+              <FieldLabel id="bf-email" required={!noEmail}>Email</FieldLabel>
               <input
                 type="email"
                 name="guest_email"
@@ -2261,6 +2269,11 @@ export function ShowOpsBookingForm({
         </div>
       {/* Cancel + Confirm sit in the space under the price breakdown. */}
       <div className="grid grid-cols-2 gap-3 lg:col-span-2 xl:col-span-1">
+        {msg ? (
+          <p role="alert" className="col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+            {msg}
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => router.back()}
@@ -2354,6 +2367,37 @@ function enterToNextField(e: React.KeyboardEvent<HTMLFormElement>) {
   });
   const at = fields.indexOf(el);
   if (at >= 0) fields[at + 1]?.focus();
+}
+
+/** The field's name as the desk sees it: its label above, or its aria-label. */
+function fieldNameFor(el: HTMLElement): string {
+  const aria = el.getAttribute("aria-label");
+  // SearchableSelect's hidden check box sits next to the picker button, which has the label.
+  const box = el.closest("div.relative");
+  const picker = box?.querySelector<HTMLElement>("button[aria-haspopup]");
+  const pickerName = picker?.getAttribute("aria-label");
+  if (pickerName) return `the ${pickerName.toLowerCase()}`;
+  let node: Element | null = box ?? el;
+  for (let i = 0; node && i < 4; i += 1) {
+    let prev = node.previousElementSibling;
+    while (prev) {
+      if (prev.tagName === "P" && prev.className.includes("uppercase")) {
+        return `“${(prev.textContent ?? "").replace("*", "").trim()}”`;
+      }
+      prev = prev.previousElementSibling;
+    }
+    node = node.parentElement;
+  }
+  return aria ? `“${aria}”` : "the highlighted field";
+}
+
+/** Scroll to an invalid field and put the cursor there (or on its picker button). */
+function focusInvalidField(el: HTMLElement) {
+  const box = el.closest("div.relative");
+  const picker = box?.querySelector<HTMLElement>("button[aria-haspopup]");
+  const target = el.getClientRects().length && !el.classList.contains("pointer-events-none") ? el : picker ?? el;
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.focus({ preventScroll: true });
 }
 
 /** Scroll to a field's label and put the cursor in the field under it. */

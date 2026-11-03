@@ -45,3 +45,26 @@ export function clickNightListSort(current: string[], key: string): string[] {
   if (current[0] === key) return current;
   return [key, ...current.filter((k) => k !== key)];
 }
+
+/** Last word of the lead name, lower-cased: the night lists' surname order. */
+function surnameOf(guestName: string | null | undefined): string {
+  const parts = String(guestName ?? "").trim().split(/\s+/);
+  return (parts[parts.length - 1] || "").toLowerCase();
+}
+
+/**
+ * The office list's default order (Joel, 3 Nov 2026): partner type A–Z
+ * (GYG, MHT Reception, MHT Web, Ticket Shops, Tour Ops…), then supplier name
+ * A–Z, then surname. Used on the screen, the printed list and the Plan B pack.
+ */
+export function comparePartnerTypeThenSupplier(
+  a: { sales_channel?: string | null; supplier_name?: string | null; guest_name?: string | null },
+  b: { sales_channel?: string | null; supplier_name?: string | null; guest_name?: string | null },
+): number {
+  const opts = { sensitivity: "base" } as const;
+  return (
+    String(a.sales_channel ?? "").localeCompare(String(b.sales_channel ?? ""), undefined, opts) ||
+    String(a.supplier_name ?? "").localeCompare(String(b.supplier_name ?? ""), undefined, opts) ||
+    surnameOf(a.guest_name).localeCompare(surnameOf(b.guest_name))
+  );
+}

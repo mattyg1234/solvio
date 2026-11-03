@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadBusListPdf } from "@/lib/show-ops/bus-pdf-data";
 import { brandingFromBusiness, parseShowOpsConfig } from "@/lib/show-ops/config";
 import { addDaysIso, isoDateInTimeZone } from "@/lib/show-ops/digest";
+import { comparePartnerTypeThenSupplier } from "@/lib/show-ops/lists";
 import { loadNightListPdf } from "@/lib/show-ops/night-list-pdf-data";
 import { SHOW_OPS_BACKUP_BUCKET, snapshotTimestamp } from "@/lib/show-ops/backup";
 
@@ -114,7 +115,7 @@ async function upcomingBookings(admin: SupabaseClient, businessId: string, from:
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await admin
       .from("show_bookings")
-      .select(`id,${PLAN_B_CSV_COLUMNS.join(",")}`)
+      .select(`id,sales_channel,${PLAN_B_CSV_COLUMNS.join(",")}`)
       .eq("business_id", businessId)
       .is("cancelled_at", null)
       .gte("show_date", from)
@@ -157,7 +158,11 @@ export async function buildPlanBPack(admin: SupabaseClient, b: PlanBBusinessRow,
     const islands = [...new Set(night.map((r) => String(r.island)))].sort();
     if (!islands.length) nightSummary.push(`${date}: no bookings`);
     for (const island of islands) {
-      const ids = night.filter((r) => r.island === island).map((r) => String(r.id));
+      // Same order as the office list on screen: partner type, then supplier, then surname.
+      const ids = night
+        .filter((r) => r.island === island)
+        .sort((x, y) => comparePartnerTypeThenSupplier(x as never, y as never))
+        .map((r) => String(r.id));
       try {
         const bytes = await loadNightListPdf(
           admin,

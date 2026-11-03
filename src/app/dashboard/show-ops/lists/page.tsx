@@ -36,6 +36,7 @@ import {
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   clickNightListSort,
+  comparePartnerTypeThenSupplier,
   parseNightListSort,
   parseNightListViews,
   toggleNightListView,
@@ -265,9 +266,8 @@ export default async function DailyListsPage({
     if (key === "time")
       return timeKey(a.pickup_time).localeCompare(timeKey(b.pickup_time));
     if (key === "ref") return a.booking_ref.localeCompare(b.booking_ref);
-    const s = (a.supplier_name || "").localeCompare(b.supplier_name || "");
-    if (s !== 0) return s;
-    return surnameKey(a.guest_name).localeCompare(surnameKey(b.guest_name));
+    // "supplier": partner type A–Z, then supplier A–Z, then surname (Joel, 3 Nov).
+    return comparePartnerTypeThenSupplier(a, b);
   }
 
   function sortRows(rows: BookingRow[]): BookingRow[] {
@@ -494,7 +494,7 @@ export default async function DailyListsPage({
               defaultValue={sortKeys[0] || "supplier"}
               className="mt-1 block rounded-lg border px-2 py-1.5 text-sm"
             >
-              <option value="supplier">Supplier + surname</option>
+              <option value="supplier">Partner type + supplier</option>
               <option value="name">Surname</option>
               <option value="hotel">Hotel</option>
               <option value="show">Show</option>
@@ -779,7 +779,10 @@ function ListCard({
           <span>Ticket {b.supplier_ticket_number}</span>
         ) : null}
         {variant === "office" && b.supplier_name ? (
-          <span>{b.supplier_name}</span>
+          <span>
+            {b.supplier_name}
+            {b.sales_channel ? ` (${b.sales_channel})` : ""}
+          </span>
         ) : null}
         <span>
           {arrival.doorLabel}
@@ -1053,7 +1056,12 @@ function OfficeTable({
                   <td className="px-3 py-1.5 font-mono text-xs">
                     {b.booking_ref}
                   </td>
-                  <td className="truncate px-3 py-1.5" title={b.supplier_name || undefined}>{b.supplier_name || "—"}</td>
+                  <td className="px-3 py-1.5" title={[b.sales_channel, b.supplier_name].filter(Boolean).join(" · ") || undefined}>
+                    <span className="block truncate">{b.supplier_name || "—"}</span>
+                    {b.sales_channel ? (
+                      <span className="block truncate text-[11px] text-slate-500">{b.sales_channel}</span>
+                    ) : null}
+                  </td>
                   <td className="truncate px-3 py-1.5">
                     <Link
                       href={`/dashboard/show-ops/bookings/${b.id}`}
