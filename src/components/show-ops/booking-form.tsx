@@ -8,7 +8,7 @@ import {
 import { Check, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { hotelNamesForStops } from "@/lib/show-ops/directory-search";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   getNightLoadAction,
@@ -288,6 +288,8 @@ export function ShowOpsBookingForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(error ?? null);
+  /** The label id of the required field the last save stopped on (shows "This field is required"). */
+  const [missingId, setMissingId] = useState<string | null>(null);
   const [extraChoices, setExtraChoices] = useState<{
     productId: string;
     selections: ExtraSelection[];
@@ -879,6 +881,7 @@ export function ShowOpsBookingForm({
   }
 
   return (
+    <MissingFieldContext.Provider value={missingId}>
     <form
       className="mt-6 space-y-4"
       noValidate
@@ -913,11 +916,12 @@ export function ShowOpsBookingForm({
             "Choose how the guest paid (Cash, Card or Direct).",
           ],
           [dietary === null, "bf-dietary", "Answer Yes or No for dietary requirements."],
-          [dietary === true && !dietaryText, "bf-dietary-notes", "Type the dietary requirements (or choose No)."],
+          [dietary === true && !dietaryText, "bf-dietary-details", "Type the dietary requirements (or choose No)."],
         ];
         const firstMissing = missing.find(([isMissing]) => isMissing);
         if (firstMissing) {
-          setMsg(firstMissing[2]);
+          setMissingId(firstMissing[1]);
+          setMsg(`This field is required. ${firstMissing[2]}`);
           jumpToField(firstMissing[1]);
           return;
         }
@@ -929,10 +933,12 @@ export function ShowOpsBookingForm({
           const m = `Check ${fieldNameFor(invalid)}: ${
             (invalid as HTMLInputElement).validationMessage || "it needs filling in."
           }${invalid.getAttribute("name") === "guest_email" ? " Or tick No email." : ""}`;
-          setMsg(m);
+          setMissingId(labelIdFor(invalid) ?? "bf-unlabelled");
+          setMsg(`This field is required. ${m}`);
           focusInvalidField(invalid);
           return;
         }
+        setMissingId(null);
         if (noShowOnDate) {
           const m = `No show on ${showOpsNightLabel(showDate)}${activeIsland ? ` on ${activeIsland}` : ""}. Pick a night the show runs.`;
           setMsg(m);
@@ -1798,10 +1804,15 @@ export function ShowOpsBookingForm({
               ))}
             </div>
           </fieldset>
+          {dietary ? (
+            <FieldLabel id="bf-dietary-details" required className="mt-2">
+              Dietary details
+            </FieldLabel>
+          ) : null}
           {dietary &&
           config.dietary_mode === "options" &&
           config.dietary_options.length ? (
-            <fieldset className="mt-2 space-y-2 text-sm">
+            <fieldset className="space-y-2 text-sm">
               <div className="flex flex-wrap gap-3">
                 {config.dietary_options.map((opt) => (
                   <label
@@ -1836,7 +1847,7 @@ export function ShowOpsBookingForm({
               id="bf-dietary-notes"
               name="dietary_notes"
               defaultValue={defaults.dietary_notes ?? ""}
-              className={`${INPUT} mt-2`}
+              className={INPUT}
               placeholder="Type the dietary requirements, e.g. 1x gluten free, child nut allergy"
             />
           ) : null}
@@ -1902,7 +1913,7 @@ export function ShowOpsBookingForm({
 
           {hotelId === PRIVATE_HOTEL_OPTION || pickupKind === "private" ? (
             <>
-              <FieldLabel className="mt-3">Staying at</FieldLabel>
+              <FieldLabel id="bf-staying" required className="mt-3">Staying at</FieldLabel>
               <select
                 name="private_accommodation"
                 required
@@ -1918,7 +1929,7 @@ export function ShowOpsBookingForm({
                   </option>
                 ))}
               </select>
-              <FieldLabel className="mt-3">Resort</FieldLabel>
+              <FieldLabel id="bf-resort" required className="mt-3">Resort</FieldLabel>
               {zoneOptions.length ? (
                 <select
                   name="private_zone"
@@ -1957,7 +1968,7 @@ export function ShowOpsBookingForm({
 
           {transport ? (
             <>
-              <FieldLabel className="mt-4">Pick-up point</FieldLabel>
+              <FieldLabel id="bf-stop" required={transport} className="mt-4">Pick-up point</FieldLabel>
               <SearchableSelect
                 name="pickup_stop_id"
                 value={pickupStopId}
@@ -2270,7 +2281,8 @@ export function ShowOpsBookingForm({
       {/* Cancel + Confirm sit in the space under the price breakdown. */}
       <div className="grid grid-cols-2 gap-3 lg:col-span-2 xl:col-span-1">
         {msg ? (
-          <p role="alert" className="col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+          <p role="alert" className="col-span-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800 ring-1 ring-rose-200">
+            {missingId ? <span className="mr-1 text-lg leading-none text-rose-600">*</span> : null}
             {msg}
           </p>
         ) : null}
@@ -2300,12 +2312,16 @@ export function ShowOpsBookingForm({
       </div>
 
     </form>
+    </MissingFieldContext.Provider>
   );
 }
 
 const INPUT =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100";
 const ACCENT = "var(--show-ops-primary,#7c3aed)";
+
+/** Which field label the save stopped on, so that label can say "This field is required". */
+const MissingFieldContext = createContext<string | null>(null);
 
 function FieldLabel({
   children,
@@ -2320,15 +2336,22 @@ function FieldLabel({
   /** Shows a red asterisk: the booking cannot be saved without this field. */
   required?: boolean;
 }) {
+  const missing = useContext(MissingFieldContext);
+  const flagged = Boolean(id) && missing === id;
   return (
     <p
       id={id}
-      className={`mb-1 scroll-mt-24 text-[10px] font-semibold uppercase tracking-wider text-slate-400 ${className}`}
+      className={`mb-1 scroll-mt-24 text-[10px] font-semibold uppercase tracking-wider ${flagged ? "text-rose-700" : "text-slate-400"} ${className}`}
     >
       {children}
-      {required ? (
+      {required || flagged ? (
         <span className="ml-0.5 text-rose-600" aria-hidden="true">
           *
+        </span>
+      ) : null}
+      {flagged ? (
+        <span role="alert" className="ml-2 rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-semibold normal-case tracking-normal text-rose-700 ring-1 ring-rose-200">
+          This field is required
         </span>
       ) : null}
     </p>
@@ -2367,6 +2390,20 @@ function enterToNextField(e: React.KeyboardEvent<HTMLFormElement>) {
   });
   const at = fields.indexOf(el);
   if (at >= 0) fields[at + 1]?.focus();
+}
+
+/** The id of the field label above an invalid control, when it has one. */
+function labelIdFor(el: HTMLElement): string | null {
+  let node: Element | null = el.closest("div.relative") ?? el;
+  for (let i = 0; node && i < 4; i += 1) {
+    let prev = node.previousElementSibling;
+    while (prev) {
+      if (prev.tagName === "P" && prev.className.includes("uppercase")) return prev.id || null;
+      prev = prev.previousElementSibling;
+    }
+    node = node.parentElement;
+  }
+  return null;
 }
 
 /** The field's name as the desk sees it: its label above, or its aria-label. */
