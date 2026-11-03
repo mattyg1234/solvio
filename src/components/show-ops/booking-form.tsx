@@ -631,7 +631,9 @@ export function ShowOpsBookingForm({
         hint: [
           s.island || "",
           s.billing_mode === "deposit"
-            ? `deposit ${s.deposit_percent}%`
+            ? isReceptionPartner(s.partner_type)
+              ? "total price, no deposit"
+              : `deposit ${s.deposit_percent}%`
             : `invoice nett ${s.invoice_nett_percent}%`,
         ]
           .filter(Boolean)
@@ -905,6 +907,11 @@ export function ShowOpsBookingForm({
           [!sellerMode && !supplierId, "bf-partner", "Choose the partner / supplier."],
           [!guestName, "bf-name", "Type the lead booking name."],
           [!hotelId, "bf-hotel", "Choose the guest's hotel, or Private if they're not at a listed hotel."],
+          [
+            reception && mode === "create" && receptionPaid > 0 && !paymentMethod,
+            "bf-paid-by",
+            "Choose how the guest paid (Cash, Card or Direct).",
+          ],
           [dietary === null, "bf-dietary", "Answer Yes or No for dietary requirements."],
           [dietary === true && !dietaryText, "bf-dietary-notes", "Type the dietary requirements (or choose No)."],
         ];
@@ -1437,7 +1444,9 @@ export function ShowOpsBookingForm({
                     className={INPUT}
                   >
                     <option value="deposit">
-                      Deposit — collect {supplier?.deposit_percent}% now
+                      {reception
+                        ? "Total price — no deposit, take what the guest pays"
+                        : `Deposit — collect ${supplier?.deposit_percent}% now`}
                     </option>
                     <option value="invoice">
                       Invoice — nett {supplier?.invoice_nett_percent}% on the
@@ -1459,7 +1468,7 @@ export function ShowOpsBookingForm({
           <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 px-3 py-3 text-sm ring-1 ring-slate-200/70">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-slate-600">
-                {sellerMode ? "Your rate" : "Ticket total"}
+                {sellerMode ? "Your rate" : reception && money.billing_mode !== "invoice" ? "Total price" : "Ticket total"}
                 {product ? (
                   <span className="text-slate-400">
                     : {adults} × {moneyFmt(unit.adult_price - unit.transport_supplement)}
@@ -1576,7 +1585,9 @@ export function ShowOpsBookingForm({
 
           {sellerMode ? null : (
             <>
-              <FieldLabel className="mt-3">Paid by</FieldLabel>
+              <FieldLabel id="bf-paid-by" className="mt-3" required={reception && mode === "create" && receptionPaid > 0}>
+                Paid by
+              </FieldLabel>
               <select
                 name="payment_method"
                 value={paymentMethod}
@@ -2170,7 +2181,9 @@ export function ShowOpsBookingForm({
                 label={
                   sellerMode
                     ? "Your rate including extras"
-                    : "Total including extras"
+                    : reception && money.billing_mode !== "invoice"
+                      ? "Total price including extras"
+                      : "Total including extras"
                 }
                 value={moneyFmt(money.total_cost)}
                 strong
@@ -2192,7 +2205,7 @@ export function ShowOpsBookingForm({
               {money.billing_mode === "invoice"
                 ? "Nett to invoice"
                 : reception
-                  ? "Total pending"
+                  ? "Total price"
                   : "Deposit to collect"}
             </span>
             <span
@@ -2203,11 +2216,23 @@ export function ShowOpsBookingForm({
                 money.billing_mode === "invoice"
                   ? money.nett_total
                   : reception
-                    ? receptionBalance
+                    ? money.total_cost
                     : money.deposit_amount,
               )}
             </span>
           </div>
+          {reception && money.billing_mode !== "invoice" ? (
+            <div className="mt-2 space-y-1 px-3">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="text-slate-600">{mode === "edit" ? "Paid so far" : "Paid now"}</span>
+                <span className="font-semibold tabular-nums text-slate-900">{moneyFmt(receptionPaid)}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="font-semibold text-slate-900">Total pending</span>
+                <span className="text-lg font-semibold tabular-nums text-rose-700">{moneyFmt(receptionBalance)}</span>
+              </div>
+            </div>
+          ) : null}
           {showPending ? (
             <div className="mt-2 space-y-1 px-3">
               {paidSoFar > 0 ? (
