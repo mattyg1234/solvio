@@ -36,6 +36,7 @@ for (const name of [
   "recordPaymentAction", "sendShowOpsPaymentLinkAction", "resendGuestTicketAction",
   "markListFlagAction", "markArrivedPaxAction", "checkInShowOpsTicketAction",
   "generateInvoicePackAction", "markInvoicePaidAction", "voidInvoiceAction",
+  "toggleNightSaleStatusAction",
 ]) {
   test(`${name} checks its page permission before reading or changing data`, async () => {
     const { actions, reads } = deniedActions();

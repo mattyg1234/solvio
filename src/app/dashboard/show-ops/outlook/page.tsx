@@ -1,12 +1,14 @@
 import Link from "next/link";
 
-import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { isNoBusStop } from "@/lib/show-ops/bus";
 import { productRunsOnDate } from "@/lib/show-ops/calendar";
 import { busLoads, type BusLoad } from "@/lib/show-ops/bus-seats";
 import { addDaysIso, paxTotal } from "@/lib/show-ops/calc";
 import { todayIsoUtc } from "@/lib/show-ops/nights";
 import { ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
+import { NightSaleStatusKey, NightSaleStatusMarks } from "@/components/show-ops/night-sale-status";
+import { SALE_STATUS_COLUMNS, saleStatusKey, saleStatusMap, type NightSaleStatus } from "@/lib/show-ops/sale-status";
 
 /**
  * Weekly outlook, organised the way the operation actually flies:
@@ -110,7 +112,7 @@ function euro(n: number) {
 export default async function WeeklyOutlookPage({
   searchParams,
 }: {
-  searchParams: Promise<{ by?: string; days?: string }>;
+  searchParams: Promise<{ by?: string; days?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   // Resort and hotel are different questions — "which resort is filling up" vs
@@ -132,7 +134,7 @@ export default async function WeeklyOutlookPage({
   const today = todayIsoUtc();
   const endIso = addDaysIso(today, days);
 
-  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: stops }] = await Promise.all([
+  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: stops }, saleStatusRes] = await Promise.all([
     ctx.supabase
       .from("show_products")
       .select("id,name,island,capacity,run_weekdays,run_dates,dark_dates,active,adult_price,child_price")
@@ -158,7 +160,17 @@ export default async function WeeklyOutlookPage({
       .from("show_bus_stops")
       .select("id,island,zone,resort,stop_name,bus_no")
       .eq("business_id", ctx.business.id),
+    // Transport / stop sale crosses (Joel, 6 Nov) — replaces the RES HAND OVER FORM email.
+    ctx.supabase
+      .from("show_night_sale_status")
+      .select(SALE_STATUS_COLUMNS)
+      .eq("business_id", ctx.business.id)
+      .gte("show_date", today)
+      .lte("show_date", endIso),
   ]);
+  // Read errors (table not created yet) just show every night blank.
+  const saleStatus = saleStatusMap(saleStatusRes.error ? [] : (saleStatusRes.data as unknown as NightSaleStatus[] | null));
+  const canMarkSale = roleAtLeast(ctx.role, "booker");
 
   const stopById = new Map(
     (stops ?? []).map((s) => [s.id, { zone: (s.zone as string | null) ?? "", island: s.island as string, name: s.stop_name as string }]),
@@ -297,13 +309,15 @@ export default async function WeeklyOutlookPage({
       <ShowOpsPageHeader
         eyebrow="Overview"
         title="Weekly outlook"
-        subtitle={`Next ${days} nights by airport — resorts, bus vs direct, hotels, rates and which buses run. Order buses on the show calendar.`}
+        subtitle={`Next ${days} nights by airport — resorts, bus vs direct, hotels, rates and which buses run and what is closed online. Order buses on the show calendar.`}
         actions={
           <Link href="/dashboard/show-ops/calendar" className="text-sm font-semibold text-[var(--show-ops-primary,#7c3aed)]">
             Open calendar
           </Link>
         }
       />
+
+      {sp.error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-900 ring-1 ring-rose-200">{sp.error}</p> : null}
 
       <div className="flex flex-wrap items-center gap-2">
         {SECTIONS.map((s) => (
@@ -328,6 +342,8 @@ export default async function WeeklyOutlookPage({
           14 nights
         </ShowOpsPill>
       </div>
+
+      <NightSaleStatusKey />
 
       {SECTIONS.map((section) => {
         const nights = [...(nightsBySection.get(section.id)?.values() ?? [])]
@@ -440,6 +456,18 @@ export default async function WeeklyOutlookPage({
                                 </div>
                               ) : null}
                             </details>
+                            {!isUk ? (
+                              <div className="mt-1.5">
+                                <NightSaleStatusMarks
+                                  date={n.date}
+                                  island={section.island}
+                                  status={saleStatus.get(saleStatusKey(n.date, section.island))}
+                                  next={`${hrefFor({})}#${section.id}`}
+                                  editable={canMarkSale}
+                                  compact
+                                />
+                              </div>
+                            ) : null}
                           </td>
                           {section.resorts.map((r) => {
                             const c = n.cells.get(r.key);

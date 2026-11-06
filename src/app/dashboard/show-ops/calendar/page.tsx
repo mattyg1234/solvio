@@ -14,6 +14,8 @@ import { parseIsoYearMonth, shiftYearMonth, showOpsNightMonth } from "@/lib/show
 import { loadReportRows } from "@/lib/show-ops/report-data";
 import { CLOSE_SALE_EMAILS_ON } from "@/lib/show-ops/close-sale";
 import { showOpsOutboundLive } from "@/lib/show-ops/outbound";
+import { crossedFields, SALE_STATUS_COLUMNS, SALE_STATUS_LABEL, saleStatusKey, saleStatusMap, type NightSaleStatus } from "@/lib/show-ops/sale-status";
+import { NightSaleStatusKey } from "@/components/show-ops/night-sale-status";
 
 const WEEK_HEAD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -57,7 +59,7 @@ export default async function ShowOpsCalendarPage({
     const query = ctx.supabase.from(table).select(columns).eq("business_id", ctx.business.id);
     return island ? query.eq("island", island) : query;
   };
-  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: closes }, { data: nightRows }] = await Promise.all([
+  const [{ data: products }, { data: bookings }, { data: busOrders }, { data: closes }, { data: nightRows }, saleStatusRes] = await Promise.all([
     loadReportRows<CalendarProduct>("calendar shows", (offset, limit) =>
       scoped("show_products", "id,name,island,capacity,run_weekdays,run_dates,dark_dates,active")
         .eq("active", true).order("id").range(offset, offset + limit - 1)),
@@ -79,8 +81,13 @@ export default async function ShowOpsCalendarPage({
             .eq("show_date", date).is("cancelled_at", null)
             .order("show_name").order("guest_name").order("id").range(offset, offset + limit - 1))
       : Promise.resolve({ data: [] }),
+    // Transport / stop sale crosses (Joel, 6 Nov). A month is at most ~124 rows.
+    // Read errors (table not created yet) just show every night blank.
+    scoped("show_night_sale_status", SALE_STATUS_COLUMNS)
+      .gte("show_date", monthStart).lte("show_date", monthEnd).limit(1000),
   ]);
   const nightBookings = nightRows;
+  const saleStatus = saleStatusMap(saleStatusRes.error ? [] : (saleStatusRes.data as unknown as NightSaleStatus[] | null));
 
   const days = buildCalendarDays({
     year,
@@ -164,6 +171,8 @@ export default async function ShowOpsCalendarPage({
         ))}
       </div>
 
+      <NightSaleStatusKey />
+
       <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200">
         <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
           {WEEK_HEAD.map((d) => (
@@ -210,6 +219,18 @@ export default async function ShowOpsCalendarPage({
                           >
                             {summary.busLeft == null ? "no bus yet" : `${summary.busLeft} bus seats left`}
                           </span>
+                          {day.islands.flatMap((i) =>
+                            crossedFields(saleStatus.get(saleStatusKey(iso, i.island))).map((f) => (
+                              <span
+                                key={`${i.island}-${f}`}
+                                title={`${i.island}: ${SALE_STATUS_LABEL[f]} closed`}
+                                className="mr-0.5 mt-0.5 inline-block rounded bg-rose-600 px-1 text-[10px] font-semibold text-white"
+                              >
+                                ✕ {f === "transport_closed" ? "Bus" : f === "part_stop_sale" ? "Part SS" : "Full SS"}
+                                {day.islands.length > 1 ? ` ${i.island.slice(0, 3)}` : ""}
+                              </span>
+                            )),
+                          )}
                           {summary.closed ? (
                             <span
                               className={`mt-0.5 inline-block rounded px-1 text-[10px] font-semibold ${
@@ -240,6 +261,8 @@ export default async function ShowOpsCalendarPage({
                     bookings={nightBookings}
                     closes={closeRows}
                     busOrders={busOrders ?? []}
+                    saleStatus={saleStatus}
+                    canMarkSale={roleAtLeast(ctx.role, "booker")}
                   />
                 </>
               ) : null}

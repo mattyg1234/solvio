@@ -60,6 +60,7 @@ import { showRunsOnDate } from "@/lib/show-ops/nights";
 import { showOpsDayName } from "@/lib/show-ops/calc";
 import { isReceptionPartner } from "@/lib/show-ops/partners";
 import { CLOSE_SALE_EMAILS_ON, closeSaleCopy, closeSaleRecipients } from "@/lib/show-ops/close-sale";
+import { isSaleStatusField, type SaleStatusField } from "@/lib/show-ops/sale-status";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
 import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSnapshot, type ShowExtra } from "@/lib/show-ops/extras";
@@ -4275,6 +4276,70 @@ export async function reopenSaleAction(formData: FormData): Promise<void> {
   after(() => pushChannelAvailability(ctx.business.id, { island }, [show_date]));
   revalidateShowOps();
   redirect(`${next}${next.includes("?") ? "&" : "?"}reopened=1`);
+}
+
+/**
+ * Night sale status (Joel, 6 Nov 2026): flip one cross — Transport, Partial stop
+ * sale or Full stop sale — for a show night on an island. Record only, so it
+ * never blocks bookings or emails anyone; Part close / Full close does that.
+ */
+export async function toggleNightSaleStatusAction(formData: FormData): Promise<void> {
+  const ctx = await requireShowOpsAction("booker", ["calendar", "outlook"]);
+  const show_date = String(formData.get("show_date") ?? "").trim();
+  const island = String(formData.get("island") ?? "").trim();
+  const field = String(formData.get("field") ?? "").trim();
+  const next =
+    safeShowOpsNext(String(formData.get("next") ?? "")) ||
+    `/dashboard/show-ops/calendar?date=${encodeURIComponent(show_date)}&island=${encodeURIComponent(island)}`;
+  // Outlook passes a #section anchor so the page lands back on the same island.
+  const fail = (msg: string) => {
+    const [path, hash] = next.split("#", 2);
+    redirect(`${path}${path.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg.slice(0, 180))}${hash ? `#${hash}` : ""}`);
+  };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(show_date) || !island || !isSaleStatusField(field)) {
+    fail("Pick a night, island and status.");
+    return;
+  }
+  if (!islandAllowed(ctx.allowedIslands, island)) {
+    fail("You do not have access to that island.");
+    return;
+  }
+  const { data: current, error: readErr } = await ctx.supabase
+    .from("show_night_sale_status")
+    .select("id,transport_closed,part_stop_sale,full_stop_sale")
+    .eq("business_id", ctx.business.id)
+    .eq("show_date", show_date)
+    .eq("island", island)
+    .maybeSingle();
+  if (readErr) {
+    fail(/show_night_sale_status/.test(readErr.message) ? "Sale status is not set up in the database yet." : readErr.message);
+    return;
+  }
+  const row = (current ?? {}) as Partial<Record<SaleStatusField, boolean>>;
+  // Shown as "Last changed by nicola · 5 Nov, 21:00" — the email name is enough to know who.
+  const who = (ctx.user.email?.split("@")[0] || "").trim().slice(0, 80) || null;
+  const { error } = await ctx.supabase.from("show_night_sale_status").upsert(
+    {
+      business_id: ctx.business.id,
+      show_date,
+      island,
+      transport_closed: Boolean(row.transport_closed),
+      part_stop_sale: Boolean(row.part_stop_sale),
+      full_stop_sale: Boolean(row.full_stop_sale),
+      [field]: !row[field],
+      updated_by: ctx.user.id,
+      updated_by_name: who,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "business_id,show_date,island" },
+  );
+  if (error) {
+    fail(error.message);
+    return;
+  }
+  revalidatePath("/dashboard/show-ops/calendar");
+  revalidatePath("/dashboard/show-ops/outlook");
+  redirect(next);
 }
 
 /** Used by commercial stats — no-op write, kept for future. */

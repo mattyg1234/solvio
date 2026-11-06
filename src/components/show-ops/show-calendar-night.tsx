@@ -4,7 +4,9 @@ import { closeSaleAction, reopenSaleAction, upsertBusOrderAction } from "@/app/d
 import { FillPill } from "@/components/show-ops/ops-home-widgets";
 import { SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
+import { NightSaleStatusMarks } from "@/components/show-ops/night-sale-status";
 import { NumberInput } from "@/components/ui/number-input";
+import { saleStatusKey, type NightSaleStatus } from "@/lib/show-ops/sale-status";
 import type { CalendarDay } from "@/lib/show-ops/calendar";
 import { formatShowOpsMoney, round2, showOpsDayName } from "@/lib/show-ops/calc";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -60,6 +62,8 @@ export function ShowCalendarNight({
   bookings,
   closes,
   busOrders,
+  saleStatus,
+  canMarkSale = false,
 }: {
   day: CalendarDay;
   nextUrl: string;
@@ -70,6 +74,8 @@ export function ShowCalendarNight({
   bookings: NightBookingRow[];
   closes: NightCloseRow[];
   busOrders: Array<{ show_date: string; island: string; seats_ordered: number; bus_count?: number | null; cost_total: number | null }>;
+  saleStatus?: Map<string, NightSaleStatus>;
+  canMarkSale?: boolean;
 }) {
   const money = (n: number) => formatShowOpsMoney(n, currency);
   const islandQuery = island ? `&island=${encodeURIComponent(island)}` : "";
@@ -126,6 +132,18 @@ export function ShowCalendarNight({
                     ? ` · ${money(isl.busCost)}${isl.busPax ? ` · ${money(round2(isl.busCost / isl.busPax))}/head` : ""}`
                     : ""}
                 </p>
+              </div>
+
+              {/* Replaces the RES HAND OVER FORM email (Joel, 6 Nov): what is closed online tonight. */}
+              <div className="mt-3 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Sale status</p>
+                <NightSaleStatusMarks
+                  date={day.iso}
+                  island={isl.island}
+                  status={saleStatus?.get(saleStatusKey(day.iso, isl.island))}
+                  next={nextUrl}
+                  editable={canMarkSale}
+                />
               </div>
 
               <ul className="mt-3 space-y-2">
