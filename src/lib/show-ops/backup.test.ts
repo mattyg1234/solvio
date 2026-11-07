@@ -122,6 +122,7 @@ const EVERY_PROD_TABLE = [
   "show_invoice_lines",
   "show_invoices",
   "show_night_closes",
+  "show_night_sale_status",
   "show_ops_integrations",
   "show_ops_members",
   "show_pickup_timetables",
