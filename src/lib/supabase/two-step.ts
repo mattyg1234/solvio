@@ -2,10 +2,27 @@
  * Two-step login (Joel, 8 Nov 2026). Once someone has switched on an
  * authenticator app (a verified TOTP factor), every Hub page asks for the
  * 6-digit code after the password until the session is upgraded to aal2.
- * Nobody is forced to switch it on.
+ *
+ * Required for staff (Matty, 8 Nov 2026): anyone opening /dashboard or /admin
+ * without an authenticator is sent to set one up first. Partner logins
+ * (/partner) stay optional. HUB_TWO_STEP_REQUIRED=0 switches the requirement
+ * off again without a deploy of new code.
  */
 
 export const TWO_STEP_PATH = "/login/two-step";
+export const TWO_STEP_SETUP_PATH = "/login/two-step/setup";
+
+/** Staff pages need two-step login; the partner area does not. */
+export function twoStepRequiredFor(pathname: string, flag: string | null | undefined = process.env.HUB_TWO_STEP_REQUIRED): boolean {
+  if (String(flag ?? "").trim() === "0") return false;
+  return pathname.startsWith("/dashboard") || pathname.startsWith("/admin");
+}
+
+/** True when two-step is required here and the user has not set up an authenticator yet. */
+export function needsTwoStepSetup(factors: FactorLike[] | null | undefined, pathname: string, flag?: string | null): boolean {
+  if (!twoStepRequiredFor(pathname, flag === undefined ? process.env.HUB_TWO_STEP_REQUIRED : flag)) return false;
+  return !(factors ?? []).some((f) => f.status === "verified");
+}
 
 type FactorLike = { status?: string | null; factor_type?: string | null };
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accessTokenAal, needsSecondStep, safeTwoStepNext } from "@/lib/supabase/two-step";
+import { accessTokenAal, needsSecondStep, needsTwoStepSetup, safeTwoStepNext, twoStepRequiredFor } from "@/lib/supabase/two-step";
 
 const token = (payload: object) =>
   `x.${Buffer.from(JSON.stringify(payload)).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}.y`;
@@ -27,4 +27,16 @@ test("next only goes back into the Hub", () => {
   assert.equal(safeTwoStepNext("//evil.com"), "/dashboard");
   assert.equal(safeTwoStepNext("https://evil.com"), "/dashboard");
   assert.equal(safeTwoStepNext("/partner"), "/partner");
+});
+
+test("staff pages require two-step setup; partners and the off switch do not", () => {
+  const none: Array<{ status: string }> = [];
+  const verified = [{ status: "verified" }];
+  assert.equal(needsTwoStepSetup(none, "/dashboard/show-ops", ""), true);
+  assert.equal(needsTwoStepSetup(none, "/admin", ""), true);
+  assert.equal(needsTwoStepSetup([{ status: "unverified" }], "/dashboard", ""), true);
+  assert.equal(needsTwoStepSetup(verified, "/dashboard", ""), false);
+  assert.equal(needsTwoStepSetup(none, "/partner/new", ""), false);
+  assert.equal(needsTwoStepSetup(none, "/dashboard", "0"), false);
+  assert.equal(twoStepRequiredFor("/login/two-step/setup", ""), false);
 });
