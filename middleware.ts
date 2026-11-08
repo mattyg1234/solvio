@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { isStaleAuthSessionError } from "@/lib/supabase/auth-errors";
-import { needsSecondStep, TWO_STEP_PATH } from "@/lib/supabase/two-step";
+import { needsSecondStep, needsTwoStepSetup, TWO_STEP_PATH, TWO_STEP_SETUP_PATH } from "@/lib/supabase/two-step";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -83,6 +83,15 @@ export async function middleware(request: NextRequest) {
       stepUrl.pathname = TWO_STEP_PATH;
       stepUrl.search = `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
       const redirect = NextResponse.redirect(stepUrl);
+      supabaseResponse.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+      return redirect;
+    }
+    // Staff without an authenticator yet set one up before the Hub opens (partners exempt).
+    if (needsTwoStepSetup(user.factors, pathname)) {
+      const setupUrl = request.nextUrl.clone();
+      setupUrl.pathname = TWO_STEP_SETUP_PATH;
+      setupUrl.search = `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
+      const redirect = NextResponse.redirect(setupUrl);
       supabaseResponse.cookies.getAll().forEach((c) => redirect.cookies.set(c));
       return redirect;
     }

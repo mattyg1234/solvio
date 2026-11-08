@@ -11,7 +11,7 @@ type Factor = { id: string; friendly_name?: string | null; status: string; creat
  * their own login: scan the QR with an authenticator app, type the code once.
  * From then on the Hub asks for a code after the password.
  */
-export function TwoStepSettings() {
+export function TwoStepSettings({ onDone, required = false }: { onDone?: () => void; required?: boolean } = {}) {
   const [factors, setFactors] = useState<Factor[] | null>(null);
   const [enrol, setEnrol] = useState<{ id: string; qr: string; secret: string } | null>(null);
   const [code, setCode] = useState("");
@@ -63,6 +63,10 @@ export function TwoStepSettings() {
       setEnrol(null);
       setCode("");
       setMsg({ ok: true, text: "Two-step login is on. Next time you sign in, the Hub will ask for a code." });
+      if (onDone) {
+        onDone();
+        return;
+      }
       await load();
     } finally {
       setBusy(false);
@@ -102,7 +106,7 @@ export function TwoStepSettings() {
       </p>
       {msg ? <p className={msg.ok ? "text-emerald-700" : "text-rose-700"}>{msg.text}</p> : null}
 
-      {on
+      {on && !required
         ? factors!.map((f) => (
             <button
               key={f.id}

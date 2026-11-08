@@ -27,6 +27,7 @@ import {
 import { isGlobalShowOpsAdmin } from "@/lib/show-ops/island-access";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { TwoStepSettings } from "@/components/show-ops/two-step-settings";
+import { twoStepRequiredFor } from "@/lib/supabase/two-step";
 import {
   showOpsAllowedPages,
   SHOW_OPS_PAGE_KEYS,
@@ -667,10 +668,10 @@ export default async function ShowOpsSettingsPage({
       <section id="two-step" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h2 className="font-semibold">Two-step login</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Extra safety for your own login: after your password the Hub asks for a 6-digit code from an app on your
-          phone. Recommended for anyone with admin access.
+          After your password the Hub asks for a 6-digit code from an authenticator app on your phone.
+          {twoStepRequiredFor("/dashboard") ? " Required for every staff login. Partner logins can choose." : " Recommended for anyone with admin access."}
         </p>
-        <TwoStepSettings />
+        <TwoStepSettings required={twoStepRequiredFor("/dashboard")} />
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
