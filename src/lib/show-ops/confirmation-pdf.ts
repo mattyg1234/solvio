@@ -150,8 +150,13 @@ function drawRows(page: PDFPage, rows: Array<[string, string]>, opts: { bold: PD
 
 /** Print one booking onto a copy of Ruth's template. Returns the finished PDF bytes. */
 export async function buildGuestConfirmationPdf(template: Uint8Array, input: GuestConfirmationInput): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(template);
-  const page = doc.getPage(0);
+  // Copy Ruth's page into a fresh document instead of editing hers in place. Her file's
+  // catalog is object 18 generation 1, and pdf-lib writes an xref that loses it, so Chrome
+  // showed a blank page (Joel, 8 Nov). A fresh document renumbers everything from scratch.
+  const source = await PDFDocument.load(template);
+  const doc = await PDFDocument.create();
+  const [page] = await doc.copyPages(source, [0]);
+  doc.addPage(page);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const regular = await doc.embedFont(StandardFonts.Helvetica);
 
@@ -184,5 +189,5 @@ export async function buildGuestConfirmationPdf(template: Uint8Array, input: Gue
   page.drawText(stamp, { x: LEFT, y: BAND_BOTTOM, size: 6.2, font: regular, color: MUTED });
 
   doc.setTitle(`Booking confirmation ${input.bookingRef}`);
-  return doc.save();
+  return doc.save({ useObjectStreams: false });
 }
