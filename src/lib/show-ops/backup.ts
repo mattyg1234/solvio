@@ -51,6 +51,7 @@ export const SHOW_OPS_BACKUP_TABLES = [
   "show_invoice_external_events",
   "show_expenses",
   "show_night_closes",
+  "show_last_year_pax",
   "show_night_sale_status",
   "show_seat_holds",
   "show_channel_products",
