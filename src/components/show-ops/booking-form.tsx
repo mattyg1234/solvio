@@ -670,7 +670,7 @@ export function ShowOpsBookingForm({
     const card = pickRatePrice(rateBook?.rows, p.id, transport);
     const adultGross = card ? card.adult_price : p.adult_price;
     const childGross = card ? card.child_price : p.child_price;
-    if (sellerMode && supplier?.billing_mode === "invoice") {
+    if (sellerMode && supplier && (effectiveBilling ?? supplier.billing_mode) === "invoice") {
       const pct = Number(supplier.invoice_nett_percent);
       const adult = adultGross * (pct / 100);
       const child = childGross * (pct / 100);
@@ -679,10 +679,11 @@ export function ShowOpsBookingForm({
     return `${p.name} (${moneyFmt(adultGross)} / ${moneyFmt(childGross)})`;
   };
 
-  // Only a partner explicitly given the permission can be flipped between deposit
-  // and invoice on a single booking; everyone else follows their partner record.
+  // Only a partner explicitly given the permission ("can do both") can be flipped
+  // between deposit and invoice on a single booking; everyone else follows their
+  // partner record. The partner picks it themselves on their own login too (Joel, 8 Nov).
   const canPickBilling =
-    Boolean(supplier?.can_choose_billing_mode) && !sellerMode && !moneyLocked;
+    Boolean(supplier?.can_choose_billing_mode) && !moneyLocked;
   const effectiveBilling =
     canPickBilling && (billingMode === "deposit" || billingMode === "invoice")
       ? billingMode
@@ -1422,6 +1423,21 @@ export function ShowOpsBookingForm({
 
           {sellerMode ? (
             <>
+              {canPickBilling ? (
+                <>
+                  <FieldLabel className="mt-4">How is this booking paid?</FieldLabel>
+                  <select
+                    name="billing_mode"
+                    value={billingMode || supplier?.billing_mode || "deposit"}
+                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice")}
+                    className={INPUT}
+                  >
+                    <option value="deposit">Deposit — take {supplier?.deposit_percent}% from the guest now, rest paid at the show</option>
+                    <option value="invoice">Invoice — we bill you nett {supplier?.invoice_nett_percent}% on the monthly invoice</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">You can do both. Pick the one that fits this booking.</p>
+                </>
+              ) : null}
               <input type="hidden" name="supplier_id" value={supplierId} />
               <input
                 type="hidden"
