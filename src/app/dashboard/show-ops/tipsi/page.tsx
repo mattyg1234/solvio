@@ -10,6 +10,7 @@ import { TIPSI_GATE_COOKIE, verifyTipsiUnlockToken } from "@/lib/show-ops/tipsi-
 import {
   isTipsiStatsConfigured,
   loadTipsiOrders,
+  loadTipsiMerchNames,
   loadTipsiTips,
   summariseTipsiOrders,
   TIPSI_PERIODS,
@@ -235,6 +236,36 @@ function Dashboard({ s }: { s: TipsiSummary }) {
         </div>
       </div>
 
+      <Card title="Best-selling merch">
+        {s.merch.top.length ? (
+          <>
+            <p className="-mt-2 mb-3 text-sm text-slate-500">
+              {s.merch.quantity} item{s.merch.quantity === 1 ? "" : "s"} sold · {eur(s.merch.revenue)} from the Tipsi merch list
+            </p>
+            <ol className="divide-y divide-slate-100 text-sm">
+              {s.merch.top.map((m, i) => (
+                <li key={m.name} className="flex items-start justify-between gap-3 py-1.5">
+                  <span className="min-w-0 text-slate-800">
+                    <span className="mr-2 text-slate-400 tabular-nums">{i + 1}.</span>
+                    {m.name}
+                    {m.options.length ? (
+                      <span className="block pl-6 text-xs text-slate-500">
+                        {m.options.map((o) => `${o.option} ×${o.quantity}`).join(" · ")}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-slate-600">
+                    {m.quantity} · <span className="font-semibold text-slate-900">{eur(m.revenue)}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">No merch sold through Tipsi in this period.</p>
+        )}
+      </Card>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Recent nights">
           <table className="w-full text-sm tabular-nums">
@@ -324,11 +355,12 @@ export default async function TipsiStatsPage({
     error = "The Tipsi connection is not set up yet (TIPSI_SUPABASE_SERVICE_ROLE_KEY is missing in Vercel).";
   } else {
     try {
-      const [orders, tips] = await Promise.all([
+      const [orders, tips, merchNames] = await Promise.all([
         loadTipsiOrders({ fromIso: range.fromIso, toIso: range.toIso }),
         loadTipsiTips({ fromIso: range.fromIso, toIso: range.toIso }),
+        loadTipsiMerchNames(),
       ]);
-      summary = summariseTipsiOrders(orders, { tips });
+      summary = summariseTipsiOrders(orders, { tips, merchNames });
     } catch (e) {
       console.error("[tipsi-stats]", e);
       error = "Could not load Tipsi numbers just now. Try again in a minute.";

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { checkTipsiPassword, makeTipsiUnlockToken, verifyTipsiUnlockToken } from "./tipsi-gate";
 import { visibleShowOpsNav } from "./nav";
 import {
+  matchTipsiMerch,
   summariseTipsiOrders,
   tipsiNightOf,
   tipsiOrderFromRow,
@@ -120,4 +121,24 @@ test("Tipsi tab shows in the nav only for the owner", () => {
   assert.equal(has("admin", null), false);
   assert.equal(has("admin", ["reports", "settings"]), false);
   assert.equal(has("booker", null), false);
+});
+
+test("merch lines group by product with their sizes, and leave top drinks", () => {
+  const names = ["Bitch T-Shirt", "MHT Cup – Pink"];
+  assert.deepEqual(matchTipsiMerch("Bitch T-Shirt (XL)", names), { product: "Bitch T-Shirt", option: "XL" });
+  assert.deepEqual(matchTipsiMerch("MHT Cup – Pink", names), { product: "MHT Cup – Pink", option: null });
+  assert.equal(matchTipsiMerch("Lager", names), null);
+  const s = summariseTipsiOrders(
+    [
+      order({ id: "1", items: [{ name: "Bitch T-Shirt (XL)", price: 15, quantity: 2 }, { name: "Lager", price: 5, quantity: 1 }] }),
+      order({ id: "2", items: [{ name: "Bitch T-Shirt (XXL)", price: 15, quantity: 1 }, { name: "MHT Cup – Pink", price: 10, quantity: 1 }] }),
+    ],
+    { merchNames: names, tips: [] },
+  );
+  assert.equal(s.merch.quantity, 4);
+  assert.equal(s.merch.revenue, 55);
+  assert.equal(s.merch.top[0].name, "Bitch T-Shirt");
+  assert.deepEqual(s.merch.top[0].options, [{ option: "XL", quantity: 2 }, { option: "XXL", quantity: 1 }]);
+  assert.deepEqual(s.topItems.map((t) => t.name), ["Lager"]);
+  assert.equal(s.itemsSold, 1);
 });

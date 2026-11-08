@@ -157,6 +157,36 @@ export async function loadTipsiTips(opts: {
   return out;
 }
 
+/** Names on the venues' Tipsi menu under a "Merch" category. */
+export async function loadTipsiMerchNames(opts: { client?: SupabaseClient } = {}): Promise<string[]> {
+  const client = opts.client ?? createTipsiClient();
+  const { data, error } = await client
+    .from("menu_items")
+    .select("name")
+    .in("business_id", tipsiVenueIds())
+    .ilike("category", "%merch%")
+    .limit(2000);
+  if (error) throw new Error(`Tipsi merch list: ${error.message}`);
+  return [...new Set(((data ?? []) as Array<{ name: unknown }>).map((r) => String(r.name ?? "").trim()).filter(Boolean))];
+}
+
+/**
+ * Order lines carry the option in brackets ("T-Shirt (XL)"). Returns the merch
+ * product an order line belongs to and its option, or null when it isn't merch.
+ */
+export function matchTipsiMerch(itemName: string, merchNames: string[]): { product: string; option: string | null } | null {
+  let best: string | null = null;
+  for (const m of merchNames) {
+    if (itemName === m || itemName.startsWith(`${m} (`)) {
+      if (!best || m.length > best.length) best = m;
+    }
+  }
+  if (!best) return null;
+  const rest = itemName.slice(best.length).trim();
+  const opt = rest.startsWith("(") && rest.endsWith(")") ? rest.slice(1, -1).trim() : "";
+  return { product: best, option: opt || null };
+}
+
 /* ------------------------------------------------------------------ *
  * Summary (pure)
  * ------------------------------------------------------------------ */
@@ -231,7 +261,13 @@ export type TipsiSummary = {
   byDay: Array<{ day: string; orders: number; gross: number; fee: number }>;
   byHour: Array<{ hour: number; orders: number; gross: number }>;
   byWeekday: Array<{ weekday: string; orders: number; gross: number }>;
+  /** Best-selling drinks and snacks (merch is listed separately). */
   topItems: Array<{ name: string; quantity: number; revenue: number }>;
+  merch: {
+    quantity: number;
+    revenue: number;
+    top: Array<{ name: string; quantity: number; revenue: number; options: Array<{ option: string; quantity: number }> }>;
+  };
   topTables: Array<{ table: string; orders: number; gross: number }>;
 };
 
@@ -261,12 +297,17 @@ export function summariseTipsiOrders(
     stripeRate?: { percent: number; fixed: number };
     tips?: TipsiTip[];
     extraSalesPercent?: number;
+    merchNames?: string[];
   } = {},
 ): TipsiSummary {
   const topN = opts.topN ?? 15;
   const stripeRate = opts.stripeRate ?? tipsiStripeFeeRate();
   const extraPercent = opts.extraSalesPercent ?? tipsiExtraSalesPercent();
   const tips = opts.tips ?? [];
+  const merchNames = opts.merchNames ?? [];
+  const merch = new Map<string, { quantity: number; revenue: number; options: Map<string, number> }>();
+  let merchQty = 0;
+  let merchRevenue = 0;
   let stripeFees = 0;
   let gifts = 0;
   let giftOrders = 0;
@@ -341,6 +382,17 @@ export function summariseTipsiOrders(
     weekday.set(wd, ww);
 
     for (const it of o.items) {
+      const mm = merchNames.length ? matchTipsiMerch(it.name, merchNames) : null;
+      if (mm) {
+        const cur = merch.get(mm.product) ?? { quantity: 0, revenue: 0, options: new Map<string, number>() };
+        cur.quantity += it.quantity;
+        cur.revenue += it.price * it.quantity;
+        if (mm.option) cur.options.set(mm.option, (cur.options.get(mm.option) ?? 0) + it.quantity);
+        merch.set(mm.product, cur);
+        merchQty += it.quantity;
+        merchRevenue += it.price * it.quantity;
+        continue;
+      }
       const key = it.name;
       const cur = items.get(key) ?? { quantity: 0, revenue: 0 };
       cur.quantity += it.quantity;
@@ -421,6 +473,21 @@ export function summariseTipsiOrders(
       .map(([name, v]) => ({ name, quantity: v.quantity, revenue: r2(v.revenue) }))
       .sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity)
       .slice(0, topN),
+    merch: {
+      quantity: merchQty,
+      revenue: r2(merchRevenue),
+      top: [...merch.entries()]
+        .map(([name, v]) => ({
+          name,
+          quantity: v.quantity,
+          revenue: r2(v.revenue),
+          options: [...v.options.entries()]
+            .map(([option, quantity]) => ({ option, quantity }))
+            .sort((a, b) => b.quantity - a.quantity),
+        }))
+        .sort((a, b) => b.revenue - a.revenue || b.quantity - a.quantity)
+        .slice(0, 10),
+    },
     topTables: [...tables.entries()]
       .map(([table, v]) => ({ table, orders: v.orders, gross: r2(v.gross) }))
       .sort((a, b) => b.gross - a.gross)
