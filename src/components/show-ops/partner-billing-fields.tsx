@@ -27,7 +27,7 @@ export function PartnerBillingFields({
       </label>
       <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
         <input type="checkbox" name={`${prefix}can_choose_billing_mode`} value="1" defaultChecked={canChoose} onChange={(e) => setChoice(e.target.checked)} />
-        Let the desk choose deposit or invoice for each booking
+        Can do both: the desk and the partner (on their own login) choose deposit or invoice for each booking
       </label>
       <div className={showDeposit ? "rounded-lg bg-slate-50 p-3 sm:col-span-3" : "hidden"}>
         <label className="block text-xs font-medium text-slate-700">
