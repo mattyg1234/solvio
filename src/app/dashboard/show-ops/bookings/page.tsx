@@ -15,6 +15,7 @@ import {
 } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { SHOW_OPS_PAYMENT_METHOD_LABELS } from "@/lib/show-ops/types";
+import { LATEST_BOOKINGS_LIMIT, possibleDuplicateIds, takenAtLabel } from "@/lib/show-ops/latest-bookings";
 
 // 50 rows per page: the old 250-row page shipped ~2 MB of HTML (every row is rendered twice,
 // once as a door card and once as a desk row, each with its own forms) and took 3–7 s to load.
@@ -74,6 +75,7 @@ export default async function AllBookingsPage({
     show?: string;
     door?: string;
     all?: string;
+    latest?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -90,6 +92,8 @@ export default async function AllBookingsPage({
   const showFilter = sp.show || "";
   const door = sp.door || "";
   const requestsOnly = sp.requests === "1";
+  // "Last 30 taken" (Joel, 8 Nov): newest entered first, every date, for spotting mistakes and double entries.
+  const latest = sp.latest === "1";
   const allDates = sp.all === "1" && !sp.from && !sp.to;
   const tonightOnly = Boolean(sp.date) && !sp.from && !sp.to && !allDates;
   const date = tonightOnly ? sp.date || today : "";
@@ -151,15 +155,32 @@ export default async function AllBookingsPage({
     );
   }
 
-  const [{ data: rows, count }, { data: savedShows }] = await Promise.all([
-    query,
+  const latestQuery = latest
+    ? (() => {
+        let lq = ctx.supabase
+          .from("show_bookings")
+          .select("id,booking_ref,guest_name,show_name,show_date,island,adults,children,infants,total_cost,supplier_name,created_at,cancelled_at")
+          .eq("business_id", ctx.business.id)
+          .order("created_at", { ascending: false })
+          .order("booking_ref_num", { ascending: false, nullsFirst: false })
+          .limit(LATEST_BOOKINGS_LIMIT);
+        if (island) lq = lq.eq("island", island);
+        return lq;
+      })()
+    : null;
+
+  const [{ data: rows, count }, { data: savedShows }, latestRes] = await Promise.all([
+    latest ? Promise.resolve({ data: [] as never[], count: 0 }) : query,
     ctx.supabase
       .from("show_products")
       .select("name,island")
       .eq("business_id", ctx.business.id)
       .eq("active", true)
       .order("name"),
+    latestQuery ?? Promise.resolve({ data: null }),
   ]);
+  const latestRows = latestRes?.data ?? [];
+  const latestDupes = possibleDuplicateIds(latestRows);
   const total = count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const showOptions = (() => {
@@ -200,8 +221,8 @@ export default async function AllBookingsPage({
     return s ? `/dashboard/show-ops/bookings?${s}` : "/dashboard/show-ops/bookings";
   };
 
-  const thisWeek = !allDates && !tonightOnly && from === today && to === weekEnd;
-  const fourWeeks = !allDates && !tonightOnly && from === today && to === fourWeekEnd;
+  const thisWeek = !latest && !allDates && !tonightOnly && from === today && to === weekEnd;
+  const fourWeeks = !latest && !allDates && !tonightOnly && from === today && to === fourWeekEnd;
   const windowLabel = allDates
     ? "all dates"
     : tonightOnly
@@ -290,7 +311,11 @@ export default async function AllBookingsPage({
       <ShowOpsPageHeader
         eyebrow="Operations"
         title="Bookings"
-        subtitle={`Staff desk · ${windowLabel} · ${total} matching. Click a row for more, then Edit if you need to change it.`}
+        subtitle={
+          latest
+            ? "The last bookings entered, newest first — for checking mistakes and double entries."
+            : `Staff desk · ${windowLabel} · ${total} matching. Click a row for more, then Edit if you need to change it.`
+        }
         actions={
           <>
             <a
@@ -313,8 +338,11 @@ export default async function AllBookingsPage({
         <ShowOpsPill href={`/dashboard/show-ops/bookings?from=${today}&to=${fourWeekEnd}`} on={fourWeeks}>
           4 weeks
         </ShowOpsPill>
-        <ShowOpsPill href="/dashboard/show-ops/bookings?all=1" on={allDates}>
+        <ShowOpsPill href="/dashboard/show-ops/bookings?all=1" on={allDates && !latest}>
           All dates
+        </ShowOpsPill>
+        <ShowOpsPill href={`/dashboard/show-ops/bookings?latest=1${island ? `&island=${encodeURIComponent(island)}` : ""}`} on={latest}>
+          Last {LATEST_BOOKINGS_LIMIT} taken
         </ShowOpsPill>
         <ShowOpsPill href="/dashboard/show-ops/bookings?all=1&requests=1" on={requestsOnly}>
           Cancel requests
@@ -327,6 +355,68 @@ export default async function AllBookingsPage({
         <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800">Booking cancelled.</p>
       ) : null}
 
+      {latest ? (
+        <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-slate-200">
+          <p className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
+            The last {LATEST_BOOKINGS_LIMIT} bookings entered{island ? ` for ${island}` : ""}, newest first, any show date.
+            {latestDupes.size ? (
+              <span className="ml-1 font-semibold text-amber-800">
+                {latestDupes.size} look like double entries (same name, night and island).
+              </span>
+            ) : null}
+          </p>
+          <table className="min-w-[52rem] w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-3 py-2">Taken</th>
+                <th className="px-3 py-2">Ref</th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Show date</th>
+                <th className="px-3 py-2">Show</th>
+                <th className="px-3 py-2 text-right">Pax</th>
+                <th className="px-3 py-2 text-right">Price</th>
+                <th className="px-3 py-2">Partner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {latestRows.map((r) => {
+                const dupe = latestDupes.has(r.id);
+                return (
+                  <tr
+                    key={r.id}
+                    className={`border-t border-slate-100 ${dupe ? "bg-amber-50" : ""} ${r.cancelled_at ? "text-slate-400" : "text-slate-800"}`}
+                  >
+                    <td className="whitespace-nowrap px-3 py-2 tabular-nums">{takenAtLabel(r.created_at)}</td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      <Link href={`/dashboard/show-ops/bookings/${r.id}`} className="text-[var(--show-ops-primary,#7c3aed)] hover:underline">
+                        {r.booking_ref || r.id.slice(0, 8)}
+                      </Link>
+                    </td>
+                    <td className={`px-3 py-2 font-medium ${r.cancelled_at ? "line-through" : ""}`}>
+                      {r.guest_name}
+                      {dupe ? <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Double entry?</span> : null}
+                      {r.cancelled_at ? <span className="ml-2 text-[11px] font-semibold uppercase">Cancelled</span> : null}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      {showOpsDayName(r.show_date, "short")} {r.show_date}
+                    </td>
+                    <td className="px-3 py-2">{r.show_name}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{formatShowOpsPax(r.adults, r.children, r.infants)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(Number(r.total_cost), r.island)}</td>
+                    <td className="px-3 py-2">{r.supplier_name ?? "—"}</td>
+                  </tr>
+                );
+              })}
+              {!latestRows.length ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-8 text-center text-slate-500">No bookings yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+      <>
       <ShowOpsLiveFilterForm
         action="/dashboard/show-ops/bookings"
         className="print:hidden sticky top-0 z-10 rounded-2xl bg-white/95 p-4 shadow-sm ring-1 ring-slate-200/80 backdrop-blur"
@@ -459,6 +549,8 @@ export default async function AllBookingsPage({
           </div>
         </div>
       ) : null}
+      </>
+      )}
     </div>
   );
 }
