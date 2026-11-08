@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { isStaleAuthSessionError } from "@/lib/supabase/auth-errors";
+import { needsSecondStep, TWO_STEP_PATH } from "@/lib/supabase/two-step";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -71,6 +72,20 @@ export async function middleware(request: NextRequest) {
     loginUrl.pathname = "/login";
     loginUrl.search = pathname.startsWith("/partner") ? "?next=/partner" : "";
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Two-step login (Joel, 8 Nov 2026): someone who switched on an authenticator app
+  // must enter its code before any Hub or partner page opens.
+  if (user && isProtected) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (needsSecondStep(user.factors, session?.access_token)) {
+      const stepUrl = request.nextUrl.clone();
+      stepUrl.pathname = TWO_STEP_PATH;
+      stepUrl.search = `?next=${encodeURIComponent(pathname + request.nextUrl.search)}`;
+      const redirect = NextResponse.redirect(stepUrl);
+      supabaseResponse.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+      return redirect;
+    }
   }
 
   // White-label Show Ops: pass custom host through for tenant branding / future rewrite.
