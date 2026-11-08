@@ -34,7 +34,12 @@ export type TipsiOrder = {
   tableNumber: string | null;
   items: TipsiOrderItem[];
   acceptanceSeconds: number | null;
+  /** Sent to someone else through Tipsi's "send a drink" (gift) flow. */
+  isGift: boolean;
 };
+
+/** A tip left through Tipsi (tips table or a review with a tip), EUR. */
+export type TipsiTip = { createdAt: string; amount: number };
 
 export function tipsiVenueIds(): string[] {
   const raw = process.env.TIPSI_VENUE_IDS?.trim();
@@ -84,11 +89,12 @@ export function tipsiOrderFromRow(row: Record<string, unknown>): TipsiOrder {
     tableNumber: row.table_number == null || row.table_number === "" ? null : String(row.table_number),
     items: parseItems(row.items),
     acceptanceSeconds: row.acceptance_time_seconds == null ? null : num(row.acceptance_time_seconds),
+    isGift: Boolean(row.is_gift_order),
   };
 }
 
 const ORDER_COLS =
-  "id,business_id,created_at,status,total_amount,platform_fee,refunded,refund_amount,table_number,items,acceptance_time_seconds";
+  "id,business_id,created_at,status,total_amount,platform_fee,refunded,refund_amount,table_number,items,acceptance_time_seconds,is_gift_order";
 
 /**
  * Orders for the configured Tipsi venues, created in [fromIso, toIso).
@@ -115,6 +121,38 @@ export async function loadTipsiOrders(opts: {
     const rows = (data ?? []) as Record<string, unknown>[];
     for (const r of rows) out.push(tipsiOrderFromRow(r));
     if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
+/** Tips for the configured venues in [fromIso, toIso): the tips table plus tips left with reviews. */
+export async function loadTipsiTips(opts: {
+  fromIso: string | null;
+  toIso: string | null;
+  client?: SupabaseClient;
+}): Promise<TipsiTip[]> {
+  const client = opts.client ?? createTipsiClient();
+  const venues = tipsiVenueIds();
+  const range = <T extends { gte: (c: string, v: string) => T; lt: (c: string, v: string) => T }>(q: T): T => {
+    let next = q;
+    if (opts.fromIso) next = next.gte("created_at", opts.fromIso);
+    if (opts.toIso) next = next.lt("created_at", opts.toIso);
+    return next;
+  };
+  const [tips, reviews] = await Promise.all([
+    range(client.from("tips").select("created_at,amount_cents").in("business_id", venues)).limit(10000),
+    range(client.from("reviews").select("created_at,tip_amount_cents").in("business_id", venues).gt("tip_amount_cents", 0)).limit(10000),
+  ]);
+  if (tips.error) throw new Error(`Tipsi tips: ${tips.error.message}`);
+  if (reviews.error) throw new Error(`Tipsi review tips: ${reviews.error.message}`);
+  const out: TipsiTip[] = [];
+  for (const r of (tips.data ?? []) as Record<string, unknown>[]) {
+    const amount = num(r.amount_cents) / 100;
+    if (amount > 0) out.push({ createdAt: String(r.created_at ?? ""), amount });
+  }
+  for (const r of (reviews.data ?? []) as Record<string, unknown>[]) {
+    const amount = num(r.tip_amount_cents) / 100;
+    if (amount > 0) out.push({ createdAt: String(r.created_at ?? ""), amount });
   }
   return out;
 }
@@ -176,14 +214,20 @@ export type TipsiSummary = {
   totalFees: number;
   refunds: number;
   refundCount: number;
-  /** "Tipsi made you": gross minus refunds, Tipsi commission and Stripe fees. */
+  /** What MHT keeps: gross minus refunds, Tipsi commission and Stripe fees. */
   venueNet: number;
+  /**
+   * "Tipsi made you": money MHT would not have had without Tipsi.
+   * Gift orders (send-a-drink) + tips + an estimated share of sales from
+   * how easy ordering is (TIPSI_EXTRA_SALES_PERCENT, default 5%).
+   */
+  madeYou: { total: number; gifts: number; giftOrders: number; tips: number; tipCount: number; extraSales: number; extraPercent: number };
   avgOrder: number;
   itemsSold: number;
   avgAcceptanceSeconds: number | null;
   activeNights: number;
   bestNight: { day: string; gross: number; orders: number } | null;
-  byMonth: Array<{ month: string; orders: number; gross: number; fee: number; stripeFees: number; totalFees: number; net: number }>;
+  byMonth: Array<{ month: string; orders: number; gross: number; fee: number; stripeFees: number; totalFees: number; net: number; madeYou: number }>;
   byDay: Array<{ day: string; orders: number; gross: number; fee: number }>;
   byHour: Array<{ hour: number; orders: number; gross: number }>;
   byWeekday: Array<{ weekday: string; orders: number; gross: number }>;
@@ -204,13 +248,28 @@ export function tipsiNightOf(iso: string): string {
   return DAY_FMT.format(shifted);
 }
 
+/** Share of sales assumed to be extra because ordering through Tipsi is easy. Default 5% (Matty, 8 Nov). */
+export function tipsiExtraSalesPercent(): number {
+  const n = Number.parseFloat(process.env.TIPSI_EXTRA_SALES_PERCENT ?? "");
+  return Number.isFinite(n) && n >= 0 ? n : 5;
+}
+
 export function summariseTipsiOrders(
   all: TipsiOrder[],
-  opts: { topN?: number; stripeRate?: { percent: number; fixed: number } } = {},
+  opts: {
+    topN?: number;
+    stripeRate?: { percent: number; fixed: number };
+    tips?: TipsiTip[];
+    extraSalesPercent?: number;
+  } = {},
 ): TipsiSummary {
   const topN = opts.topN ?? 15;
   const stripeRate = opts.stripeRate ?? tipsiStripeFeeRate();
+  const extraPercent = opts.extraSalesPercent ?? tipsiExtraSalesPercent();
+  const tips = opts.tips ?? [];
   let stripeFees = 0;
+  let gifts = 0;
+  let giftOrders = 0;
   const orders = all.filter(isTipsiSale);
   let gross = 0;
   let fee = 0;
@@ -219,7 +278,15 @@ export function summariseTipsiOrders(
   let itemsSold = 0;
   let accSum = 0;
   let accN = 0;
-  const month = new Map<string, { orders: number; gross: number; fee: number; stripe: number; refunds: number }>();
+  const month = new Map<string, { orders: number; gross: number; fee: number; stripe: number; refunds: number; gifts: number; tips: number }>();
+  const monthRow = (m: string) => {
+    let row = month.get(m);
+    if (!row) {
+      row = { orders: 0, gross: 0, fee: 0, stripe: 0, refunds: 0, gifts: 0, tips: 0 };
+      month.set(m, row);
+    }
+    return row;
+  };
   const day = new Map<string, { orders: number; gross: number; fee: number }>();
   const hour = new Map<number, { orders: number; gross: number }>();
   const weekday = new Map<string, { orders: number; gross: number }>();
@@ -243,13 +310,17 @@ export function summariseTipsiOrders(
     }
     const night = tipsiNightOf(o.createdAt);
     const m = night.slice(0, 7);
-    const mm = month.get(m) ?? { orders: 0, gross: 0, fee: 0, stripe: 0, refunds: 0 };
+    const mm = monthRow(m);
     mm.orders += 1;
+    if (o.isGift) {
+      mm.gifts += o.total;
+      gifts += o.total;
+      giftOrders += 1;
+    }
     mm.gross += o.total;
     mm.fee += o.fee;
     mm.stripe += stripe;
     mm.refunds += refund;
-    month.set(m, mm);
     const dd = day.get(night) ?? { orders: 0, gross: 0, fee: 0 };
     dd.orders += 1;
     dd.gross += o.total;
@@ -285,6 +356,14 @@ export function summariseTipsiOrders(
     }
   }
 
+  let tipTotal = 0;
+  for (const t of tips) {
+    if (!(t.amount > 0) || !t.createdAt) continue;
+    tipTotal += t.amount;
+    monthRow(tipsiNightOf(t.createdAt).slice(0, 7)).tips += t.amount;
+  }
+  const extraSales = r2((gross * extraPercent) / 100);
+
   const byDay = [...day.entries()]
     .map(([d, v]) => ({ day: d, orders: v.orders, gross: r2(v.gross), fee: r2(v.fee) }))
     .sort((a, b) => a.day.localeCompare(b.day));
@@ -302,6 +381,15 @@ export function summariseTipsiOrders(
     refunds: r2(refunds),
     refundCount,
     venueNet: r2(gross - refunds - fee - stripeFees),
+    madeYou: {
+      total: r2(gifts + tipTotal + extraSales),
+      gifts: r2(gifts),
+      giftOrders,
+      tips: r2(tipTotal),
+      tipCount: tips.filter((t) => t.amount > 0).length,
+      extraSales,
+      extraPercent,
+    },
     avgOrder: orders.length ? r2(gross / orders.length) : 0,
     itemsSold,
     avgAcceptanceSeconds: accN ? Math.round(accSum / accN) : null,
@@ -316,6 +404,7 @@ export function summariseTipsiOrders(
         stripeFees: r2(v.stripe),
         totalFees: r2(v.fee + v.stripe),
         net: r2(v.gross - v.refunds - v.fee - v.stripe),
+        madeYou: r2(v.gifts + v.tips + (v.gross * extraPercent) / 100),
       }))
       .sort((a, b) => a.month.localeCompare(b.month)),
     byDay,

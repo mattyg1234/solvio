@@ -24,6 +24,7 @@ function order(over: Partial<TipsiOrder>): TipsiOrder {
     tableNumber: "5",
     items: [{ name: "Lager", price: 5, quantity: 2 }],
     acceptanceSeconds: 60,
+    isGift: false,
     ...over,
   };
 }
@@ -57,10 +58,14 @@ test("after-midnight orders count to the night before (Canary time)", () => {
 test("summary totals, commission, refunds and top drinks", () => {
   const s = summariseTipsiOrders([
     order({ id: "1" }),
-    order({ id: "2", total: 20, fee: 2, items: [{ name: "Jug", price: 20, quantity: 1 }], tableNumber: "7" }),
+    order({ id: "2", total: 20, fee: 2, items: [{ name: "Jug", price: 20, quantity: 1 }], tableNumber: "7", isGift: true }),
     order({ id: "3", refunded: true, refundAmount: 10 }),
     order({ id: "4", status: "cancelled", total: 99, fee: 9 }),
-  ], { stripeRate: { percent: 1.5, fixed: 0.25 } });
+  ], {
+    stripeRate: { percent: 1.5, fixed: 0.25 },
+    extraSalesPercent: 5,
+    tips: [{ createdAt: "2026-10-30T22:30:00Z", amount: 3 }, { createdAt: "2026-10-30T22:40:00Z", amount: 0 }],
+  });
   assert.equal(s.orders, 3);
   assert.equal(s.gross, 40);
   assert.equal(s.fee, 4);
@@ -70,6 +75,9 @@ test("summary totals, commission, refunds and top drinks", () => {
   assert.equal(s.totalFees, 5.35);
   assert.equal(s.venueNet, 24.65);
   assert.equal(s.byMonth[0].net, 24.65);
+  // Tipsi made you: gift 20 + tips 3 + 5% of 40 sales = 25
+  assert.deepEqual(s.madeYou, { total: 25, gifts: 20, giftOrders: 1, tips: 3, tipCount: 1, extraSales: 2, extraPercent: 5 });
+  assert.equal(s.byMonth[0].madeYou, 25);
   assert.equal(s.itemsSold, 5);
   assert.equal(s.topItems[0].name, "Lager");
   assert.equal(s.topItems[0].quantity, 4);

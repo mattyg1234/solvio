@@ -10,6 +10,7 @@ import { TIPSI_GATE_COOKIE, verifyTipsiUnlockToken } from "@/lib/show-ops/tipsi-
 import {
   isTipsiStatsConfigured,
   loadTipsiOrders,
+  loadTipsiTips,
   summariseTipsiOrders,
   TIPSI_PERIODS,
   tipsiPeriodRange,
@@ -115,20 +116,25 @@ function Dashboard({ s }: { s: TipsiSummary }) {
         />
         <Stat
           label="Tipsi made you"
-          value={eur(s.venueNet)}
-          hint={s.refundCount ? `after fees and ${s.refundCount} refund${s.refundCount === 1 ? "" : "s"} (${eur(s.refunds)})` : "after all fees"}
+          value={eur(s.madeYou.total)}
+          hint="gifts + tips + extra sales (est.)"
           highlight
         />
+        <Stat
+          label="MHT keeps"
+          value={eur(s.venueNet)}
+          hint={s.refundCount ? `after fees and ${s.refundCount} refund${s.refundCount === 1 ? "" : "s"} (${eur(s.refunds)})` : "after all fees"}
+        />
         <Stat label="Average order" value={eur(s.avgOrder)} hint={`${s.itemsSold.toLocaleString("en-GB")} drinks sold`} />
-        <Stat label="Nights trading" value={String(s.activeNights)} hint={s.activeNights ? `${eur(s.gross / s.activeNights)} a night` : undefined} />
+        <Stat
+          label="Nights trading"
+          value={String(s.activeNights)}
+          hint={s.activeNights ? `${eur(s.gross / s.activeNights)} · ${(s.orders / s.activeNights).toFixed(1)} orders a night` : undefined}
+        />
         <Stat
           label="Best night"
           value={s.bestNight ? eur(s.bestNight.gross) : "–"}
           hint={s.bestNight ? `${dayName(s.bestNight.day)} · ${s.bestNight.orders} orders` : undefined}
-        />
-        <Stat
-          label="Orders a night"
-          value={s.activeNights ? (s.orders / s.activeNights).toFixed(1) : "–"}
         />
         <Stat
           label="Time to accept"
@@ -136,6 +142,40 @@ function Dashboard({ s }: { s: TipsiSummary }) {
           hint="average, bar staff"
         />
       </div>
+
+      <section className="rounded-2xl p-[2px]" style={{ backgroundImage: TIPSI_GRADIENT }}>
+        <div className="rounded-[14px] bg-white p-5">
+          <h3 className="text-base font-bold text-slate-900">Tipsi made you</h3>
+          <p className="mb-3 text-sm text-slate-500">Money MHT would not have had without Tipsi.</p>
+          <dl className="divide-y divide-slate-100 text-sm tabular-nums">
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-slate-700">
+                Gifts sent to friends
+                <span className="ml-1 text-slate-400">({s.madeYou.giftOrders} send-a-drink order{s.madeYou.giftOrders === 1 ? "" : "s"})</span>
+              </dt>
+              <dd className="font-semibold text-slate-900">{eur(s.madeYou.gifts)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-slate-700">
+                Tips
+                <span className="ml-1 text-slate-400">({s.madeYou.tipCount} tip{s.madeYou.tipCount === 1 ? "" : "s"})</span>
+              </dt>
+              <dd className="font-semibold text-slate-900">{eur(s.madeYou.tips)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2">
+              <dt className="text-slate-700">
+                Extra sales from easy ordering
+                <span className="ml-1 text-slate-400">(est. {s.madeYou.extraPercent}% of sales)</span>
+              </dt>
+              <dd className="font-semibold text-slate-900">{eur(s.madeYou.extraSales)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-3">
+              <dt className="font-bold text-slate-900">Total</dt>
+              <dd className="text-lg font-bold" style={{ color: TIPSI_FROM }}>{eur(s.madeYou.total)}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
 
       <Card title="By month">
         <div className="overflow-x-auto">
@@ -146,6 +186,7 @@ function Dashboard({ s }: { s: TipsiSummary }) {
                 <th className="py-1.5 pr-3 text-right">Orders</th>
                 <th className="py-1.5 pr-3 text-right">Sales</th>
                 <th className="py-1.5 pr-3 text-right">Tipsi + Stripe fees</th>
+                <th className="py-1.5 pr-3 text-right">MHT keeps</th>
                 <th className="py-1.5 text-right">Tipsi made you</th>
               </tr>
             </thead>
@@ -156,7 +197,8 @@ function Dashboard({ s }: { s: TipsiSummary }) {
                   <td className="py-2 pr-3 text-right">{m.orders}</td>
                   <td className="py-2 pr-3 text-right">{eur(m.gross)}</td>
                   <td className="py-2 pr-3 text-right">{eur(m.totalFees)}</td>
-                  <td className="py-2 text-right font-semibold">{eur(m.net)}</td>
+                  <td className="py-2 pr-3 text-right">{eur(m.net)}</td>
+                  <td className="py-2 text-right font-semibold">{eur(m.madeYou)}</td>
                 </tr>
               ))}
             </tbody>
@@ -282,7 +324,11 @@ export default async function TipsiStatsPage({
     error = "The Tipsi connection is not set up yet (TIPSI_SUPABASE_SERVICE_ROLE_KEY is missing in Vercel).";
   } else {
     try {
-      summary = summariseTipsiOrders(await loadTipsiOrders({ fromIso: range.fromIso, toIso: range.toIso }));
+      const [orders, tips] = await Promise.all([
+        loadTipsiOrders({ fromIso: range.fromIso, toIso: range.toIso }),
+        loadTipsiTips({ fromIso: range.fromIso, toIso: range.toIso }),
+      ]);
+      summary = summariseTipsiOrders(orders, { tips });
     } catch (e) {
       console.error("[tipsi-stats]", e);
       error = "Could not load Tipsi numbers just now. Try again in a minute.";
