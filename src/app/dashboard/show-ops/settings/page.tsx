@@ -26,6 +26,7 @@ import {
 } from "@/components/show-ops/member-islands-form";
 import { isGlobalShowOpsAdmin } from "@/lib/show-ops/island-access";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
+import { TwoStepSettings } from "@/components/show-ops/two-step-settings";
 import {
   showOpsAllowedPages,
   SHOW_OPS_PAGE_KEYS,
@@ -661,6 +662,15 @@ export default async function ShowOpsSettingsPage({
             {ctx.user.email || "your login"} only.
           </span>
         </form>
+      </section>
+
+      <section id="two-step" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h2 className="font-semibold">Two-step login</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Extra safety for your own login: after your password the Hub asks for a 6-digit code from an app on your
+          phone. Recommended for anyone with admin access.
+        </p>
+        <TwoStepSettings />
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
