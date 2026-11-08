@@ -67,7 +67,11 @@ test("the booking prints onto Ruth's template as a single A4 page with the QR em
   const { width, height } = doc.getPage(0).getSize();
   assert.ok(Math.abs(width - 595.28) < 1 && Math.abs(height - 841.89) < 1);
   assert.equal(doc.getTitle(), "Booking confirmation MHT-319400");
-  assert.ok(out.byteLength > template.byteLength, "the filled page must carry more than the blank template");
+  // Joel (8 Nov): Chrome opened a blank page. Ruth's file has its catalog at generation 1 and the
+  // in-place save wrote an xref stream readers could not follow. A plain xref table with a
+  // generation-0 root is what every viewer reads.
+  const tail = Buffer.from(out.subarray(-2000)).toString("latin1");
+  assert.match(tail, /trailer[\s\S]*\/Root \d+ 0 R/, "classic trailer with a generation-0 root");
   const noQr = await buildGuestConfirmationPdf(template, { ...sample, ticketUrl: null });
   assert.ok(noQr.byteLength < out.byteLength, "without a ticket link there is no QR image");
 });
