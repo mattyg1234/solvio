@@ -51,6 +51,7 @@ export const RESTORE_ORDER: readonly string[] = [
   "show_bus_night_orders",
   "show_expenses",
   "show_night_closes",
+  "show_last_year_pax",
   "show_night_sale_status",
   "show_ops_integrations",
   "show_channel_products",

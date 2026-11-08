@@ -121,6 +121,7 @@ const EVERY_PROD_TABLE = [
   "show_invoice_external_events",
   "show_invoice_lines",
   "show_invoices",
+  "show_last_year_pax",
   "show_night_closes",
   "show_night_sale_status",
   "show_ops_integrations",

@@ -17,6 +17,9 @@ import { isoDateInTimeZone } from "@/lib/show-ops/digest";
 import { REPORT_PERIOD_OPTIONS, reportPeriodHref, resolveReportRange } from "@/lib/show-ops/report-range";
 
 import { loadReportRows, previousYearDate, ReportLoadError } from "@/lib/show-ops/report-data";
+import { lastYearPaxByNight, yearOnYearPct, type LastYearImportRow } from "@/lib/show-ops/last-year";
+import { roleAtLeast } from "@/lib/show-ops/access";
+import { LastYearImportForm } from "@/components/show-ops/last-year-import-form";
 
 const PRIMARY = "var(--show-ops-primary,#7c3aed)";
 const PAGE = "/dashboard/show-ops/reports";
@@ -53,6 +56,10 @@ export default async function ReportsPage({
     stats_island?: string;
     /** Daily sales block: YYYY-MM-DD, office-local. Defaults to today. */
     sales_date?: string;
+    /** Result of a last-year figures upload. */
+    ly_imported?: string;
+    ly_skipped?: string;
+    ly_error?: string;
     /** Partner sales table: name (default, A to Z), type, hotel, bookings, pax, revenue. Print keeps it. */
     partners_sort?: string;
   }>;
@@ -133,6 +140,30 @@ export default async function ReportsPage({
     });
   }
 
+  // Year on year (Joel, 8 Nov): Hub bookings last year, plus imported night-tracker figures.
+  function lastYearHubRows(from: string | null, to: string | null) {
+    if (!from || !to) return Promise.resolve({ data: [] as Array<{ show_date: string; island: string; adults: number; children: number; infants: number }> });
+    return loadReportRows<{ show_date: string; island: string; adults: number; children: number; infants: number }>("last year bookings", (offset, limit) => {
+      let q = ctx.supabase.from("show_bookings").select("show_date,island,adults,children,infants")
+        .eq("business_id", ctx.business.id).gte("show_date", from).lte("show_date", to)
+        .is("cancelled_at", null).order("id").range(offset, offset + limit - 1);
+      if (island) q = q.eq("island", island);
+      return q;
+    });
+  }
+  async function lastYearImported(from: string | null, to: string | null): Promise<LastYearImportRow[]> {
+    if (!from || !to) return [];
+    let q = ctx.supabase.from("show_last_year_pax").select("show_date,island,pax")
+      .eq("business_id", ctx.business.id).gte("show_date", from).lte("show_date", to).limit(5000);
+    if (island) q = q.eq("island", island);
+    const { data, error } = await q;
+    // Table not created yet: fall back to Hub bookings only.
+    if (error) return [];
+    return (data ?? []).filter((r) => availableIslands.includes(r.island)).map((r) => ({ show_date: String(r.show_date), island: r.island, pax: Number(r.pax) || 0 }));
+  }
+  const lyFrom = previousYearDate(start);
+  const lyTo = previousYearDate(end);
+
   const reportLoad = await Promise.all([
     loadReportRows("bookings", (offset, limit) => {
       let q = ctx.supabase
@@ -206,7 +237,8 @@ export default async function ReportsPage({
       p_month: statsMonth,
     }),
     comparisonRows(range.prevStart, range.prevEnd),
-    comparisonRows(previousYearDate(start), previousYearDate(end)),
+    lastYearHubRows(lyFrom, lyTo),
+    lastYearImported(lyFrom, lyTo),
   ]).then((data) => ({ data, error: null })).catch((error: unknown) => ({ data: null, error }));
   if (!reportLoad.data) {
     return <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
@@ -225,6 +257,7 @@ export default async function ReportsPage({
     { data: analyticsRaw, error: analyticsError },
     { data: prevRows },
     { data: lastYearRows },
+    lastYearImportedRows,
   ] = reportLoad.data;
   if (analyticsError) return <p role="alert">Yearly analytics could not be loaded. Please refresh and try again.</p>;
 
@@ -370,7 +403,25 @@ export default async function ReportsPage({
   const money = (n: number) => formatShowOpsMoney(n, (island ? showOpsCurrencyFor(ctx.config, island) : availableCurrencies[0]));
 
   const prevPax = range.prevStart && range.prevEnd ? prevRows.reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0) : null;
-  const lastYearPax = start && end ? lastYearRows.reduce((sum, b) => sum + paxTotal(b.adults, b.children, b.infants), 0) : null;
+  // Last year's pax per night (last year's dates). Imported tracker figures win per night + island.
+  const lyByNight = lastYearPaxByNight(
+    lastYearRows.map((b) => ({ show_date: String(b.show_date), island: b.island, pax: paxTotal(b.adults, b.children, b.infants) })),
+    lastYearImportedRows,
+  );
+  const lastYearPax = start && end ? [...lyByNight.values()].reduce((a, b) => a + b, 0) : null;
+  const yoyPct = yearOnYearPct(totalPax, lastYearPax);
+  const lyForTracker = (key: string): number | null => {
+    if (key.length === 7) {
+      const ly = `${Number(key.slice(0, 4)) - 1}${key.slice(4)}`;
+      let sum = 0;
+      let any = false;
+      for (const [d, pax] of lyByNight) if (d.startsWith(ly)) { sum += pax; any = true; }
+      return any ? sum : null;
+    }
+    const ly = previousYearDate(key);
+    return ly && lyByNight.has(ly) ? lyByNight.get(ly) ?? 0 : null;
+  };
+  const canImportLastYear = roleAtLeast(ctx.role, "admin");
 
   const busCostRows = (busOrders ?? [])
     .filter((o) => !island || o.island === island)
@@ -537,11 +588,12 @@ export default async function ReportsPage({
           tint="#ecfdf5"
         />
         <StatCard
-          label="Same window last year"
-          value={lastYearPax != null ? lastYearPax.toLocaleString("en-GB") : "—"}
-          sub="Total pax"
+          label="vs last year"
+          value={yoyPct != null ? `${yoyPct > 0 ? "+" : ""}${yoyPct}%` : "—"}
+          sub={lastYearPax ? `${lastYearPax.toLocaleString("en-GB")} pax same dates last year` : "No last-year figures for these dates"}
           icon={<Sparkles className="h-4 w-4" />}
           tint="#fffbeb"
+          tone={yoyPct == null ? "flat" : yoyPct >= 0 ? "up" : "down"}
         />
       </div>
 
@@ -608,6 +660,20 @@ export default async function ReportsPage({
                   <span className={`w-10 text-right font-semibold ${best ? "" : "text-slate-700"}`} style={best ? { color: PRIMARY } : undefined}>
                     {pax}
                   </span>
+                  {(() => {
+                    const ly = lyForTracker(d);
+                    if (ly == null) return <span className="w-20 text-right text-slate-300">LY —</span>;
+                    const diff = pax - ly;
+                    return (
+                      <span className="w-20 text-right tabular-nums text-slate-500" title="Same date last year">
+                        LY {ly}
+                        <span className={diff >= 0 ? "ml-1 text-emerald-600" : "ml-1 text-rose-600"}>
+                          {diff > 0 ? "+" : ""}
+                          {diff}
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -645,9 +711,18 @@ export default async function ReportsPage({
                   {changePct != null ? `${changePct > 0 ? "+" : ""}${changePct}% ${changePct >= 0 ? "↑" : "↓"}` : "—"}
                 </dd>
               </div>
-              <SummaryRow label="Same window last year" value={lastYearPax != null ? lastYearPax.toLocaleString("en-GB") : "—"} />
+              <SummaryRow label="Same dates last year" value={lastYearPax ? lastYearPax.toLocaleString("en-GB") : "—"} />
+              <div className="flex items-baseline justify-between gap-2">
+                <dt className="text-slate-600">Year on year</dt>
+                <dd className={`font-semibold tabular-nums ${yoyPct == null ? "text-slate-400" : yoyPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  {yoyPct != null ? `${yoyPct > 0 ? "+" : ""}${yoyPct}% ${yoyPct >= 0 ? "↑" : "↓"}` : "—"}
+                </dd>
+              </div>
             </dl>
           </div>
+          {canImportLastYear ? (
+            <LastYearImportForm imported={sp.ly_imported} skipped={sp.ly_skipped} error={sp.ly_error} />
+          ) : null}
         </div>
       </div>
 
