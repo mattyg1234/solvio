@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -12,6 +13,7 @@ import {
   summariseTipsiOrders,
   TIPSI_PERIODS,
   tipsiPeriodRange,
+  tipsiStripeFeeRate,
   type TipsiSummary,
 } from "@/lib/show-ops/tipsi-stats";
 import { cn } from "@/lib/utils";
@@ -21,10 +23,10 @@ import { lockTipsiTab, unlockTipsiTab } from "./actions";
 export const dynamic = "force-dynamic";
 
 const PAGE = "/dashboard/show-ops/tipsi";
-/** Tipsi look: dark band, warm gradient wordmark. Kept in one place so it is easy to swap for the real brand kit. */
-const TIPSI_DARK = "#140b24";
-const TIPSI_FROM = "#ff4d8d";
-const TIPSI_TO = "#ffb347";
+/** Tipsi look, from the Tipsi logo: near-black band, blue-violet to magenta. */
+const TIPSI_DARK = "#07020f";
+const TIPSI_FROM = "#5b4dff";
+const TIPSI_TO = "#d24dff";
 const TIPSI_GRADIENT = `linear-gradient(90deg, ${TIPSI_FROM}, ${TIPSI_TO})`;
 
 const eur = (n: number) => formatShowOpsMoney(n, "eur");
@@ -35,13 +37,8 @@ function TipsiBand({ children }: { children?: React.ReactNode }) {
       className="flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-4 text-white shadow-sm"
       style={{ background: TIPSI_DARK }}
     >
-      <div className="flex items-baseline gap-3">
-        <span
-          className="bg-clip-text text-3xl font-black tracking-tight text-transparent"
-          style={{ backgroundImage: TIPSI_GRADIENT }}
-        >
-          Tipsi
-        </span>
+      <div className="flex items-center gap-4">
+        <Image src="/brand/tipsi-logo.png" alt="Tipsi" width={137} height={48} priority className="h-12 w-auto" />
         <span className="text-sm text-white/70">Bar ordering at MHT</span>
       </div>
       {children}
@@ -49,12 +46,15 @@ function TipsiBand({ children }: { children?: React.ReactNode }) {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint, highlight }: { label: string; value: string; hint?: string; highlight?: boolean }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{value}</p>
-      {hint ? <p className="mt-0.5 text-xs text-slate-500">{hint}</p> : null}
+    <div
+      className={cn("rounded-2xl border p-4", highlight ? "border-transparent text-white" : "border-slate-200 bg-white")}
+      style={highlight ? { backgroundImage: TIPSI_GRADIENT } : undefined}
+    >
+      <p className={cn("text-xs font-semibold uppercase tracking-wide", highlight ? "text-white/85" : "text-slate-500")}>{label}</p>
+      <p className={cn("mt-1 text-2xl font-bold tabular-nums", highlight ? "text-white" : "text-slate-900")}>{value}</p>
+      {hint ? <p className={cn("mt-0.5 text-xs", highlight ? "text-white/85" : "text-slate-500")}>{hint}</p> : null}
     </div>
   );
 }
@@ -108,8 +108,17 @@ function Dashboard({ s }: { s: TipsiSummary }) {
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Sales (gross)" value={eur(s.gross)} hint={`${s.orders.toLocaleString("en-GB")} orders`} />
-        <Stat label="Tipsi commission" value={eur(s.fee)} hint={s.gross ? `${((s.fee / s.gross) * 100).toFixed(1)}% of sales` : undefined} />
-        <Stat label="MHT keeps" value={eur(s.venueNet)} hint={s.refundCount ? `after ${s.refundCount} refund${s.refundCount === 1 ? "" : "s"} (${eur(s.refunds)})` : "after commission"} />
+        <Stat
+          label="Tipsi + Stripe fees"
+          value={eur(s.totalFees)}
+          hint={`Tipsi ${eur(s.fee)} + Stripe ${eur(s.stripeFees)} (est.)`}
+        />
+        <Stat
+          label="Tipsi made you"
+          value={eur(s.venueNet)}
+          hint={s.refundCount ? `after fees and ${s.refundCount} refund${s.refundCount === 1 ? "" : "s"} (${eur(s.refunds)})` : "after all fees"}
+          highlight
+        />
         <Stat label="Average order" value={eur(s.avgOrder)} hint={`${s.itemsSold.toLocaleString("en-GB")} drinks sold`} />
         <Stat label="Nights trading" value={String(s.activeNights)} hint={s.activeNights ? `${eur(s.gross / s.activeNights)} a night` : undefined} />
         <Stat
@@ -136,8 +145,8 @@ function Dashboard({ s }: { s: TipsiSummary }) {
                 <th className="py-1.5 pr-3">Month</th>
                 <th className="py-1.5 pr-3 text-right">Orders</th>
                 <th className="py-1.5 pr-3 text-right">Sales</th>
-                <th className="py-1.5 pr-3 text-right">Tipsi commission</th>
-                <th className="py-1.5 text-right">MHT keeps</th>
+                <th className="py-1.5 pr-3 text-right">Tipsi + Stripe fees</th>
+                <th className="py-1.5 text-right">Tipsi made you</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 tabular-nums">
@@ -146,8 +155,8 @@ function Dashboard({ s }: { s: TipsiSummary }) {
                   <td className="py-2 pr-3 font-semibold text-slate-900">{monthName(m.month)}</td>
                   <td className="py-2 pr-3 text-right">{m.orders}</td>
                   <td className="py-2 pr-3 text-right">{eur(m.gross)}</td>
-                  <td className="py-2 pr-3 text-right">{eur(m.fee)}</td>
-                  <td className="py-2 text-right font-semibold">{eur(m.gross - m.fee)}</td>
+                  <td className="py-2 pr-3 text-right">{eur(m.totalFees)}</td>
+                  <td className="py-2 text-right font-semibold">{eur(m.net)}</td>
                 </tr>
               ))}
             </tbody>
@@ -265,6 +274,8 @@ export default async function TipsiStatsPage({
   }
 
   const range = tipsiPeriodRange(sp.period);
+  const stripeRate = tipsiStripeFeeRate();
+  const stripeRateLabel = `${stripeRate.percent}% + ${eur(stripeRate.fixed)}`;
   let summary: TipsiSummary | null = null;
   let error: string | null = null;
   if (!isTipsiStatsConfigured()) {
@@ -315,7 +326,7 @@ export default async function TipsiStatsPage({
 
       <p className="text-xs text-slate-500">
         Live from Tipsi. Nights run 06:00 to 06:00 Canary time, so after-midnight orders count to the night before.
-        Amounts in euros, as guests paid them.
+        Amounts in euros, as guests paid them. Stripe fees are estimated at {stripeRateLabel} an order.
       </p>
     </div>
   );

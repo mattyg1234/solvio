@@ -60,12 +60,16 @@ test("summary totals, commission, refunds and top drinks", () => {
     order({ id: "2", total: 20, fee: 2, items: [{ name: "Jug", price: 20, quantity: 1 }], tableNumber: "7" }),
     order({ id: "3", refunded: true, refundAmount: 10 }),
     order({ id: "4", status: "cancelled", total: 99, fee: 9 }),
-  ]);
+  ], { stripeRate: { percent: 1.5, fixed: 0.25 } });
   assert.equal(s.orders, 3);
   assert.equal(s.gross, 40);
   assert.equal(s.fee, 4);
   assert.equal(s.refunds, 10);
-  assert.equal(s.venueNet, 26);
+  // Stripe: 3 orders, (10*1.5%+0.25)=0.40 twice, (20*1.5%+0.25)=0.55 → 1.35
+  assert.equal(s.stripeFees, 1.35);
+  assert.equal(s.totalFees, 5.35);
+  assert.equal(s.venueNet, 24.65);
+  assert.equal(s.byMonth[0].net, 24.65);
   assert.equal(s.itemsSold, 5);
   assert.equal(s.topItems[0].name, "Lager");
   assert.equal(s.topItems[0].quantity, 4);

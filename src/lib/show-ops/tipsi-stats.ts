@@ -146,20 +146,44 @@ export function tipsiLocalDay(iso: string): string {
   return DAY_FMT.format(new Date(iso));
 }
 
+/**
+ * Stripe's card fee per order. Tipsi does not store it, so it is estimated with
+ * Stripe's standard EEA card price: 1.5% + €0.25. Override with
+ * TIPSI_STRIPE_FEE_PERCENT and TIPSI_STRIPE_FEE_FIXED (euros) if MHT's rate differs.
+ */
+export function tipsiStripeFeeRate(): { percent: number; fixed: number } {
+  const pct = Number.parseFloat(process.env.TIPSI_STRIPE_FEE_PERCENT ?? "");
+  const fixed = Number.parseFloat(process.env.TIPSI_STRIPE_FEE_FIXED ?? "");
+  return {
+    percent: Number.isFinite(pct) && pct >= 0 ? pct : 1.5,
+    fixed: Number.isFinite(fixed) && fixed >= 0 ? fixed : 0.25,
+  };
+}
+
+export function tipsiStripeFee(total: number, rate = tipsiStripeFeeRate()): number {
+  if (!(total > 0)) return 0;
+  return r2((total * rate.percent) / 100 + rate.fixed);
+}
+
 export type TipsiSummary = {
   orders: number;
   gross: number;
+  /** Tipsi's commission. */
   fee: number;
+  /** Estimated Stripe card fees. */
+  stripeFees: number;
+  /** Tipsi commission + Stripe fees. */
+  totalFees: number;
   refunds: number;
   refundCount: number;
-  /** Gross minus refunds minus Tipsi fee: what the venue keeps. */
+  /** "Tipsi made you": gross minus refunds, Tipsi commission and Stripe fees. */
   venueNet: number;
   avgOrder: number;
   itemsSold: number;
   avgAcceptanceSeconds: number | null;
   activeNights: number;
   bestNight: { day: string; gross: number; orders: number } | null;
-  byMonth: Array<{ month: string; orders: number; gross: number; fee: number }>;
+  byMonth: Array<{ month: string; orders: number; gross: number; fee: number; stripeFees: number; totalFees: number; net: number }>;
   byDay: Array<{ day: string; orders: number; gross: number; fee: number }>;
   byHour: Array<{ hour: number; orders: number; gross: number }>;
   byWeekday: Array<{ weekday: string; orders: number; gross: number }>;
@@ -180,8 +204,13 @@ export function tipsiNightOf(iso: string): string {
   return DAY_FMT.format(shifted);
 }
 
-export function summariseTipsiOrders(all: TipsiOrder[], opts: { topN?: number } = {}): TipsiSummary {
+export function summariseTipsiOrders(
+  all: TipsiOrder[],
+  opts: { topN?: number; stripeRate?: { percent: number; fixed: number } } = {},
+): TipsiSummary {
   const topN = opts.topN ?? 15;
+  const stripeRate = opts.stripeRate ?? tipsiStripeFeeRate();
+  let stripeFees = 0;
   const orders = all.filter(isTipsiSale);
   let gross = 0;
   let fee = 0;
@@ -190,7 +219,7 @@ export function summariseTipsiOrders(all: TipsiOrder[], opts: { topN?: number } 
   let itemsSold = 0;
   let accSum = 0;
   let accN = 0;
-  const month = new Map<string, { orders: number; gross: number; fee: number }>();
+  const month = new Map<string, { orders: number; gross: number; fee: number; stripe: number; refunds: number }>();
   const day = new Map<string, { orders: number; gross: number; fee: number }>();
   const hour = new Map<number, { orders: number; gross: number }>();
   const weekday = new Map<string, { orders: number; gross: number }>();
@@ -200,9 +229,13 @@ export function summariseTipsiOrders(all: TipsiOrder[], opts: { topN?: number } 
   for (const o of orders) {
     gross += o.total;
     fee += o.fee;
+    // Stripe keeps its fee even when an order is refunded.
+    const stripe = tipsiStripeFee(o.total, stripeRate);
+    stripeFees += stripe;
+    const refund = o.refunded ? (o.refundAmount > 0 ? o.refundAmount : o.total) : 0;
     if (o.refunded) {
       refundCount += 1;
-      refunds += o.refundAmount > 0 ? o.refundAmount : o.total;
+      refunds += refund;
     }
     if (o.acceptanceSeconds != null && o.acceptanceSeconds >= 0) {
       accSum += o.acceptanceSeconds;
@@ -210,10 +243,12 @@ export function summariseTipsiOrders(all: TipsiOrder[], opts: { topN?: number } 
     }
     const night = tipsiNightOf(o.createdAt);
     const m = night.slice(0, 7);
-    const mm = month.get(m) ?? { orders: 0, gross: 0, fee: 0 };
+    const mm = month.get(m) ?? { orders: 0, gross: 0, fee: 0, stripe: 0, refunds: 0 };
     mm.orders += 1;
     mm.gross += o.total;
     mm.fee += o.fee;
+    mm.stripe += stripe;
+    mm.refunds += refund;
     month.set(m, mm);
     const dd = day.get(night) ?? { orders: 0, gross: 0, fee: 0 };
     dd.orders += 1;
@@ -262,16 +297,26 @@ export function summariseTipsiOrders(all: TipsiOrder[], opts: { topN?: number } 
     orders: orders.length,
     gross: r2(gross),
     fee: r2(fee),
+    stripeFees: r2(stripeFees),
+    totalFees: r2(fee + stripeFees),
     refunds: r2(refunds),
     refundCount,
-    venueNet: r2(gross - refunds - fee),
+    venueNet: r2(gross - refunds - fee - stripeFees),
     avgOrder: orders.length ? r2(gross / orders.length) : 0,
     itemsSold,
     avgAcceptanceSeconds: accN ? Math.round(accSum / accN) : null,
     activeNights: day.size,
     bestNight: best,
     byMonth: [...month.entries()]
-      .map(([m, v]) => ({ month: m, orders: v.orders, gross: r2(v.gross), fee: r2(v.fee) }))
+      .map(([m, v]) => ({
+        month: m,
+        orders: v.orders,
+        gross: r2(v.gross),
+        fee: r2(v.fee),
+        stripeFees: r2(v.stripe),
+        totalFees: r2(v.fee + v.stripe),
+        net: r2(v.gross - v.refunds - v.fee - v.stripe),
+      }))
       .sort((a, b) => a.month.localeCompare(b.month)),
     byDay,
     byHour: [...hour.entries()]
