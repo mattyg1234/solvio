@@ -505,6 +505,13 @@ export function showOpsBookingPayView(input: {
   return { label: "Unpaid", paidAmount: 0, outstandingAmount: outstanding };
 }
 
+/** "09/11/2026" (day/month/year) for a YYYY-MM-DD date — how MHT reads dates. Anything else is returned unchanged. */
+export function formatShowOpsDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+
 /** Weekday name for a YYYY-MM-DD show date, UTC-pinned so it never shifts across timezones. */
 export function showOpsDayName(iso: string, style: "long" | "short" = "long"): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;

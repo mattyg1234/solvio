@@ -574,3 +574,11 @@ test("a frozen snapshot keeps the sold prices and rates when only pax move", () 
   assert.deepEqual(edited.pricing_snapshot.rate_card, { id: "r1", name: "Old card", tipo: 1 });
   assert.equal(edited.pricing_snapshot.price_source, "rate_card");
 });
+
+test("formatShowOpsDate shows day/month/year", async () => {
+  const { formatShowOpsDate } = await import("./calc");
+  assert.equal(formatShowOpsDate("2026-11-09"), "09/11/2026");
+  assert.equal(formatShowOpsDate("2026-01-31"), "31/01/2026");
+  assert.equal(formatShowOpsDate(null), "");
+  assert.equal(formatShowOpsDate("not a date"), "not a date");
+});

@@ -4,7 +4,7 @@ import { Resend } from "resend";
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notifications/booking-whatsapp";
-import { formatShowOpsMoney, showOpsDayName } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
 import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
@@ -146,7 +146,7 @@ function escapeHtml(s: string): string {
 function dateLine(input: GuestTicketInput): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(input.showDate)) return `${templateDate(input.showDate)} ${input.showDate.slice(0, 4)}`;
   const day = showOpsDayName(input.showDate);
-  return day ? `${day} ${input.showDate}` : input.showDate;
+  return day ? `${day} ${formatShowOpsDate(input.showDate)}` : formatShowOpsDate(input.showDate);
 }
 
 function pickupLine(input: GuestTicketInput): string {

@@ -11,6 +11,7 @@ import { bookingDifferences } from "@/lib/show-ops/email-bookings/mapping";
 import { isMatchOnlySeller } from "@/lib/show-ops/email-bookings/sellers";
 import { secretsKeyConfigured } from "@/lib/show-ops/secrets";
 import { cn } from "@/lib/utils";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 // Server actions posted from this page (saving senders, linking) share its time limit.
 export const maxDuration = 60;
@@ -151,7 +152,7 @@ export default async function EmailBookingsPage({ searchParams }: { searchParams
                     <span className="truncate text-xs text-slate-500">
                       {e.seller_name ?? e.from_name}
                       {e.extracted.reference ? ` · ${e.extracted.reference}` : ""}
-                      {e.extracted.date ? ` · ${e.extracted.date}` : ""}
+                      {e.extracted.date ? ` · ${formatShowOpsDate(e.extracted.date)}` : ""}
                       {e.extracted.quantity ? ` · ${e.extracted.quantity} pax` : ""}
                     </span>
                     <span className="flex flex-wrap items-center gap-1.5">

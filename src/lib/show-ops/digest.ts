@@ -1,4 +1,4 @@
-import { addDaysIso, formatShowOpsMoney, paxTotal, round2 } from "@/lib/show-ops/calc";
+import { addDaysIso, formatShowOpsMoney, paxTotal, round2, formatShowOpsDate } from "@/lib/show-ops/calc";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export { addDaysIso };
@@ -126,10 +126,10 @@ export function buildDailyDigest(input: {
   const overdueTotal = round2(overdue.reduce((s, inv) => s + Number(inv.total_amount || 0), 0));
 
   const subject =
-    `${input.merchantName} · ${input.reportDate} · ${input.takenYesterday.length} bookings / ${takenPax} pax` +
+    `${input.merchantName} · ${formatShowOpsDate(input.reportDate)} · ${input.takenYesterday.length} bookings / ${takenPax} pax` +
     (overdue.length ? ` · ${overdue.length} overdue invoice${overdue.length === 1 ? "" : "s"}` : "");
   const text = [
-    `${input.merchantName} — in-house digest for ${input.reportDate}`,
+    `${input.merchantName} — in-house digest for ${formatShowOpsDate(input.reportDate)}`,
     "",
     `Taken yesterday: ${input.takenYesterday.length} bookings · ${takenPax} pax · ${money(takenGross)}`,
     showLines.length ? `By show:\n${showLines.map((l) => `  ${l}`).join("\n")}` : "By show: none",

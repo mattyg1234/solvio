@@ -8,6 +8,7 @@ import { deliverBusList } from "@/lib/show-ops/bus-delivery";
 import { filterShowOpsOutboundTo, SHOW_OPS_OUTBOUND_HELD } from "@/lib/show-ops/outbound";
 import { sendShowOpsHtmlEmail } from "@/lib/notifications/show-ops-emails";
 import { sendGuestTicketByBookingId } from "@/lib/notifications/show-ops-guest-ticket";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -187,7 +188,7 @@ export async function sendBusListAction(
         send: (attachment) =>
           sendShowOpsHtmlEmail({
             to: recipient,
-            subject: `Bus list · ${request.date}`,
+            subject: `Bus list · ${formatShowOpsDate(request.date)}`,
             html: "<p>The bus list is attached, including the saved pickup order and guide notes.</p>",
             text: "The bus list is attached, including the saved pickup order and guide notes.",
             attachments: [attachment],

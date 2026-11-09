@@ -2,7 +2,7 @@ import { stripeClient } from "@/lib/stripe-client";
 import { computeSolvioPlatformFeeCents, DEFAULT_PLATFORM_FEE_BPS } from "@/lib/solvio-platform-fee";
 import { getSiteUrl } from "@/lib/site-url";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { showOpsAmountToCents } from "@/lib/show-ops/calc";
+import { showOpsAmountToCents, formatShowOpsDate } from "@/lib/show-ops/calc";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export async function createShowOpsDepositCheckoutSession(args: {
@@ -50,7 +50,7 @@ export async function createShowOpsDepositCheckoutSession(args: {
             unit_amount: amountCents,
             product_data: {
               name: `${args.merchantName} · ${args.showName} · ${args.bookingRef}`.slice(0, 120),
-              description: `${args.dueKind === "deposit" ? "Deposit" : "Balance"} for ${args.guestName} · ${args.showDate}`,
+              description: `${args.dueKind === "deposit" ? "Deposit" : "Balance"} for ${args.guestName} · ${formatShowOpsDate(args.showDate)}`,
             },
           },
         },

@@ -4,7 +4,7 @@ import { CalendarDays, Download, Sparkles, TrendingUp, Trophy, Users } from "luc
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
+import { applyNoShowBilling, formatShowOpsMoney, paxTotal, round2, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   dailySalesCsvHref,
@@ -924,7 +924,7 @@ export default async function ReportsPage({
           <tbody>
             {busCostRows.map((r) => (
               <tr key={r.id} className="border-t">
-                <td className="py-1.5">{r.show_date}</td>
+                <td className="py-1.5">{formatShowOpsDate(r.show_date)}</td>
                 <td>{r.island}</td>
                 <td>{r.seats_ordered}</td>
                 <td>{money(Number(r.cost_total))}</td>

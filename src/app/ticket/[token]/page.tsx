@@ -1,6 +1,6 @@
 import { bookingExtrasSummary } from "@/lib/show-ops/invoice-supplements";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
-import { formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
+import { formatShowOpsPax, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { showOpsTicketQrSvg } from "@/lib/show-ops/ticket-qr";
 import { showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
@@ -69,7 +69,7 @@ export default async function GuestTicketPage({
       <h1 className="mt-1 text-center text-2xl font-semibold tracking-tight text-slate-900">{booking.show_name}</h1>
       <p className="mt-1 text-center text-sm text-slate-600">
         {day ? `${day} · ` : ""}
-        {booking.show_date}
+        {formatShowOpsDate(booking.show_date)}
         {showTime ? ` · ${showTime}` : ""}
       </p>
       <div

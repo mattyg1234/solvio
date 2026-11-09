@@ -12,7 +12,7 @@ import { listHoldedSalesInvoices, loadHoldedConnection } from "@/lib/show-ops/ho
 import { buildPnl } from "@/lib/show-ops/expenses";
 import { ExpensesPanel, PnlPanel, type ExpenseRow } from "@/components/show-ops/expenses-panel";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2 } from "@/lib/show-ops/calc";
+import { applyNoShowBilling, formatShowOpsMoney, resolveArrivedPax, round2, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { calendarMonthBounds, shiftMonth } from "@/lib/show-ops/invoice";
 
@@ -598,7 +598,7 @@ export default async function InvoicesPage({
               })}
               {!previewRows.length ? (
                 <p className="rounded-2xl bg-white p-5 text-sm text-slate-500 ring-1 ring-slate-200">
-                  No uninvoiced invoice-mode reservations for {periodStart} → {periodEnd}.
+                  No uninvoiced invoice-mode reservations for {formatShowOpsDate(periodStart)} → {formatShowOpsDate(periodEnd)}.
                 </p>
               ) : null}
             </div>
@@ -785,7 +785,7 @@ export default async function InvoicesPage({
                   style={{ color: "inherit" }}
                 >
                   <span>
-                    {inv.supplier_name} · due {inv.due_date} · {inv.invoice_number || inv.verifactu_number || "unnumbered"}
+                    {inv.supplier_name} · due {formatShowOpsDate(inv.due_date)} · {inv.invoice_number || inv.verifactu_number || "unnumbered"}
                     <span className="ml-2 text-xs font-normal text-[var(--show-ops-primary,#7c3aed)]">Open →</span>
                   </span>
                   <span className="font-medium text-rose-600">{money(Number(inv.total_amount || 0), inv.currency)}</span>

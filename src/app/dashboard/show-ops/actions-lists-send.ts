@@ -5,6 +5,7 @@ import { canSeeShowOpsPage } from "@/lib/show-ops/nav";
 import { sendShowOpsHtmlEmail } from "@/lib/notifications/show-ops-emails";
 import { loadNightListPdf, parseNightListPdfRequest } from "@/lib/show-ops/night-list-pdf-data";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 /** Joel (17 Sept): the special meals list goes to the chefs. One email, the PDF attached, the diets in the body too. */
 export async function sendMealsListAction(form: FormData): Promise<{ ok: boolean; message: string }> {
@@ -36,7 +37,7 @@ export async function sendMealsListAction(form: FormData): Promise<{ ok: boolean
       { businessId: ctx.business.id, businessName: ctx.branding.displayName, config: ctx.config, printedBy },
       req,
     );
-    const label = `${req.date}${req.island ? ` · ${req.island}` : ""}${req.showName ? ` · ${req.showName}` : ""}`;
+    const label = `${formatShowOpsDate(req.date)}${req.island ? ` · ${req.island}` : ""}${req.showName ? ` · ${req.showName}` : ""}`;
     const result = await sendShowOpsHtmlEmail({
       to: recipients,
       subject: `Special meals · ${label}`,

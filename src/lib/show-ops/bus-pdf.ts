@@ -6,6 +6,7 @@ import {
   type PDFFont,
 } from "pdf-lib";
 import { safeBusLink } from "./bus-links";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 export { safeBusLink } from "./bus-links";
 
 export type BusPdfRow = {
@@ -125,7 +126,7 @@ export async function buildBusPdf(input: {
     return lines;
   };
   const header = () => {
-    const title = clean(`Bus list · ${input.date}`);
+    const title = clean(`Bus list · ${formatShowOpsDate(input.date)}`);
     page.drawText(title, {
       x: left,
       y,

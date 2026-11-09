@@ -8,6 +8,7 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { SHOW_OPS_GHOST_BTN, SHOW_OPS_PRIMARY_BTN } from "@/components/show-ops/show-ops-page-header";
 import type { DirectoryPickupStop } from "@/components/show-ops/pickup-points-directory";
 import { MAX_BUSES } from "@/lib/show-ops/bus-seats";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 const INPUT = "mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm";
 
@@ -221,7 +222,7 @@ export function PickupTimetable({
 
       <div className="mt-2 hidden print:block">
         <h4 className="text-base font-semibold">Permanent bus table · {island} · {rows.length} stop{rows.length === 1 ? "" : "s"}</h4>
-        <p className="text-xs text-slate-500">Permanent order as saved · for {date}. The print time is stamped at the top of the page.</p>
+        <p className="text-xs text-slate-500">Permanent order as saved · for {formatShowOpsDate(date)}. The print time is stamped at the top of the page.</p>
       </div>
 
       <div className="mt-2 overflow-hidden rounded-xl ring-1 ring-slate-200">

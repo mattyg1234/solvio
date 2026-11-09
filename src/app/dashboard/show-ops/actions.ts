@@ -39,6 +39,7 @@ import {
   formatShowOpsDoorTime,
   round2,
   showOpsAmountDue,
+  formatShowOpsDate,
 } from "@/lib/show-ops/calc";
 import { MAX_BUSES, parseSeatsByBus } from "@/lib/show-ops/bus-seats";
 import { cancellationRequestWindow, cancelledChargeNote, showOpsTodayIso } from "@/lib/show-ops/cancellation";
@@ -327,7 +328,7 @@ async function loadScannedTicket(ctx: Awaited<ReturnType<typeof requireShowOpsCo
         ok: false,
         alreadyIn: false,
         ...base,
-        message: `${booking.guest_name} · ${booking.booking_ref} is for ${booking.show_date}, not tonight. Not admitted.`,
+        message: `${booking.guest_name} · ${booking.booking_ref} is for ${formatShowOpsDate(booking.show_date)}, not tonight. Not admitted.`,
       } as TicketScanResult,
     };
   }
@@ -1856,7 +1857,7 @@ async function buildBookingFields(
       .eq("show_date", show_date)
       .is("cancelled_at", null);
     if (!count) {
-      return { ok: false as const, error: `No show on ${showOpsDayName(show_date) ?? ""} ${show_date}${product.island ? ` on ${product.island}` : ""}. Pick a night the show runs.` };
+      return { ok: false as const, error: `No show on ${showOpsDayName(show_date) ?? ""} ${formatShowOpsDate(show_date)}${product.island ? ` on ${product.island}` : ""}. Pick a night the show runs.` };
     }
   }
 

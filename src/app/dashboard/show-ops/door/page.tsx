@@ -19,6 +19,7 @@ import {
   showOpsDayName,
   showOpsDoorPayPhrase,
   surnameKey,
+  formatShowOpsDate,
 } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { isoDateInTimeZone } from "@/lib/show-ops/digest";
@@ -121,7 +122,7 @@ export default async function ShowOpsDoorPage({
       <ShowOpsPageHeader
         eyebrow="Door staff"
         title="Door"
-        subtitle={`${day ? `${day} · ` : ""}${date} · live arrivals: scan the guest QR or tap them in and they move to Arrived with the time. Printed office, bus and dietary sheets live under Night lists.`}
+        subtitle={`${day ? `${day} · ` : ""}${formatShowOpsDate(date)} · live arrivals: scan the guest QR or tap them in and they move to Arrived with the time. Printed office, bus and dietary sheets live under Night lists.`}
         actions={<DoorAutoRefresh />}
       />
 
