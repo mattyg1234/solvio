@@ -1,5 +1,5 @@
 /**
- * After-show feedback (Joel, 27 Oct; WhatsApp template 4): the morning after a
+ * After-show feedback (Joel, 27 Oct; WhatsApp template 4): about 24 hours after a
  * show, every guest who came gets one WhatsApp asking how it was, with the
  * review button that's set on the template in Meta.
  *

@@ -133,7 +133,7 @@ export function metaMessagePayload(
   input: { body?: string; template?: { name: string; language: string; variables?: Record<string, string> } },
 ): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to: to.replace(/^\+/, "") };
-  if (!input.template) return { ...base, type: "text", text: { preview_url: true, body: String(input.body ?? "").slice(0, 4096) } };
+  if (!input.template) return { ...base, type: "text", text: { preview_url: false, body: String(input.body ?? "").slice(0, 4096) } };
   const vars = Object.entries(input.template.variables ?? {})
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([, text]) => ({ type: "text", text }));

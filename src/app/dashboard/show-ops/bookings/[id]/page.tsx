@@ -1,3 +1,4 @@
+import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { consentSummary } from "@/lib/show-ops/consent";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
@@ -479,13 +480,15 @@ export default async function EditBookingPage({
               className="flex flex-wrap items-center gap-3"
             >
               <input type="hidden" name="booking_id" value={booking.id} />
-              <button
-                type="submit"
-                disabled={!booking.guest_email && !booking.guest_mobile}
-                className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-              >
-                Send ticket to guest
-              </button>
+              {booking.guest_email || booking.guest_mobile ? (
+                <SubmitOnce className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+                  Send ticket to guest
+                </SubmitOnce>
+              ) : (
+                <button type="button" disabled className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white opacity-40">
+                  Send ticket to guest
+                </button>
+              )}
               <label className="flex items-center gap-1.5 text-xs text-slate-600">
                 <input type="checkbox" name="updated" value="1" />
                 Mark as updated pick-up details

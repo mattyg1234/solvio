@@ -4,7 +4,7 @@ import { Resend } from "resend";
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
 import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notifications/booking-whatsapp";
-import { formatShowOpsMoney, formatShowOpsPax, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
 import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
@@ -43,6 +43,8 @@ export type GuestTicketInput = {
   showTime?: string | null;
   /** Re-send after a pick-up time/stop change — leads with what changed. */
   updated?: boolean;
+  /** Re-send after the office edited the booking — full updated confirmation (WhatsApp booking template). */
+  amended?: boolean;
   /** bus / private / own_way. Older rows without it are read from the pick-up label. */
   pickupKind?: string | null;
   /** Resort zone code (PDC, CT…) for a private transfer. */
@@ -140,7 +142,9 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** "Wednesday 3 March 2027" — how guests read the date. */
 function dateLine(input: GuestTicketInput): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input.showDate)) return `${templateDate(input.showDate)} ${input.showDate.slice(0, 4)}`;
   const day = showOpsDayName(input.showDate);
   return day ? `${day} ${formatShowOpsDate(input.showDate)}` : formatShowOpsDate(input.showDate);
 }
@@ -169,22 +173,33 @@ function showTimeLine(input: GuestTicketInput): string | null {
   return input.showTime?.trim() || null;
 }
 
+/** "2 adults, 1 child" for guests (the desk uses the short "2 ad 1 ch"). */
+export function guestsLine(adults: number, children: number, infants: number): string {
+  const part = (n: number, one: string, many: string) => (n > 0 ? `${n} ${n === 1 ? one : many}` : null);
+  return [part(adults, "adult", "adults"), part(children, "child", "children"), part(infants, "infant", "infants")].filter(Boolean).join(", ") || "0";
+}
+
 /** Compact plain-text ticket — shared by SMS and the email text part. */
 export function buildGuestTicketText(input: GuestTicketInput): string {
   const showTime = showTimeLine(input);
+  const hi = firstName(input.guestName) || "there";
   const lines = [
     input.updated
-      ? `${input.merchantName} — UPDATED pick-up details, booking ${input.bookingRef}`
-      : `${input.merchantName} — booking ${input.bookingRef}`,
-    `${input.showName} · ${dateLine(input)}${showTime ? ` · ${showTime}` : ""}`,
-    `Guests: ${formatShowOpsPax(input.adults, input.children, input.infants)}`,
+      ? `Hi ${hi}, your pick-up details for ${input.merchantName} have changed (booking ${input.bookingRef}).`
+      : input.amended
+        ? `Hi ${hi}, your booking with ${input.merchantName} has been updated (booking ${input.bookingRef}).`
+        : `Hi ${hi}, thanks for booking with ${input.merchantName} (booking ${input.bookingRef}).`,
+    "",
+    `Show: ${input.showName}`,
+    `Date: ${dateLine(input)}${showTime ? ` · ${showTime}` : ""}`,
+    `Guests: ${guestsLine(input.adults, input.children, input.infants)}`,
   ];
   if (input.extrasSummary) lines.push(`Extras: ${input.extrasSummary}`);
   if (input.hotelName) lines.push(`Hotel: ${input.hotelName}`);
   lines.push(pickupLine(input));
   const money = moneyLine(input);
   if (money) lines.push(money);
-  if (input.ticketUrl) lines.push(`Your ticket (QR): ${input.ticketUrl}`);
+  if (input.ticketUrl) lines.push("", `Your ticket with QR code: ${input.ticketUrl}`);
   else lines.push(`Show this message on arrival. Ref ${input.bookingRef}.`);
   return lines.join("\n");
 }
@@ -242,7 +257,7 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
   ];
   const showTime = showTimeLine(input);
   if (showTime) rows.push(["Show time", showTime]);
-  rows.push(["Guests", formatShowOpsPax(input.adults, input.children, input.infants)]);
+  rows.push(["Guests", guestsLine(input.adults, input.children, input.infants)]);
   if (input.extrasSummary) rows.push(["Extras", input.extrasSummary]);
   if (input.hotelName) rows.push(["Hotel", input.hotelName]);
   rows.push([
@@ -259,7 +274,9 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
 
   const subject = input.updated
     ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
-    : `Booking confirmation · ${input.showName} · ${input.bookingRef}`;
+    : input.amended
+      ? `Updated booking confirmation · ${input.showName} · ${input.bookingRef}`
+      : `Booking confirmation · ${input.showName} · ${input.bookingRef}`;
   // Tenerife / Lanzarote: the email IS Ruth's confirmation, section for section.
   if (confirmationAvailableFor(input.island)) {
     const html = renderMhtConfirmationEmail(
@@ -284,7 +301,7 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
         currency: input.currency,
         ticketUrl: input.ticketUrl,
       },
-      { logoUrl: input.logoUrl, merchantName: input.merchantName, updated: input.updated, extrasSummary: input.extrasSummary, showTime: showTimeLine(input), attachmentNote: attachment },
+      { logoUrl: input.logoUrl, merchantName: input.merchantName, updated: input.updated, amended: input.amended, extrasSummary: input.extrasSummary, showTime: showTimeLine(input), attachmentNote: attachment },
     );
     return { subject, html, rows };
   }
@@ -294,7 +311,9 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
         <p style="font-size:15px;line-height:1.5">${
           input.updated
             ? `Your pick-up details for <strong>${escapeHtml(input.merchantName)}</strong> have changed — here is your updated ticket:`
-            : `You're booked with <strong>${escapeHtml(input.merchantName)}</strong>. Here's your booking confirmation${attachment ? " — the full confirmation is attached as a PDF" : ""}:`
+            : input.amended
+              ? `Your booking with <strong>${escapeHtml(input.merchantName)}</strong> has been updated. Here are your latest details:`
+              : `You're booked with <strong>${escapeHtml(input.merchantName)}</strong>. Here's your booking confirmation${attachment ? " — the full confirmation is attached as a PDF" : ""}:`
         }</p>
         <p style="font-size:20px;font-weight:700;margin:14px 0 4px">${escapeHtml(input.showName)}</p>
         <p style="font-size:15px;margin:0 0 14px;color:#334155">${escapeHtml(dateLine(input))} · ref <strong>${escapeHtml(input.bookingRef)}</strong></p>
@@ -328,7 +347,7 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
 /** Emails the ticket and records it in the workspace's Sent log. */
 export async function sendGuestTicketEmail(input: GuestTicketInput): Promise<NotificationSendResult> {
   const log: SentEmailLog | null = input.businessId
-    ? { businessId: input.businessId, bookingId: input.bookingId ?? null, kind: input.updated ? "ticket_update" : "ticket" }
+    ? { businessId: input.businessId, bookingId: input.bookingId ?? null, kind: input.updated || input.amended ? "ticket_update" : "ticket" }
     : null;
   return withSentEmailLog(log, { to: input.guestEmail, subject: buildGuestTicketEmail(input, false).subject }, () =>
     sendGuestTicketEmailInner(input),

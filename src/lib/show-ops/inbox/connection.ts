@@ -7,7 +7,7 @@
 import { decryptSecret } from "@/lib/show-ops/secrets";
 import { showOpsMessagesLive } from "@/lib/show-ops/outbound";
 import { normalisePhone } from "@/lib/show-ops/inbox/logic";
-import { approvedMetaTemplate, templateSpec, type TemplateKind } from "@/lib/show-ops/inbox/templates";
+import { approvedMetaTemplate, TEMPLATE_PICKER, templateSpec, type TemplateKind } from "@/lib/show-ops/inbox/templates";
 import type { InboxConnectionSummary, TwilioIntegrationMeta, TwilioVenue } from "@/lib/show-ops/inbox/types";
 import type { MetaCreds } from "@/lib/show-ops/inbox/meta";
 import type { TwilioCreds } from "@/lib/show-ops/inbox/twilio";
@@ -151,6 +151,11 @@ export function connectionSummary(c: TwilioConnection | null): InboxConnectionSu
     whatsapp: Boolean(c?.meta.whatsapp_from),
     sms: Boolean(c?.meta.sms_from),
     reopenTemplate: Boolean(c?.meta.whatsapp_from && templateRef(c, "reopen")),
+    templates: c?.meta.whatsapp_from
+      ? (["booking", "booking_transport", "pickup", "feedback", "marketing", "reopen"] as const)
+          .filter((k) => templateRef(c, k))
+          .map((kind) => ({ kind, ...TEMPLATE_PICKER[kind] }))
+      : [],
     live: showOpsMessagesLive(),
   };
 }

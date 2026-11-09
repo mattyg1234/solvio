@@ -14,7 +14,7 @@ function authorized(req: NextRequest): boolean {
 }
 
 /**
- * 10:00 Canary time: last night's guests get the after-show feedback message;
+ * 19:00 UTC (about 24 hours after the show): last night's guests get the after-show feedback message;
  * the night before's guests get the marketing-permission question.
  */
 export async function GET(req: NextRequest) {
