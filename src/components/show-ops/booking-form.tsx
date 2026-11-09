@@ -2326,7 +2326,7 @@ export function ShowOpsBookingForm({
                 strong
               />
             </div>
-            {commissionPct > 0 ? (
+            {commissionPct > 0 && !splitMoney ? (
               <PriceLine
                 label={`${sellerMode ? "Your commission" : "Partner commission"} (${commissionPct}%)`}
                 value={`− ${moneyFmt(commissionAmount)}`}
@@ -2334,8 +2334,26 @@ export function ShowOpsBookingForm({
               />
             ) : null}
           </dl>
+          {splitMoney ? (
+            <div className="mt-3 space-y-2">
+              {[
+                { label: `Nett to invoice · ${formatShowOpsPax(splitMoney.inv.adults, splitMoney.inv.children, splitMoney.inv.infants)}`, value: splitMoney.invoice.nett_total },
+                { label: `Deposit to collect · ${formatShowOpsPax(splitMoney.dep.adults, splitMoney.dep.children, splitMoney.dep.infants)}`, value: splitMoney.deposit.deposit_amount },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  className="flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"
+                  style={{ backgroundColor: "rgba(124,58,237,0.08)" }}
+                >
+                  <span className="font-semibold" style={{ color: ACCENT }}>{row.label}</span>
+                  <span className="text-lg font-semibold tabular-nums" style={{ color: ACCENT }}>{moneyFmt(row.value)}</span>
+                </div>
+              ))}
+              <p className="px-3 text-xs text-slate-500">Saved as two bookings: one on invoice, one on deposit.</p>
+            </div>
+          ) : null}
           <div
-            className="mt-3 flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"
+            className={splitMoney ? "hidden" : "mt-3 flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"}
             style={{ backgroundColor: "rgba(124,58,237,0.08)" }}
           >
             <span className="font-semibold" style={{ color: ACCENT }}>
@@ -2370,7 +2388,7 @@ export function ShowOpsBookingForm({
               </div>
             </div>
           ) : null}
-          {showPending ? (
+          {showPending && !splitMoney ? (
             <div className="mt-2 space-y-1 px-3">
               {paidSoFar > 0 ? (
                 <div className="flex items-baseline justify-between gap-2 text-sm">
