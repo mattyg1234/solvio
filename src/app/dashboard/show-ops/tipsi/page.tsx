@@ -118,7 +118,7 @@ function Dashboard({ s }: { s: TipsiSummary }) {
         <Stat
           label="Tipsi made you"
           value={eur(s.madeYou.total)}
-          hint="gifts + tips + extra sales (est.)"
+          hint={s.madeYou.extraPercent > 0 ? "gifts + tips + extra sales (est.)" : "gifts + tips"}
           highlight
         />
         <Stat
@@ -163,13 +163,15 @@ function Dashboard({ s }: { s: TipsiSummary }) {
               </dt>
               <dd className="font-semibold text-slate-900">{eur(s.madeYou.tips)}</dd>
             </div>
-            <div className="flex items-center justify-between gap-3 py-2">
-              <dt className="text-slate-700">
-                Extra sales from easy ordering
-                <span className="ml-1 text-slate-400">(est. {s.madeYou.extraPercent}% of sales)</span>
-              </dt>
-              <dd className="font-semibold text-slate-900">{eur(s.madeYou.extraSales)}</dd>
-            </div>
+            {s.madeYou.extraPercent > 0 ? (
+              <div className="flex items-center justify-between gap-3 py-2">
+                <dt className="text-slate-700">
+                  Extra sales from easy ordering
+                  <span className="ml-1 text-slate-400">(est. {s.madeYou.extraPercent}% of sales)</span>
+                </dt>
+                <dd className="font-semibold text-slate-900">{eur(s.madeYou.extraSales)}</dd>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between gap-3 pt-3">
               <dt className="font-bold text-slate-900">Total</dt>
               <dd className="text-lg font-bold" style={{ color: TIPSI_FROM }}>{eur(s.madeYou.total)}</dd>
