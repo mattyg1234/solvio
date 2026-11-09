@@ -34,13 +34,24 @@ export function InboxNewForm({
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateKind, setTemplateKind] = useState<string>("");
 
   const whatsappNeedsTemplate = channel === "whatsapp";
+  const templates = connection.templates ?? [];
+  const picked = templates.find((t) => t.kind === templateKind) ?? null;
+  const canSendTemplate = Boolean(picked) && (!picked?.needsBooking || Boolean(booking));
 
   async function submit() {
     setBusy(true);
     setError(null);
-    const res = await startInboxConversationAction({ phone, channel, name, bookingId: booking?.id ?? null, text });
+    const res = await startInboxConversationAction({
+      phone,
+      channel,
+      name,
+      bookingId: booking?.id ?? null,
+      text,
+      templateKind: channel === "whatsapp" ? templateKind || null : null,
+    });
     setBusy(false);
     if (!res.ok) return setError(res.error);
     onStarted(res.data);
@@ -131,11 +142,47 @@ export function InboxNewForm({
       ) : null}
 
       {whatsappNeedsTemplate ? (
-        <p className="rounded-lg bg-white p-2 text-xs text-slate-600 ring-1 ring-slate-200">
-          {connection.reopenTemplate
-            ? "WhatsApp sends your approved template first. Once the guest replies you can write freely for 24 hours."
-            : "WhatsApp needs an approved template to message a guest first, and none is set up yet. Use SMS, or add the template in Settings."}
-        </p>
+        templates.length ? (
+          <fieldset>
+            <legend className="text-xs font-semibold text-slate-700">Which message?</legend>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              WhatsApp only lets you message a guest first with an approved template. Once they reply you can write freely for 24 hours.
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {templates.map((t) => (
+                <label
+                  key={t.kind}
+                  className={cn(
+                    "block cursor-pointer rounded-lg bg-white p-2 ring-1",
+                    templateKind === t.kind ? "ring-2 ring-violet-400" : "ring-slate-200 hover:ring-slate-300",
+                  )}
+                >
+                  <span className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      name="template"
+                      value={t.kind}
+                      checked={templateKind === t.kind}
+                      onChange={() => setTemplateKind(t.kind)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block text-xs font-semibold text-slate-900">{t.title}</span>
+                      <span className="block text-[11px] leading-snug text-slate-600">{t.description}</span>
+                      {t.needsBooking && !booking ? (
+                        <span className="mt-0.5 block text-[11px] font-medium text-amber-700">Pick the booking above first.</span>
+                      ) : null}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : (
+          <p className="rounded-lg bg-white p-2 text-xs text-slate-600 ring-1 ring-slate-200">
+            No WhatsApp templates are approved yet. Press Re-check in Settings → WhatsApp &amp; SMS, or use SMS.
+          </p>
+        )
       ) : (
         <label className="block text-xs font-semibold text-slate-700">
           Message
@@ -157,7 +204,7 @@ export function InboxNewForm({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={busy || (whatsappNeedsTemplate && !connection.reopenTemplate)}
+          disabled={busy || (whatsappNeedsTemplate && !canSendTemplate)}
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
           style={{ backgroundColor: "var(--show-ops-primary,#7c3aed)" }}
         >

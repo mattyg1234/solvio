@@ -13,7 +13,7 @@
     },
     {
       "path": "/api/cron/show-ops-after-show",
-      "schedule": "0 10 * * *"
+      "schedule": "0 19 * * *"
     },
     {
       "path": "/api/cron/show-ops-mail",

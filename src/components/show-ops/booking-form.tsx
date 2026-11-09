@@ -1826,7 +1826,19 @@ export function ShowOpsBookingForm({
               Send the guest their ticket (email / text) with QR and pick-up
               details
             </label>
-          ) : null}
+          ) : (
+            <label className="mt-3 flex items-start gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                name="send_update"
+                value="1"
+                defaultChecked
+                className="mt-0.5"
+              />
+              If anything the guest sees changes (date, guests, hotel, pick-up,
+              total…), send them the updated booking by email and WhatsApp
+            </label>
+          )}
 
           {paxSlots > 0 ? (
             <div className="mt-4 space-y-2">
