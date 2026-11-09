@@ -72,12 +72,23 @@ export type InboxSyncResponse = {
   booking?: InboxBookingSummary | null;
 };
 
+export type InboxTemplateOption = {
+  kind: "booking" | "booking_transport" | "pickup" | "reopen" | "feedback" | "marketing";
+  title: string;
+  /** Plain words: when to pick it and what the guest gets. */
+  description: string;
+  /** Fills its blanks from a booking, so one must be picked first. */
+  needsBooking: boolean;
+};
+
 export type InboxConnectionSummary = {
   connected: boolean;
   whatsapp: boolean;
   sms: boolean;
   /** A WhatsApp template is set up to start or re-open a chat after 24 hours. */
   reopenTemplate: boolean;
+  /** Approved WhatsApp templates staff can pick when messaging a guest first. */
+  templates: InboxTemplateOption[];
   /** Outbound to guests is switched on (or this number is on the test list). */
   live: boolean;
 };
