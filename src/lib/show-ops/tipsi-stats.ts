@@ -249,7 +249,7 @@ export type TipsiSummary = {
   /**
    * "Tipsi made you": money MHT would not have had without Tipsi.
    * Gift orders (send-a-drink) + tips + an estimated share of sales from
-   * how easy ordering is (TIPSI_EXTRA_SALES_PERCENT, default 5%).
+   * how easy ordering is (TIPSI_EXTRA_SALES_PERCENT, default 0: off since 9 Nov).
    */
   madeYou: { total: number; gifts: number; giftOrders: number; tips: number; tipCount: number; extraSales: number; extraPercent: number };
   avgOrder: number;
@@ -284,10 +284,14 @@ export function tipsiNightOf(iso: string): string {
   return DAY_FMT.format(shifted);
 }
 
-/** Share of sales assumed to be extra because ordering through Tipsi is easy. Default 5% (Matty, 8 Nov). */
+/**
+ * Share of sales assumed to be extra because ordering through Tipsi is easy.
+ * Off by default: Matty took the 5% estimate off Joel's dashboard on 9 Nov.
+ * Set TIPSI_EXTRA_SALES_PERCENT to bring it back.
+ */
 export function tipsiExtraSalesPercent(): number {
   const n = Number.parseFloat(process.env.TIPSI_EXTRA_SALES_PERCENT ?? "");
-  return Number.isFinite(n) && n >= 0 ? n : 5;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 export function summariseTipsiOrders(

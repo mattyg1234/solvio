@@ -142,3 +142,14 @@ test("merch lines group by product with their sizes, and leave top drinks", () =
   assert.deepEqual(s.topItems.map((t) => t.name), ["Lager"]);
   assert.equal(s.itemsSold, 1);
 });
+
+test("extra-sales estimate is off by default, so Tipsi made you = gifts + tips", () => {
+  delete process.env.TIPSI_EXTRA_SALES_PERCENT;
+  const s = summariseTipsiOrders([order({ id: "1", total: 20, isGift: true }), order({ id: "2" })], {
+    tips: [{ createdAt: "2026-10-30T22:30:00Z", amount: 3 }],
+  });
+  assert.equal(s.madeYou.extraPercent, 0);
+  assert.equal(s.madeYou.extraSales, 0);
+  assert.equal(s.madeYou.total, 23);
+  assert.equal(s.byMonth[0].madeYou, 23);
+});
