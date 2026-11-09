@@ -64,6 +64,7 @@ import { CLOSE_SALE_EMAILS_ON, closeSaleCopy, closeSaleRecipients } from "@/lib/
 import { isSaleStatusField, type SaleStatusField } from "@/lib/show-ops/sale-status";
 import { filterShowOpsOutboundTo } from "@/lib/show-ops/outbound";
 import { islandAllowed, parseMemberIslands, isGlobalShowOpsAdmin, assertWorkspaceOnlyStaffAccount } from "@/lib/show-ops/island-access";
+import { describe as describeSplitPax, splitBillingForms } from "@/lib/show-ops/split-billing";
 import { calculateExtras, parseExtraSelections, sameExtraSelection, type ExtraSnapshot, type ShowExtra } from "@/lib/show-ops/extras";
 import { applyTicketType, ticketBookingSnapshotPatch, ticketTransportAvailable, type ShowTicketType } from "@/lib/show-ops/ticket-types";
 import { invitePartnerSeller, assertRemovableSeller } from "@/lib/show-ops/partner-invitations";
@@ -1911,6 +1912,9 @@ async function buildBookingFields(
    * to move a booking off the billing its partner is set up for.
    */
   const requestedBilling = String(formData.get("billing_mode") ?? "").trim();
+  if (formData.get("split_part") === "1" && !supplier?.can_choose_billing_mode) {
+    return { ok: false as const, error: "This partner is not set to \"can do both\", so the booking can't be split between deposit and invoice." };
+  }
   const billingMode =
     supplier?.can_choose_billing_mode && (requestedBilling === "deposit" || requestedBilling === "invoice")
       ? (requestedBilling as ShowOpsBillingMode)
@@ -2162,10 +2166,28 @@ async function sendGuestTicketIfRequested(
   }
 }
 
-export async function createBookingAction(
-  formData: FormData,
-): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
+type CreateResult = { ok: true; id?: string; message?: string } | { ok: false; message: string };
+
+/** Split billing: save the invoice part, then the deposit part, and report both refs. */
+async function createSplitAware(formData: FormData, createOne: (fd: FormData) => Promise<CreateResult>): Promise<CreateResult> {
+  const split = splitBillingForms(formData);
+  if (!split) return createOne(formData);
+  if (!split.ok) return { ok: false, message: split.error };
+  const inv = await createOne(split.invoice);
+  if (!inv.ok) return inv;
+  const dep = await createOne(split.deposit);
+  if (!dep.ok) {
+    return { ok: false, message: `${inv.message} was saved for the ${describeSplitPax(split.invoicePax)} on invoice, but the deposit part failed: ${dep.message}` };
+  }
+  return { ok: true, id: dep.id, message: `${dep.message} (deposit) + ${inv.message} (invoice)` };
+}
+
+export async function createBookingAction(formData: FormData): Promise<CreateResult> {
   const ctx = await requireShowOpsAction("booker", "bookings");
+  return createSplitAware(formData, (fd) => createDeskBooking(ctx, fd));
+}
+
+async function createDeskBooking(ctx: Awaited<ReturnType<typeof requireShowOpsAction>>, formData: FormData): Promise<CreateResult> {
   const built = await buildBookingFields(ctx, formData);
   if (!built.ok) return { ok: false, message: built.error };
 
@@ -2891,10 +2913,12 @@ export async function setSellerPartnerAdminAction(formData: FormData): Promise<v
   revalidateShowOps();
 }
 
-export async function createSellerBookingAction(
-  formData: FormData,
-): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
+export async function createSellerBookingAction(formData: FormData): Promise<CreateResult> {
   const ctx = await requireShowOpsSellerContext();
+  return createSplitAware(formData, (fd) => createSellerBooking(ctx, fd));
+}
+
+async function createSellerBooking(ctx: Awaited<ReturnType<typeof requireShowOpsSellerContext>>, formData: FormData): Promise<CreateResult> {
   formData.set("supplier_id", ctx.supplier.id);
   formData.set("sales_channel", ctx.supplier.partner_type || "partner");
   formData.delete("office_only_comments");

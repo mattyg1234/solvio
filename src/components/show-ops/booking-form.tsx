@@ -32,6 +32,7 @@ import {
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
   computeBookingMoney,
+  formatShowOpsPax,
   formatShowOpsMoney,
   hasPricingSnapshot,
   round2,
@@ -376,9 +377,10 @@ export function ShowOpsBookingForm({
   const [attNotes, setAttNotes] = useState<string[]>(() =>
     (defaults.attendees ?? []).map((a) => a?.note ?? ""),
   );
-  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "">(
+  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "split" | "">(
     defaults.billing_mode ?? "",
   );
+  const [splitInv, setSplitInv] = useState({ adults: 0, children: 0, infants: 0 });
   const [showDate, setShowDate] = useState(defaults.show_date ?? "");
   const [customDate, setCustomDate] = useState(false);
   const [nightLoad, setNightLoad] = useState<ShowOpsNightLoad | null>(null);
@@ -689,6 +691,45 @@ export function ShowOpsBookingForm({
       ? billingMode
       : undefined;
 
+  // "Both" (Matty, 9 Nov): how many of the guests go on the partner's invoice. The rest
+  // are on deposit. Saved as two linked bookings, one per billing.
+  const splitDep = {
+    adults: Math.max(0, adults - splitInv.adults),
+    children: Math.max(0, children - splitInv.children),
+    infants: Math.max(0, infants - splitInv.infants),
+  };
+  const splitRow = (label: string, key: "adults" | "children" | "infants", max: number) => (
+    <label className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-slate-700">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={max}
+          name={`split_invoice_${key}`}
+          value={Math.min(splitInv[key], max)}
+          onChange={(e) =>
+            setSplitInv((p) => ({ ...p, [key]: Math.max(0, Math.min(max, Math.floor(Number(e.target.value) || 0))) }))
+          }
+          className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-center"
+        />
+        <span className="w-24 text-xs text-slate-500">of {max} · {splitDep[key]} on deposit</span>
+      </span>
+    </label>
+  );
+  const splitBox = (
+    <div className="mt-2 space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">How many on invoice?</p>
+      {splitRow("Adults", "adults", adults)}
+      {children > 0 ? splitRow("Children", "children", children) : null}
+      {infants > 0 ? splitRow("Infants", "infants", infants) : null}
+      <p className="text-xs text-amber-900">
+        Saved as two bookings for the same guest: one on invoice (nett {supplier?.invoice_nett_percent}%), one on
+        deposit ({supplier?.deposit_percent}%). Extras, names and the guest email go on the deposit one.
+      </p>
+    </div>
+  );
+
   const extraSelections = useMemo(
     () => (extraChoices.productId === productId ? extraChoices.selections : []),
     [extraChoices, productId],
@@ -812,6 +853,60 @@ export function ShowOpsBookingForm({
       roundUpDeposit,
     ],
   );
+  // "Both": price each part on its own so the summary matches the two bookings saved.
+  const splitMoney = useMemo(() => {
+    if (!(canPickBilling && billingMode === "split" && mode === "create")) return null;
+    const inv = {
+      adults: Math.min(splitInv.adults, adults),
+      children: Math.min(splitInv.children, children),
+      infants: Math.min(splitInv.infants, infants),
+    };
+    const base = { product, supplier, transportRequired: transport, transportSupplement: supplement, rateCard, frozen, roundUpDeposit };
+    return {
+      inv,
+      dep: { adults: adults - inv.adults, children: children - inv.children, infants: infants - inv.infants },
+      invoice: computeBookingMoney({ ...base, ...inv, billingMode: "invoice", extras: [] }),
+      deposit: computeBookingMoney({
+        ...base,
+        adults: adults - inv.adults,
+        children: children - inv.children,
+        infants: infants - inv.infants,
+        billingMode: "deposit",
+        extras: extraLines,
+      }),
+    };
+  }, [canPickBilling, billingMode, mode, splitInv, adults, children, infants, product, supplier, transport, supplement, rateCard, frozen, roundUpDeposit, extraLines]);
+  const splitSummary = splitMoney ? (
+    <div className="mt-4 space-y-2 rounded-xl bg-slate-50 px-3 py-3 text-sm ring-1 ring-slate-200/70">
+      <div>
+        <p className="font-semibold text-slate-800">
+          On invoice · {formatShowOpsPax(splitMoney.inv.adults, splitMoney.inv.children, splitMoney.inv.infants)}
+        </p>
+        <div className="flex justify-between text-slate-600">
+          <span>Ticket total</span>
+          <span className="tabular-nums">{moneyFmt(splitMoney.invoice.total_cost)}</span>
+        </div>
+        <div className="flex justify-between font-semibold text-slate-900">
+          <span>Nett to invoice ({supplier?.invoice_nett_percent}%)</span>
+          <span className="tabular-nums">{moneyFmt(splitMoney.invoice.nett_total)}</span>
+        </div>
+      </div>
+      <div className="border-t border-slate-200 pt-2">
+        <p className="font-semibold text-slate-800">
+          On deposit · {formatShowOpsPax(splitMoney.dep.adults, splitMoney.dep.children, splitMoney.dep.infants)}
+        </p>
+        <div className="flex justify-between text-slate-600">
+          <span>Ticket total</span>
+          <span className="tabular-nums">{moneyFmt(splitMoney.deposit.total_cost)}</span>
+        </div>
+        <div className="flex justify-between font-semibold text-slate-900">
+          <span>Deposit to collect ({supplier?.deposit_percent}%)</span>
+          <span className="tabular-nums">{moneyFmt(splitMoney.deposit.deposit_amount)}</span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   /*
    * MHT's own direct sales (MHT Reception / MHT Direct): no % deposit, the guest
    * pays what they pay and the balance is total − paid. On an edit, "paid" is
@@ -1429,13 +1524,15 @@ export function ShowOpsBookingForm({
                   <select
                     name="billing_mode"
                     value={billingMode || supplier?.billing_mode || "deposit"}
-                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice")}
+                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice" | "split")}
                     className={INPUT}
                   >
                     <option value="deposit">Deposit — take {supplier?.deposit_percent}% from the guest now, rest paid at the show</option>
                     <option value="invoice">Invoice — we bill you nett {supplier?.invoice_nett_percent}% on the monthly invoice</option>
+                    {mode === "create" ? <option value="split">Both — some guests on invoice, the rest on deposit</option> : null}
                   </select>
                   <p className="mt-1 text-xs text-slate-500">You can do both. Pick the one that fits this booking.</p>
+                  {billingMode === "split" && mode === "create" ? splitBox : null}
                 </>
               ) : null}
               <input type="hidden" name="supplier_id" value={supplierId} />
@@ -1469,7 +1566,7 @@ export function ShowOpsBookingForm({
                     name="billing_mode"
                     value={billingMode || supplier?.billing_mode || "deposit"}
                     onChange={(e) =>
-                      setBillingMode(e.target.value as "deposit" | "invoice")
+                      setBillingMode(e.target.value as "deposit" | "invoice" | "split")
                     }
                     className={INPUT}
                   >
@@ -1482,7 +1579,11 @@ export function ShowOpsBookingForm({
                       Invoice — nett {supplier?.invoice_nett_percent}% on the
                       monthly pack
                     </option>
+                    {mode === "create" ? (
+                      <option value="split">Both — some guests on invoice, the rest on deposit</option>
+                    ) : null}
                   </select>
+                  {billingMode === "split" && mode === "create" ? splitBox : null}
                   <p className="mt-1 text-xs text-slate-500">
                     {supplier?.name} is allowed to switch. Their default is{" "}
                     {supplier?.billing_mode}.
@@ -1495,7 +1596,8 @@ export function ShowOpsBookingForm({
             </>
           )}
 
-          <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 px-3 py-3 text-sm ring-1 ring-slate-200/70">
+          {splitSummary}
+          <div className={splitMoney ? "hidden" : "mt-4 space-y-1.5 rounded-xl bg-slate-50 px-3 py-3 text-sm ring-1 ring-slate-200/70"}>
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-slate-600">
                 {sellerMode ? "Your rate" : reception && money.billing_mode !== "invoice" ? "Total price" : "Ticket total"}
@@ -2236,7 +2338,7 @@ export function ShowOpsBookingForm({
                 strong
               />
             </div>
-            {commissionPct > 0 ? (
+            {commissionPct > 0 && !splitMoney ? (
               <PriceLine
                 label={`${sellerMode ? "Your commission" : "Partner commission"} (${commissionPct}%)`}
                 value={`− ${moneyFmt(commissionAmount)}`}
@@ -2244,8 +2346,26 @@ export function ShowOpsBookingForm({
               />
             ) : null}
           </dl>
+          {splitMoney ? (
+            <div className="mt-3 space-y-2">
+              {[
+                { label: `Nett to invoice · ${formatShowOpsPax(splitMoney.inv.adults, splitMoney.inv.children, splitMoney.inv.infants)}`, value: splitMoney.invoice.nett_total },
+                { label: `Deposit to collect · ${formatShowOpsPax(splitMoney.dep.adults, splitMoney.dep.children, splitMoney.dep.infants)}`, value: splitMoney.deposit.deposit_amount },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  className="flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"
+                  style={{ backgroundColor: "rgba(124,58,237,0.08)" }}
+                >
+                  <span className="font-semibold" style={{ color: ACCENT }}>{row.label}</span>
+                  <span className="text-lg font-semibold tabular-nums" style={{ color: ACCENT }}>{moneyFmt(row.value)}</span>
+                </div>
+              ))}
+              <p className="px-3 text-xs text-slate-500">Saved as two bookings: one on invoice, one on deposit.</p>
+            </div>
+          ) : null}
           <div
-            className="mt-3 flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"
+            className={splitMoney ? "hidden" : "mt-3 flex items-baseline justify-between gap-2 rounded-xl px-3 py-2.5"}
             style={{ backgroundColor: "rgba(124,58,237,0.08)" }}
           >
             <span className="font-semibold" style={{ color: ACCENT }}>
@@ -2280,7 +2400,7 @@ export function ShowOpsBookingForm({
               </div>
             </div>
           ) : null}
-          {showPending ? (
+          {showPending && !splitMoney ? (
             <div className="mt-2 space-y-1 px-3">
               {paidSoFar > 0 ? (
                 <div className="flex items-baseline justify-between gap-2 text-sm">
