@@ -108,52 +108,60 @@ export default async function AllBookingsPage({
   const sortKey = sp.sort && SORT_COLUMNS[sp.sort] ? sp.sort : "date";
   const ascending = sp.dir ? sp.dir === "asc" : sortKey === "date";
 
-  let query = ctx.supabase
-    .from("show_bookings")
-    .select(
-      "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel,payment_method,pickup_kind,cancel_request_status",
-      { count: "exact" },
-    )
-    .eq("business_id", ctx.business.id)
-    .order(SORT_COLUMNS[sortKey], { ascending, nullsFirst: ascending })
-    .order("show_date", { ascending: true })
-    // Within one night the newest booking sits first, so a just-made booking is visible without hunting.
-    .order("booking_ref_num", { ascending: false, nullsFirst: false })
-    .range(fromIdx, toIdx);
+  const BOOKING_COLUMNS =
+    "id,booking_ref,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,supplier_name,island,adults,children,infants,total_cost,deposit_amount,balance_remaining,nett_total,payment_status,billing_mode,created_at,cancelled_at,arrived_at,arrived_pax,door_pay_method,no_show,dietary_required,dietary_notes,supplier_ticket_number,office_comments,transport_required,sales_channel,payment_method,pickup_kind,cancel_request_status";
 
-  if (!includeCancelled) query = query.is("cancelled_at", null);
-  if (pay === "cancelled") query = query.not("cancelled_at", "is", null);
-  if (pay === "invoice") query = query.eq("billing_mode", "invoice");
-  if (pay === "unpaid" || pay === "partial" || pay === "paid") {
-    query = query.eq("billing_mode", "deposit").eq("payment_status", pay);
-  }
-  if (island) query = query.eq("island", island);
+  /** Every filter except the date window, so the "other dates" search can reuse them. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyFilters = <T extends { is: any; not: any; eq: any; neq: any; or: any }>(qb: T): T => {
+    let query = qb;
+    if (!includeCancelled) query = query.is("cancelled_at", null);
+    if (pay === "cancelled") query = query.not("cancelled_at", "is", null);
+    if (pay === "invoice") query = query.eq("billing_mode", "invoice");
+    if (pay === "unpaid" || pay === "partial" || pay === "paid") {
+      query = query.eq("billing_mode", "deposit").eq("payment_status", pay);
+    }
+    if (island) query = query.eq("island", island);
+    if (showFilter) query = query.eq("show_name", showFilter);
+    if (requestsOnly) query = query.eq("cancel_request_status", "pending");
+    if (door === "in") query = query.not("arrived_at", "is", null);
+    if (door === "absent") query = query.eq("no_show", true);
+    if (door === "cash") query = query.eq("door_pay_method", "cash");
+    if (door === "unpaid") query = query.eq("billing_mode", "deposit").neq("payment_status", "paid");
+    if (q) {
+      query = query.or(
+        [
+          "booking_ref",
+          "guest_name",
+          "guest_email",
+          "guest_mobile",
+          "show_name",
+          "supplier_name",
+          "hotel_name",
+          "pickup_stop_name",
+          "supplier_ticket_number",
+        ]
+          .map((col) => `${col}.ilike.%${q}%`)
+          .join(","),
+      );
+    }
+    return query;
+  };
+
+  let query = applyFilters(
+    ctx.supabase
+      .from("show_bookings")
+      .select(BOOKING_COLUMNS, { count: "exact" })
+      .eq("business_id", ctx.business.id)
+      .order(SORT_COLUMNS[sortKey], { ascending, nullsFirst: ascending })
+      .order("show_date", { ascending: true })
+      // Within one night the newest booking sits first, so a just-made booking is visible without hunting.
+      .order("booking_ref_num", { ascending: false, nullsFirst: false })
+      .range(fromIdx, toIdx),
+  );
   if (date) query = query.eq("show_date", date);
   if (from) query = query.gte("show_date", from);
   if (to) query = query.lte("show_date", to);
-  if (showFilter) query = query.eq("show_name", showFilter);
-  if (requestsOnly) query = query.eq("cancel_request_status", "pending");
-  if (door === "in") query = query.not("arrived_at", "is", null);
-  if (door === "absent") query = query.eq("no_show", true);
-  if (door === "cash") query = query.eq("door_pay_method", "cash");
-  if (door === "unpaid") query = query.eq("billing_mode", "deposit").neq("payment_status", "paid");
-  if (q) {
-    query = query.or(
-      [
-        "booking_ref",
-        "guest_name",
-        "guest_email",
-        "guest_mobile",
-        "show_name",
-        "supplier_name",
-        "hotel_name",
-        "pickup_stop_name",
-        "supplier_ticket_number",
-      ]
-        .map((col) => `${col}.ilike.%${q}%`)
-        .join(","),
-    );
-  }
 
   const latestQuery = latest
     ? (() => {
@@ -182,6 +190,23 @@ export default async function AllBookingsPage({
   const latestRows = latestRes?.data ?? [];
   const latestDupes = possibleDuplicateIds(latestRows);
   const total = count ?? 0;
+  // Matty (9 Nov): a search that finds nothing in the date window also looks across every date,
+  // so a guest booked for next month (or last week) is still found.
+  const searchedWindow = Boolean(q) && !latest && !allDates;
+  const otherDates =
+    searchedWindow && total === 0
+      ? await applyFilters(
+          ctx.supabase
+            .from("show_bookings")
+            .select(BOOKING_COLUMNS, { count: "exact" })
+            .eq("business_id", ctx.business.id)
+            .order("show_date", { ascending: false })
+            .order("booking_ref_num", { ascending: false, nullsFirst: false })
+            .limit(PAGE_SIZE),
+        )
+      : null;
+  const otherRows = otherDates?.data ?? [];
+  const otherTotal = otherDates?.count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const showOptions = (() => {
     const byName = new Map<string, Set<string>>();
@@ -228,7 +253,7 @@ export default async function AllBookingsPage({
     : tonightOnly
       ? date
       : `${from} → ${to}`;
-  const deskRows: BookingsDeskRow[] = (rows ?? []).map((r) => {
+  const toDeskRow = (r: NonNullable<typeof rows>[number]): BookingsDeskRow => {
     const payView = showOpsBookingPayView({
       billingMode: r.billing_mode,
       totalCost: Number(r.total_cost),
@@ -288,7 +313,9 @@ export default async function AllBookingsPage({
       alreadyPaid: r.billing_mode === "deposit" && r.payment_status === "paid",
       cancelRequested: r.cancel_request_status === "pending" && !r.cancelled_at,
     };
-  });
+  };
+  const deskRows: BookingsDeskRow[] = (rows ?? []).map(toDeskRow);
+  const otherDeskRows: BookingsDeskRow[] = otherRows.map(toDeskRow);
   const sort: Record<string, BookingsDeskSort> = Object.fromEntries(
     ["ref", "name", "show", "date", "stop", "price", "outstanding", "supplier"].map((k) => {
       const active = sortKey === k;
@@ -528,7 +555,25 @@ export default async function AllBookingsPage({
         </div>
       </ShowOpsLiveFilterForm>
 
-      <BookingsDeskTable rows={deskRows} sort={sort} />
+      {otherDeskRows.length ? (
+        <div className="space-y-3">
+          <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            <p className="font-semibold">
+              No bookings for &ldquo;{q}&rdquo; in {windowLabel}. Found {otherTotal} on other dates:
+            </p>
+            <p className="mt-1">
+              These are outside the dates you picked.{" "}
+              {otherTotal > otherDeskRows.length ? `Showing the latest ${otherDeskRows.length}. ` : ""}
+              <Link href={filterQs({ all: "1", from: "", to: "", date: "", page: "" })} className="font-semibold underline">
+                Search all dates
+              </Link>
+            </p>
+          </div>
+          <BookingsDeskTable rows={otherDeskRows} sort={sort} />
+        </div>
+      ) : (
+        <BookingsDeskTable rows={deskRows} sort={sort} />
+      )}
 
       {total > PAGE_SIZE ? (
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600">
