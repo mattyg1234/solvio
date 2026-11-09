@@ -376,9 +376,10 @@ export function ShowOpsBookingForm({
   const [attNotes, setAttNotes] = useState<string[]>(() =>
     (defaults.attendees ?? []).map((a) => a?.note ?? ""),
   );
-  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "">(
+  const [billingMode, setBillingMode] = useState<"deposit" | "invoice" | "split" | "">(
     defaults.billing_mode ?? "",
   );
+  const [splitInv, setSplitInv] = useState({ adults: 0, children: 0, infants: 0 });
   const [showDate, setShowDate] = useState(defaults.show_date ?? "");
   const [customDate, setCustomDate] = useState(false);
   const [nightLoad, setNightLoad] = useState<ShowOpsNightLoad | null>(null);
@@ -688,6 +689,45 @@ export function ShowOpsBookingForm({
     canPickBilling && (billingMode === "deposit" || billingMode === "invoice")
       ? billingMode
       : undefined;
+
+  // "Both" (Matty, 9 Nov): how many of the guests go on the partner's invoice. The rest
+  // are on deposit. Saved as two linked bookings, one per billing.
+  const splitDep = {
+    adults: Math.max(0, adults - splitInv.adults),
+    children: Math.max(0, children - splitInv.children),
+    infants: Math.max(0, infants - splitInv.infants),
+  };
+  const splitRow = (label: string, key: "adults" | "children" | "infants", max: number) => (
+    <label className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-slate-700">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={max}
+          name={`split_invoice_${key}`}
+          value={Math.min(splitInv[key], max)}
+          onChange={(e) =>
+            setSplitInv((p) => ({ ...p, [key]: Math.max(0, Math.min(max, Math.floor(Number(e.target.value) || 0))) }))
+          }
+          className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-center"
+        />
+        <span className="w-24 text-xs text-slate-500">of {max} · {splitDep[key]} on deposit</span>
+      </span>
+    </label>
+  );
+  const splitBox = (
+    <div className="mt-2 space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">How many on invoice?</p>
+      {splitRow("Adults", "adults", adults)}
+      {children > 0 ? splitRow("Children", "children", children) : null}
+      {infants > 0 ? splitRow("Infants", "infants", infants) : null}
+      <p className="text-xs text-amber-900">
+        Saved as two bookings for the same guest: one on invoice (nett {supplier?.invoice_nett_percent}%), one on
+        deposit ({supplier?.deposit_percent}%). Extras, names and the guest email go on the deposit one.
+      </p>
+    </div>
+  );
 
   const extraSelections = useMemo(
     () => (extraChoices.productId === productId ? extraChoices.selections : []),
@@ -1429,13 +1469,15 @@ export function ShowOpsBookingForm({
                   <select
                     name="billing_mode"
                     value={billingMode || supplier?.billing_mode || "deposit"}
-                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice")}
+                    onChange={(e) => setBillingMode(e.target.value as "deposit" | "invoice" | "split")}
                     className={INPUT}
                   >
                     <option value="deposit">Deposit — take {supplier?.deposit_percent}% from the guest now, rest paid at the show</option>
                     <option value="invoice">Invoice — we bill you nett {supplier?.invoice_nett_percent}% on the monthly invoice</option>
+                    {mode === "create" ? <option value="split">Both — some guests on invoice, the rest on deposit</option> : null}
                   </select>
                   <p className="mt-1 text-xs text-slate-500">You can do both. Pick the one that fits this booking.</p>
+                  {billingMode === "split" && mode === "create" ? splitBox : null}
                 </>
               ) : null}
               <input type="hidden" name="supplier_id" value={supplierId} />
@@ -1469,7 +1511,7 @@ export function ShowOpsBookingForm({
                     name="billing_mode"
                     value={billingMode || supplier?.billing_mode || "deposit"}
                     onChange={(e) =>
-                      setBillingMode(e.target.value as "deposit" | "invoice")
+                      setBillingMode(e.target.value as "deposit" | "invoice" | "split")
                     }
                     className={INPUT}
                   >
@@ -1482,7 +1524,11 @@ export function ShowOpsBookingForm({
                       Invoice — nett {supplier?.invoice_nett_percent}% on the
                       monthly pack
                     </option>
+                    {mode === "create" ? (
+                      <option value="split">Both — some guests on invoice, the rest on deposit</option>
+                    ) : null}
                   </select>
+                  {billingMode === "split" && mode === "create" ? splitBox : null}
                   <p className="mt-1 text-xs text-slate-500">
                     {supplier?.name} is allowed to switch. Their default is{" "}
                     {supplier?.billing_mode}.
