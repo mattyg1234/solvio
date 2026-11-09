@@ -90,3 +90,18 @@ test("templates: Twilio by HX SID, Meta by approved name", () => {
   // Meta chosen but not saved → Twilio.
   assert.deepEqual(templateRef({ meta, metaCreds: null }, "pickup"), { sid: "HX" + "b".repeat(32) });
 });
+
+test("a ticket link button is sent only when given, and body blanks skip non-numbered keys", () => {
+  const p = metaMessagePayload("+34600000000", {
+    template: { name: "t1", language: "en", variables: { "1": "Sarah", "2": "Tenerife", ticket: "abc" }, button: { index: 0, text: "abc" } },
+  }) as { template: { components: Array<{ type: string; parameters: Array<{ text: string }>; index?: string }> } };
+  assert.equal(p.template.components.length, 2);
+  assert.deepEqual(p.template.components[0].parameters.map((x) => x.text), ["Sarah", "Tenerife"]);
+  assert.equal(p.template.components[1].type, "button");
+  assert.equal(p.template.components[1].index, "0");
+  assert.equal(p.template.components[1].parameters[0].text, "abc");
+  const plain = metaMessagePayload("+34600000000", { template: { name: "t1", language: "en", variables: { "1": "Sarah", ticket: "abc" } } }) as {
+    template: { components: unknown[] };
+  };
+  assert.equal(plain.template.components.length, 1);
+});

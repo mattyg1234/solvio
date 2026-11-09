@@ -230,21 +230,24 @@ export function guestTicketTemplate(
     ? input.pickupStopName?.trim() || "To be confirmed"
     : input.pickupStopName?.trim() || privateLine(input);
   const name = firstName(input.guestName);
+  // The ticket token fills a "View my ticket" link button (…/ticket/{{1}}) when the template has one.
+  const token = input.ticketUrl ? input.ticketUrl.replace(/\/$/, "").split("/").pop() ?? "" : "";
+  const withTicket = (v: Record<string, string>) => (token ? { ...v, ticket: token } : v);
   if (input.updated) {
     if (!transport) return null;
-    return { kind: "pickup", variables: templateVariables([name, island, time, point]) };
+    return { kind: "pickup", variables: withTicket(templateVariables([name, island, time, point])) };
   }
   if (transport) {
     return {
       kind: "booking_transport",
-      variables: templateVariables([name, island, templateDate(input.showDate), guests, time, point]),
+      variables: withTicket(templateVariables([name, island, templateDate(input.showDate), guests, time, point])),
     };
   }
   const venue = venues[island];
   if (!venue?.address || !venue.maps_url) return null;
   return {
     kind: "booking",
-    variables: templateVariables([name, island, templateDate(input.showDate), guests, venue.address, venue.maps_url]),
+    variables: withTicket(templateVariables([name, island, templateDate(input.showDate), guests, venue.address, venue.maps_url])),
   };
 }
 

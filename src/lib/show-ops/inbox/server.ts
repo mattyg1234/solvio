@@ -373,6 +373,13 @@ function nameIn(people: ChatPerson[], id: string | null | undefined): string {
  * records it in the conversation (also when Twilio refuses it, so the office
  * sees what failed and why).
  */
+/** The URL-button value for a template, if Meta's approved version has a {{1}} link button. */
+function metaUrlButton(conn: TwilioConnection, name: string, value: string | undefined): { index: number; text: string } | null {
+  if (!value) return null;
+  const i = conn.meta.meta_url_buttons?.[name];
+  return typeof i === "number" ? { index: i, text: value } : null;
+}
+
 async function deliver(
   conn: TwilioConnection,
   conversation: ConversationRow,
@@ -402,7 +409,16 @@ async function deliver(
     conversation.channel === "whatsapp" && usesMetaWhatsApp(conn)
       ? await sendMetaMessage(conn.metaCreds!, conversation.customer_phone, {
           body: ref ? undefined : input.body,
-          template: ref && "name" in ref ? { name: ref.name, language: ref.language, variables: input.template?.variables } : undefined,
+          template:
+            ref && "name" in ref
+              ? {
+                  name: ref.name,
+                  language: ref.language,
+                  variables: input.template?.variables,
+                  // "View my ticket": only when the approved template has a URL button ending in {{1}}.
+                  button: metaUrlButton(conn, ref.name, input.template?.variables?.ticket),
+                }
+              : undefined,
         })
       : await sendTwilioMessage(conn.creds, {
           channel: conversation.channel,
@@ -517,7 +533,7 @@ async function pickedTemplate(
   const { data: b } = await viewer.ctx.supabase
     .from("show_bookings")
     .select(
-      "booking_ref,guest_name,show_name,show_date,island,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,cancelled_at",
+      "booking_ref,guest_name,show_name,show_date,island,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,cancelled_at,ticket_token",
     )
     .eq("id", bookingId)
     .eq("business_id", viewer.businessId)
@@ -551,6 +567,7 @@ async function pickedTemplate(
       billingMode: String(row.billing_mode ?? "deposit"),
       currency: "EUR" as never,
       island: (row.island as string | null) ?? null,
+      ticketUrl: row.ticket_token ? `/ticket/${String(row.ticket_token)}` : null,
       updated: kind === "pickup",
     },
     conn.meta.venues ?? {},
@@ -570,6 +587,7 @@ async function pickedTemplate(
     );
   }
   const values = Object.entries(chosen.variables)
+    .filter(([k]) => /^\d+$/.test(k))
     .sort(([a], [z]) => Number(a) - Number(z))
     .map(([, v]) => v);
   return { template: { ref, variables: chosen.variables }, body: fillTemplateWording(spec, values) };
