@@ -41,7 +41,7 @@ import {
 } from "@/lib/show-ops/inbox/logic";
 import { metaErrorText, sendMetaMessage, type MetaStatusUpdate } from "@/lib/show-ops/inbox/meta";
 import { consentIntent } from "@/lib/show-ops/consent";
-import type { TemplateKind } from "@/lib/show-ops/inbox/templates";
+import { fillTemplateWording, templateSpec, type TemplateKind } from "@/lib/show-ops/inbox/templates";
 import { sendTwilioMessage } from "@/lib/show-ops/inbox/twilio";
 import type {
   InboxBookingSummary,
@@ -480,6 +480,117 @@ function templateFor(conn: TwilioConnection, customerName: string) {
   return { ref, variables: conn.meta.reopen_uses_name ? { "1": firstName(customerName) } : undefined };
 }
 
+type PickedTemplate = {
+  template: { ref: NonNullable<ReturnType<typeof templateRef>>; variables?: Record<string, string> };
+  /** What the guest reads, shown in the chat. */
+  body: string;
+};
+
+/**
+ * One template staff picked in the inbox, with its blanks filled from the booking
+ * (booking, pick-up, feedback) or the guest's name (marketing, re-open).
+ */
+async function pickedTemplate(
+  viewer: InboxViewer,
+  conn: TwilioConnection,
+  kind: TemplateKind,
+  bookingId: string | null,
+  customerName: string,
+): Promise<PickedTemplate> {
+  const ref = templateRef(conn, kind);
+  if (!ref) throw new InboxAccessError("That template is not approved in WhatsApp yet. Press Re-check in Settings → WhatsApp & SMS.");
+  const spec = templateSpec(kind);
+  const { templateVariables } = await import("@/lib/show-ops/inbox/templates");
+  const done = (values: string[]): PickedTemplate => ({
+    template: { ref, variables: templateVariables(values) },
+    body: fillTemplateWording(spec, values),
+  });
+
+  if (kind === "reopen") {
+    const t = templateFor(conn, customerName);
+    if (!t) throw new InboxAccessError("That template is not approved in WhatsApp yet.");
+    return { template: t, body: "WhatsApp template sent to start the chat. You can write freely once the guest replies." };
+  }
+  if (kind === "marketing") return done([firstName(customerName) || "there"]);
+
+  if (!bookingId) throw new InboxAccessError("Pick the booking first: this template fills in the guest's booking details.");
+  const { data: b } = await viewer.ctx.supabase
+    .from("show_bookings")
+    .select(
+      "booking_ref,guest_name,show_name,show_date,island,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,cancelled_at",
+    )
+    .eq("id", bookingId)
+    .eq("business_id", viewer.businessId)
+    .maybeSingle();
+  if (!b) throw new InboxAccessError("That booking does not exist or is not on your islands.");
+  const row = b as Record<string, unknown>;
+  if (row.cancelled_at) throw new InboxAccessError("That booking is cancelled.");
+
+  if (kind === "feedback") {
+    const { feedbackValues } = await import("@/lib/show-ops/after-show");
+    return done(feedbackValues({ guest_name: String(row.guest_name ?? ""), island: (row.island as string | null) ?? null, show_date: String(row.show_date ?? "") }));
+  }
+
+  const { guestTicketTemplate } = await import("@/lib/notifications/show-ops-guest-ticket");
+  const chosen = guestTicketTemplate(
+    {
+      merchantName: "",
+      bookingRef: String(row.booking_ref ?? ""),
+      guestName: String(row.guest_name ?? ""),
+      showName: String(row.show_name ?? ""),
+      showDate: String(row.show_date ?? ""),
+      adults: Number(row.adults) || 0,
+      children: Number(row.children) || 0,
+      infants: Number(row.infants) || 0,
+      hotelName: (row.hotel_name as string | null) ?? null,
+      transportRequired: Boolean(row.transport_required),
+      pickupKind: (row.pickup_kind as string | null) ?? null,
+      privateZone: (row.private_zone as string | null) ?? null,
+      pickupStopName: (row.pickup_stop_name as string | null) ?? null,
+      pickupTime: (row.pickup_time as string | null) ?? null,
+      billingMode: String(row.billing_mode ?? "deposit"),
+      currency: "EUR" as never,
+      island: (row.island as string | null) ?? null,
+      updated: kind === "pickup",
+    },
+    conn.meta.venues ?? {},
+  );
+  if (!chosen) {
+    throw new InboxAccessError(
+      kind === "booking"
+        ? "This booking's island has no venue address yet (Settings → WhatsApp & SMS)."
+        : "This booking makes its own way, so it has no pick-up to send. Pick the own-way confirmation instead.",
+    );
+  }
+  if (chosen.kind !== kind) {
+    throw new InboxAccessError(
+      chosen.kind === "booking"
+        ? "This booking makes its own way. Pick \"Booking confirmation: making own way\" instead."
+        : "This booking has transport. Pick \"Booking confirmation: with pick-up\" instead.",
+    );
+  }
+  const values = Object.entries(chosen.variables)
+    .sort(([a], [z]) => Number(a) - Number(z))
+    .map(([, v]) => v);
+  return { template: { ref, variables: chosen.variables }, body: fillTemplateWording(spec, values) };
+}
+
+/** Send one picked template into an existing WhatsApp chat (after the 24-hour window). */
+export async function sendPickedTemplate(
+  viewer: InboxViewer,
+  input: { conversationId: string; kind: TemplateKind; bookingId?: string | null },
+): Promise<InboxMessage> {
+  const conv = await assertCanSee(viewer, input.conversationId);
+  if (conv.channel !== "whatsapp") throw new InboxAccessError("Templates are for WhatsApp chats only.");
+  if (!viewer.seesAll && conv.assigned_to !== viewer.meId) throw new InboxAccessError("Accept this chat first, or ask whoever has it.");
+  const conn = await requireConnection(viewer);
+  const bookingId = isUuid(input.bookingId) ? String(input.bookingId) : conv.booking_id ?? null;
+  const picked = await pickedTemplate(viewer, conn, input.kind, bookingId, conv.customer_name);
+  await claimIfUnassigned(viewer, conv);
+  const saved = await deliver(conn, conv, { body: picked.body, authorId: viewer.meId, source: "template", template: picked.template });
+  return toMessage(saved);
+}
+
 /** WhatsApp after 24 hours: the approved template is the only thing allowed. */
 export async function sendReopenTemplate(viewer: InboxViewer, input: { conversationId: string }): Promise<InboxMessage> {
   const conv = await assertCanSee(viewer, input.conversationId);
@@ -550,7 +661,7 @@ async function upsertConversation(input: {
  */
 export async function startInboxConversation(
   viewer: InboxViewer,
-  input: { phone: unknown; channel: unknown; name?: unknown; bookingId?: unknown; text?: unknown },
+  input: { phone: unknown; channel: unknown; name?: unknown; bookingId?: unknown; text?: unknown; templateKind?: unknown },
 ): Promise<string> {
   const channel: InboxChannel = input.channel === "sms" ? "sms" : "whatsapp";
   const conn = await requireConnection(viewer);
@@ -592,7 +703,12 @@ export async function startInboxConversation(
   } else {
     if (!conn.meta.whatsapp_from) throw new InboxAccessError("No WhatsApp number set up yet (Settings).");
     const text = cleanText(input.text);
-    if (text && conv.last_inbound_at && Date.now() - Date.parse(conv.last_inbound_at) < 24 * 3600_000) {
+    const kinds: readonly string[] = ["booking", "booking_transport", "pickup", "feedback", "marketing", "reopen"];
+    const picked = typeof input.templateKind === "string" && kinds.includes(input.templateKind) ? (input.templateKind as TemplateKind) : null;
+    if (picked) {
+      const t = await pickedTemplate(viewer, conn, picked, bookingId, name || conv.customer_name);
+      await deliver(conn, conv, { body: t.body, authorId: viewer.meId, source: "template", template: t.template });
+    } else if (text && conv.last_inbound_at && Date.now() - Date.parse(conv.last_inbound_at) < 24 * 3600_000) {
       await deliver(conn, conv, { body: text, authorId: viewer.meId, source: "inbox" });
     } else {
       const template = templateFor(conn, name || conv.customer_name);
@@ -943,15 +1059,14 @@ export async function sendBusinessTextToGuest(
       .eq("customer_phone", phone)
       .maybeSingle();
     const last = (data as { last_inbound_at?: string | null } | null)?.last_inbound_at;
-    if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
-    else {
-      const chosen = input.template?.(conn.meta) ?? null;
-      const ref = chosen ? templateRef(conn, chosen.kind) : null;
-      if (chosen && ref) {
-        channel = "whatsapp";
-        template = { ref, variables: chosen.variables };
-      }
-    }
+    // The approved template reads best, so it wins whenever one fits. Free text is only
+    // for a guest who wrote in the last 24 hours and has no template for this message.
+    const chosen = input.template?.(conn.meta) ?? null;
+    const ref = chosen ? templateRef(conn, chosen.kind) : null;
+    if (chosen && ref) {
+      channel = "whatsapp";
+      template = { ref, variables: chosen.variables };
+    } else if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
   }
   if (!channel && !input.whatsappOnly) channel = conn.meta.sms_from ? "sms" : null;
   if (!channel) return { ok: false, reason: "not_configured", message: "No WhatsApp template or SMS number is set up for this message." };

@@ -11,6 +11,7 @@ import {
   releaseConversation,
   sendConversationToTeammate,
   sendInboxReply,
+  sendPickedTemplate,
   sendReopenTemplate,
   setConversationStatus,
   startInboxConversation,
@@ -47,12 +48,24 @@ export async function sendReopenTemplateAction(input: { conversationId: string }
   return run((v) => sendReopenTemplate(v, { conversationId: id(input?.conversationId) }));
 }
 
+export async function sendPickedTemplateAction(input: {
+  conversationId: string;
+  kind: string;
+  bookingId?: string | null;
+}): Promise<InboxActionResult<InboxMessage>> {
+  const kinds = ["booking", "booking_transport", "pickup", "feedback", "marketing", "reopen"] as const;
+  const kind = kinds.find((k) => k === input?.kind);
+  if (!kind) return { ok: false, error: "Pick a template." };
+  return run((v) => sendPickedTemplate(v, { conversationId: id(input?.conversationId), kind, bookingId: input?.bookingId ?? null }));
+}
+
 export async function startInboxConversationAction(input: {
   phone: string;
   channel: "whatsapp" | "sms";
   name?: string;
   bookingId?: string | null;
   text?: string;
+  templateKind?: string | null;
 }): Promise<InboxActionResult<string>> {
   return run((v) => startInboxConversation(v, input ?? {}));
 }

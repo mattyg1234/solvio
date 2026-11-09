@@ -27,6 +27,7 @@ import {
   releaseConversationAction,
   sendConversationToTeammateAction,
   sendInboxReplyAction,
+  sendPickedTemplateAction,
   sendReopenTemplateAction,
   setConversationStatusAction,
   takeConversationAction,
@@ -94,6 +95,7 @@ export function InboxThread({
   const [panel, setPanel] = useState<"send" | "booking" | null>(null);
   const [sendTo, setSendTo] = useState("");
   const [sendNote, setSendNote] = useState("");
+  const [tplKind, setTplKind] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -402,7 +404,48 @@ export function InboxThread({
         {mode === "reply" && !block.ok ? (
           <div className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200">
             <p>{block.message}</p>
-            {block.reason === "window" && connection.reopenTemplate ? (
+            {block.reason === "window" && c.channel === "whatsapp" && (connection.templates ?? []).length ? (
+              <div className="mt-2 space-y-1.5">
+                <label className="block font-semibold" htmlFor="inbox-template-pick">
+                  Send an approved template
+                </label>
+                <select
+                  id="inbox-template-pick"
+                  value={tplKind}
+                  onChange={(e) => setTplKind(e.target.value)}
+                  className="block w-full rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs text-slate-900"
+                >
+                  <option value="">Choose a template…</option>
+                  {(connection.templates ?? []).map((t) => (
+                    <option key={t.kind} value={t.kind} disabled={t.needsBooking && !c.bookingId}>
+                      {t.title}
+                      {t.needsBooking && !c.bookingId ? " (link the booking first)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {tplKind ? (
+                  <p className="text-[11px] text-amber-900/80">{(connection.templates ?? []).find((t) => t.kind === tplKind)?.description}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={Boolean(busy) || !tplKind}
+                  onClick={() =>
+                    void act(
+                      "template",
+                      () => sendPickedTemplateAction({ conversationId: c.id, kind: tplKind, bookingId: c.bookingId ?? null }),
+                      (msg) => {
+                        onMessage(msg as InboxMessage);
+                        setTplKind("");
+                      },
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 font-semibold text-amber-900 ring-1 ring-amber-300 disabled:opacity-60"
+                >
+                  {busy === "template" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Send className="h-3.5 w-3.5" aria-hidden />}
+                  Send template
+                </button>
+              </div>
+            ) : block.reason === "window" && connection.reopenTemplate ? (
               <button
                 type="button"
                 disabled={Boolean(busy)}
