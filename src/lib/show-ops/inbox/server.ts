@@ -943,15 +943,14 @@ export async function sendBusinessTextToGuest(
       .eq("customer_phone", phone)
       .maybeSingle();
     const last = (data as { last_inbound_at?: string | null } | null)?.last_inbound_at;
-    if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
-    else {
-      const chosen = input.template?.(conn.meta) ?? null;
-      const ref = chosen ? templateRef(conn, chosen.kind) : null;
-      if (chosen && ref) {
-        channel = "whatsapp";
-        template = { ref, variables: chosen.variables };
-      }
-    }
+    // The approved template reads best, so it wins whenever one fits. Free text is only
+    // for a guest who wrote in the last 24 hours and has no template for this message.
+    const chosen = input.template?.(conn.meta) ?? null;
+    const ref = chosen ? templateRef(conn, chosen.kind) : null;
+    if (chosen && ref) {
+      channel = "whatsapp";
+      template = { ref, variables: chosen.variables };
+    } else if (last && Date.now() - Date.parse(last) < 24 * 3600_000) channel = "whatsapp";
   }
   if (!channel && !input.whatsappOnly) channel = conn.meta.sms_from ? "sms" : null;
   if (!channel) return { ok: false, reason: "not_configured", message: "No WhatsApp template or SMS number is set up for this message." };

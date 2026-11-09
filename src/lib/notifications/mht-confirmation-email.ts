@@ -57,7 +57,7 @@ export const MHT_CONFIRMATION_COPY = {
 
 export function renderMhtConfirmationEmail(
   booking: GuestConfirmationInput,
-  opts: { logoUrl?: string | null; merchantName: string; updated?: boolean; extrasSummary?: string; showTime?: string | null; attachmentNote?: boolean },
+  opts: { logoUrl?: string | null; merchantName: string; updated?: boolean; amended?: boolean; extrasSummary?: string; showTime?: string | null; attachmentNote?: boolean },
 ): string {
   const c = MHT_CONFIRMATION_COPY;
   const rows = confirmationRows(booking);
@@ -69,7 +69,7 @@ export function renderMhtConfirmationEmail(
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:2px solid #000;border-bottom:2px solid #000;margin:14px 0 6px">
       <tr>
         <td style="padding:14px 4px 10px;vertical-align:top">
-          <p style="${FONT};font-size:12px;font-weight:800;letter-spacing:.06em;color:#000;margin:0 0 8px">${opts.updated ? "YOUR UPDATED PICK-UP" : "YOUR BOOKING"}</p>
+          <p style="${FONT};font-size:12px;font-weight:800;letter-spacing:.06em;color:#000;margin:0 0 8px">${opts.updated ? "YOUR UPDATED PICK-UP" : opts.amended ? "YOUR UPDATED BOOKING" : "YOUR BOOKING"}</p>
           <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
             ${rows
               .map(
