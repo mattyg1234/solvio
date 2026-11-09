@@ -238,3 +238,37 @@ export function templateVariables(values: readonly unknown[]): Record<string, st
 export function fillTemplateWording(spec: TemplateSpec, values: readonly unknown[]): string {
   return spec.wording.replace(/\{\{(\d+)\}\}/g, (_, n: string) => templateValue(values[Number(n) - 1]));
 }
+
+/** What staff read in the inbox template picker: when to use it and what the guest gets. */
+export const TEMPLATE_PICKER: Record<TemplateKind, { title: string; description: string; needsBooking: boolean }> = {
+  booking: {
+    title: "Booking confirmation: making own way",
+    description: "Guest gets their booking details with the venue address and map link. Use for a booking with no transport.",
+    needsBooking: true,
+  },
+  booking_transport: {
+    title: "Booking confirmation: with pick-up",
+    description: "Guest gets their booking details with their pick-up point and time. Use for a booking with bus or private transport.",
+    needsBooking: true,
+  },
+  pickup: {
+    title: "Pick-up confirmed or changed",
+    description: "Guest gets tonight's final pick-up point and time. Use when transport is finalised or a pick-up moves.",
+    needsBooking: true,
+  },
+  feedback: {
+    title: "After the show: leave a review",
+    description: "Thanks the guest for coming and asks for a review. Sent automatically the day after the show; use this to send it by hand.",
+    needsBooking: true,
+  },
+  marketing: {
+    title: "Ask to receive offers",
+    description: "Asks the guest if they'd like WhatsApp updates and offers. A YES or STOP reply is recorded on their booking.",
+    needsBooking: false,
+  },
+  reopen: {
+    title: "Start or re-open a chat",
+    description: "A short hello so you can write freely once the guest replies.",
+    needsBooking: false,
+  },
+};

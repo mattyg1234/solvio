@@ -61,7 +61,7 @@ type PollBody = InboxSyncResponse & { people?: ChatPerson[]; error?: string };
 
 type Thread = { id: string | null; list: InboxMessage[]; booking: InboxBookingSummary | null };
 
-const NO_CONNECTION: InboxConnectionSummary = { connected: false, whatsapp: false, sms: false, reopenTemplate: false, live: false };
+const NO_CONNECTION: InboxConnectionSummary = { connected: false, whatsapp: false, sms: false, reopenTemplate: false, templates: [], live: false };
 
 export function ShowOpsInboxApp({
   meId,

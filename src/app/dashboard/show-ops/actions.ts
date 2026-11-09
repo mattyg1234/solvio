@@ -51,6 +51,7 @@ import {
   sendShowOpsSellerInviteEmail,
 } from "@/lib/notifications/show-ops-emails";
 import { sendGuestTicket } from "@/lib/notifications/show-ops-guest-ticket";
+import { canaryToday, guestFacingChanges } from "@/lib/show-ops/booking-changes";
 import { getDeploymentSiteUrl } from "@/lib/deployment-site-url";
 import { showOpsAllowedPages, SHOW_OPS_PAGE_KEYS } from "@/lib/show-ops/nav";
 import { parseTicketTokenFromScan, showOpsTicketUrl } from "@/lib/show-ops/ticket-token";
@@ -198,7 +199,7 @@ type GuestTicketRow = Record<string, unknown>;
 function guestTicketFromBooking(
   ctx: Awaited<ReturnType<typeof requireShowOpsContext>>,
   f: GuestTicketRow,
-  opts?: { updated?: boolean },
+  opts?: { updated?: boolean; amended?: boolean },
 ) {
   const token = typeof f.ticket_token === "string" ? f.ticket_token : null;
   return {
@@ -228,13 +229,16 @@ function guestTicketFromBooking(
     pickupKind: (f.pickup_kind as string | null) ?? null,
     privateZone: (f.private_zone as string | null) ?? null,
     updated: opts?.updated ?? false,
+    amended: opts?.amended ?? false,
+    island: (f as { island?: string | null }).island ?? null,
+    logoUrl: ctx.branding.logoUrl ?? null,
     businessId: ctx.business.id,
     bookingId: typeof f.id === "string" ? f.id : null,
   };
 }
 
 const TICKET_FIELDS =
-  "id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token";
+  "id,booking_ref,guest_name,guest_email,guest_mobile,show_name,show_date,ampm,adults,children,infants,hotel_name,transport_required,pickup_kind,private_zone,pickup_stop_name,pickup_time,billing_mode,total_cost,deposit_amount,balance_remaining,dietary_notes,cancelled_at,ticket_token,island,extras_snapshot";
 
 /** Send (or re-send) one guest their ticket from the booking record. */
 export async function resendGuestTicketAction(
@@ -2253,7 +2257,7 @@ export async function updateBookingAction(
   const { data: existing } = await ctx.supabase
     .from("show_bookings")
     .select(
-      "id,legacy_id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,pricing_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number",
+      "id,legacy_id,booking_ref,payment_status,invoice_id,billing_mode,adults,children,infants,product_id,ticket_type_id,ticket_type_name,supplier_id,transport_required,total_cost,deposit_amount,balance_remaining,nett_total,adult_nett_total,child_nett_total,infant_nett_total,extras_snapshot,pricing_snapshot,cancelled_at,arrived_pax,arrived_at,no_show,guest_name,guest_mobile,guest_email,show_name,show_date,hotel_name,pickup_stop_name,pickup_time,pickup_kind,private_accommodation,private_zone,supplier_name,dietary_required,dietary_notes,office_comments,office_only_comments,payment_method,supplier_ticket_number,ampm,island",
     )
     .eq("id", id)
     .eq("business_id", ctx.business.id)
@@ -2348,8 +2352,36 @@ export async function updateBookingAction(
   for (const productId of new Set([existing.product_id, built.fields.product_id])) {
     after(() => pushChannelAvailability(ctx.business.id, { productId }, [existing.show_date, built.fields.show_date]));
   }
+
+  // Anything the guest sees changed → send them the updated booking (email + WhatsApp
+  // booking template). A note-only save sends nothing; past shows are never re-sent.
+  const changed = guestFacingChanges(existing as Record<string, unknown>, { ...existing, ...patch } as Record<string, unknown>);
+  const willResend =
+    String(formData.get("send_update") ?? "") === "1" &&
+    changed.length > 0 &&
+    String(patch.show_date ?? existing.show_date ?? "") >= canaryToday();
+  if (willResend) {
+    after(async () => {
+      try {
+        const { data: fresh } = await ctx.supabase
+          .from("show_bookings")
+          .select(TICKET_FIELDS)
+          .eq("id", id)
+          .eq("business_id", ctx.business.id)
+          .maybeSingle();
+        if (!fresh || fresh.cancelled_at || (!fresh.guest_email && !fresh.guest_mobile)) return;
+        await sendGuestTicket(guestTicketFromBooking(ctx, fresh as GuestTicketRow, { amended: true }));
+      } catch (err) {
+        console.error("[guest-ticket] update resend failed for", existing.booking_ref, err instanceof Error ? err.message : err);
+      }
+    });
+  }
   revalidateShowOps();
-  return { ok: true, id, message: existing.booking_ref };
+  return {
+    ok: true,
+    id,
+    message: willResend ? `${existing.booking_ref} · updated details sent to the guest` : existing.booking_ref,
+  };
 }
 
 export async function cancelBookingAction(
