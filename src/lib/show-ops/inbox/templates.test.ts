@@ -43,7 +43,7 @@ test("blank values are single-line and never empty", () => {
 test("a bus booking uses the with-transport template", () => {
   const t = guestTicketTemplate(base)!;
   assert.equal(t.kind, "booking_transport");
-  assert.equal(Object.keys(t.variables).length, templateSpec("booking_transport").blanks.length);
+  assert.equal(Object.keys(t.variables).filter((k) => /^\d+$/.test(k)).length, templateSpec("booking_transport").blanks.length);
   assert.deepEqual(t.variables, {
     "1": "Sarah",
     "2": "Tenerife",
@@ -51,6 +51,7 @@ test("a bus booking uses the with-transport template", () => {
     "4": "3",
     "5": "18:30",
     "6": "Hotel Bahia",
+    ticket: "abc",
   });
 });
 
@@ -69,10 +70,15 @@ test("own way uses the no-transport template with the island's venue", () => {
   assert.equal(t.variables["6"], "https://maps.app.goo.gl/x");
 });
 
+test("no ticket link means no ticket button value", () => {
+  const t = guestTicketTemplate({ ...base, ticketUrl: null })!;
+  assert.equal("ticket" in t.variables, false);
+});
+
 test("pick-up change uses the transport confirmation template", () => {
   const t = guestTicketTemplate({ ...base, updated: true })!;
   assert.equal(t.kind, "pickup");
-  assert.deepEqual(t.variables, { "1": "Sarah", "2": "Tenerife", "3": "18:30", "4": "Hotel Bahia" });
+  assert.deepEqual(t.variables, { "1": "Sarah", "2": "Tenerife", "3": "18:30", "4": "Hotel Bahia", ticket: "abc" });
   assert.equal(guestTicketTemplate({ ...base, updated: true, transportRequired: false, pickupKind: "own_way" }), null);
 });
 

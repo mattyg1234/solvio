@@ -87,8 +87,20 @@ export function parseTwilioMeta(raw: unknown): TwilioIntegrationMeta {
     meta_waba_id: /^\d{6,25}$/.test(s("meta_waba_id")) ? s("meta_waba_id") : "",
     meta_token_hint: s("meta_token_hint"),
     meta_templates: parseTemplateLanguages(o.meta_templates),
+    meta_url_buttons: parseUrlButtons(o.meta_template_bodies),
     hint: s("hint"),
   };
+}
+
+/** name → URL-button index, from the template bodies saved at the last Re-check. */
+export function parseUrlButtons(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [name, v] of Object.entries(raw as Record<string, unknown>)) {
+    const i = v && typeof v === "object" ? (v as { urlButton?: unknown }).urlButton : undefined;
+    if (typeof i === "number" && Number.isInteger(i) && i >= 0 && i < 10) out[name] = i;
+  }
+  return out;
 }
 
 function toConnection(row: { business_id: string; secret_ciphertext: string; status: string; meta: unknown } | null): TwilioConnection | null {

@@ -81,7 +81,13 @@ export async function checkMetaNumber(creds: MetaCreds): Promise<{ ok: true; nam
 
 /** Approved templates in the WhatsApp Business Account: name → language code (English first). */
 /** An approved template's body as Meta holds it, so a blank mismatch can be read from the row. */
-export type MetaTemplateBody = { language: string; format: string; body: string };
+export type MetaTemplateBody = {
+  language: string;
+  format: string;
+  body: string;
+  /** Index of the template's URL button whose link ends in {{1}} (e.g. "View my ticket"), when it has one. */
+  urlButton?: number;
+};
 
 export async function listApprovedTemplates(
   creds: MetaCreds,
@@ -105,9 +111,16 @@ export async function listApprovedTemplates(
       if (String(t.status ?? "").toUpperCase() !== "APPROVED" || !name || !lang) continue;
       if (!out[name] || (/^en/i.test(lang) && !/^en/i.test(out[name]))) {
         out[name] = lang;
-        const parts = Array.isArray(t.components) ? (t.components as Array<{ type?: unknown; text?: unknown }>) : [];
+        const parts = Array.isArray(t.components) ? (t.components as Array<{ type?: unknown; text?: unknown; buttons?: unknown }>) : [];
         const body = parts.find((c) => String(c.type ?? "").toUpperCase() === "BODY");
         bodies[name] = { language: lang, format: String(t.parameter_format ?? "POSITIONAL"), body: String(body?.text ?? "").slice(0, 2000) };
+        const buttons = parts.find((c) => String(c.type ?? "").toUpperCase() === "BUTTONS")?.buttons;
+        if (Array.isArray(buttons)) {
+          const i = (buttons as Array<{ type?: unknown; url?: unknown }>).findIndex(
+            (b) => String(b.type ?? "").toUpperCase() === "URL" && /\{\{1\}\}/.test(String(b.url ?? "")),
+          );
+          if (i >= 0) bodies[name].urlButton = i;
+        }
       }
     }
     const next = ((r.body.paging ?? {}) as { next?: unknown }).next;
@@ -130,20 +143,30 @@ export async function subscribeMetaApp(creds: MetaCreds): Promise<{ ok: true } |
 /** The request body for one message: free text, or an approved template with its blanks in order. */
 export function metaMessagePayload(
   to: string,
-  input: { body?: string; template?: { name: string; language: string; variables?: Record<string, string> } },
+  input: {
+    body?: string;
+    template?: { name: string; language: string; variables?: Record<string, string>; button?: { index: number; text: string } | null };
+  },
 ): Record<string, unknown> {
   const base = { messaging_product: "whatsapp", recipient_type: "individual", to: to.replace(/^\+/, "") };
   if (!input.template) return { ...base, type: "text", text: { preview_url: false, body: String(input.body ?? "").slice(0, 4096) } };
   const vars = Object.entries(input.template.variables ?? {})
+    .filter(([k]) => /^\d+$/.test(k))
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([, text]) => ({ type: "text", text }));
+  const components: Array<Record<string, unknown>> = [];
+  if (vars.length) components.push({ type: "body", parameters: vars });
+  const btn = input.template.button;
+  if (btn && btn.text) {
+    components.push({ type: "button", sub_type: "url", index: String(btn.index), parameters: [{ type: "text", text: btn.text }] });
+  }
   return {
     ...base,
     type: "template",
     template: {
       name: input.template.name,
       language: { code: input.template.language },
-      ...(vars.length ? { components: [{ type: "body", parameters: vars }] } : {}),
+      ...(components.length ? { components } : {}),
     },
   };
 }
@@ -151,7 +174,10 @@ export function metaMessagePayload(
 export async function sendMetaMessage(
   creds: MetaCreds,
   to: string,
-  input: { body?: string; template?: { name: string; language: string; variables?: Record<string, string> } },
+  input: {
+    body?: string;
+    template?: { name: string; language: string; variables?: Record<string, string>; button?: { index: number; text: string } | null };
+  },
 ): Promise<TwilioSendResult> {
   const r = await graph(creds, `${creds.phoneNumberId}/messages`, { method: "POST", body: metaMessagePayload(to, input) });
   const id = ((r.body.messages as Array<{ id?: unknown }> | undefined) ?? [])[0]?.id;

@@ -127,5 +127,7 @@ export type TwilioIntegrationMeta = {
   meta_token_hint: string;
   /** Meta's approved templates, name → language, as last read from Meta. */
   meta_templates: Record<string, string>;
+  /** Approved templates with a "{{1}}" link button: name → button index. */
+  meta_url_buttons: Record<string, number>;
   hint: string;
 };
