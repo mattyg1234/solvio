@@ -227,8 +227,8 @@ export default async function AllBookingsPage({
   const windowLabel = allDates
     ? "all dates"
     : tonightOnly
-      ? date
-      : `${from} → ${to}`;
+      ? formatShowOpsDate(date)
+      : `${formatShowOpsDate(from)} → ${formatShowOpsDate(to)}`;
   const deskRows: BookingsDeskRow[] = (rows ?? []).map((r) => {
     const payView = showOpsBookingPayView({
       billingMode: r.billing_mode,

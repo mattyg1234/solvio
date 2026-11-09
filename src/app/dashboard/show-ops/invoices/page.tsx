@@ -598,7 +598,7 @@ export default async function InvoicesPage({
               })}
               {!previewRows.length ? (
                 <p className="rounded-2xl bg-white p-5 text-sm text-slate-500 ring-1 ring-slate-200">
-                  No uninvoiced invoice-mode reservations for {periodStart} → {periodEnd}.
+                  No uninvoiced invoice-mode reservations for {formatShowOpsDate(periodStart)} → {formatShowOpsDate(periodEnd)}.
                 </p>
               ) : null}
             </div>
