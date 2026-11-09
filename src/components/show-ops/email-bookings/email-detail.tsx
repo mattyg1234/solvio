@@ -18,6 +18,7 @@ import { EMAIL_FIELD_LABELS, EMAIL_NUMBER_FIELDS, type EmailKind, type Extracted
 import { cn } from "@/lib/utils";
 
 import { relativeTime } from "./relative-time";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 export const KIND_LABEL: Record<EmailKind, { label: string; className: string }> = {
   new: { label: "New booking", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
@@ -181,7 +182,7 @@ export function EmailDetail({
                     {m.booking.booking_ref} · {m.booking.guest_name}
                   </Link>
                   <p className="text-xs text-slate-500">
-                    {m.booking.show_date} · {m.booking.show_name ?? ""} · {m.booking.adults ?? 0}A {m.booking.children ?? 0}C {m.booking.infants ?? 0}I
+                    {formatShowOpsDate(m.booking.show_date)} · {m.booking.show_name ?? ""} · {m.booking.adults ?? 0}A {m.booking.children ?? 0}C {m.booking.infants ?? 0}I
                     {m.booking.supplier_name ? ` · ${m.booking.supplier_name}` : ""}
                     {m.booking.cancelled_at ? " · cancelled" : ""} · <span className="font-semibold">{m.why}</span>
                   </p>

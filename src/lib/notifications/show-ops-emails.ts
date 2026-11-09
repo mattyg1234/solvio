@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 
-import { formatShowOpsMoney } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
 import { type SentEmailLog, withSentEmailLog } from "@/lib/show-ops/sent-email-log";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
@@ -67,7 +67,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
         <p style="font-size:16px">Hi ${escapeHtml(opts.guestName.split(" ")[0] || opts.guestName)},</p>
         <p style="font-size:15px;line-height:1.5">
           ${escapeHtml(opts.merchantName)} has sent a secure payment link for
-          <strong>${escapeHtml(opts.showName)}</strong> on ${escapeHtml(opts.showDate)}
+          <strong>${escapeHtml(opts.showName)}</strong> on ${escapeHtml(formatShowOpsDate(opts.showDate))}
           (ref ${escapeHtml(opts.bookingRef)}).
         </p>
         <p style="font-size:22px;font-weight:700;margin:20px 0">${escapeHtml(money)} due</p>
@@ -80,7 +80,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
         <p style="color:#64748b;font-size:13px;margin-top:28px">If the button does not work, copy this link:<br />${escapeHtml(opts.payUrl)}</p>
       </div>
     `,
-    text: `Hi ${opts.guestName},\n\n${opts.merchantName} — ${opts.showName} on ${opts.showDate} (${opts.bookingRef}).\nAmount due: ${money}\n\nPay here: ${opts.payUrl}\n`,
+    text: `Hi ${opts.guestName},\n\n${opts.merchantName} — ${opts.showName} on ${formatShowOpsDate(opts.showDate)} (${opts.bookingRef}).\nAmount due: ${money}\n\nPay here: ${opts.payUrl}\n`,
   });
 
   if (error) {
@@ -236,7 +236,7 @@ async function sendShowOpsInvoiceEmailInner(opts: {
   const lineRows = opts.lines
     .map(
       (l) => `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(l.showDate)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(formatShowOpsDate(l.showDate))}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(l.guestName)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-family:ui-monospace,monospace;font-size:12px">${escapeHtml(l.bookingRef)}</td>
         <td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(l.ticketNumber || "—")}</td>
@@ -250,7 +250,7 @@ async function sendShowOpsInvoiceEmailInner(opts: {
   const textLines = opts.lines
     .map(
       (l) =>
-        `${l.showDate}  ${l.guestName}  ${l.bookingRef}  ${l.ticketNumber || "—"}  ${money(l.lineTotal)}`,
+        `${formatShowOpsDate(l.showDate)}  ${l.guestName}  ${l.bookingRef}  ${l.ticketNumber || "—"}  ${money(l.lineTotal)}`,
     )
     .join("\n");
   const cc = filterShowOpsOutboundTo(opts.cc || "").filter((address) => address !== to);

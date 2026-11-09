@@ -12,6 +12,7 @@ import {
   showOpsBookingPayView,
   showOpsDayName,
   showOpsDoorPayPhrase,
+  formatShowOpsDate,
 } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 import { SHOW_OPS_PAYMENT_METHOD_LABELS } from "@/lib/show-ops/types";
@@ -398,7 +399,7 @@ export default async function AllBookingsPage({
                       {r.cancelled_at ? <span className="ml-2 text-[11px] font-semibold uppercase">Cancelled</span> : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2">
-                      {showOpsDayName(r.show_date, "short")} {r.show_date}
+                      {showOpsDayName(r.show_date, "short")} {formatShowOpsDate(r.show_date)}
                     </td>
                     <td className="px-3 py-2">{r.show_name}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{formatShowOpsPax(r.adults, r.children, r.infants)}</td>

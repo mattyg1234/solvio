@@ -7,6 +7,7 @@ import { AddPaymentButton } from "@/components/show-ops/add-payment-button";
 import { cn } from "@/lib/utils";
 import type { ShowOpsArrivalMark } from "@/lib/show-ops/calc";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 export type BookingsDeskRow = {
   id: string;
@@ -116,7 +117,7 @@ export function BookingsDeskTable({
             <div key={group.date}>
               <p className="sticky top-14 z-10 mb-1.5 rounded-lg bg-slate-100/95 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur">
                 {group.dayName ? `${group.dayName} · ` : ""}
-                {group.date}
+                {formatShowOpsDate(group.date)}
                 <span className="ml-2 font-normal normal-case text-slate-500">
                   {group.rows.length} booking{group.rows.length === 1 ? "" : "s"}
                 </span>
@@ -296,7 +297,7 @@ function DateGroup({
       <tr className="sticky top-9 z-10 bg-slate-100/95">
         <td colSpan={14} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
           {group.dayName ? `${group.dayName} · ` : ""}
-          {group.date}
+          {formatShowOpsDate(group.date)}
           <span className="ml-2 font-normal normal-case text-slate-500">
             {group.rows.length} booking{group.rows.length === 1 ? "" : "s"}
           </span>
@@ -357,7 +358,7 @@ function BookingRows({
           <span className="block text-xs text-slate-500">{row.island}</span>
         </td>
         <td className="px-1.5 py-2 whitespace-nowrap">
-          {row.showDate}
+          {formatShowOpsDate(row.showDate)}
           <span className="block text-xs text-slate-500">{row.dayName}</span>
         </td>
         <td className="max-w-[11rem] px-1.5 py-2 text-xs">

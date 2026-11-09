@@ -8,7 +8,7 @@ import { NightSaleStatusMarks } from "@/components/show-ops/night-sale-status";
 import { NumberInput } from "@/components/ui/number-input";
 import { saleStatusKey, type NightSaleStatus } from "@/lib/show-ops/sale-status";
 import type { CalendarDay } from "@/lib/show-ops/calendar";
-import { formatShowOpsMoney, round2, showOpsDayName } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, round2, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
 export type NightBookingRow = {
@@ -85,7 +85,7 @@ export function ShowCalendarNight({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-800">
-            {showOpsDayName(day.iso)} {day.iso}
+            {showOpsDayName(day.iso)} {formatShowOpsDate(day.iso)}
           </p>
           <p className="mt-1 text-sm text-slate-600">
             {day.pax} pax on shows · {day.busPax} on the bus · {bookings.length}{" "}

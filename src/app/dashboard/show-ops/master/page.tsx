@@ -26,6 +26,7 @@ import { SubmitOnce } from "@/components/show-ops/submit-once";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 function Field({
   label,
@@ -567,7 +568,7 @@ export default async function MasterDataPage({
                       id={`created-${b.id}`}
                       className={`py-2 ${created === b.id ? "rounded-lg bg-violet-50 px-2 font-medium" : ""}`}
                     >
-                      {b.show_date} · {b.island} · {Number(b.bus_count ?? 1)}{" "}
+                      {formatShowOpsDate(b.show_date)} · {b.island} · {Number(b.bus_count ?? 1)}{" "}
                       bus{Number(b.bus_count ?? 1) === 1 ? "" : "es"} ·{" "}
                       {b.seats_ordered} seats · €{Number(b.cost_total ?? 0).toFixed(2)}
                     </li>

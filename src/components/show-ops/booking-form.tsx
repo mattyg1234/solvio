@@ -37,6 +37,7 @@ import {
   round2,
   showOpsDayName,
   type ShowOpsPricingSnapshot,
+  formatShowOpsDate,
 } from "@/lib/show-ops/calc";
 import { pickRatePrice, type RatePriceRow } from "@/lib/show-ops/rate-cards";
 import { parseStopRunsOn, pickupStopOffered, stopRunsOnDate } from "@/lib/show-ops/bus";
@@ -2112,7 +2113,7 @@ export function ShowOpsBookingForm({
               label="Date"
               value={
                 showDate
-                  ? `${showOpsDayName(showDate) ?? ""}, ${showDate}`
+                  ? `${showOpsDayName(showDate) ?? ""} ${formatShowOpsDate(showDate)}`.trim()
                   : "—"
               }
             />
@@ -2661,7 +2662,7 @@ function BookingSavedPanel({
             label="Date"
             value={
               saved.date
-                ? `${showOpsDayName(saved.date) ?? ""} ${saved.date}`.trim()
+                ? `${showOpsDayName(saved.date) ?? ""} ${formatShowOpsDate(saved.date)}`.trim()
                 : "—"
             }
             strong

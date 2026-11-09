@@ -11,7 +11,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
 import { isNoBusStop, stopRunsOnDate } from "@/lib/show-ops/bus";
 import { busCount, busLoads, seatsPerBus } from "@/lib/show-ops/bus-seats";
-import { formatShowOpsMoney, paxTotal, round2, showOpsDayName } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, paxTotal, round2, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { showOpsCurrencyFor } from "@/lib/show-ops/config";
 
 export default async function BusBoardPage({
@@ -98,7 +98,7 @@ export default async function BusBoardPage({
       <ShowOpsPageHeader
         eyebrow="Operations"
         title="Bus board"
-        subtitle={`${showOpsDayName(date)} ${date} · buses ordered per night, plus the permanent pick-up timetable per island: drag to reorder, edit a stop in place, download or print. Time changes save straight to every booking on that stop.`}
+        subtitle={`${showOpsDayName(date)} ${formatShowOpsDate(date)} · buses ordered per night, plus the permanent pick-up timetable per island: drag to reorder, edit a stop in place, download or print. Time changes save straight to every booking on that stop.`}
         actions={
           <form method="get" className="flex flex-wrap items-end gap-2">
             <label className="text-xs font-medium text-slate-600">

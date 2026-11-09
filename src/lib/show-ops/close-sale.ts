@@ -1,6 +1,7 @@
 import { partnerSellsOnIsland } from "@/lib/show-ops/partners";
 
 import type { CloseKind } from "@/lib/show-ops/calendar";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 /** Off for now (Matty, 29 Oct 2026): closing a night marks it closed in the Hub and emails no partners. */
 export const CLOSE_SALE_EMAILS_ON = false;
@@ -40,10 +41,10 @@ export function closeSaleCopy(input: {
   const show = input.showName?.trim() || "all shows";
   const full = input.kind === "full";
   const headline = full ? "STOP SELLING" : "PART CLOSE — last seats only";
-  const subject = `${input.merchantName} · ${headline} · ${show} · ${input.showDate}`;
+  const subject = `${input.merchantName} · ${headline} · ${show} · ${formatShowOpsDate(input.showDate)}`;
   const body = full
-    ? `Please stop selling ${show} on ${input.showDate} (${input.island}). Do not take any more bookings for this night.`
-    : `Part close on ${show} · ${input.showDate} (${input.island}). Please stop extra sales — last seats only, check with the office before adding more.`;
+    ? `Please stop selling ${show} on ${formatShowOpsDate(input.showDate)} (${input.island}). Do not take any more bookings for this night.`
+    : `Part close on ${show} · ${formatShowOpsDate(input.showDate)} (${input.island}). Please stop extra sales — last seats only, check with the office before adding more.`;
   const note = input.note?.trim() ? `\n\nOffice note: ${input.note.trim()}` : "";
   const text = `${headline}\n\n${body}${note}\n\n${input.merchantName}`;
   const html = `

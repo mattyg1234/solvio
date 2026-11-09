@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { deleteExpenseAction, pushExpenseToHoldedAction, reconcileExpenseHoldedAction, saveExpenseAction } from "@/app/dashboard/show-ops/actions-expenses";
 import { SubmitOnce } from "@/components/show-ops/submit-once";
-import { formatShowOpsMoney } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { EXPENSE_CATEGORIES, expenseClaimIsStale, type PnlRow } from "@/lib/show-ops/expenses";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
 
@@ -167,7 +167,7 @@ export function ExpensesPanel({
               <tbody>
                 {rows.map((e) => (
                   <tr key={e.id} className="border-t border-slate-100 align-top">
-                    <td className="py-1.5 pr-3 whitespace-nowrap">{e.expense_date}</td>
+                    <td className="py-1.5 pr-3 whitespace-nowrap">{formatShowOpsDate(e.expense_date)}</td>
                     <td className="py-1.5 pr-3">{e.supplier_name}</td>
                     <td className="py-1.5 pr-3">
                       {e.description}

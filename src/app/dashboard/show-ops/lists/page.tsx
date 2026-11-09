@@ -32,6 +32,7 @@ import {
   showOpsBookingPayView,
   showOpsDoorPayPhrase,
   surnameKey,
+  formatShowOpsDate,
 } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 import {
@@ -440,7 +441,7 @@ export default async function DailyListsPage({
         <ShowOpsPageHeader
           eyebrow="Analytics"
           title="Night lists"
-          subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${date}${island ? ` · ${island}` : " · all islands"}.`}
+          subtitle={`One list per job. Tick guests off here instead of reprinting and highlighting. ${formatShowOpsDate(date)}${island ? ` · ${island}` : " · all islands"}.`}
           actions={<PrintButton label="Print / send this list" />}
         />
         <form
@@ -580,7 +581,7 @@ export default async function DailyListsPage({
               {ctx.branding.displayName}
             </p>
             <p className="text-xs text-slate-600">
-              {date}
+              {formatShowOpsDate(date)}
               {island ? ` · ${island}` : ""}
               {showFilter ? ` · ${showFilter}` : ""}
               {views.length ? ` · ${views.join(" + ")}` : ""}
@@ -920,7 +921,7 @@ function OfficeTable({
     <div className="rounded-2xl bg-white ring-1 ring-slate-200">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
         <h3 className="font-semibold">
-          {title} · {date} · {rows.length}{" "}
+          {title} · {formatShowOpsDate(date)} · {rows.length}{" "}
           {rows.length === 1 ? "booking" : "bookings"}
         </h3>
         <div className="flex flex-wrap items-center gap-2 print:hidden">

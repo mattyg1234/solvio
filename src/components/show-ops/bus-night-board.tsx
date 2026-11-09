@@ -6,7 +6,7 @@ import {
   getBusNightOrderAction,
   saveBusNightOrderAction,
 } from "@/app/dashboard/show-ops/actions-bus";
-import { showOpsDayName } from "@/lib/show-ops/calc";
+import { showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 
 export type BusNightBoardStop = {
   id: string;
@@ -116,7 +116,7 @@ export function BusNightBoard({
   };
 
   const changedTimes = Object.entries(times).filter(([id, t]) => t && t !== (stopById.get(id)?.time ?? "")).length;
-  const when = [showOpsDayName(date), date].filter(Boolean).join(" ");
+  const when = [showOpsDayName(date), formatShowOpsDate(date)].filter(Boolean).join(" ");
   const listHref = `/dashboard/show-ops/lists?tab=bus&date=${date}&island=${encodeURIComponent(island)}`;
 
   async function save() {

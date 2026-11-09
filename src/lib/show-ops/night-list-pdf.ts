@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { formatShowOpsDate } from "@/lib/show-ops/calc";
 
 /**
  * The printed night list, laid out like the Lanzasoft "Show Office List" the
@@ -204,7 +205,7 @@ export async function buildNightListPdf(input: NightListPdfInput): Promise<Uint8
     const stampW = regular.widthOfTextAtSize(printed, 8.5);
     text(printed, right - stampW, y - 10, 8.5, oblique);
     y -= 30;
-    text(pdfSafe(`${input.date}      ${input.showName || "All shows"}${continued ? "   (continued)" : ""}`, regular), left + 8, y - 6, 12, regular);
+    text(pdfSafe(`${formatShowOpsDate(input.date)}      ${input.showName || "All shows"}${continued ? "   (continued)" : ""}`, regular), left + 8, y - 6, 12, regular);
     if (input.island) {
       const isl = pdfSafe(input.island, oblique);
       text(isl, right - oblique.widthOfTextAtSize(isl, 12), y - 6, 12, oblique);

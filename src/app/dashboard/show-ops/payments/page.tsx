@@ -5,7 +5,7 @@ import { DateIslandFilter } from "@/components/show-ops/date-island-filter";
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { NumberInput } from "@/components/ui/number-input";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
-import { formatShowOpsMoney, showOpsAmountDue } from "@/lib/show-ops/calc";
+import { formatShowOpsMoney, showOpsAmountDue, formatShowOpsDate } from "@/lib/show-ops/calc";
 import { hasShowOpsModule, showOpsCurrencyFor } from "@/lib/show-ops/config";
 
 export default async function PaymentsPage({
@@ -66,7 +66,7 @@ export default async function PaymentsPage({
         <ShowOpsPageHeader
           eyebrow="Operations"
           title="Payments due"
-          subtitle={`Deposit / direct sales for ${date}${show ? ` · ${show}` : ""} — record cash or card, or email a Stripe link.`}
+          subtitle={`Deposit / direct sales for ${formatShowOpsDate(date)}${show ? ` · ${show}` : ""} — record cash or card, or email a Stripe link.`}
         />
         {sp.sent === "1" ? (
           <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">

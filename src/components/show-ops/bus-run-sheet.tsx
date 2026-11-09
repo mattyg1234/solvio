@@ -16,7 +16,7 @@ import {
 } from "@/app/dashboard/show-ops/actions-bus";
 import { BusPickupSelect } from "@/components/show-ops/bus-pickup-select";
 import { safeBusLink } from "@/lib/show-ops/bus-links";
-import { formatShowOpsPax, showOpsDayName } from "@/lib/show-ops/calc";
+import { formatShowOpsPax, showOpsDayName, formatShowOpsDate } from "@/lib/show-ops/calc";
 
 export type BusRunRow = {
   id: string;
@@ -293,7 +293,7 @@ export function BusRunSheet({
       <div className="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200">
         <p className="text-sm font-semibold text-slate-900">
           Bus list · {day ? `${day} ` : ""}
-          {date}
+          {formatShowOpsDate(date)}
           {islands.length === 1 ? ` · ${islands[0]}` : ""}
         </p>
         {guideLines.length ? (
@@ -324,7 +324,7 @@ export function BusRunSheet({
         ) : null}
         {confirming ? (
           <span className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-400">
-            <span className="text-xs font-bold text-slate-900">Save this as tonight&apos;s bus board for {day ? `${day} ` : ""}{date}?</span>
+            <span className="text-xs font-bold text-slate-900">Save this as tonight&apos;s bus board for {day ? `${day} ` : ""}{formatShowOpsDate(date)}?</span>
             <button type="button" disabled={pending} onClick={() => { setConfirming(false); saveTonight(); }} className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
               {pending ? "Saving…" : "Yes, save tonight's board"}
             </button>
