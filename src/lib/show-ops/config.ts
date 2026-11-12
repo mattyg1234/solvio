@@ -178,6 +178,7 @@ export function parseShowOpsConfig(raw: unknown): ShowOpsConfig {
     partner_stripe_enabled: parseBool(o.partner_stripe_enabled, false),
     transport_supplement: parseMoney(o.transport_supplement, DEFAULT_SHOW_OPS_CONFIG.transport_supplement),
     office_report_emails: splitList(o.office_report_emails, []).filter((e) => e.includes("@")),
+    plan_b_emails: splitList(o.plan_b_emails, []).filter((e) => e.includes("@")),
     report_presets: { office_sort: "supplier_surname" },
     invoice: parseInvoiceConfig(o.invoice, mhtLegacy),
   };

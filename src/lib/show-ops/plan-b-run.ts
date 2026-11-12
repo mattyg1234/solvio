@@ -1,6 +1,7 @@
 import { sendShowOpsHtmlEmail } from "@/lib/notifications/show-ops-emails";
 import { parseShowOpsConfig } from "@/lib/show-ops/config";
 import {
+  planBRecipients,
   PLAN_B_BUSINESS_SELECT,
   PLAN_B_MAX_ATTACHMENT_BYTES,
   buildPlanBPack,
@@ -72,7 +73,7 @@ export async function runPlanBPacks(now = new Date()): Promise<{ results: PlanBR
   let failed = 0;
   for (const b of (data ?? []) as PlanBBusinessRow[]) {
     const entry: PlanBRunResult = { business: b.show_ops_display_name || b.name };
-    if (parseShowOpsConfig(b.show_ops_config).office_report_emails.length) {
+    if (planBRecipients(parseShowOpsConfig(b.show_ops_config)).length) {
       try {
         entry.pack = await sendPlanBPack(admin, b, { now });
       } catch (e) {

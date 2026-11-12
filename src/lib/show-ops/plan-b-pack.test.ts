@@ -152,3 +152,12 @@ test("the newest timestamped snapshot is picked, never the files folder", async 
   assert.equal(snap?.bytes.toString(), "gz of biz/2026-11-02T19-25-39-450Z.json.gz");
   assert.equal(await newestSnapshot(fakeDb({}, { biz: [{ name: "files" }] }), "biz"), null);
 });
+
+test("Plan B recipients are the daily list plus the Plan B-only list, without duplicates", async () => {
+  const { planBRecipients } = await import("./plan-b-pack");
+  assert.deepEqual(
+    planBRecipients({ office_report_emails: ["joel@x.com", "Rich@x.com"], plan_b_emails: ["rich@x.com", "vince@x.com"] }),
+    ["joel@x.com", "rich@x.com", "vince@x.com"],
+  );
+  assert.deepEqual(planBRecipients({ office_report_emails: [] }), []);
+});

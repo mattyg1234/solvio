@@ -85,6 +85,8 @@ export type ShowOpsConfig = {
   transport_supplement: number;
   /** In-house morning digest — office emails, one per line */
   office_report_emails: string[];
+  /** Extra addresses for the twice-daily Plan B pack only (on top of office_report_emails). */
+  plan_b_emails: string[];
   report_presets?: {
     office_sort?: "supplier_surname";
   };
@@ -123,6 +125,7 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
   partner_stripe_enabled: false,
   transport_supplement: 0,
   office_report_emails: [],
+  plan_b_emails: [],
   report_presets: { office_sort: "supplier_surname" },
   invoice: {
     series: "INV",
