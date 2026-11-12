@@ -17,6 +17,7 @@ import {
 import { sendDigestSampleAction } from "@/app/dashboard/show-ops/actions-reports";
 import { connectHoldedAction, disconnectHoldedAction, saveHoldedTaxApprovalsAction, tagHoldedPartnersAction, testHoldedAction } from "@/app/dashboard/show-ops/actions-holded";
 import { listHoldedIgicTaxes, loadHoldedConnection } from "@/lib/show-ops/holded-connection";
+import { MailerLiteSettings } from "@/components/show-ops/mailerlite-settings";
 import { MessagingSettings, type MessagingSettingsState } from "@/components/show-ops/inbox/messaging-settings";
 import { parseTwilioMeta } from "@/lib/show-ops/inbox/connection";
 import { deleteChannelProductAction, saveChannelProductAction, testChannelPushAction } from "@/app/dashboard/show-ops/actions-channels";
@@ -50,6 +51,9 @@ export default async function ShowOpsSettingsPage({
     holded?: string;
     holded_error?: string;
     holded_msg?: string;
+    mailerlite?: string;
+    mailerlite_msg?: string;
+    mailerlite_error?: string;
     twilio?: string;
     twilio_error?: string;
     channel?: string;
@@ -1240,6 +1244,8 @@ export default async function ShowOpsSettingsPage({
           </button>
         </form>
       </section>
+
+      <MailerLiteSettings ctx={ctx} flash={sp.mailerlite} flashMsg={sp.mailerlite_msg} flashError={sp.mailerlite_error} />
 
       <MessagingSettings state={messaging} islands={ctx.config.islands} flash={sp.twilio} flashError={sp.twilio_error} />
 
