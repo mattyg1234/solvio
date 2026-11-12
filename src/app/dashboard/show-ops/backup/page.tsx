@@ -4,7 +4,7 @@ import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES, snapshotTimestamp } fro
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
-import { sendPlanBPackToMeAction } from "./actions";
+import { sendPlanBPackToMeAction, updatePlanBEmailsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -149,7 +149,7 @@ export default async function ShowOpsBackupPage({
       <section id="plan-b" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <h3 className="text-sm font-semibold text-slate-900">Plan B pack by email</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Every day at 06:30 and 16:30 (Canary winter time; an hour later in summer), the addresses under Settings → Daily email get the night lists for the next three
+          Every day at 06:30 and 16:30 (Canary winter time; an hour later in summer), the addresses under Settings → Daily email, plus any extra addresses below, get the night lists for the next three
           nights (one per island), the bus lists for tonight and tomorrow, and a spreadsheet of every upcoming booking. It
           sits in your inbox, outside the Hub, so you can print it and keep working if the Hub is down.
         </p>
@@ -163,6 +163,25 @@ export default async function ShowOpsBackupPage({
         </form>
         {packSent ? <p className="mt-2 text-sm text-emerald-700">Sent to {packSent}.</p> : null}
         {packError ? <p className="mt-2 text-sm text-amber-700">{packError}</p> : null}
+        <form action={updatePlanBEmailsAction} className="mt-4 space-y-2 border-t border-slate-100 pt-4">
+          <label className="block text-sm text-slate-700">
+            Also send the Plan B pack to (one per line). These people get only the Plan B pack, not the daily report.
+            <textarea
+              name="plan_b_emails"
+              rows={3}
+              defaultValue={ctx.config.plan_b_emails.join("\n")}
+              placeholder="it@mht.example"
+              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+          >
+            Save Plan B recipients
+          </button>
+          {sp.recipients_saved ? <p className="text-sm text-emerald-700">Saved.</p> : null}
+        </form>
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 text-sm text-slate-600">
