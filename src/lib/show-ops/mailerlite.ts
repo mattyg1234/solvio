@@ -152,6 +152,27 @@ export class MailerLiteClient {
   }
 }
 
+/**
+ * Fallback when the token is set in Vercel instead of pasted in Settings:
+ * MAILERLITE_API_TOKEN, MAILERLITE_BUSINESS_ID and MAILERLITE_GROUPS
+ * (JSON, e.g. {"all":"123","Tenerife":"456"}). A token saved in Settings wins.
+ */
+export type MailerLiteEnvConfig = { token: string; businessId: string; groups: MailerLiteGroups };
+
+export function mailerLiteEnvConfig(env: NodeJS.ProcessEnv = process.env): MailerLiteEnvConfig | null {
+  const token = env.MAILERLITE_API_TOKEN?.trim();
+  const businessId = env.MAILERLITE_BUSINESS_ID?.trim();
+  if (!token || !businessId) return null;
+  let raw: Record<string, unknown> = {};
+  try {
+    raw = JSON.parse(env.MAILERLITE_GROUPS || "{}") as Record<string, unknown>;
+  } catch {
+    raw = {};
+  }
+  const { all, ...islands } = raw;
+  return { token, businessId, groups: parseMailerLiteGroups({ groups: { all, islands } }) };
+}
+
 export type MailerLiteRunResult = { businessId: string; added: number; removed: number; failed: number; error?: string };
 
 const BATCH = 100;
@@ -164,19 +185,30 @@ export async function runMailerLiteSync(onlyBusinessId?: string): Promise<Mailer
   const db = createSupabaseServiceRoleClient();
   let q = db.from("show_ops_integrations").select("business_id,secret_ciphertext,meta").eq("provider", "mailerlite").eq("status", "connected");
   if (onlyBusinessId) q = q.eq("business_id", onlyBusinessId);
-  const { data: rows } = await q;
+  const { data: dbRows } = await q;
   const results: MailerLiteRunResult[] = [];
 
-  for (const row of (rows ?? []) as Array<{ business_id: string; secret_ciphertext: string; meta: unknown }>) {
+  type Source = { business_id: string; token: () => string; groups: MailerLiteGroups };
+  const sources: Source[] = ((dbRows ?? []) as Array<{ business_id: string; secret_ciphertext: string; meta: unknown }>).map((row) => ({
+    business_id: row.business_id,
+    token: () => decryptSecret(row.secret_ciphertext),
+    groups: parseMailerLiteGroups(row.meta),
+  }));
+  const env = mailerLiteEnvConfig();
+  if (env && !sources.some((x) => x.business_id === env.businessId) && (!onlyBusinessId || onlyBusinessId === env.businessId)) {
+    sources.push({ business_id: env.businessId, token: () => env.token, groups: env.groups });
+  }
+
+  for (const row of sources) {
     const r: MailerLiteRunResult = { businessId: row.business_id, added: 0, removed: 0, failed: 0 };
     results.push(r);
-    const groups = parseMailerLiteGroups(row.meta);
+    const groups = row.groups;
     if (!groups.all) {
       r.error = "No MailerLite group chosen yet.";
       continue;
     }
     try {
-      const client = new MailerLiteClient(decryptSecret(row.secret_ciphertext));
+      const client = new MailerLiteClient(row.token());
 
       const { data: waiting } = await db
         .from("show_bookings")

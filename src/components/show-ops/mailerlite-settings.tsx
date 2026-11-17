@@ -6,7 +6,7 @@ import {
   syncMailerLiteNowAction,
 } from "@/app/dashboard/show-ops/actions-mailerlite";
 import type { ShowOpsContext } from "@/lib/show-ops/access";
-import { MAILERLITE_ISLANDS, parseMailerLiteGroups } from "@/lib/show-ops/mailerlite";
+import { MAILERLITE_ISLANDS, mailerLiteEnvConfig, parseMailerLiteGroups } from "@/lib/show-ops/mailerlite";
 
 const btn = "rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200";
 
@@ -29,6 +29,8 @@ export async function MailerLiteSettings({ ctx, flash, flashMsg, flashError }: {
   const groups = parseMailerLiteGroups(row?.meta);
   const groupList = meta.group_list ?? [];
   const connected = row?.status === "connected";
+  const env = mailerLiteEnvConfig();
+  const viaVercel = !row && env?.businessId === ctx.business.id;
 
   return (
     <section id="mailerlite" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
@@ -51,6 +53,26 @@ export async function MailerLiteSettings({ ctx, flash, flashMsg, flashError }: {
         <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">MailerLite disconnected. Guests already added stay in MailerLite.</p>
       ) : null}
       {flashError ? <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{flashError}</p> : null}
+
+      {viaVercel ? (
+        <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3 text-sm">
+          <p>
+            <span className="font-medium text-emerald-700">Connected through Vercel</span>
+            <span className="text-slate-600"> · token and groups are set in the Vercel settings (MAILERLITE_API_TOKEN, MAILERLITE_GROUPS)</span>
+          </p>
+          <p className="text-slate-700">
+            <b>{added.count ?? 0}</b> guests added so far · <b>{waiting.count ?? 0}</b> said YES and are waiting for the next run
+            {noEmail.count ? <> · {noEmail.count} said YES but have no email on the booking</> : null}
+          </p>
+          {env?.groups.all ? (
+            <form action={syncMailerLiteNowAction}>
+              <button type="submit" className={btn}>Send waiting guests now</button>
+            </form>
+          ) : (
+            <p className="text-amber-800">MAILERLITE_GROUPS has no &quot;all&quot; group yet, so nobody is sent.</p>
+          )}
+        </div>
+      ) : null}
 
       {row ? (
         <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3 text-sm">

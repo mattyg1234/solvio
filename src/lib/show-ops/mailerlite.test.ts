@@ -68,3 +68,11 @@ test("a bad token reads as a plain message", async () => {
   const fake = (async () => new Response(JSON.stringify({ message: "Unauthenticated." }), { status: 401 })) as unknown as typeof fetch;
   await assert.rejects(new MailerLiteClient("bad", fake).listGroups(), (e: Error & { status?: number }) => e.status === 401);
 });
+
+test("Vercel fallback reads token, workspace and groups", async () => {
+  const { mailerLiteEnvConfig } = await import("@/lib/show-ops/mailerlite");
+  assert.equal(mailerLiteEnvConfig({} as NodeJS.ProcessEnv), null);
+  const c = mailerLiteEnvConfig({ MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "b", MAILERLITE_GROUPS: '{"all":"1","Tenerife":"2","Lanzarote":"3"}' } as unknown as NodeJS.ProcessEnv);
+  assert.deepEqual(c, { token: "t", businessId: "b", groups: { all: "1", islands: { Tenerife: "2", Lanzarote: "3" } } });
+  assert.deepEqual(mailerLiteEnvConfig({ MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "b", MAILERLITE_GROUPS: "oops" } as unknown as NodeJS.ProcessEnv)?.groups, { all: "", islands: {} });
+});
