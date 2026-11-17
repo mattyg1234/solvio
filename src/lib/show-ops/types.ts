@@ -103,6 +103,8 @@ export type ShowOpsConfig = {
     taxLabel: string;
     /** Free text printed in the invoice footer: bank details, registration line. */
     footerNote: string;
+    /** Bank details for paying, printed in a "How to pay" box on unpaid invoices (one item per line). */
+    paymentDetails: string;
     /** Short name for the footer line "Thank you for working with …"; falls back to the workspace name. */
     thankYouName: string;
   };
@@ -136,6 +138,7 @@ export const DEFAULT_SHOW_OPS_CONFIG: ShowOpsConfig = {
     issuerAddress: "",
     taxLabel: "IGIC",
     footerNote: "",
+    paymentDetails: "",
     thankYouName: "",
   },
 };

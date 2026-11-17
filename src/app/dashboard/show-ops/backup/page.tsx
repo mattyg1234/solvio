@@ -150,7 +150,7 @@ export default async function ShowOpsBackupPage({
         <h3 className="text-sm font-semibold text-slate-900">Plan B pack by email</h3>
         <p className="mt-1 text-sm text-slate-600">
           Every day at 06:30 and 16:30 (Canary winter time; an hour later in summer), the addresses under Settings → Daily email, plus any extra addresses below, get the night lists for the next three
-          nights (one per island), the bus lists for tonight and tomorrow, and a spreadsheet of every upcoming booking. It
+          nights (one per island), the bus lists for tonight and tomorrow, a spreadsheet of every upcoming booking, and a PDF of every unpaid invoice plus all invoices from the last 30 days. It
           sits in your inbox, outside the Hub, so you can print it and keep working if the Hub is down.
         </p>
         <form action={sendPlanBPackToMeAction} className="mt-3">

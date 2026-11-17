@@ -104,6 +104,7 @@ function parseInvoiceConfig(
     issuerAddress: typeof o.issuerAddress === "string" ? o.issuerAddress.trim() : fallback.issuerAddress,
     taxLabel: typeof o.taxLabel === "string" && o.taxLabel.trim() ? o.taxLabel.trim().slice(0, 12) : fallback.taxLabel,
     footerNote: typeof o.footerNote === "string" ? o.footerNote.trim().slice(0, 600) : fallback.footerNote,
+    paymentDetails: typeof o.paymentDetails === "string" ? o.paymentDetails.trim().slice(0, 400) : fallback.paymentDetails ?? "",
     thankYouName: typeof o.thankYouName === "string" ? o.thankYouName.trim().slice(0, 60) : fallback.thankYouName,
   };
 }

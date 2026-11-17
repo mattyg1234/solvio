@@ -11,6 +11,8 @@ export type InvoicePdfBranding = {
   taxLabel?: string | null;
   /** Bank details or registration line printed in the footer. */
   footerNote?: string | null;
+  /** Bank details for paying; drawn in a "How to pay" box on unpaid invoices. */
+  paymentDetails?: string | null;
   /** Company name for the closing line: "Thank you for working with MHT." Falls back to the issuer name. */
   thankYouName?: string | null;
 };
@@ -316,6 +318,31 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
       full.forEach((text, i) => draw(text, LEFT, y - 22 - i * 12, 9, regular, ink));
       y -= full.length * 12 + 26;
     }
+  }
+
+  // ---- How to pay: bank details, amount, due date and the reference to quote. Unpaid invoices only.
+  const paymentDetails = String(branding.paymentDetails ?? "").trim();
+  if (!paid && paymentDetails) {
+    const rows: Array<[string, string]> = [
+      ["Amount due", amount(inv.total_amount)],
+      ...(dueIso ? [["Due by", formatInvoiceDate(dueIso)] as [string, string]] : []),
+      ["Reference", number],
+    ];
+    const detailLines = paymentDetails.split("\n").map((l) => l.trim()).filter(Boolean)
+      .flatMap((l) => wrap(l, CONTENT_W - 220, 9)).slice(0, 10);
+    const boxH = 26 + Math.max(detailLines.length, rows.length) * 13 + 10;
+    ensure(boxH + 16);
+    y -= 8;
+    const top = y;
+    page.drawRectangle({ x: LEFT, y: top - boxH, width: CONTENT_W, height: boxH, borderColor: accent, borderWidth: 1, color: accent, opacity: 0.04, borderOpacity: 1 });
+    draw("HOW TO PAY", LEFT + 12, top - 16, 7.5, bold, accent);
+    detailLines.forEach((text, i) => draw(text, LEFT + 12, top - 32 - i * 13, 9, regular, ink));
+    rows.forEach(([label, value], i) => {
+      const base = top - 32 - i * 13;
+      draw(label, RIGHT - 190, base, 8, regular, muted);
+      drawRight(value, RIGHT - 12, base, 9, bold, ink);
+    });
+    y = top - boxH - 10;
   }
 
   // ---- Footer on every page: legal line, terms, thank-you, optional bank/registration note, page numbers.

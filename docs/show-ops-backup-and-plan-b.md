@@ -9,7 +9,7 @@ restores it.
 | What | How often | Where it lands | Survives |
 |---|---|---|---|
 | Full snapshot of every Show Ops table, plus receipts, ticket photos and logo (`/api/cron/show-ops-backup`) | Every 5 minutes | Private Supabase Storage bucket `show-ops-backups/<businessId>/` | App bugs, bad edits, accidental deletes |
-| Plan B pack: night list PDFs (next 3 nights, one per island), bus list PDFs (tonight + tomorrow), upcoming-bookings CSV (`/api/cron/show-ops-plan-b`) | 06:30 and 16:30 UTC | Inboxes under Settings → Daily email (`office_report_emails`) | Hub, Vercel and Supabase all down |
+| Plan B pack: night list PDFs (next 3 nights, one per island), bus list PDFs (tonight + tomorrow), upcoming-bookings CSV, invoice PDFs (every unpaid one + all issued in the last 30 days, max 60) (`/api/cron/show-ops-plan-b`) | 06:30 and 16:30 UTC | Inboxes under Settings → Daily email (`office_report_emails`) | Hub, Vercel and Supabase all down |
 | Off-site copy of the newest full snapshot (same cron) | 06:30 and 16:30 UTC | `SHOW_OPS_OFFSITE_BACKUP_EMAILS` (comma list, Vercel env) | The Supabase project itself being lost |
 | Supabase daily backups / PITR | Supabase plan | Supabase | Database corruption, schema mistakes |
 
@@ -37,9 +37,13 @@ them in Settings.
 4. **New bookings while it is down:** write them on paper or in a copy of the
    upcoming-bookings spreadsheet from the same email: name, mobile, hotel, pax,
    show date, island, partner, pick-up, diet, paid/owed. Keep taking them.
-5. **Guest questions:** the spreadsheet has every upcoming booking with mobile,
+5. **Invoices:** the same email has a PDF of every unpaid invoice and every
+   invoice from the last 30 days, identical to the Hub download (with the
+   "How to pay" bank details on unpaid ones). Forward them to partners or
+   rebuild them in Holded from them.
+6. **Guest questions:** the spreadsheet has every upcoming booking with mobile,
    hotel and payment status; search it in Excel or Google Sheets.
-6. **When the Hub is back:** add the paper bookings into the Hub (newest show
+7. **When the Hub is back:** add the paper bookings into the Hub (newest show
    date first), then tick arrivals for any night that ran on paper. Tell Matty
    when you are caught up.
 
@@ -67,7 +71,7 @@ affected rows back by hand. For a whole-database mistake use Supabase PITR.
    redeploy.
 5. Re-create the logins (Supabase auth users are not in the snapshot) and
    re-check Holded, Meta WhatsApp and Gmail in Settings.
-6. Office re-enters bookings taken since the snapshot (step 6 above).
+6. Office re-enters bookings taken since the snapshot (step 7 above).
 
 ## Sealed runbook
 
