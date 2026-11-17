@@ -1,4 +1,4 @@
-import { SubmitOnce } from "@/components/show-ops/submit-once";
+import { SendTicketButton } from "@/components/show-ops/send-ticket-button";
 import { collectPartnerPages } from "@/lib/show-ops/partner-analytics";
 import { consentSummary } from "@/lib/show-ops/consent";
 import { loadDirectoryHotels, loadDirectoryStops } from "@/lib/show-ops/directory-data";
@@ -481,9 +481,9 @@ export default async function EditBookingPage({
             >
               <input type="hidden" name="booking_id" value={booking.id} />
               {booking.guest_email || booking.guest_mobile ? (
-                <SubmitOnce className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+                <SendTicketButton className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
                   Send ticket to guest
-                </SubmitOnce>
+                </SendTicketButton>
               ) : (
                 <button type="button" disabled className="rounded-xl bg-[var(--show-ops-primary,#7c3aed)] px-4 py-2 text-sm font-semibold text-white opacity-40">
                   Send ticket to guest

@@ -17,6 +17,7 @@ import {
 } from "@/app/dashboard/show-ops/actions";
 import { ShowOpsNightCalendar } from "@/components/show-ops/night-calendar";
 import { PhoneInput } from "@/components/show-ops/phone-input";
+import { BOOKING_EDIT_FORM_ID, formSnapshot } from "@/lib/show-ops/form-snapshot";
 import {
   SearchableSelect,
   type SearchableOption,
@@ -174,7 +175,8 @@ type Props = {
   action: (
     formData: FormData,
   ) => Promise<
-    { ok: true; id?: string; message?: string } | { ok: false; message: string }
+    | { ok: true; id?: string; message?: string; ticket?: { ok: boolean; message: string } }
+    | { ok: false; message: string }
   >;
   /** Absolute path to navigate after success. Use `{ref}` for booking ref, or `{id}` for the created seller booking. */
   successPath?: string;
@@ -288,6 +290,17 @@ export function ShowOpsBookingForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(error ?? null);
+  // Edit mode: the values as saved, so "Send ticket to guest" can spot unsaved edits.
+  const editFormRef = useRef<HTMLFormElement | null>(null);
+  useEffect(() => {
+    if (mode !== "edit") return;
+    // After the first paint, once pickers have filled their hidden inputs.
+    const t = window.setTimeout(() => {
+      const f = editFormRef.current;
+      if (f) f.dataset.initial = formSnapshot(new FormData(f));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [mode]);
   /** The label id of the required field the last save stopped on (shows "This field is required"). */
   const [missingId, setMissingId] = useState<string | null>(null);
   const [extraChoices, setExtraChoices] = useState<{
@@ -884,11 +897,21 @@ export function ShowOpsBookingForm({
   return (
     <MissingFieldContext.Provider value={missingId}>
     <form
+      id={mode === "edit" ? BOOKING_EDIT_FORM_ID : undefined}
+      ref={mode === "edit" ? editFormRef : undefined}
       className="mt-6 space-y-4"
       noValidate
       onKeyDown={enterToNextField}
       onSubmit={(e) => {
         e.preventDefault();
+        // "Send ticket to guest" sets these for one save only; a later plain
+        // Update booking must not send the ticket again.
+        const sendNowInput = e.currentTarget.querySelector<HTMLInputElement>('input[name="send_now"]');
+        const sendNow = sendNowInput?.value === "1";
+        const fdSend = new FormData(e.currentTarget);
+        if (sendNowInput) sendNowInput.value = "";
+        const sendNowUpdatedInput = e.currentTarget.querySelector<HTMLInputElement>('input[name="send_now_updated"]');
+        if (sendNowUpdatedInput) sendNowUpdatedInput.value = "";
         if (extrasPreview.error) {
           setMsg(extrasPreview.error);
           return;
@@ -952,13 +975,17 @@ export function ShowOpsBookingForm({
           if (typeof window !== "undefined") window.alert(m);
           return;
         }
-        const fd = new FormData(e.currentTarget);
+        const fd = fdSend;
+        if (sendNow) setMsg("Saving your changes, then sending the ticket…");
         start(async () => {
           setMsg(null);
           const res = await action(fd);
           if (!res.ok) {
             setMsg(res.message || "Save failed");
             return;
+          }
+          if (mode === "edit" && editFormRef.current) {
+            editFormRef.current.dataset.initial = formSnapshot(fd);
           }
           if (
             mode === "create" &&
@@ -1017,10 +1044,13 @@ export function ShowOpsBookingForm({
             return;
           }
           if (successPath) {
-            const href = successPath.replace(
+            let href = successPath.replace(
               "{ref}",
               encodeURIComponent(res.message ?? ""),
             );
+            if (sendNow && "ticket" in res && res.ticket) {
+              href += `${href.includes("?") ? "&" : "?"}ticket=${res.ticket.ok ? "sent" : "failed"}&msg=${encodeURIComponent(res.ticket.message)}`;
+            }
             router.push(href);
             router.refresh();
           } else {
@@ -1029,6 +1059,12 @@ export function ShowOpsBookingForm({
         });
       }}
     >
+      {mode === "edit" ? (
+        <>
+          <input type="hidden" name="send_now" defaultValue="" />
+          <input type="hidden" name="send_now_updated" defaultValue="" />
+        </>
+      ) : null}
       <input
         type="hidden"
         name="extras"

@@ -2249,7 +2249,9 @@ export async function loadSupplierRatePricesAction(
  */
 export async function updateBookingAction(
   formData: FormData,
-): Promise<{ ok: true; id?: string; message?: string } | { ok: false; message: string }> {
+): Promise<
+  { ok: true; id?: string; message?: string; ticket?: { ok: boolean; message: string } } | { ok: false; message: string }
+> {
   const ctx = await requireShowOpsAction("booker", "bookings");
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { ok: false, message: "Missing booking id." };
@@ -2356,7 +2358,10 @@ export async function updateBookingAction(
   // Anything the guest sees changed → send them the updated booking (email + WhatsApp
   // booking template). A note-only save sends nothing; past shows are never re-sent.
   const changed = guestFacingChanges(existing as Record<string, unknown>, { ...existing, ...patch } as Record<string, unknown>);
+  // "Send ticket to guest" pressed with unsaved edits on the form: save, then send now.
+  const sendNow = String(formData.get("send_now") ?? "") === "1";
   const willResend =
+    !sendNow &&
     String(formData.get("send_update") ?? "") === "1" &&
     changed.length > 0 &&
     String(patch.show_date ?? existing.show_date ?? "") >= canaryToday();
@@ -2376,12 +2381,48 @@ export async function updateBookingAction(
       }
     });
   }
+  let ticket: { ok: boolean; message: string } | undefined;
+  if (sendNow) {
+    ticket = await sendTicketAfterSave(ctx, id, {
+      amended: changed.length > 0,
+      updated: String(formData.get("send_now_updated") ?? "") === "1",
+    });
+  }
   revalidateShowOps();
   return {
     ok: true,
     id,
     message: willResend ? `${existing.booking_ref} · updated details sent to the guest` : existing.booking_ref,
+    ...(ticket ? { ticket } : {}),
   };
+}
+
+/** Sends the ticket from the row as just saved, so new details (email, mobile…) are used. */
+async function sendTicketAfterSave(
+  ctx: Awaited<ReturnType<typeof requireShowOpsAction>>,
+  id: string,
+  opts: { amended: boolean; updated: boolean },
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const { data: fresh } = await ctx.supabase
+      .from("show_bookings")
+      .select(TICKET_FIELDS)
+      .eq("id", id)
+      .eq("business_id", ctx.business.id)
+      .maybeSingle();
+    if (!fresh) return { ok: false, message: "Saved, but the booking could not be read back to send the ticket." };
+    if (!fresh.guest_email && !fresh.guest_mobile) return { ok: false, message: "Saved. No email or mobile on this booking, so nothing was sent." };
+    const res = await sendGuestTicket(guestTicketFromBooking(ctx, fresh as GuestTicketRow, opts));
+    const sent = [res.email?.ok ? "email" : null, res.sms?.ok ? "text" : null].filter(Boolean);
+    if (!sent.length) {
+      const why = res.email?.ok === false ? res.email.message : res.sms?.ok === false ? res.sms.message : "Nothing sent.";
+      return { ok: false, message: `Saved, but the ticket was not sent: ${why}` };
+    }
+    return { ok: true, message: `Saved your changes and sent the ticket by ${sent.join(" and ")}.` };
+  } catch (err) {
+    console.error("[guest-ticket] save-and-send failed for", id, err instanceof Error ? err.message : err);
+    return { ok: false, message: "Saved, but the ticket could not be sent. Try Send ticket to guest again." };
+  }
 }
 
 export async function cancelBookingAction(
