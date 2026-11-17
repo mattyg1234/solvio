@@ -7,6 +7,7 @@ import { isTwilioWhatsAppConfigured, sendBookingWhatsApp } from "@/lib/notificat
 import { formatShowOpsMoney, showOpsDayName } from "@/lib/show-ops/calc";
 import { buildGuestConfirmationPdf, confirmationAvailableFor, loadConfirmationTemplate } from "@/lib/show-ops/confirmation-pdf";
 import { renderMhtConfirmationEmail } from "@/lib/notifications/mht-confirmation-email";
+import { guestShowName } from "@/lib/show-ops/guest-show-name";
 import { firstName, normalisePhone } from "@/lib/show-ops/inbox/logic";
 import { templateVariables } from "@/lib/show-ops/inbox/templates";
 import type { TwilioVenue } from "@/lib/show-ops/inbox/types";
@@ -14,6 +15,8 @@ import { filterShowOpsOutboundTo, showOpsMessagesLive, showOpsOutboundHeldResult
 import { type SentEmailLog, withSentEmailLog } from "@/lib/show-ops/sent-email-log";
 import { parsePrivatePickupLabel, pickupKindFromBooking, privateTransferLine } from "@/lib/show-ops/private-pickup";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
+
+export { guestShowName };
 
 export type GuestTicketInput = {
   merchantName: string;
@@ -82,7 +85,7 @@ async function confirmationAttachment(input: GuestTicketInput): Promise<{ filena
     const bytes = await buildGuestConfirmationPdf(await loadConfirmationTemplate(), {
       bookingRef: input.bookingRef,
       guestName: input.guestName,
-      showName: input.showName,
+      showName: guestShowName(input.showName),
       showDate: input.showDate,
       adults: input.adults,
       children: input.children,
@@ -190,7 +193,7 @@ export function buildGuestTicketText(input: GuestTicketInput): string {
         ? `Hi ${hi}, your booking with ${input.merchantName} has been updated (booking ${input.bookingRef}).`
         : `Hi ${hi}, thanks for booking with ${input.merchantName} (booking ${input.bookingRef}).`,
     "",
-    `Show: ${input.showName}`,
+    `Show: ${guestShowName(input.showName)}`,
     `Date: ${dateLine(input)}${showTime ? ` · ${showTime}` : ""}`,
     `Guests: ${guestsLine(input.adults, input.children, input.infants)}`,
   ];
@@ -255,7 +258,7 @@ export function guestTicketTemplate(
 export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: boolean): { subject: string; html: string; rows: Array<[string, string]> } {
   const attachment = hasAttachment;
   const rows: Array<[string, string]> = [
-    ["Show", input.showName],
+    ["Show", guestShowName(input.showName)],
     ["Date", dateLine(input)],
   ];
   const showTime = showTimeLine(input);
@@ -276,17 +279,17 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
   const qrSrc = input.ticketUrl ? `${input.ticketUrl.replace(/\/$/, "")}/qr` : "";
 
   const subject = input.updated
-    ? `Updated pick-up · ${input.showName} · ${input.bookingRef}`
+    ? `Updated pick-up · ${guestShowName(input.showName)} · ${input.bookingRef}`
     : input.amended
-      ? `Updated booking confirmation · ${input.showName} · ${input.bookingRef}`
-      : `Booking confirmation · ${input.showName} · ${input.bookingRef}`;
+      ? `Updated booking confirmation · ${guestShowName(input.showName)} · ${input.bookingRef}`
+      : `Booking confirmation · ${guestShowName(input.showName)} · ${input.bookingRef}`;
   // Tenerife / Lanzarote: the email IS Ruth's confirmation, section for section.
   if (confirmationAvailableFor(input.island)) {
     const html = renderMhtConfirmationEmail(
       {
         bookingRef: input.bookingRef,
         guestName: input.guestName,
-        showName: input.showName,
+        showName: guestShowName(input.showName),
         showDate: input.showDate,
         adults: input.adults,
         children: input.children,
@@ -318,7 +321,7 @@ export function buildGuestTicketEmail(input: GuestTicketInput, hasAttachment: bo
               ? `Your booking with <strong>${escapeHtml(input.merchantName)}</strong> has been updated. Here are your latest details:`
               : `You're booked with <strong>${escapeHtml(input.merchantName)}</strong>. Here's your booking confirmation${attachment ? " — the full confirmation is attached as a PDF" : ""}:`
         }</p>
-        <p style="font-size:20px;font-weight:700;margin:14px 0 4px">${escapeHtml(input.showName)}</p>
+        <p style="font-size:20px;font-weight:700;margin:14px 0 4px">${escapeHtml(guestShowName(input.showName))}</p>
         <p style="font-size:15px;margin:0 0 14px;color:#334155">${escapeHtml(dateLine(input))} · ref <strong>${escapeHtml(input.bookingRef)}</strong></p>
         ${
           qrSrc
