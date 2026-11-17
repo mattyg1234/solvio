@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, Download, Sparkles, TrendingUp, Trophy, Users } from "lucide-react";
 
+import { DownloadPdfButton } from "@/components/show-ops/download-pdf-button";
 import { PrintButton } from "@/components/show-ops/print-button";
 import { SHOW_OPS_GHOST_BTN, ShowOpsPageHeader, ShowOpsPill } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage } from "@/lib/show-ops/access";
@@ -464,7 +465,7 @@ export default async function ReportsPage({
   })();
 
   return (
-    <div className="space-y-6">
+    <div id="show-ops-report" className="space-y-6">
       <div className="space-y-3">
           <ShowOpsPageHeader
             eyebrow="Analytics"
@@ -472,6 +473,10 @@ export default async function ReportsPage({
             subtitle={`${range.label}${island ? ` · ${island}` : ""}${partnerType ? ` · ${partnerType}` : ""}`}
             actions={
               <span className="flex flex-wrap gap-2 print:hidden">
+                <DownloadPdfButton
+                  targetId="show-ops-report"
+                  fileName={`MHT report ${range.label}${island ? ` ${island}` : ""}${partnerType ? ` ${partnerType}` : ""}`}
+                />
                 <PrintButton label="Print report" />
                 <a href={exportHref} className={SHOW_OPS_GHOST_BTN}>
                   <Download className="mr-2 h-4 w-4" aria-hidden />
