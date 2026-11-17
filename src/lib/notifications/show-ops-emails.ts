@@ -4,6 +4,7 @@ import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
 import { type SentEmailLog, withSentEmailLog } from "@/lib/show-ops/sent-email-log";
 import type { ShowOpsCurrency } from "@/lib/show-ops/types";
+import { guestShowName } from "@/lib/show-ops/guest-show-name";
 
 export type NotificationSendResult =
   | { ok: true; id?: string }
@@ -57,7 +58,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
   }
 
   const money = formatShowOpsMoney(opts.amount, opts.currency);
-  const subject = `Payment for ${opts.showName} · ${opts.bookingRef}`;
+  const subject = `Payment for ${guestShowName(opts.showName)} · ${opts.bookingRef}`;
   const { data, error } = await client.emails.send({
     from: fromAddr(),
     to,
@@ -67,7 +68,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
         <p style="font-size:16px">Hi ${escapeHtml(opts.guestName.split(" ")[0] || opts.guestName)},</p>
         <p style="font-size:15px;line-height:1.5">
           ${escapeHtml(opts.merchantName)} has sent a secure payment link for
-          <strong>${escapeHtml(opts.showName)}</strong> on ${escapeHtml(opts.showDate)}
+          <strong>${escapeHtml(guestShowName(opts.showName))}</strong> on ${escapeHtml(opts.showDate)}
           (ref ${escapeHtml(opts.bookingRef)}).
         </p>
         <p style="font-size:22px;font-weight:700;margin:20px 0">${escapeHtml(money)} due</p>
@@ -80,7 +81,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
         <p style="color:#64748b;font-size:13px;margin-top:28px">If the button does not work, copy this link:<br />${escapeHtml(opts.payUrl)}</p>
       </div>
     `,
-    text: `Hi ${opts.guestName},\n\n${opts.merchantName} — ${opts.showName} on ${opts.showDate} (${opts.bookingRef}).\nAmount due: ${money}\n\nPay here: ${opts.payUrl}\n`,
+    text: `Hi ${opts.guestName},\n\n${opts.merchantName} — ${guestShowName(opts.showName)} on ${opts.showDate} (${opts.bookingRef}).\nAmount due: ${money}\n\nPay here: ${opts.payUrl}\n`,
   });
 
   if (error) {
@@ -341,7 +342,7 @@ async function sendShowOpsHtmlEmailInner(opts: {
 export async function sendShowOpsPaymentLinkEmail(
   opts: Parameters<typeof sendShowOpsPaymentLinkEmailInner>[0] & { log?: SentEmailLog | null },
 ): Promise<NotificationSendResult> {
-  return withSentEmailLog(opts.log, { to: opts.guestEmail, subject: `Payment for ${opts.showName} · ${opts.bookingRef}` }, () => sendShowOpsPaymentLinkEmailInner(opts));
+  return withSentEmailLog(opts.log, { to: opts.guestEmail, subject: `Payment for ${guestShowName(opts.showName)} · ${opts.bookingRef}` }, () => sendShowOpsPaymentLinkEmailInner(opts));
 }
 
 /** Sends, then records the email in the workspace's Sent log when `log` is given. */
