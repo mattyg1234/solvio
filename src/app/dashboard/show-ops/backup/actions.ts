@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
@@ -35,4 +36,24 @@ export async function sendPlanBPackToMeAction(): Promise<void> {
   }
   if (!sent.ok) backupRedirect({ pack_error: (sent.message || "Could not send.").slice(0, 200) });
   backupRedirect({ pack_sent: email });
+}
+
+/** Extra Plan B pack recipients (e.g. IT support) who should not get the daily money report. */
+export async function updatePlanBEmailsAction(formData: FormData): Promise<void> {
+  const ctx = await requireGlobalShowOpsAdmin();
+  const emails = [
+    ...new Set(
+      String(formData.get("plan_b_emails") ?? "")
+        .split(/[\n,;]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)),
+    ),
+  ].slice(0, 20);
+  const { error } = await ctx.supabase
+    .from("businesses")
+    .update({ show_ops_config: { ...ctx.config, plan_b_emails: emails }, updated_at: new Date().toISOString() })
+    .eq("id", ctx.business.id);
+  if (error) backupRedirect({ pack_error: error.message.slice(0, 200) });
+  revalidatePath(BACKUP);
+  backupRedirect({ recipients_saved: "1" });
 }

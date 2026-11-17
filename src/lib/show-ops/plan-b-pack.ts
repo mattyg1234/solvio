@@ -85,6 +85,20 @@ export const PLAN_B_CSV_COLUMNS = [
   "office_comments",
 ] as const;
 
+/** Who gets the pack: the daily-email list plus the Plan B-only list, deduplicated, case-insensitive. */
+export function planBRecipients(config: { office_report_emails: string[]; plan_b_emails?: string[] }): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of [...config.office_report_emails, ...(config.plan_b_emails ?? [])]) {
+    const k = e.trim().toLowerCase();
+    if (k && !seen.has(k)) {
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+
 export function csvCell(v: unknown): string {
   let s = v == null ? "" : String(v);
   // Stop a spreadsheet treating a guest-typed value as a formula.
@@ -229,7 +243,7 @@ ${errors.length ? `<p style="color:#b45309"><strong>Not included this time</stro
   return {
     today,
     displayName,
-    emails: config.office_report_emails,
+    emails: planBRecipients(config),
     subject,
     html,
     text,
