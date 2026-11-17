@@ -57,6 +57,59 @@ function pageBreaks(root: HTMLElement, pageHeightPx: number): number[] {
 }
 
 /**
+ * Scroll boxes (wide tables in overflow-x-auto wrappers) would be captured as
+ * they look on screen: cut off, with a scroll bar where the browser shows one
+ * (Safari on a Mac with "always show scroll bars", Windows). For the capture,
+ * open every one of them up so the whole table is drawn, widen the report to
+ * fit the widest one, and hide scroll bars. Returns a function that puts the
+ * page back exactly as it was.
+ */
+function expandForCapture(root: HTMLElement): () => void {
+  const restores: Array<() => void> = [];
+  const keep = (el: HTMLElement) => {
+    const css = el.style.cssText;
+    restores.push(() => {
+      el.style.cssText = css;
+    });
+  };
+
+  const style = document.createElement("style");
+  style.textContent = `#${CSS.escape(root.id)}, #${CSS.escape(root.id)} * { scrollbar-width: none !important; }
+#${CSS.escape(root.id)} ::-webkit-scrollbar, #${CSS.escape(root.id)}::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }`;
+  document.head.appendChild(style);
+  restores.push(() => style.remove());
+
+  let extraWidth = 0;
+  root.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    const cs = getComputedStyle(el);
+    const scrolls = (v: string) => v === "auto" || v === "scroll" || v === "hidden" || v === "clip";
+    const clipsX = scrolls(cs.overflowX) && el.scrollWidth > el.clientWidth + 1;
+    const clipsY = scrolls(cs.overflowY) && el.scrollHeight > el.clientHeight + 1;
+    if (!clipsX && !clipsY) return;
+    // A "truncate" cell is meant to cut off with "…", not to scroll.
+    if (cs.textOverflow === "ellipsis") return;
+    // Leave small decorative clipping (rounded bars, avatars) alone.
+    if (el.clientHeight < 24 && !clipsX) return;
+    extraWidth = Math.max(extraWidth, el.scrollWidth - el.clientWidth);
+    keep(el);
+    el.style.overflow = "visible";
+    el.style.maxHeight = "none";
+    if (clipsY) el.style.height = "auto";
+  });
+
+  keep(root);
+  root.style.overflow = "visible";
+  if (extraWidth > 0) {
+    root.style.width = `${root.clientWidth + Math.ceil(extraWidth)}px`;
+    root.style.maxWidth = "none";
+  }
+
+  return () => {
+    for (let i = restores.length - 1; i >= 0; i--) restores[i]();
+  };
+}
+
+/**
  * Downloads the element with id `targetId` as a real .pdf file (A4, split into
  * pages) instead of opening the browser's print dialog. Anything marked
  * `print:hidden` (buttons, filters) is left out, like it would be on paper.
@@ -78,9 +131,13 @@ export function DownloadPdfButton({
     if (!root) return;
     setBusy(true);
     setError(null);
+    let restore: (() => void) | null = null;
     try {
       const [{ toCanvas }, { PDFDocument }] = await Promise.all([import("html-to-image"), import("pdf-lib")]);
 
+      restore = expandForCapture(root);
+      // Let the browser lay the opened-up tables out before measuring.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
       const widthPx = root.scrollWidth;
       const contentW = PAGE_W - MARGIN * 2;
       const contentH = PAGE_H - MARGIN * 2;
@@ -134,6 +191,7 @@ export function DownloadPdfButton({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not make the PDF.");
     } finally {
+      restore?.();
       setBusy(false);
     }
   }
