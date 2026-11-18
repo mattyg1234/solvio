@@ -1,4 +1,5 @@
 import { bookingExtrasSummary } from "@/lib/show-ops/invoice-supplements";
+import { sendShowOpsMail } from "@/lib/notifications/show-ops-mail-from";
 import { Resend } from "resend";
 
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
@@ -128,14 +129,6 @@ function resendClient(): Resend | null {
     process.env.SOLVIO_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || process.env.RESEND_API_TOKEN?.trim();
   if (!apiKey) return null;
   return new Resend(apiKey);
-}
-
-function fromAddr(): string {
-  return (
-    process.env.SOLVIO_MAIL_FROM?.trim() ||
-    process.env.RESEND_MAIL_FROM?.trim() ||
-    "Solvio Bookings <hello@solviosystems.com>"
-  );
 }
 
 function escapeHtml(s: string): string {
@@ -367,8 +360,7 @@ async function sendGuestTicketEmailInner(input: GuestTicketInput): Promise<Notif
   const attachment = await confirmationAttachment(input);
   const mail = buildGuestTicketEmail(input, Boolean(attachment));
 
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     subject: mail.subject,
     attachments: attachment ? [attachment] : undefined,
