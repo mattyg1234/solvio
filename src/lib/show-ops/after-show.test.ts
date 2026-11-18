@@ -36,6 +36,14 @@ test("YES and STOP replies, and nothing else", () => {
   assert.equal(consentIntent("Hi"), null);
 });
 
+test("WhatsApp quick-reply buttons count like typed replies", () => {
+  assert.equal(consentIntent("Yes please"), "yes");
+  assert.equal(consentIntent("Yes, keep me updated"), "yes");
+  assert.equal(consentIntent("No thanks"), "no");
+  assert.equal(consentIntent("Stop promotions"), "stop");
+  assert.equal(consentIntent("no problem, see you at 7"), null);
+});
+
 test("consent summary for the booking page", () => {
   const fmt = (iso: string) => iso.slice(0, 10);
   const base = { marketing_asked_at: null, marketing_opt_in_at: null, marketing_opt_in_source: null, whatsapp_opted_out_at: null };

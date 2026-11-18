@@ -179,7 +179,7 @@ export const TEMPLATE_SPECS: readonly TemplateSpec[] = [
     kind: "marketing",
     metaKey: "marketing_content_sid",
     title: "Marketing permission",
-    when: "Asks guests whether they'd like MHT news on WhatsApp. YES records consent; STOP opts out.",
+    when: "Asks guests whether they'd like MHT news by WhatsApp and email. YES (typed or the Yes button) records consent and adds them to MailerLite; No thanks changes nothing; STOP opts out.",
     name: "mht_marketing_permission",
     aliases: ["template_5_marketing_permision"],
     blanks: [{ label: "First name", sample: "Sarah" }],
