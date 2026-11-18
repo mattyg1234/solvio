@@ -49,6 +49,20 @@ test("unpaid invoices carry no stamp, even past the due date, and show payment t
   assert.ok(text.includes(hex("Payment due within 30 days")));
 });
 
+test("unpaid invoices with payment details get a How to pay box; paid ones do not", async () => {
+  const paymentDetails = "Bank: Example Bank\nIBAN: ES00 1111 2222 3333 4444 5555\nBIC: EXAMESMM";
+  const unpaid = { ...sampleInvoice, invoice: { ...sampleInvoice.invoice, paid: false, paid_at: null },
+    branding: { ...sampleInvoice.branding, paymentDetails } };
+  const { text } = await content(await buildInvoicePdf(unpaid));
+  for (const value of ["HOW TO PAY", "IBAN: ES00 1111 2222 3333 4444 5555", "BIC: EXAMESMM", "Amount due", "Due by", "Reference"]) {
+    assert.ok(text.includes(hex(value)), `PDF missing ${value}`);
+  }
+  const paid = await content(await buildInvoicePdf({ ...sampleInvoice, branding: { ...sampleInvoice.branding, paymentDetails } }));
+  assert.ok(!paid.text.includes(hex("HOW TO PAY")));
+  const none = await content(await buildInvoicePdf({ ...unpaid, branding: sampleInvoice.branding }));
+  assert.ok(!none.text.includes(hex("HOW TO PAY")));
+});
+
 test("EUR invoices print euro amounts and the IGIC label", async () => {
   const eur = { ...sampleInvoice, invoice: { ...sampleInvoice.invoice, currency: "eur" }, branding: { taxLabel: "IGIC" } };
   const { text } = await content(await buildInvoicePdf(eur));

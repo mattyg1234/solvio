@@ -24,6 +24,7 @@ export async function loadInvoicePdfBranding(supabase: SupabaseClient, businessI
       accentColor: brand.primaryColor,
       taxLabel: config.invoice.taxLabel,
       footerNote: config.invoice.footerNote,
+      paymentDetails: config.invoice.paymentDetails,
       thankYouName: config.invoice.thankYouName || brand.displayName,
     },
     logoWarning: fetched.logo ? null : fetched.warning,

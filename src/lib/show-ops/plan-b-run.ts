@@ -15,7 +15,7 @@ type Admin = ReturnType<typeof createSupabaseServiceRoleClient>;
 
 export type PlanBRunResult = {
   business: string;
-  pack?: { ok: boolean; to: number; attachments: number; bookings: number; errors: string[]; message?: string };
+  pack?: { ok: boolean; to: number; attachments: number; bookings: number; invoices?: number; errors: string[]; message?: string };
   offsite?: { ok: boolean; to: number; snapshot?: string; bytes?: number; message?: string };
 };
 
@@ -39,6 +39,7 @@ export async function sendPlanBPack(admin: Admin, b: PlanBBusinessRow, opts: { t
     to: to.length,
     attachments: pack.attachments.length,
     bookings: pack.upcomingBookings,
+    invoices: pack.invoices,
     errors: pack.errors,
     message: result.ok ? undefined : result.message,
   };

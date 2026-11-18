@@ -1080,6 +1080,21 @@ export default async function ShowOpsSettingsPage({
                 </span>
               </label>
               <label className="text-sm sm:col-span-2">
+                Payment details (how partners pay you)
+                <textarea
+                  name="invoice_payment_details"
+                  defaultValue={ctx.config.invoice.paymentDetails}
+                  maxLength={400}
+                  rows={4}
+                  placeholder={"Bank: …\nIBAN: ES00 0000 0000 0000 0000 0000\nBIC/SWIFT: …\nAccount name: MHT Shows Tenerife SL"}
+                  className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-xs"
+                />
+                <span className="mt-1 block text-xs text-slate-500">
+                  Printed in a &ldquo;How to pay&rdquo; box under the totals on every unpaid invoice, with the amount due,
+                  due date and the invoice number to quote. One item per line.
+                </span>
+              </label>
+              <label className="text-sm sm:col-span-2">
                 Invoice footer (bank details, registration line)
                 <textarea
                   name="invoice_footer_note"

@@ -161,3 +161,48 @@ test("Plan B recipients are the daily list plus the Plan B-only list, without du
   );
   assert.deepEqual(planBRecipients({ office_report_emails: [] }), []);
 });
+
+test("the pack carries every unpaid invoice and the last 30 days' invoices, unpaid first", async () => {
+  const inv = (over: Row): Row => ({
+    id: crypto.randomUUID(), business_id: "biz", status: "issued", voided: false, invoice_number: "MHT-2026-0001",
+    verifactu_number: null, invoice_date: "2026-10-25", paid: true, total_amount: 68.6, currency: "eur", supplier_name: "Get Your Guide", recipient_name: null,
+    ...over,
+  });
+  const db = fakeDb({
+    show_bookings: [],
+    show_invoices: [
+      inv({ invoice_number: "MHT-2026-0010", invoice_date: "2026-10-30" }),
+      inv({ invoice_number: "MHT-2026-0003", invoice_date: "2026-08-01", paid: false }),
+      inv({ invoice_number: "MHT-2026-0002", invoice_date: "2026-08-01" }),
+      inv({ invoice_number: "MHT-2026-0011", invoice_date: "2026-11-01", voided: true }),
+      inv({ invoice_number: null, invoice_date: "2026-11-01", status: "draft" }),
+      inv({ invoice_number: "OTHER-1", business_id: "someone-else" }),
+      inv({ invoice_number: "MHT-2026-0012", invoice_date: "2026-11-01" }),
+    ],
+  });
+  const built: string[] = [];
+  const pack = await buildPlanBPack(db, business, NOW, {
+    invoicePdf: async (id) => {
+      built.push(id);
+      return { bytes: new TextEncoder().encode("%PDF-fake"), filename: `invoice-${id}.pdf` };
+    },
+  });
+  // Unpaid 0003 (old) first, then paid ones from the last 30 days, newest first. Paid 0002 is too old.
+  assert.equal(pack.invoices, 3);
+  assert.equal(built.length, 3);
+  assert.match(pack.text, /MHT-2026-0003 Get Your Guide, 2026-08-01, €68\.60, UNPAID\n  MHT-2026-0012[^\n]*\n  MHT-2026-0010/);
+  assert.doesNotMatch(pack.text, /MHT-2026-0002|MHT-2026-0011|OTHER-1/);
+  assert.equal(pack.attachments.filter((a) => a.filename.startsWith("invoice-")).length, 3);
+  assert.deepEqual(pack.errors, []);
+});
+
+test("an invoice that fails to build is named, and the rest of the pack still goes", async () => {
+  const db = fakeDb({
+    show_bookings: [],
+    show_invoices: [{ id: "i1", business_id: "biz", status: "issued", voided: false, invoice_number: "MHT-2026-0005", invoice_date: "2026-11-01", paid: false, total_amount: 10, currency: "eur", supplier_name: "TUI" }],
+  });
+  const pack = await buildPlanBPack(db, business, NOW, { invoicePdf: async () => { throw new Error("boom"); } });
+  assert.equal(pack.invoices, 0);
+  assert.deepEqual(pack.errors, ["Invoice MHT-2026-0005 TUI: boom"]);
+  assert.ok(pack.attachments.some((a) => a.filename.endsWith(".csv")));
+});

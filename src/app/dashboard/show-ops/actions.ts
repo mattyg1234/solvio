@@ -563,6 +563,7 @@ export async function updateShowOpsOpsConfigAction(formData: FormData): Promise<
       issuerAddress: String(formData.get("invoice_issuer_address") ?? "").trim(),
       taxLabel: String(formData.get("invoice_tax_label") ?? "").trim().slice(0, 12) || ctx.config.invoice.taxLabel,
       footerNote: String(formData.get("invoice_footer_note") ?? "").trim().slice(0, 600),
+      paymentDetails: String(formData.get("invoice_payment_details") ?? "").replace(/\r\n?/g, "\n").trim().slice(0, 400),
       thankYouName: String(formData.get("invoice_thank_you_name") ?? "").trim().slice(0, 60),
     },
   };
