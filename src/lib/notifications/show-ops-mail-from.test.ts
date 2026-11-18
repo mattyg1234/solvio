@@ -39,3 +39,45 @@ test("no retry for other errors, and plain send when nothing is set", async () =
   await sendShowOpsMail(b.client, { to: "g@x.com", subject: "s", html: "h" }, env({}));
   assert.equal(b.calls[0].from, "Solvio Bookings <hello@solviosystems.com>");
 });
+
+function fakeFetch(answers: Array<{ status: number; body: unknown } | Error>) {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const f = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    const a = answers.shift()!;
+    if (a instanceof Error) throw a;
+    return { ok: a.status < 300, status: a.status, json: async () => a.body } as Response;
+  }) as unknown as typeof fetch;
+  return { f, calls };
+}
+
+test("sends through SMTP2GO from MHT's address when the key is set", async () => {
+  const { client, calls: resendCalls } = fakeClient([]);
+  const { f, calls } = fakeFetch([{ status: 200, body: { data: { succeeded: 1, failed: 0, email_id: "abc" } } }]);
+  const r = await sendShowOpsMail(
+    client,
+    { to: "g@x.com", subject: "Your ticket", html: "<p>h</p>", text: "h", attachments: [{ filename: "t.pdf", content: Buffer.from("PDF") }] },
+    env({ SMTP2GO_API_KEY: "api-TEST" }),
+    f,
+  );
+  assert.deepEqual(r, { data: { id: "abc" }, error: null });
+  assert.equal(resendCalls.length, 0);
+  assert.equal(calls[0].url, "https://api.smtp2go.com/v3/email/send");
+  assert.equal((calls[0].init.headers as Record<string, string>)["X-Smtp2go-Api-Key"], "api-TEST");
+  const body = JSON.parse(String(calls[0].init.body));
+  assert.equal(body.sender, "MHT Shows <reservations@musichalltavern.com>");
+  assert.deepEqual(body.to, ["g@x.com"]);
+  assert.equal(body.html_body, "<p>h</p>");
+  assert.deepEqual(body.attachments, [{ filename: "t.pdf", fileblob: Buffer.from("PDF").toString("base64"), mimetype: "application/pdf" }]);
+});
+
+test("falls back to Resend with Reply-To when SMTP2GO refuses or is down", async () => {
+  for (const answer of [{ status: 400, body: { data: { error: "Sender not verified" } } }, new Error("network down")]) {
+    const { client, calls: resendCalls } = fakeClient([{ data: { id: "r1" }, error: null }]);
+    const { f } = fakeFetch([answer]);
+    const r = await sendShowOpsMail(client, { to: "g@x.com", subject: "s", html: "h" }, env({ SMTP2GO_API_KEY: "api-TEST" }), f);
+    assert.equal(r.error, null);
+    assert.equal(resendCalls[0].from, "Solvio Bookings <hello@solviosystems.com>");
+    assert.equal(resendCalls[0].replyTo, "reservations@musichalltavern.com");
+  }
+});
