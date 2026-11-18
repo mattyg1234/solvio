@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { buildBookingSheet } from "@/lib/show-ops/booking-sheet";
+import { loadSheetLookups } from "@/lib/show-ops/booking-sheet-data";
 import { loadBusListPdf } from "@/lib/show-ops/bus-pdf-data";
 import { brandingFromBusiness, parseShowOpsConfig } from "@/lib/show-ops/config";
 import { addDaysIso, isoDateInTimeZone } from "@/lib/show-ops/digest";
@@ -212,6 +214,16 @@ export async function buildPlanBPack(admin: SupabaseClient, b: PlanBBusinessRow,
     content: Buffer.from(planBBookingsCsv(upcoming), "utf8").toString("base64"),
   });
 
+  // Blank paper bookings sheet with today's partners, shows, hotels and stops as dropdowns.
+  let sheetOk = false;
+  try {
+    const sheet = await buildBookingSheet(await loadSheetLookups(admin, b.id), { businessName: displayName, generatedAt: now });
+    attachments.push({ filename: `paper-bookings-sheet-${today}.xlsx`, content: sheet.toString("base64") });
+    sheetOk = true;
+  } catch (e) {
+    errors.push(`Paper bookings sheet: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   const subject = `${displayName} Plan B pack, ${today}`;
   const text = [
     `Plan B pack for ${displayName}, made ${now.toISOString().slice(0, 16).replace("T", " ")} UTC.`,
@@ -225,9 +237,10 @@ export async function buildPlanBPack(admin: SupabaseClient, b: PlanBBusinessRow,
     ...busSummary.map((s) => `  ${s}`),
     "",
     `Spreadsheet: every upcoming booking from ${today} (${upcoming.length}), opens in Excel or Google Sheets.`,
+    ...(sheetOk ? ["", "Paper bookings sheet: take new bookings in it while the Hub is down, then drop it into the Hub (Bookings → Paper bookings sheet) when it is back."] : []),
     ...(errors.length ? ["", "Not included this time:", ...errors.map((e) => `  ${e}`)] : []),
     "",
-    "Bookings taken after this email are not in it. Write them on paper or the spreadsheet and add them to the Hub when it is back.",
+    "Bookings taken after this email are not in it. Write them in the paper bookings sheet and drop it into the Hub when it is back.",
   ].join("\n");
   const li = (items: string[]) => items.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
   const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">
@@ -236,8 +249,9 @@ export async function buildPlanBPack(admin: SupabaseClient, b: PlanBBusinessRow,
 <p><strong>Night lists</strong> (${escapeHtml(today)} to ${escapeHtml(lastDay)})</p><ul>${li(nightSummary)}</ul>
 <p><strong>Bus lists</strong></p><ul>${li(busSummary)}</ul>
 <p><strong>Spreadsheet:</strong> every upcoming booking from ${escapeHtml(today)} (${upcoming.length}), opens in Excel or Google Sheets.</p>
+${sheetOk ? `<p><strong>Paper bookings sheet:</strong> take new bookings in it while the Hub is down, then drop it into the Hub (Bookings → Paper bookings sheet) when it is back.</p>` : ""}
 ${errors.length ? `<p style="color:#b45309"><strong>Not included this time</strong></p><ul style="color:#b45309">${li(errors)}</ul>` : ""}
-<p style="color:#444">Bookings taken after this email are not in it. Write them on paper or the spreadsheet and add them to the Hub when it is back.</p>
+<p style="color:#444">Bookings taken after this email are not in it. Write them in the paper bookings sheet and drop it into the Hub when it is back.</p>
 </div>`;
 
   return {

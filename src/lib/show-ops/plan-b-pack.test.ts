@@ -110,6 +110,7 @@ test("the pack has a night list per island per night, bus lists, and the upcomin
       "night-list-2026-11-03-lanzarote.pdf",
       "bus-list-2026-11-02.pdf",
       "upcoming-bookings-from-2026-11-02.csv",
+      "paper-bookings-sheet-2026-11-02.xlsx",
     ],
   );
   for (const a of pack.attachments.filter((x) => x.filename.endsWith(".pdf"))) {
@@ -117,10 +118,11 @@ test("the pack has a night list per island per night, bus lists, and the upcomin
   }
   // Past, cancelled and other-tenant bookings stay out; far-future ones are in the spreadsheet.
   assert.equal(pack.upcomingBookings, 4);
-  const csv = Buffer.from(pack.attachments.at(-1)!.content, "base64").toString("utf8");
+  const csv = Buffer.from(pack.attachments.find((a) => a.filename.endsWith(".csv"))!.content, "base64").toString("utf8");
   assert.match(csv, /MHT-1004/);
   assert.doesNotMatch(csv, /MHT-0999|MHT-1005|OTHER/);
   assert.match(pack.text, /2026-11-04: no bookings/);
+  assert.match(pack.text, /Paper bookings sheet: take new bookings/);
   assert.match(pack.text, /2026-11-03: no bus bookings/);
 });
 
