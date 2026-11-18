@@ -340,7 +340,7 @@ export function EmailDetail({
             </button>
           </>
         )}
-        <span className="ml-auto flex items-center gap-2">
+        <span className="flex items-center gap-2">
           {confirmDelete ? (
             <>
               <span className="text-sm text-slate-600">{email.booking_id ? "Delete this email? The booking stays." : "Delete this email?"}</span>
