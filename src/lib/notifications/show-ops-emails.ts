@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { sendShowOpsMail } from "@/lib/notifications/show-ops-mail-from";
 
 import { formatShowOpsMoney } from "@/lib/show-ops/calc";
 import { filterShowOpsOutboundTo, showOpsOutboundHeldResult } from "@/lib/show-ops/outbound";
@@ -14,14 +15,6 @@ function resendClient(): Resend | null {
     process.env.SOLVIO_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || process.env.RESEND_API_TOKEN?.trim();
   if (!apiKey) return null;
   return new Resend(apiKey);
-}
-
-function fromAddr(): string {
-  return (
-    process.env.SOLVIO_MAIL_FROM?.trim() ||
-    process.env.RESEND_MAIL_FROM?.trim() ||
-    "Solvio Bookings <hello@solviosystems.com>"
-  );
 }
 
 function escapeHtml(s: string): string {
@@ -58,8 +51,7 @@ async function sendShowOpsPaymentLinkEmailInner(opts: {
 
   const money = formatShowOpsMoney(opts.amount, opts.currency);
   const subject = `Payment for ${opts.showName} · ${opts.bookingRef}`;
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     subject,
     html: `
@@ -108,8 +100,7 @@ async function sendShowOpsPartnerLinkEmailInner(opts: {
     return { ok: false, reason: "invalid_recipient", message: "Invalid email address." };
   }
   const subject = `${opts.merchantName} — your booking link for ${opts.partnerName}`;
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     subject,
     html: `
@@ -163,8 +154,7 @@ async function sendShowOpsSellerInviteEmailInner(opts: {
     ? `${opts.invitedBy.trim()} at ${opts.sellerName}`
     : opts.merchantName;
   const subject = `${opts.merchantName} — your booking login`;
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     subject,
     html: `
@@ -255,8 +245,7 @@ async function sendShowOpsInvoiceEmailInner(opts: {
     .join("\n");
   const cc = filterShowOpsOutboundTo(opts.cc || "").filter((address) => address !== to);
 
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     cc: cc.length ? cc : undefined,
     replyTo: opts.replyTo && opts.replyTo.includes("@") ? opts.replyTo : undefined,
@@ -322,8 +311,7 @@ async function sendShowOpsHtmlEmailInner(opts: {
   if (!to.length) {
     return { ok: false, reason: "invalid_recipient", message: "No valid email addresses." };
   }
-  const { data, error } = await client.emails.send({
-    from: fromAddr(),
+  const { data, error } = await sendShowOpsMail(client, {
     to,
     subject: opts.subject,
     html: opts.html,
