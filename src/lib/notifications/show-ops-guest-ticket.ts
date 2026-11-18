@@ -2,7 +2,7 @@ import { bookingExtrasSummary } from "@/lib/show-ops/invoice-supplements";
 import { sendShowOpsMail } from "@/lib/notifications/show-ops-mail-from";
 import { Resend } from "resend";
 
-import { addGuestToMailerLiteAsk } from "@/lib/show-ops/mailerlite";
+import { addBookingGuestToMailerLite } from "@/lib/show-ops/mailerlite";
 
 import type { NotificationSendResult } from "@/lib/notifications/booking-emails";
 import { sendBookingSms } from "@/lib/notifications/booking-sms";
@@ -373,9 +373,8 @@ async function sendGuestTicketEmailInner(input: GuestTicketInput): Promise<Notif
     console.error("[guest-ticket-email] Resend error:", error.message);
     return { ok: false, reason: "provider_error", message: error.message };
   }
-  // Booking email sent → guest joins MailerLite's "not yet asked" group, where MHT's
-  // automation emails them once to ask whether they'd like news.
-  await addGuestToMailerLiteAsk({ businessId: input.businessId, email: to, guestName: input.guestName, mobile: input.guestMobile ?? null });
+  // Booking email sent → guest goes into MHT's MailerLite groups (MHT Hub guests + island).
+  await addBookingGuestToMailerLite({ businessId: input.businessId, email: to, guestName: input.guestName, mobile: input.guestMobile ?? null, island: input.island });
   return { ok: true, id: data?.id };
 }
 

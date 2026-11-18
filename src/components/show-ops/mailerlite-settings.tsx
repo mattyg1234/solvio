@@ -36,9 +36,9 @@ export async function MailerLiteSettings({ ctx, flash, flashMsg, flashError }: {
     <section id="mailerlite" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
       <h2 className="font-semibold">MailerLite — guest marketing list</h2>
       <p className="mt-1 text-sm text-slate-600">
-        When a guest is sent their booking email, they are added to the MailerLite group &quot;Hub bookings (not yet asked)&quot;.
-        MHT&apos;s MailerLite automation emails them once to ask if they&apos;d like news; clicking Yes moves them into the marketing
-        groups. The token is stored encrypted and never shown again.
+        When a guest is sent their booking email, they are added straight into MailerLite (the main group plus their island
+        group) with first name, surname, email and mobile. MHT&apos;s MailerLite automations take it from there. Anyone who
+        unsubscribed in MailerLite stays unsubscribed. The token is stored encrypted and never shown again.
       </p>
 
       {flash === "connected" ? (

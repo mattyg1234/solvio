@@ -77,22 +77,19 @@ test("Vercel fallback reads token, workspace and groups", async () => {
   assert.deepEqual(mailerLiteEnvConfig({ MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "b", MAILERLITE_GROUPS: "oops" } as unknown as NodeJS.ProcessEnv)?.groups, { all: "", islands: {} });
 });
 
-test("booking email adds the guest to the not-yet-asked group, creating it once", async () => {
-  const { addGuestToMailerLiteAsk } = await import("@/lib/show-ops/mailerlite");
+test("booking email adds the guest to MHT Hub guests + their island group", async () => {
+  const { addBookingGuestToMailerLite } = await import("@/lib/show-ops/mailerlite");
   const calls: Array<{ url: string; method: string; body: unknown }> = [];
   const fetcher = (async (url: string, init: RequestInit) => {
-    const method = init.method ?? "GET";
-    calls.push({ url, method, body: init.body ? JSON.parse(String(init.body)) : null });
-    const reply = url.includes("/groups?") ? { data: [{ id: 1, name: "MHT Hub guests" }] } : url.endsWith("/groups") ? { data: { id: 77 } } : { data: { id: 9 } };
-    return new Response(JSON.stringify(reply), { status: 200 });
+    calls.push({ url, method: init.method ?? "GET", body: init.body ? JSON.parse(String(init.body)) : null });
+    return new Response(JSON.stringify({ data: { id: 9 } }), { status: 200 });
   }) as unknown as typeof fetch;
-  const env = { MAILERLITE_API_TOKEN: "t-ask", MAILERLITE_BUSINESS_ID: "biz" } as unknown as NodeJS.ProcessEnv;
-  const r = await addGuestToMailerLiteAsk({ businessId: "biz", email: " Guest@Example.com ", guestName: "Sam Carpenter", mobile: "+44 7000" }, env, fetcher);
-  assert.deepEqual(r, { ok: true });
-  assert.deepEqual(calls.map((c) => c.method), ["GET", "POST", "POST"]);
-  assert.deepEqual(calls[1].body, { name: "Hub bookings (not yet asked)" });
-  assert.deepEqual(calls[2].body, { email: "guest@example.com", fields: { name: "Sam", last_name: "Carpenter", phone: "+44 7000" }, groups: ["77"] });
-  // Other businesses, or no email: nothing is sent.
-  assert.equal((await addGuestToMailerLiteAsk({ businessId: "other", email: "a@b.co", guestName: "A" }, env, fetcher)).skipped, "not_configured");
-  assert.equal((await addGuestToMailerLiteAsk({ businessId: "biz", email: "", guestName: "A" }, env, fetcher)).skipped, "no_email");
+  const env = { MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "biz", MAILERLITE_GROUPS: '{"all":"A","Lanzarote":"L","Tenerife":"T"}' } as unknown as NodeJS.ProcessEnv;
+  const r = await addBookingGuestToMailerLite({ businessId: "biz", email: " Guest@Example.com ", guestName: "Sam Carpenter", mobile: "+44 7000", island: "Lanzarote" }, env, fetcher);
+  assert.deepEqual(r, { ok: true, groups: ["A", "L"] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "POST");
+  assert.deepEqual(calls[0].body, { email: "guest@example.com", fields: { name: "Sam", last_name: "Carpenter", phone: "+44 7000" }, groups: ["A", "L"] });
+  assert.equal((await addBookingGuestToMailerLite({ businessId: "other", email: "a@b.co", guestName: "A" }, env, fetcher)).skipped, "not_configured");
+  assert.equal((await addBookingGuestToMailerLite({ businessId: "biz", email: "", guestName: "A" }, env, fetcher)).skipped, "no_email");
 });
