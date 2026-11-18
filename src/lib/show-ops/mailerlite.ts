@@ -142,6 +142,11 @@ export class MailerLiteClient {
     return String(r.data?.id ?? "");
   }
 
+  async createGroup(name: string): Promise<string> {
+    const r = await this.call<{ data?: { id: string | number } }>("/groups", { method: "POST", body: { name } });
+    return String(r.data?.id ?? "");
+  }
+
   async removeFromGroup(subscriberId: string, groupId: string): Promise<void> {
     try {
       await this.call(`/subscribers/${encodeURIComponent(subscriberId)}/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" });
@@ -270,4 +275,53 @@ export async function runMailerLiteSync(onlyBusinessId?: string): Promise<Mailer
     }
   }
   return results;
+}
+
+
+/**
+ * Matty, 18 Nov: every guest who is sent a booking email goes into this MailerLite
+ * group. A MailerLite automation ("when a subscriber joins the group") then emails
+ * them once asking if they'd like MHT news; clicking Yes moves them to the marketing
+ * groups. Nobody here is marketed to until they click Yes in that email.
+ */
+export const MAILERLITE_ASK_GROUP_NAME = "Hub bookings (not yet asked)";
+
+let askGroupCache: { token: string; id: string } | null = null;
+
+/** Finds the ask group by name, creating it the first time. */
+export async function ensureAskGroup(client: MailerLiteClient, token: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const fixed = env.MAILERLITE_ASK_GROUP_ID?.trim();
+  if (fixed) return fixed;
+  if (askGroupCache?.token === token) return askGroupCache.id;
+  const found = (await client.listGroups()).find((g) => g.name.trim().toLowerCase() === MAILERLITE_ASK_GROUP_NAME.toLowerCase());
+  const id = found ? found.id : await client.createGroup(MAILERLITE_ASK_GROUP_NAME);
+  askGroupCache = { token, id };
+  return id;
+}
+
+/**
+ * Called right after a guest's booking email is sent. Adds them to the ask group.
+ * Quiet when MailerLite isn't set up for this business; never throws.
+ */
+export async function addGuestToMailerLiteAsk(
+  input: { businessId: string | null | undefined; email: string | null | undefined; guestName: string | null | undefined; mobile?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): Promise<{ ok: boolean; skipped?: string; error?: string }> {
+  try {
+    const cfg = mailerLiteEnvConfig(env);
+    if (!cfg || !input.businessId || cfg.businessId !== input.businessId) return { ok: false, skipped: "not_configured" };
+    if (env.MAILERLITE_ASK_BY_EMAIL?.trim() === "0") return { ok: false, skipped: "switched_off" };
+    const email = cleanGuestEmail(input.email);
+    if (!email) return { ok: false, skipped: "no_email" };
+    const client = new MailerLiteClient(cfg.token, fetcher);
+    const group = await ensureAskGroup(client, cfg.token, env);
+    const { name, last_name } = splitGuestName(input.guestName);
+    await client.upsertSubscriber({ email, name, last_name, phone: input.mobile?.trim() || null, groups: [group] });
+    return { ok: true };
+  } catch (err) {
+    const error = mailerLiteErrorMessage(err);
+    console.error("[mailerlite] add to ask group:", error);
+    return { ok: false, error };
+  }
 }

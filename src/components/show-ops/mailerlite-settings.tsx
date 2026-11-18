@@ -36,8 +36,8 @@ export async function MailerLiteSettings({ ctx, flash, flashMsg, flashError }: {
     <section id="mailerlite" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
       <h2 className="font-semibold">MailerLite — guest marketing list</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Guests who reply YES to the MHT updates WhatsApp are added to MailerLite automatically every hour, with their name,
-        email and mobile. Guests who never said YES are never sent. A guest who replies STOP is taken back out of these
+        When a guest is sent their booking email, they are added to the MailerLite group &quot;Hub bookings (not yet asked)&quot;.
+        MHT&apos;s MailerLite automation emails them once to ask if they&apos;d like news; clicking Yes moves them into the marketing
         groups. The token is stored encrypted and never shown again.
       </p>
 

@@ -26,10 +26,6 @@
     {
       "path": "/api/cron/show-ops-mailerlite",
       "schedule": "20 * * * *"
-    },
-    {
-      "path": "/api/cron/show-ops-marketing-ask",
-      "schedule": "5 * * * *"
     }
   ]
 }
