@@ -44,3 +44,16 @@ test("consent summary for the booking page", () => {
   assert.match(consentSummary({ ...base, marketing_opt_in_at: "2026-11-04T10:05:00Z", marketing_opt_in_source: "whatsapp_reply_yes" }, fmt), /replied YES on WhatsApp/);
   assert.match(consentSummary({ ...base, whatsapp_opted_out_at: "2026-11-05T09:00:00Z" }, fmt), /STOP/);
 });
+
+test("marketing ask: 23 to 47 hours after booking, never at night (Canary time)", async () => {
+  const { marketingAskWindow, canaryHour } = await import("@/lib/show-ops/after-show");
+  const noon = new Date("2026-11-18T12:00:00Z"); // winter: Canary = UTC
+  assert.equal(canaryHour(noon), 12);
+  const w = marketingAskWindow(noon);
+  assert.equal(w.quiet, false);
+  assert.equal(w.to, "2026-11-17T13:00:00.000Z");
+  assert.equal(w.from, "2026-11-16T13:00:00.000Z");
+  assert.equal(marketingAskWindow(new Date("2026-11-18T21:30:00Z")).quiet, true);
+  assert.equal(marketingAskWindow(new Date("2026-11-18T08:59:00Z")).quiet, true);
+  assert.equal(marketingAskWindow(new Date("2026-07-18T08:30:00Z")).quiet, false); // summer: 09:30 Canary
+});
