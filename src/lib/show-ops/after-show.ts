@@ -93,16 +93,38 @@ export async function runShowOpsAfterShowFeedback(
   return out;
 }
 
+/** Canary hour (0–23) right now. */
+export function canaryHour(now = new Date()): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Atlantic/Canary", hour: "2-digit", hourCycle: "h23" }).format(now));
+}
+
+/** Marketing ask goes out 23 hours after the booking was made, but only 09:00–20:59 Canary time. */
+export const MARKETING_ASK_AFTER_HOURS = 23;
+/** Bookings older than this that were never asked (Hub down, quiet hours, token outage) are left alone. */
+export const MARKETING_ASK_GIVE_UP_HOURS = 47;
+
+export function marketingAskWindow(now = new Date()): { quiet: boolean; from: string; to: string } {
+  const h = canaryHour(now);
+  return {
+    quiet: h < 9 || h >= 21,
+    from: new Date(now.getTime() - MARKETING_ASK_GIVE_UP_HOURS * 3600_000).toISOString(),
+    to: new Date(now.getTime() - MARKETING_ASK_AFTER_HOURS * 3600_000).toISOString(),
+  };
+}
+
 /**
- * Marketing permission (template 5): the day after the feedback message (two
- * days after the show), guests who came and haven't been asked before get one
- * WhatsApp asking if they'd like MHT news. Asked once per phone number, ever.
- * A YES reply records consent; STOP opts out (see inbox/server.ts).
+ * Marketing permission (template 5, Matty 18 Nov): about 23 hours after a booking is
+ * made, the guest gets one WhatsApp asking if they'd like MHT news. Runs hourly;
+ * nothing is sent at night (21:00–08:59 Canary), those wait for the morning run.
+ * Asked once per phone number, ever. A YES reply records consent; STOP opts out
+ * (see inbox/server.ts).
  */
 export async function runShowOpsMarketingAsk(
   now = new Date(),
 ): Promise<{ date: string; sent: number; skipped: number; failed: number; errors: string[] }> {
-  const date = canaryDaysAgo(2, now);
+  const win = marketingAskWindow(now);
+  const date = `${win.from}..${win.to}`;
+  if (win.quiet) return { date, sent: 0, skipped: 0, failed: 0, errors: [] };
   const admin = createSupabaseServiceRoleClient();
   const { loadTwilioConnection, templateRef } = await import("@/lib/show-ops/inbox/connection");
   const { sendBusinessTextToGuest } = await import("@/lib/show-ops/inbox/server");
@@ -121,7 +143,8 @@ export async function runShowOpsMarketingAsk(
       .from("show_bookings")
       .select("id,guest_name,guest_mobile,no_show,marketing_asked_at,marketing_opt_in_at,whatsapp_opted_out_at")
       .eq("business_id", biz.id)
-      .eq("show_date", date)
+      .gte("created_at", win.from)
+      .lte("created_at", win.to)
       .is("cancelled_at", null)
       .is("marketing_asked_at", null)
       .limit(1000);
