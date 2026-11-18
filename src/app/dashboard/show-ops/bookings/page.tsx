@@ -324,6 +324,9 @@ export default async function AllBookingsPage({
             >
               Download CSV
             </a>
+            <Link href="/dashboard/show-ops/bookings/import" className={SHOW_OPS_GHOST_BTN}>
+              Paper bookings sheet
+            </Link>
             <ShowOpsNewBookingButton />
           </>
         }

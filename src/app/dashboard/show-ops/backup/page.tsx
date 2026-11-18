@@ -1,5 +1,7 @@
 import { gunzipSync } from "node:zlib";
 
+import Link from "next/link";
+
 import { SHOW_OPS_BACKUP_BUCKET, SHOW_OPS_BACKUP_TABLES, snapshotTimestamp } from "@/lib/show-ops/backup";
 import { requireGlobalShowOpsAdmin } from "@/lib/show-ops/access";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/server";
@@ -150,7 +152,7 @@ export default async function ShowOpsBackupPage({
         <h3 className="text-sm font-semibold text-slate-900">Plan B pack by email</h3>
         <p className="mt-1 text-sm text-slate-600">
           Every day at 06:30 and 16:30 (Canary winter time; an hour later in summer), the addresses under Settings → Daily email, plus any extra addresses below, get the night lists for the next three
-          nights (one per island), the bus lists for tonight and tomorrow, and a spreadsheet of every upcoming booking. It
+          nights (one per island), the bus lists for tonight and tomorrow, a spreadsheet of every upcoming booking, and a blank paper bookings sheet. It
           sits in your inbox, outside the Hub, so you can print it and keep working if the Hub is down.
         </p>
         <form action={sendPlanBPackToMeAction} className="mt-3">
@@ -182,6 +184,23 @@ export default async function ShowOpsBackupPage({
           </button>
           {sp.recipients_saved ? <p className="text-sm text-emerald-700">Saved.</p> : null}
         </form>
+      </section>
+
+      <section id="paper-sheet" className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <h3 className="text-sm font-semibold text-slate-900">Paper bookings sheet</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          An Excel sheet for taking bookings while the Hub is down, with today&apos;s partners, shows, hotels and bus stops
+          as dropdowns. It is in every Plan B email. When the Hub is back, drop the filled-in sheet into the Hub: it checks
+          every row and flags anything it does not understand before adding.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a href="/dashboard/show-ops/bookings/import/sheet" download className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">
+            Download blank sheet
+          </a>
+          <Link href="/dashboard/show-ops/bookings/import" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+            Upload a filled-in sheet
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 text-sm text-slate-600">
