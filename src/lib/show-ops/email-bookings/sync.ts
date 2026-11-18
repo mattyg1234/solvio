@@ -4,6 +4,7 @@ import type { ShowOpsContext } from "@/lib/show-ops/access";
 import { loadEmailConnection, openMailSource, type EmailBookingConnection } from "./connection";
 import { findBookingByReference } from "./data";
 import { extractBooking } from "./extract";
+import { EMAIL_KEEP_DAYS } from "./expiry";
 import { isRateLimited, MailProviderError, needsReconnect } from "./gmail";
 import { describeMailError } from "./gate";
 import { channelFor, channelRefFor, normRef, sellerSource } from "./mapping";
@@ -16,7 +17,7 @@ import type { EmailRead, EmailReader, SellerFound } from "./types";
 /**
  * Email bookings, save first (2 Nov 2026). Two steps, run by Refresh and by the every-5-minutes cron:
  *
- * 1. List: ONE inbox search for every tracked sender since the last check (plus the 30-day look-back
+ * 1. List: ONE inbox search for every tracked sender since the last check (plus the 7-day look-back
  *    for senders ticked since then). Each message id is saved to show_email_ingest straight away.
  *    The check time only moves on once the whole list is saved, so nothing slips through.
  * 2. Read: a few queued emails at a time are downloaded, read and stored in Email bookings. A read
@@ -30,7 +31,8 @@ type Admin = ShowOpsContext["supabase"];
 
 export type MailSyncResult = { added: number; stored: number; more: boolean; slowed: boolean };
 
-const FIRST_SYNC_DAYS = 30;
+/** Look-back for a newly ticked sender: no further than Email bookings keeps emails. */
+const FIRST_SYNC_DAYS = EMAIL_KEEP_DAYS;
 /** Look a little before the last check so nothing slips between runs; message ids stop repeats. */
 const OVERLAP_MS = 10 * 60 * 1000;
 const MAX_LISTED = 2000;

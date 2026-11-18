@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { coerceExtracted, coerceRead } from "./extract";
 import { isFailedPayment } from "./sellers";
-import { GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT } from "./test-fixtures";
+import { GYG_RUNON_TEXT, GYG_SUBJECT, GYG_TEXT, WOO_SUBJECT, WOO_TEXT, WOO_VIP_SUBJECT, WOO_VIP_TEXT } from "./test-fixtures";
 import { cleanEmailText, findDate, findTime, readEmailByPattern, readGetYourGuide, readKnownTemplate, readWooOrder } from "./templates";
 
 test("dates and times in the layouts partners use", () => {
@@ -155,4 +155,30 @@ test("partner subjects that were wrongly set aside now count as bookings; noise 
     "Your availability expires soon",
     "🇪🇸 Hemos recibido su mensaje | 🇬🇧 We have received your message Re: Stop Sale Lanz",
   ]) assert.equal(isNoise(s), true, s);
+});
+
+test("WooCommerce: a VIP add-on isn't counted as guests; billing phone and email after a blank line", () => {
+  const r = readWooOrder(WOO_VIP_SUBJECT, cleanEmailText(WOO_VIP_TEXT));
+  assert.ok(r);
+  const e = r.extracted;
+  assert.equal(e.adults, 4);
+  assert.equal(e.quantity, 4);
+  assert.equal(e.date, "2026-12-22");
+  assert.equal(e.service, "Tenerife Dinner Show");
+  assert.equal(e.amount, 216);
+  assert.equal(e.location, "Airbnb");
+  assert.equal(e.phone, "+4915700000000", "the postcode under the house number is not the phone");
+  assert.equal(e.email, "sam.example@example.com", "the billing email, not the PayPal one");
+  assert.match(e.requests ?? "", /Add-ons: 4 × MHT VIP Experience/);
+});
+
+test("GetYourGuide: name, email, phone and language when Gmail runs them onto one line", () => {
+  const r = readGetYourGuide("Booking - S100001 - GYGZZZZTEST1", cleanEmailText(GYG_RUNON_TEXT));
+  assert.ok(r);
+  const e = r.extracted;
+  assert.equal(e.name, "Alex Example");
+  assert.equal(e.email, "customer-abc123@reply.getyourguide.com");
+  assert.equal(e.phone, "+44 7700 900222");
+  assert.equal(e.language, "English");
+  assert.equal(e.adults, 2);
 });
