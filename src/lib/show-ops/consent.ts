@@ -4,10 +4,12 @@
  * Pure helpers only; the database writes live in inbox/server.ts.
  */
 
-export type ConsentIntent = "yes" | "stop";
+export type ConsentIntent = "yes" | "no" | "stop";
 
-const YES = new Set(["yes", "y", "yes please", "yes!", "si", "sí", "sí!", "si!", "ja", "oui", "ok", "okay"]);
-const STOP = new Set(["stop", "unsubscribe", "baja", "parar", "no more", "stop please", "opt out", "optout"]);
+const YES = new Set(["yes", "y", "yes please", "yes keep me updated", "yes!", "si", "sí", "sí!", "si!", "ja", "oui", "ok", "okay"]);
+const STOP = new Set(["stop", "unsubscribe", "baja", "parar", "no more", "stop please", "opt out", "optout", "stop promotions"]);
+/** "No thanks" quick-reply button (or typed): not added to the list, still gets booking messages. */
+const NO = new Set(["no", "no thanks", "no thank you", "no gracias"]);
 
 /** A reply that is only YES or only STOP (any case, light punctuation). Anything longer is a normal chat message. */
 export function consentIntent(body: string): ConsentIntent | null {
@@ -18,6 +20,7 @@ export function consentIntent(body: string): ConsentIntent | null {
   if (!t || t.length > 20) return null;
   if (STOP.has(t)) return "stop";
   if (YES.has(t)) return "yes";
+  if (NO.has(t)) return "no";
   return null;
 }
 

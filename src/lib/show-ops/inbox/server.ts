@@ -980,6 +980,10 @@ async function applyConsentReply(conv: ConversationRow, from: string, body: stri
     if (!ids.length) return;
     await db.from("show_bookings").update({ whatsapp_opted_out_at: now }).eq("business_id", conv.business_id).in("id", ids);
     note = "Guest replied STOP: no more feedback or marketing WhatsApps to this number.";
+  } else if (intent === "no") {
+    // Only worth a note when it answers the marketing question; nothing is changed.
+    if (!rows.some((b) => b.marketing_asked_at && !b.marketing_opt_in_at)) return;
+    note = "Guest replied NO to MHT updates: not added to MailerLite.";
   } else {
     // YES only counts as consent once we've asked.
     if (!rows.some((b) => b.marketing_asked_at)) return;
