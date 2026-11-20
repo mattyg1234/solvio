@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import {
   countryForCode,
   dropTrunkZero,
+  dropTrunkZeroLive,
   flagOf,
   joinPhoneCode,
   PHONE_COUNTRIES,
@@ -99,7 +100,7 @@ export function PhoneInput({
           // "+44 7700…" or "0044 7700…" typed or pasted: move the code into the code box once a digit follows it.
           const full = typedWithCountryCode(typed) ? splitPhoneCode(typed, code) : null;
           if (full && full.rest && /^\d+$/.test(full.rest)) update(full.code, full.rest);
-          else update(code, typed);
+          else update(code, dropTrunkZeroLive(code, typed));
         }}
         onBlur={() => {
           // 07… / 007… / (0) 7… after the code: show it the way it saves, without the 0.

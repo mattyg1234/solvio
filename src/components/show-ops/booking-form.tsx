@@ -870,8 +870,10 @@ export function ShowOpsBookingForm({
       <BookingSavedPanel
         saved={saved}
         onAnother={() => {
-          setSaved(null);
-          router.refresh();
+          // A completely clear form (20 Nov 2026, Joel): a fresh page load, so
+          // nothing from the booking just saved (or the email it came from) stays.
+          // The extra ?new= makes it a new visit, so the browser can't refill the fields.
+          window.location.assign(`${window.location.pathname}?new=${Date.now()}`);
         }}
         backHref={(successPath ?? "/dashboard/show-ops/bookings").replace(
           "{ref}",
