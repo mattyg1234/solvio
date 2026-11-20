@@ -110,6 +110,31 @@ export function dropTrunkZero(code: string, rest: string): string {
 }
 
 /**
+ * While typing (20 Nov 2026, Joel): a trunk 0 in front of the number (07…, 0 7…,
+ * (0) 7…) comes off straight away, so the box never shows +44 07… "00…" is left
+ * alone until the field is left, because it may be the start of 0044…
+ */
+export function dropTrunkZeroLive(code: string, rest: string): string {
+  if (String(code ?? "").replace(/\D/g, "") === "39") return rest;
+  if (/[a-z+]/i.test(rest)) return rest;
+  // Leading spaces go too: after "(0) " is dropped, the next key would otherwise leave " 7…".
+  return rest.replace(/^\s*\(0\)\s*/, "").replace(/^\s*0\s*(?=[1-9])/, "").replace(/^\s+/, "");
+}
+
+/**
+ * A full number on its way into the database: "+44 07700 900123" → "+447700900123".
+ * Numbers sent without the country box (GetYourGuide, imports) get the same tidy
+ * as the form. No country code or letters: kept as typed.
+ */
+export function tidyPhone(raw: string | null | undefined): string {
+  const typed = String(raw ?? "").trim();
+  if (!typed) return "";
+  if (/[a-z]/i.test(typed)) return typed;
+  const s = compact(typed);
+  return s.startsWith("+") ? withCountryCode(s) : typed;
+}
+
+/**
  * A stored or pasted number → country + the rest. "+44 7700 900123" → GB /
  * "7700900123"; a bare Spanish mobile or UK 07… is recognised; anything else stays
  * as typed under the fallback country.

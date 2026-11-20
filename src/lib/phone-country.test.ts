@@ -4,11 +4,13 @@ import { test } from "node:test";
 import {
   countryForCode,
   dropTrunkZero,
+  dropTrunkZeroLive,
   flagOf,
   joinPhone,
   joinPhoneCode,
   splitPhone,
   splitPhoneCode,
+  tidyPhone,
   typedWithCountryCode,
 } from "./phone-country";
 
@@ -83,4 +85,31 @@ test("leading 0, 00 or (0) after the country code drops off (Joel, 2 Nov)", () =
   assert.equal(typedWithCountryCode("0044 7778 877123"), true);
   assert.equal(typedWithCountryCode("007778 877"), false);
   assert.equal(typedWithCountryCode("07778 877123"), false);
+});
+
+test("trunk 0 comes off while typing (Joel, 20 Nov)", () => {
+  assert.equal(dropTrunkZeroLive("44", "0"), "0");
+  assert.equal(dropTrunkZeroLive("44", "07"), "7");
+  assert.equal(dropTrunkZeroLive("44", "0 7700"), "7700");
+  assert.equal(dropTrunkZeroLive("44", "(0) 7700"), "7700");
+  assert.equal(dropTrunkZeroLive("34", "0692"), "692");
+  // Typed key by key: "(0)" goes, then the space after it must not stay in front.
+  assert.equal(dropTrunkZeroLive("44", " "), "");
+  assert.equal(dropTrunkZeroLive("44", " 7"), "7");
+  // 00 may be the start of 0044…: left for the blur / save.
+  assert.equal(dropTrunkZeroLive("44", "0044"), "0044");
+  // Italy keeps its 0; full numbers and notes are untouched.
+  assert.equal(dropTrunkZeroLive("39", "06 1234"), "06 1234");
+  assert.equal(dropTrunkZeroLive("44", "+44 07"), "+44 07");
+  assert.equal(dropTrunkZeroLive("44", "ask office"), "ask office");
+});
+
+test("tidyPhone cleans full numbers on save", () => {
+  assert.equal(tidyPhone("+44 07700 900123"), "+447700900123");
+  assert.equal(tidyPhone("+44 (0) 7700 900123"), "+447700900123");
+  assert.equal(tidyPhone("0044 07700 900123"), "+447700900123");
+  assert.equal(tidyPhone("+447700900123"), "+447700900123");
+  assert.equal(tidyPhone("+39 06 1234 5678"), "+390612345678");
+  assert.equal(tidyPhone(""), "");
+  assert.equal(tidyPhone("no phone"), "no phone");
 });
