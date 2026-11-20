@@ -135,11 +135,23 @@ export class MailerLiteClient {
   async upsertSubscriber(input: { email: string; name: string; last_name: string; phone: string | null; groups: string[] }): Promise<string> {
     const fields: Record<string, string> = { name: input.name, last_name: input.last_name };
     if (input.phone) fields.phone = input.phone;
-    const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
-      method: "POST",
-      body: { email: input.email, fields, groups: input.groups },
-    });
-    return String(r.data?.id ?? "");
+    try {
+      const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
+        method: "POST",
+        body: { email: input.email, fields, groups: input.groups },
+      });
+      return String(r.data?.id ?? "");
+    } catch (err) {
+      // MailerLite refuses a phone number that's already on another subscriber
+      // ("The given data was invalid.", 422). Add the guest without the phone instead.
+      if (!(err instanceof MailerLiteError) || err.status !== 422 || !fields.phone) throw err;
+      delete fields.phone;
+      const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
+        method: "POST",
+        body: { email: input.email, fields, groups: input.groups },
+      });
+      return String(r.data?.id ?? "");
+    }
   }
 
   async removeFromGroup(subscriberId: string, groupId: string): Promise<void> {

@@ -93,3 +93,19 @@ test("booking email adds the guest to MHT Hub guests + their island group", asyn
   assert.equal((await addBookingGuestToMailerLite({ businessId: "other", email: "a@b.co", guestName: "A" }, env, fetcher)).skipped, "not_configured");
   assert.equal((await addBookingGuestToMailerLite({ businessId: "biz", email: "", guestName: "A" }, env, fetcher)).skipped, "no_email");
 });
+
+test("a phone MailerLite refuses (already on someone else) is dropped, guest still added", async () => {
+  const { MailerLiteClient } = await import("@/lib/show-ops/mailerlite");
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetcher = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    bodies.push(body);
+    const fields = body.fields as Record<string, string>;
+    if (fields.phone) return new Response(JSON.stringify({ message: "The given data was invalid." }), { status: 422 });
+    return new Response(JSON.stringify({ data: { id: 5 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const id = await new MailerLiteClient("t", fetcher).upsertSubscriber({ email: "v@x.com", name: "Vince", last_name: "F", phone: "+447000", groups: ["L"] });
+  assert.equal(id, "5");
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(bodies[1].fields, { name: "Vince", last_name: "F" });
+});
