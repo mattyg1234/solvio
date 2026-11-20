@@ -93,6 +93,9 @@ test("trunk 0 comes off while typing (Joel, 20 Nov)", () => {
   assert.equal(dropTrunkZeroLive("44", "0 7700"), "7700");
   assert.equal(dropTrunkZeroLive("44", "(0) 7700"), "7700");
   assert.equal(dropTrunkZeroLive("34", "0692"), "692");
+  // Typed key by key: "(0)" goes, then the space after it must not stay in front.
+  assert.equal(dropTrunkZeroLive("44", " "), "");
+  assert.equal(dropTrunkZeroLive("44", " 7"), "7");
   // 00 may be the start of 0044…: left for the blur / save.
   assert.equal(dropTrunkZeroLive("44", "0044"), "0044");
   // Italy keeps its 0; full numbers and notes are untouched.

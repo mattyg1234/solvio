@@ -117,7 +117,8 @@ export function dropTrunkZero(code: string, rest: string): string {
 export function dropTrunkZeroLive(code: string, rest: string): string {
   if (String(code ?? "").replace(/\D/g, "") === "39") return rest;
   if (/[a-z+]/i.test(rest)) return rest;
-  return rest.replace(/^\s*\(0\)\s*/, "").replace(/^\s*0\s*(?=[1-9])/, "");
+  // Leading spaces go too: after "(0) " is dropped, the next key would otherwise leave " 7…".
+  return rest.replace(/^\s*\(0\)\s*/, "").replace(/^\s*0\s*(?=[1-9])/, "").replace(/^\s+/, "");
 }
 
 /**
