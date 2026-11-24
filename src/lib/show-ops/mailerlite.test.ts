@@ -76,3 +76,36 @@ test("Vercel fallback reads token, workspace and groups", async () => {
   assert.deepEqual(c, { token: "t", businessId: "b", groups: { all: "1", islands: { Tenerife: "2", Lanzarote: "3" } } });
   assert.deepEqual(mailerLiteEnvConfig({ MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "b", MAILERLITE_GROUPS: "oops" } as unknown as NodeJS.ProcessEnv)?.groups, { all: "", islands: {} });
 });
+
+test("booking email adds the guest to MHT Hub guests + their island group", async () => {
+  const { addBookingGuestToMailerLite } = await import("@/lib/show-ops/mailerlite");
+  const calls: Array<{ url: string; method: string; body: unknown }> = [];
+  const fetcher = (async (url: string, init: RequestInit) => {
+    calls.push({ url, method: init.method ?? "GET", body: init.body ? JSON.parse(String(init.body)) : null });
+    return new Response(JSON.stringify({ data: { id: 9 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const env = { MAILERLITE_API_TOKEN: "t", MAILERLITE_BUSINESS_ID: "biz", MAILERLITE_GROUPS: '{"all":"A","Lanzarote":"L","Tenerife":"T"}' } as unknown as NodeJS.ProcessEnv;
+  const r = await addBookingGuestToMailerLite({ businessId: "biz", email: " Guest@Example.com ", guestName: "Sam Carpenter", mobile: "+44 7000", island: "Lanzarote" }, env, fetcher);
+  assert.deepEqual(r, { ok: true, groups: ["A", "L"] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "POST");
+  assert.deepEqual(calls[0].body, { email: "guest@example.com", fields: { name: "Sam", last_name: "Carpenter", phone: "+44 7000" }, groups: ["A", "L"] });
+  assert.equal((await addBookingGuestToMailerLite({ businessId: "other", email: "a@b.co", guestName: "A" }, env, fetcher)).skipped, "not_configured");
+  assert.equal((await addBookingGuestToMailerLite({ businessId: "biz", email: "", guestName: "A" }, env, fetcher)).skipped, "no_email");
+});
+
+test("a phone MailerLite refuses (already on someone else) is dropped, guest still added", async () => {
+  const { MailerLiteClient } = await import("@/lib/show-ops/mailerlite");
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetcher = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    bodies.push(body);
+    const fields = body.fields as Record<string, string>;
+    if (fields.phone) return new Response(JSON.stringify({ message: "The given data was invalid." }), { status: 422 });
+    return new Response(JSON.stringify({ data: { id: 5 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const id = await new MailerLiteClient("t", fetcher).upsertSubscriber({ email: "v@x.com", name: "Vince", last_name: "F", phone: "+447000", groups: ["L"] });
+  assert.equal(id, "5");
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(bodies[1].fields, { name: "Vince", last_name: "F" });
+});

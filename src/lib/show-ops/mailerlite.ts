@@ -135,11 +135,23 @@ export class MailerLiteClient {
   async upsertSubscriber(input: { email: string; name: string; last_name: string; phone: string | null; groups: string[] }): Promise<string> {
     const fields: Record<string, string> = { name: input.name, last_name: input.last_name };
     if (input.phone) fields.phone = input.phone;
-    const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
-      method: "POST",
-      body: { email: input.email, fields, groups: input.groups },
-    });
-    return String(r.data?.id ?? "");
+    try {
+      const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
+        method: "POST",
+        body: { email: input.email, fields, groups: input.groups },
+      });
+      return String(r.data?.id ?? "");
+    } catch (err) {
+      // MailerLite refuses a phone number that's already on another subscriber
+      // ("The given data was invalid.", 422). Add the guest without the phone instead.
+      if (!(err instanceof MailerLiteError) || err.status !== 422 || !fields.phone) throw err;
+      delete fields.phone;
+      const r = await this.call<{ data?: { id: string | number } }>("/subscribers", {
+        method: "POST",
+        body: { email: input.email, fields, groups: input.groups },
+      });
+      return String(r.data?.id ?? "");
+    }
   }
 
   async removeFromGroup(subscriberId: string, groupId: string): Promise<void> {
@@ -270,4 +282,34 @@ export async function runMailerLiteSync(onlyBusinessId?: string): Promise<Mailer
     }
   }
   return results;
+}
+
+
+/**
+ * Matty, 18 Nov: when the Hub sends a guest their booking email, the guest goes
+ * straight into MHT's MailerLite groups (MHT Hub guests + their island group) with
+ * first name, surname, email and mobile. MHT's own MailerLite automation takes it
+ * from there. Quiet when MailerLite isn't set up for this business; never throws.
+ */
+export async function addBookingGuestToMailerLite(
+  input: { businessId: string | null | undefined; email: string | null | undefined; guestName: string | null | undefined; mobile?: string | null; island?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): Promise<{ ok: boolean; skipped?: string; error?: string; groups?: string[] }> {
+  try {
+    const cfg = mailerLiteEnvConfig(env);
+    if (!cfg || !input.businessId || cfg.businessId !== input.businessId) return { ok: false, skipped: "not_configured" };
+    if (env.MAILERLITE_ADD_ON_BOOKING_EMAIL?.trim() === "0") return { ok: false, skipped: "switched_off" };
+    const email = cleanGuestEmail(input.email);
+    if (!email) return { ok: false, skipped: "no_email" };
+    const groups = groupsForBooking(cfg.groups, input.island);
+    if (!groups.length) return { ok: false, skipped: "no_groups" };
+    const { name, last_name } = splitGuestName(input.guestName);
+    await new MailerLiteClient(cfg.token, fetcher).upsertSubscriber({ email, name, last_name, phone: input.mobile?.trim() || null, groups });
+    return { ok: true, groups };
+  } catch (err) {
+    const error = mailerLiteErrorMessage(err);
+    console.error("[mailerlite] add booking guest:", error);
+    return { ok: false, error };
+  }
 }
