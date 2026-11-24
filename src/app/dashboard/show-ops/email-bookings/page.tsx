@@ -5,6 +5,7 @@ import { EmailInboxCard } from "@/components/show-ops/email-bookings/inbox-card"
 import { ShowOpsPageHeader } from "@/components/show-ops/show-ops-page-header";
 import { requireShowOpsPage, roleAtLeast } from "@/lib/show-ops/access";
 import { loadEmailConnection } from "@/lib/show-ops/email-bookings/connection";
+import { daysUntilExpiry, EMAIL_KEEP_DAYS } from "@/lib/show-ops/email-bookings/expiry";
 import { loadBookingMatches, loadEmail, loadEmailQueue, type EmailTab } from "@/lib/show-ops/email-bookings/data";
 import { gmailConfigured } from "@/lib/show-ops/email-bookings/gmail";
 import { bookingDifferences } from "@/lib/show-ops/email-bookings/mapping";
@@ -41,6 +42,13 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 /** "Tue 29 Sep, 19:15" in island time. */
 function when(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Atlantic/Canary" });
+}
+
+/** "Goes in 2 days" once an email is close to its 7-day limit. */
+function ExpiryNote({ receivedAt }: { receivedAt: string }) {
+  const left = daysUntilExpiry(receivedAt);
+  if (left > 2) return null;
+  return <span className="text-[11px] font-semibold text-amber-700">{left <= 1 ? "Goes within a day" : `Goes in ${left} days`}</span>;
 }
 
 export default async function EmailBookingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -85,7 +93,7 @@ export default async function EmailBookingsPage({ searchParams }: { searchParams
       <ShowOpsPageHeader
         eyebrow="Operations"
         title="Email bookings"
-        subtitle="Booking emails from the partners you track, read into a list for the office to check. Nothing becomes a booking until you open it in the booking form and save it, and the same booking is never added twice."
+        subtitle={`Booking emails from the partners you track, read into a list for the office to check. Nothing becomes a booking until you open it in the booking form and save it, and the same booking is never added twice. Emails are kept for ${EMAIL_KEEP_DAYS} days, then removed from this list (bookings made from them stay).`}
       />
 
       {signInError && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">{signInError}</p>}
@@ -160,6 +168,7 @@ export default async function EmailBookingsPage({ searchParams }: { searchParams
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">Duplicate</span>
                       ) : null}
                       {e.notes ? <span className="text-[11px] text-slate-400">Has notes</span> : null}
+                      <ExpiryNote receivedAt={e.received_at} />
                     </span>
                   </Link>
                 </li>
@@ -167,7 +176,7 @@ export default async function EmailBookingsPage({ searchParams }: { searchParams
             </ul>
             <div className="min-w-0 p-5">
               {selected ? (
-                <EmailDetail key={selected.id} email={selected} matches={matches} linked={linked} matchOnly={isMatchOnlySeller(selected.seller_key)} />
+                <EmailDetail key={selected.id} email={selected} matches={matches} linked={linked} matchOnly={isMatchOnlySeller(selected.seller_key)} afterDeleteHref={hrefFor({})} />
               ) : (
                 <p className="py-12 text-center text-sm text-slate-500">Pick an email to check it.</p>
               )}

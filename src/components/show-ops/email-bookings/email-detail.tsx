@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertTriangle, CopyCheck, ExternalLink, Loader2, Mail } from "lucide-react";
+import { AlertTriangle, CopyCheck, ExternalLink, Loader2, Mail, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import {
+  deleteEmailAction,
   linkEmailToBookingAction,
   markEmailHandledAction,
   saveEmailFieldsAction,
@@ -82,13 +83,17 @@ export function EmailDetail({
   matches,
   linked,
   matchOnly,
+  afterDeleteHref,
 }: {
   email: InboundEmailRow;
   matches: DetailMatch[];
   linked: { id: string; booking_ref: string } | null;
   matchOnly: boolean;
+  /** Where to go once this email is deleted (the same tab, nothing picked). */
+  afterDeleteHref: string;
 }) {
   const router = useRouter();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [fields, setFields] = useState<ExtractedBooking>(email.extracted);
   const [dirty, setDirty] = useState(false);
   const [notes, setNotes] = useState(email.notes ?? "");
@@ -335,6 +340,44 @@ export function EmailDetail({
             </button>
           </>
         )}
+        <span className="flex items-center gap-2">
+          {confirmDelete ? (
+            <>
+              <span className="text-sm text-slate-600">{email.booking_id ? "Delete this email? The booking stays." : "Delete this email?"}</span>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                disabled={pending}
+                onClick={() =>
+                  start(async () => {
+                    const r = await deleteEmailAction(email.id);
+                    if (!r.ok) {
+                      setConfirmDelete(false);
+                      return setMessage(r.message ?? "Couldn't delete that email.");
+                    }
+                    router.replace(afterDeleteHref);
+                    router.refresh();
+                  })
+                }
+              >
+                Yes, delete
+              </button>
+              <button type="button" className="text-sm font-semibold text-slate-500" disabled={pending} onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 disabled:opacity-60"
+              disabled={pending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Delete
+            </button>
+          )}
+        </span>
       </div>
     </div>
   );

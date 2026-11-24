@@ -11,6 +11,7 @@ import { MailProviderError } from "@/lib/show-ops/email-bookings/gmail";
 import { cleanHubSpotToken, hubspotAccount } from "@/lib/show-ops/email-bookings/hubspot";
 import { channelFor, channelRefFor, normRef, sellerSource } from "@/lib/show-ops/email-bookings/mapping";
 import { cleanSender, customSeller, customSenderKey, SELLERS } from "@/lib/show-ops/email-bookings/sellers";
+import { adminClient } from "@/lib/show-ops/email-bookings/sync";
 import type { InboundEmailRow, SellerFound } from "@/lib/show-ops/email-bookings/types";
 
 type Result = { ok: true; message?: string } | { ok: false; message: string };
@@ -195,6 +196,27 @@ export async function setEmailStatusAction(id: string, status: "ignored" | "revi
       id,
       status === "review" ? { status, handled_by: null, handled_at: null } : { status, handled_by: ctx.user.id, handled_at: now },
     );
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Removes the email from Email bookings. Only the email copy goes: a booking already made from it
+ * stays in Bookings, and the original stays in the Gmail inbox. It isn't read in again, because its
+ * message id stays marked done in the read queue (show_email_ingest).
+ */
+export async function deleteEmailAction(id: string): Promise<Result> {
+  try {
+    const ctx = await gateOrThrow("booker");
+    const email = await loadEmail(ctx.supabase, ctx.business.id, id);
+    if (!email) return { ok: false, message: "That email isn't there any more." };
+    // Row access says office+ may delete; the bookings desk (booker+) already decides what happens
+    // to each email, so the gate above is the check and the delete runs as the server.
+    const { error } = await adminClient().from("show_email_bookings").delete().eq("id", id).eq("business_id", ctx.business.id);
+    if (error) return { ok: false, message: "Couldn't delete that email. Try again." };
+    revalidatePath(EMAIL_BOOKINGS_PATH);
+    return { ok: true, message: "Email deleted." };
   } catch (e) {
     return fail(e);
   }

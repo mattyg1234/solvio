@@ -44,6 +44,9 @@ export function euros(s: string): number | undefined {
 }
 
 /** The lines under a label line. GetYourGuide puts values on the line(s) below their label. */
+/** An email address; the TLD stops before a capital so "…getyourguide.comPhone" reads as ".com". */
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}(?![a-z])/;
+
 function under(text: string, label: string, lines = 1): string[] {
   const all = text.split("\n");
   const i = all.findIndex((l) => l.trim().toLowerCase() === label.toLowerCase());
@@ -53,7 +56,7 @@ function under(text: string, label: string, lines = 1): string[] {
 
 /**
  * A WooCommerce checkout question's answer: "Question: answer" / "Question? answer" on one line,
- * or the answer on the next line when the question line ends with ":" or "?".
+ * or the answer on the next line when the question line ends with ":", "?" or the question itself.
  */
 function answerTo(text: string, question: RegExp): string | undefined {
   const lines = text.split("\n");
@@ -63,6 +66,8 @@ function answerTo(text: string, question: RegExp): string | undefined {
     // The first ":" or "?" after the question ends it; the answer may itself contain a colon.
     const rest = lines[i].slice(m.index + m[0].length);
     const cut = rest.search(/[:?]/);
+    // The website's "Extra Information" puts a bare question on its own line, the answer below it.
+    if (cut < 0 && lines[i].trim().length <= 120 && lines[i + 1]?.trim() === "") return lines.slice(i + 1).find((l) => l.trim())?.trim().slice(0, 200);
     if (cut < 0) continue;
     const same = rest.slice(cut + 1).trim();
     if (same) return same.slice(0, 200);
@@ -105,21 +110,28 @@ export function readWooOrder(subject: string, text: string): EmailRead | null {
   if (!rows.length) return null;
   const lines = rows.map((m) => ({ product: m[1].trim(), sku: m[2], qty: Number(m[4]), total: euros(m[5] ?? m[6] ?? "") ?? 0 }));
 
+  // Add-ons bought with the tickets ("MHT VIP Experience (#VIP) 4") aren't extra people: only show
+  // tickets count. A ticket row names the show or an age group, or has a dated show SKU (TFS_AD_7673).
+  const isTicket = (l: { product: string; sku: string }) =>
+    /\bshow\b/i.test(l.product) || ADULT.test(l.product) || CHILD.test(l.product) || INFANT.test(l.product) || /^[A-Z]{3}_(AD|CH|IN|INF)\b|_\d{3,}$/.test(l.sku);
+  const tickets = lines.filter(isTicket).length ? lines.filter(isTicket) : lines;
+  const addOns = lines.filter((l) => !tickets.includes(l));
+
   let adults = 0;
   let children = 0;
   let infants = 0;
-  for (const l of lines) {
+  for (const l of tickets) {
     if (INFANT.test(l.product)) infants += l.qty;
     else if (CHILD.test(l.product)) children += l.qty;
     else adults += l.qty;
   }
 
   // "Tenerife Adult Dinner Show – Friday 2 Oct 2026" → the show, without the date or ticket type.
-  const services = lines.map((l) =>
+  const services = tickets.map((l) =>
     l.product.replace(WEEKDAY_TAIL, "").replace(DATE_TAIL, "").replace(ADULT, "").replace(CHILD, "").replace(INFANT, "").replace(/\s{2,}/g, " ").trim(),
   );
   e.service = [...new Set(services)].join(" + ");
-  e.date = findDate(lines[0].product) ?? findDate(text);
+  e.date = findDate(tickets[0].product) ?? findDate(text);
 
   const total = text.match(/^Total:\s*(?:[€£]\s*)?([\d.,]+)/im);
   e.amount = total ? euros(total[1]) : Math.round(lines.reduce((s, l) => s + l.total, 0) * 100) / 100;
@@ -131,16 +143,20 @@ export function readWooOrder(subject: string, text: string): EmailRead | null {
   const stay = answerTo(text, /name of (?:the |your )?(?:accommodation|hotel)|accommodation name|hotel name|which hotel|where are you staying/i);
   if (stay && !/^(n\/?a|none|-)$/i.test(stay)) e.location = stay;
 
-  const billing = text.split(/billing address/i)[1]?.split(/\n\s*\n|shipping address|pixelyoursite/i)[0] ?? "";
-  const phone = billing.match(/\+?\d[\d\s()-]{7,}\d/);
-  if (phone) e.phone = phone[0].replace(/\s+/g, " ").trim();
-  const email = billing.match(/[^\s@]+@[^\s@]+\.[a-z]{2,}/i);
-  if (email) e.email = email[0];
+  // "Billing address" is followed by a blank line, then name, street, town, country, phone, email.
+  // One line at a time, so a house number and the postcode below it never read as a phone.
+  const billing = (text.split(/^\s*billing address\s*$/im)[1] ?? "").replace(/^\s+/, "").split(/\n\s*\n|shipping address|pixelyoursite/i)[0];
+  const billingLines = billing.split("\n").map((l) => l.trim());
+  const phone = billingLines.find((l) => /^\+?[\d\s().-]{7,}$/.test(l) && l.replace(/\D/g, "").length >= 7);
+  if (phone) e.phone = phone.replace(/\s+/g, " ");
+  const email = billingLines.map((l) => l.match(EMAIL_RE)?.[0]).find(Boolean);
+  if (email) e.email = email;
 
   const notes: string[] = [];
-  if (lines.length > 1 || lines.some((l) => ADULT.test(l.product) || CHILD.test(l.product))) {
-    notes.push(`Tickets: ${lines.map((l) => `${l.qty} × ${l.product.replace(WEEKDAY_TAIL, "")}`).join(", ")}`);
+  if (tickets.length > 1 || tickets.some((l) => ADULT.test(l.product) || CHILD.test(l.product))) {
+    notes.push(`Tickets: ${tickets.map((l) => `${l.qty} × ${l.product.replace(WEEKDAY_TAIL, "")}`).join(", ")}`);
   }
+  if (addOns.length) notes.push(`Add-ons: ${addOns.map((l) => `${l.qty} × ${l.product}`).join(", ")}`);
   // "Do you have any infants under 4? Yes, 1" — a number becomes infants; a bare yes stays a note.
   const infantAnswer = answerTo(text, /\binfants?\b/i);
   if (infantAnswer && !/^no\b/i.test(infantAnswer)) {
@@ -199,13 +215,20 @@ export function readGetYourGuide(subject: string, text: string): EmailRead | nul
     if (infants) e.infants = infants;
   }
 
-  const cust = under(text, "Main customer", 4);
-  if (cust[0]) e.name = cust[0];
-  const email = cust.find((l) => /@/.test(l));
+  // The customer block is name, relay email, "Phone: …" and "Language: …", one per line, or (in
+  // Gmail's text of the HTML email) all run together: "Ann Lee customer-x@reply.getyourguide.comPhone: +44…Language: English".
+  const custBlock = (text.split(/^\s*(?:Main customer|Lead traveler|Customer)\s*$/im)[1] ?? "")
+    .split(/^\s*(?:Tour language|Price|Open booking|Pickup|Pick-up|Pick up)\b/im)[0]
+    .replace(/\s*(Phone|Language)\s*:/gi, "\n$1:");
+  const custLines = custBlock.split("\n").map((l) => l.trim()).filter(Boolean);
+  const email = custBlock.match(EMAIL_RE)?.[0];
   if (email) e.email = email;
-  const phone = text.match(/^Phone:\s*([+\d][\d\s()-]{6,})$/im);
+  const nameLine = custLines.find((l) => !/^(Phone|Language):/i.test(l));
+  const name = nameLine?.replace(email ?? "\u0000", "").trim();
+  if (name) e.name = name;
+  const phone = custBlock.match(/^Phone:\s*(\+?[\d\s().-]{6,}\d)/im);
   if (phone) e.phone = phone[1].trim();
-  const lang = text.match(/^Language:\s*(.+)$/im);
+  const lang = custBlock.match(/^Language:\s*(.+)$/im) ?? text.match(/^Language:\s*(.+)$/im);
   if (lang) e.language = lang[1].trim();
 
   const price = under(text, "Price")[0];

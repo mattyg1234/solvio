@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { expireOldEmails } from "@/lib/show-ops/email-bookings/expiry";
 import { describeMailError } from "@/lib/show-ops/email-bookings/gate";
 import { adminClient, syncMailInbox } from "@/lib/show-ops/email-bookings/sync";
 
@@ -21,6 +22,7 @@ function authorized(req: NextRequest): boolean {
 /**
  * Every 5 minutes: lists new emails from the tracked senders into the queue (one search per
  * inbox), then reads queued emails into Email bookings until the queue is empty or time runs out.
+ * First it removes emails older than 7 days (bookings made from them stay).
  */
 export async function GET(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,9 +30,14 @@ export async function GET(req: NextRequest) {
   const { data, error } = await adminClient().from("show_email_booking_connections").select("business_id");
   if (error) return NextResponse.json({ error: "Could not list inboxes." }, { status: 500 });
 
-  const results: { businessId: string; added: number; rounds: number; more: boolean; slowed: boolean; error?: string }[] = [];
+  const results: { businessId: string; expired: number; added: number; rounds: number; more: boolean; slowed: boolean; error?: string }[] = [];
   for (const { business_id } of data ?? []) {
-    const r = { businessId: String(business_id), added: 0, rounds: 0, more: false, slowed: false } as (typeof results)[number];
+    const r = { businessId: String(business_id), expired: 0, added: 0, rounds: 0, more: false, slowed: false } as (typeof results)[number];
+    try {
+      r.expired = await expireOldEmails(adminClient(), r.businessId);
+    } catch (e) {
+      console.error(`[cron/show-ops-mail] ${r.businessId}: ${describeMailError(e)}`);
+    }
     try {
       do {
         const out = await syncMailInbox(r.businessId, { listFirst: r.rounds === 0 });
