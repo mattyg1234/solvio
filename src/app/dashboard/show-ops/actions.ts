@@ -92,6 +92,7 @@ import {
   PRIVATE_HOTEL_OPTION,
   type PrivateAccommodation,
 } from "@/lib/show-ops/private-pickup";
+import { tidyPhone } from "@/lib/phone-country";
 import { type ShowOpsBillingTier, type ShowOpsMemberRole, parseShowOpsPaymentMethod } from "@/lib/show-ops/types";
 import type {
   ShowOpsBookingQuestion,
@@ -2061,7 +2062,7 @@ async function buildBookingFields(
     fields: {
       show_date,
       guest_name,
-      guest_mobile: String(formData.get("guest_mobile") ?? "").trim() || null,
+      guest_mobile: tidyPhone(String(formData.get("guest_mobile") ?? "")) || null,
       guest_email,
       hotel_id: hotelId,
       hotel_name: (hotel?.name ?? privateHotelName ?? String(formData.get("hotel_name") ?? "").trim()) || null,
